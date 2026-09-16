@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,12 +25,12 @@
 #define CVCUDA_PRIV__ADV_CVT_COLOR_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <cvcuda/Types.h>
 #include <nvcv/ColorSpec.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
+#include <nvcv/TensorData.hpp>
 
 namespace cvcuda::priv {
 

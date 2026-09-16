@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,21 @@
 #include "TypeTraits.hpp" // for Require, etc.
 
 #include <ostream> // for std::ostream, etc.
+
+/**
+ * Metaoperator to insert a __half value into an output stream.
+ *
+ * __half has no standard stream inserter; it is printed through its float value.
+ *
+ * @param[in, out] out Output stream to be changed and returned.
+ * @param[in] v Half value to be inserted formatted in the output stream.
+ *
+ * @return Output stream with the half value.
+ */
+inline __host__ std::ostream &operator<<(std::ostream &out, const __half &v)
+{
+    return out << __half2float(v);
+}
 
 /**
  * Metaoperator to insert a pixel into an output stream.

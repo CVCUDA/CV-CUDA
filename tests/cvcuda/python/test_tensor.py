@@ -596,3 +596,73 @@ def test_tensor_size_in_bytes():
         tensor_create, (5, 32, 16, 4), cvcuda.TensorLayout.NHWC
     )
     assert cvcuda.internal.nbytes_in_cache(tensor_reshape) == 0
+
+
+def test_as_tensor_reads_cuda_array_interface_once():
+    """The interface is a property: each read runs the producer's getter."""
+
+    class CountingCAI:
+        def __init__(self, owner):
+            self._owner = owner
+            self.access_count = 0
+
+        @property
+        def __cuda_array_interface__(self):
+            self.access_count += 1
+            return self._owner.__cuda_array_interface__
+
+    owner = cupy.zeros((1, 2, 3, 4), dtype=np.uint8)
+
+    # A layout spelled as a string is deliberately left out: it is resolved by a
+    # separate overload pass that runs the whole caster a second time, so it
+    # reads the interface once per pass. That count belongs to the layout
+    # dispatch, not to this fetch.
+    for layout in (None, cvcuda.TensorLayout.NHWC):
+        buffer = CountingCAI(owner)
+        if layout is None:
+            cvcuda.as_tensor(buffer)
+        else:
+            cvcuda.as_tensor(buffer, layout)
+        assert buffer.access_count == 1
+
+
+def test_as_tensor_rejects_producer_whose_interface_raises():
+    """A raising getter means the protocol is not usable, not a crash."""
+
+    class RaisingCAI:
+        @property
+        def __cuda_array_interface__(self):
+            raise ValueError("interface unavailable")
+
+    with t.raises(TypeError):
+        cvcuda.as_tensor(RaisingCAI())
+
+
+def test_as_tensor_rejects_non_dict_interface():
+    class BadCAI:
+        __cuda_array_interface__ = "not a dict"
+
+    with t.raises(TypeError):
+        cvcuda.as_tensor(BadCAI())
+
+
+def test_as_tensor_rejects_none_interface_without_dlpack_fallback():
+    class NoneCAIWithDLPack:
+        __cuda_array_interface__ = None
+
+        def __init__(self, owner):
+            self._owner = owner
+            self.dlpack_calls = 0
+
+        def __dlpack__(self, *args, **kwargs):
+            self.dlpack_calls += 1
+            return self._owner.__dlpack__(*args, **kwargs)
+
+        def __dlpack_device__(self):
+            return self._owner.__dlpack_device__()
+
+    buffer = NoneCAIWithDLPack(cupy.zeros((1, 2, 3, 4), dtype=np.uint8))
+
+    with t.raises(TypeError):
+        cvcuda.as_tensor(buffer)
+    assert buffer.dlpack_calls == 0

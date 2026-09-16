@@ -22,10 +22,12 @@
 #include "CvCudaLegacyHelpers.hpp"
 
 #include "CvCudaUtils.cuh"
+#include "morphology_util.cuh"
 
 #include <cvcuda/cuda_tools/MathWrappers.hpp>
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
 
+#include <cstdint>
 #include <type_traits>
 
 using namespace nvcv::legacy::helpers;
@@ -203,6 +205,75 @@ __device__ __forceinline__ PT erodeInterior(const SrcWrapper &src, int batch, in
     }
 
     return res;
+}
+
+__device__ __forceinline__ uchar Max3(uchar a, uchar b, uchar c)
+{
+    return cuda::max(cuda::max(a, b), c);
+}
+
+__device__ __forceinline__ uchar4 RowDilate3x3X4(const uchar *row, uchar left, uchar right)
+{
+    const uchar4 center = *reinterpret_cast<const uchar4 *>(row);
+
+    return make_uchar4(Max3(left, center.x, center.y), Max3(center.x, center.y, center.z),
+                       Max3(center.y, center.z, center.w), Max3(center.z, center.w, right));
+}
+
+__device__ __forceinline__ bool IsUchar4RowAligned(const uchar *srcRow, int srcStride, const uchar *dstRow,
+                                                   int dstStride)
+{
+    constexpr std::uintptr_t mask = alignof(uchar4) - 1;
+
+    return ((reinterpret_cast<std::uintptr_t>(srcRow) | static_cast<std::uintptr_t>(srcStride)
+             | reinterpret_cast<std::uintptr_t>(dstRow) | static_cast<std::uintptr_t>(dstStride))
+            & mask)
+        == 0;
+}
+
+template<class RawSrcWrapper>
+__device__ __forceinline__ uchar4 Dilate3x3X4(const RawSrcWrapper &rawSrc, int batch, int channel, int y, int x)
+{
+    const uchar *top = rawSrc.ptr(batch, channel, y - 1, x);
+    const uchar *mid = rawSrc.ptr(batch, channel, y, x);
+    const uchar *bot = rawSrc.ptr(batch, channel, y + 1, x);
+
+    const uchar4 topMax = RowDilate3x3X4(top, top[-1], top[4]);
+    const uchar4 midMax = RowDilate3x3X4(mid, mid[-1], mid[4]);
+    const uchar4 botMax = RowDilate3x3X4(bot, bot[-1], bot[4]);
+
+    return cuda::max(cuda::max(topMax, midMax), botMax);
+}
+
+template<class SrcWrapper, class DstWrapper>
+__device__ __forceinline__ void DilatePlanarGenericX4(const SrcWrapper &src, const DstWrapper &dst, int batch,
+                                                      int channel, int y, int x, int width, int2 kernelSize,
+                                                      int2 anchor)
+{
+#pragma unroll
+    for (int k = 0; k < 4; ++k)
+    {
+        const int dstX = x + k;
+        if (dstX >= width)
+        {
+            return;
+        }
+
+        uchar res = 0;
+        int4  srcCoord{0, 0, channel, batch};
+        for (int i = 0; i < kernelSize.y; ++i)
+        {
+            srcCoord.y = y - anchor.y + i;
+
+            for (int j = 0; j < kernelSize.x; ++j)
+            {
+                srcCoord.x = dstX - anchor.x + j;
+                res        = cuda::max(res, src[srcCoord]);
+            }
+        }
+
+        *dst.ptr(batch, channel, y, dstX) = res;
+    }
 }
 
 template<bool UseGenericInterior, class SrcWrapper, class RawSrcWrapper, class DstWrapper,
@@ -554,6 +625,48 @@ __global__ void dilatePlanarChannels(const SrcWrapper src, const RawSrcWrapper r
     }
 }
 
+template<class SrcWrapper, class RawSrcWrapper, class DstWrapper>
+__global__ void dilatePlanarC3Replicate3x3X4(const SrcWrapper src, const RawSrcWrapper rawSrc, DstWrapper dst,
+                                             cuda::Tensor1DWrap<int2> kernelSizeArr,
+                                             cuda::Tensor1DWrap<int2> kernelAnchorArr)
+{
+    const int x         = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
+    const int y         = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+
+    int2 kernelSize = kernelSizeArr[batch_idx];
+    int2 anchor     = kernelAnchorArr[batch_idx];
+
+    const bool centered3x3 = kernelSize.x == 3 && kernelSize.y == 3 && anchor.x == 1 && anchor.y == 1;
+
+#pragma unroll
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        const int width  = dst.width(batch_idx, channel);
+        const int height = dst.height(batch_idx, channel);
+
+        if (x >= width || y >= height)
+        {
+            continue;
+        }
+
+        const uchar *srcRow  = rawSrc.ptr(batch_idx, channel, y, 0);
+        uchar       *dstRow  = dst.ptr(batch_idx, channel, y, 0);
+        const bool   aligned = IsUchar4RowAligned(srcRow, rawSrc.rowStride(batch_idx, channel), dstRow,
+                                                  dst.rowStride(batch_idx, channel));
+
+        if (centered3x3 && aligned && x > 0 && y > 0 && x + 4 < width && y + 1 < height)
+        {
+            *reinterpret_cast<uchar4 *>(dst.ptr(batch_idx, channel, y, x))
+                = Dilate3x3X4(rawSrc, batch_idx, channel, y, x);
+        }
+        else
+        {
+            DilatePlanarGenericX4(src, dst, batch_idx, channel, y, x, width, kernelSize, anchor);
+        }
+    }
+}
+
 template<bool UseGenericInterior, class SrcWrapper, class RawSrcWrapper, class DstWrapper,
          typename D = typename DstWrapper::ValueType, typename BT = typename cuda::BaseType<D>>
 __global__ void erodePlanarChannels(const SrcWrapper src, const RawSrcWrapper rawSrc, DstWrapper dst,
@@ -644,8 +757,7 @@ void MorphFilter2DCaller(const ImageBatchVarShapeDataStridedCuda &inData,
     dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), outData.numImages());
 
     using BT = nvcv::cuda::BaseType<D>;
-    BT val   = (morph_type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
-                                                               : std::numeric_limits<BT>::max();
+    BT val   = MorphIdentityValue<BT>(morph_type);
 
     cuda::BorderVarShapeWrap<const D, B>  src(inData, cuda::SetAll<D>(val));
     cuda::ImageBatchVarShapeWrap<const D> rawSrc(inData);
@@ -704,8 +816,7 @@ void MorphFilter2DCallerPlanar(const ImageBatchVarShapeDataStridedCuda &inData,
     dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), channels * outData.numImages());
 
     using BT = nvcv::cuda::BaseType<D>;
-    BT val   = (morph_type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
-                                                               : std::numeric_limits<BT>::max();
+    BT val   = MorphIdentityValue<BT>(morph_type);
 
     cuda::BorderVarShapeWrap<const D, B>  src(inData, cuda::SetAll<D>(val));
     cuda::ImageBatchVarShapeWrap<const D> rawSrc(inData);
@@ -751,16 +862,42 @@ void MorphFilter2DCallerPlanar(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         if constexpr (std::is_same_v<D, uchar>)
         {
-            dim3 channelGrid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), outData.numImages());
-            if (enableGenericInterior)
+            if constexpr (B == NVCV_BORDER_REPLICATE)
             {
-                dilatePlanarChannels<true><<<channelGrid, block, 0, stream>>>(src, rawSrc, dst, kernelSizeTensor,
-                                                                              kernelAnchorTensor, channels, val);
+                if (!enableGenericInterior && channels == 3)
+                {
+                    dim3 x4Grid(divUp(maxWidth, block.x * 4), divUp(maxHeight, block.y), outData.numImages());
+                    dilatePlanarC3Replicate3x3X4<<<x4Grid, block, 0, stream>>>(src, rawSrc, dst, kernelSizeTensor,
+                                                                               kernelAnchorTensor);
+                }
+                else
+                {
+                    dim3 channelGrid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), outData.numImages());
+                    if (enableGenericInterior)
+                    {
+                        dilatePlanarChannels<true><<<channelGrid, block, 0, stream>>>(
+                            src, rawSrc, dst, kernelSizeTensor, kernelAnchorTensor, channels, val);
+                    }
+                    else
+                    {
+                        dilatePlanarChannels<false><<<channelGrid, block, 0, stream>>>(
+                            src, rawSrc, dst, kernelSizeTensor, kernelAnchorTensor, channels, val);
+                    }
+                }
             }
             else
             {
-                dilatePlanarChannels<false><<<channelGrid, block, 0, stream>>>(src, rawSrc, dst, kernelSizeTensor,
-                                                                               kernelAnchorTensor, channels, val);
+                dim3 channelGrid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), outData.numImages());
+                if (enableGenericInterior)
+                {
+                    dilatePlanarChannels<true><<<channelGrid, block, 0, stream>>>(src, rawSrc, dst, kernelSizeTensor,
+                                                                                  kernelAnchorTensor, channels, val);
+                }
+                else
+                {
+                    dilatePlanarChannels<false><<<channelGrid, block, 0, stream>>>(src, rawSrc, dst, kernelSizeTensor,
+                                                                                   kernelAnchorTensor, channels, val);
+                }
             }
         }
         else
@@ -860,7 +997,7 @@ ErrorCode MorphologyVarShape::infer(const nvcv::ImageBatchVarShape &inBatch, con
     }
     const bool isPlanar = IsPlanar(format);
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -925,13 +1062,17 @@ ErrorCode MorphologyVarShape::infer(const nvcv::ImageBatchVarShape &inBatch, con
                                const TensorDataStridedCuda &kAnchors, NVCVMorphologyType morph_type,
                                NVCVBorderType borderMode, bool enableGenericInterior, cudaStream_t stream);
 
-    static const filter2D_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7). The
+    // erode/dilate kernels only compare and select input values, so __half reuses them unchanged.
+    static const filter2D_t funcs[8][4] = {
         { MorphFilter2D<uchar>, 0,  MorphFilter2D<uchar3>,  MorphFilter2D<uchar4>},
         {                    0, 0,                      0,                      0},
         {MorphFilter2D<ushort>, 0, MorphFilter2D<ushort3>, MorphFilter2D<ushort4>},
         {                    0, 0,                      0,                      0},
         {                    0, 0,                      0,                      0},
         { MorphFilter2D<float>, 0,  MorphFilter2D<float3>,  MorphFilter2D<float4>},
+        {                    0, 0,                      0,                      0},
+        {MorphFilter2D<__half>, 0,   MorphFilter2D<half3>,   MorphFilter2D<half4>},
     };
 
     if (isPlanar)
@@ -941,8 +1082,9 @@ ErrorCode MorphologyVarShape::infer(const nvcv::ImageBatchVarShape &inBatch, con
             const TensorDataStridedCuda &kMasks, const TensorDataStridedCuda &kAnchors, NVCVMorphologyType morph_type,
             NVCVBorderType borderMode, int channels, bool enableGenericInterior, cudaStream_t stream);
 
-        static const filter2D_planar_t planarFuncs[6] = {
-            MorphFilter2DPlanar<uchar>, 0, MorphFilter2DPlanar<ushort>, 0, 0, MorphFilter2DPlanar<float>,
+        static const filter2D_planar_t planarFuncs[8] = {
+            MorphFilter2DPlanar<uchar>, 0, MorphFilter2DPlanar<ushort>, 0, 0,
+            MorphFilter2DPlanar<float>, 0, MorphFilter2DPlanar<__half>,
         };
 
         planarFuncs[data_type](*inData, *outData, masks, anchors, morph_type, borderMode, channels,

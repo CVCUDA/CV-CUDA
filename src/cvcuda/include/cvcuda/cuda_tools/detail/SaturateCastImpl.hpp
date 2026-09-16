@@ -101,7 +101,13 @@ inline __host__ __device__ T BaseSaturateCastImpl(U u)
     (void)SmallToBig;
     (void)BigToSmall;
 
-    if constexpr (kFloatingToIntegral)
+    if constexpr (IsHalfV<U> && !IsHalfV<T>)
+    {
+        // __half -> any: hop through float (lossless) to reuse the paths below;
+        // std::is_floating_point does not classify __half, so it needs explicit routing
+        return BaseSaturateCastImpl<T>(__half2float(u));
+    }
+    else if constexpr (kFloatingToIntegral)
     {
         // any-float -> any-integral
         return SaturateFloatingToIntegral<T>(u);
@@ -205,6 +211,11 @@ NVCV_CUDA_SAT_DEF(unsigned int, short, unsigned int, asm("cvt.sat.u32.s16 %0, %1
 NVCV_CUDA_SAT_DEF(unsigned int, int, unsigned int, asm("cvt.sat.u32.s32 %0, %1;" : "=r"(out) : "r"(u)))
 NVCV_CUDA_SAT_DEF(unsigned int, float, unsigned int, out = __float2uint_rn(u))
 NVCV_CUDA_SAT_DEF(unsigned int, double, unsigned int, out = __double2uint_rn(u))
+
+NVCV_CUDA_SAT_DEF(unsigned char, __half, unsigned int, asm("cvt.rni.sat.u8.f16 %0, %1;" : "=r"(out) : "h"(static_cast<__half_raw>(u).x)))
+NVCV_CUDA_SAT_DEF(signed char, __half, unsigned int, asm("cvt.rni.sat.s8.f16 %0, %1;" : "=r"(out) : "h"(static_cast<__half_raw>(u).x)))
+NVCV_CUDA_SAT_DEF(unsigned short, __half, unsigned short, asm("cvt.rni.sat.u16.f16 %0, %1;" : "=h"(out) : "h"(static_cast<__half_raw>(u).x)))
+NVCV_CUDA_SAT_DEF(short, __half, short, asm("cvt.rni.sat.s16.f16 %0, %1;" : "=h"(out) : "h"(static_cast<__half_raw>(u).x)))
 
 // clang-format on
 

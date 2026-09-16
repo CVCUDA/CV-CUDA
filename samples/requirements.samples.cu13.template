@@ -22,9 +22,10 @@
 -r requirements.samples.common.txt
 
 # PyTorch + torchvision (paired versions) for CUDA 13.x (${torch_cu13_index} wheel index, compatible with CUDA 13.3+)
+# cvcuda-driver-cuda-min: ${torch_cu13_driver_min}
 --extra-index-url https://download.pytorch.org/whl/${torch_cu13_index}
-torch==${torch_cu13}
-torchvision==${torchvision_cu13}
+torch==${torch_cu13}+${torch_cu13_index}
+torchvision==${torchvision_cu13}+${torch_cu13_index}
 
 # CUDA 13-specific packages
 --extra-index-url https://pypi.nvidia.com/

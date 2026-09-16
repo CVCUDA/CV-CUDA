@@ -23,6 +23,8 @@
 #include "JpegDistortionMath.hpp"
 #include "OpJpegCompressionDistortion.hpp"
 
+#include "ChannelAxisCommon.cuh"
+
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
@@ -40,9 +42,10 @@
 
 #include <algorithm>
 
-namespace cuda = nvcv::cuda;
-namespace util = nvcv::util;
-namespace jpeg = cvcuda::priv::jpeg;
+namespace cuda         = nvcv::cuda;
+namespace util         = nvcv::util;
+namespace channel_axis = cvcuda::priv::channel_axis;
+namespace jpeg         = cvcuda::priv::jpeg;
 
 namespace {
 
@@ -514,11 +517,6 @@ inline void RunVarShape(cudaStream_t stream, const nvcv::ImageBatchVarShapeDataS
 
 // Validation ------------------------------------------------------------------------------
 
-inline bool IsPlanarLayout(nvcv::TensorLayout layout)
-{
-    return layout == nvcv::TENSOR_NCHW || layout == nvcv::TENSOR_CHW;
-}
-
 inline void ValidateScalarQuality(int quality)
 {
     if (quality < 1 || quality > 100)
@@ -573,224 +571,6 @@ inline QualityParam MakeScalarQuality(int quality)
     return param;
 }
 
-inline bool ValidateSrcDstTensors(bool &isEmpty, int &numChannels, int &numSamples,
-                                  const nvcv::Optional<nvcv::TensorDataStridedCuda> &srcData,
-                                  const nvcv::Optional<nvcv::TensorDataStridedCuda> &dstData)
-{
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-    if (srcData->layout() != dstData->layout())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
-    }
-
-    const bool isPlanar = IsPlanarLayout(srcData->layout());
-    if (srcData->layout() != nvcv::TENSOR_HWC && srcData->layout() != nvcv::TENSOR_NHWC && !isPlanar)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have (N)HWC or (N)CHW layout");
-    }
-    if (srcData->dtype() != dstData->dtype())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same data type");
-    }
-    if (srcData->dtype().numChannels() != 1)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Tensor data type must be scalar; use the C dimension for image channels");
-    }
-    if (srcData->dtype() != nvcv::TYPE_U8)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid data type: JpegCompressionDistortion supports 8-bit unsigned only");
-    }
-
-    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
-    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
-    if (!srcAccess || !dstAccess)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input/output must be accessible as strided images");
-    }
-    if (srcAccess->numSamples() != dstAccess->numSamples())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-
-    numChannels = srcAccess->numChannels();
-    if (numChannels != dstAccess->numChannels())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of channels");
-    }
-    if (numChannels != 1 && numChannels != 3)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have 1 or 3 channels");
-    }
-    if (srcAccess->numCols() != dstAccess->numCols() || srcAccess->numRows() != dstAccess->numRows())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input and output must have matching width and height");
-    }
-
-    numSamples = static_cast<int>(srcAccess->numSamples());
-    isEmpty    = numSamples == 0 || srcAccess->numRows() == 0 || srcAccess->numCols() == 0;
-    return isPlanar;
-}
-
-inline void ValidateImagePlanes(const nvcv::Image &image, const nvcv::ImageFormat &format)
-{
-    auto data = image.exportData<nvcv::ImageDataStridedCuda>();
-    if (!data || data->numPlanes() != format.numPlanes())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Image plane descriptors must match the image format");
-    }
-
-    constexpr int64_t limit = cuda::TypeTraits<int32_t>::max;
-    for (int p = 0; p < data->numPlanes(); ++p)
-    {
-        const nvcv::ImagePlaneStrided &plane    = data->plane(p);
-        const nvcv::Size2D             expected = format.planeSize(image.size(), p);
-        if (plane.width != expected.w || plane.height != expected.h)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Image plane descriptors must match the image format and size");
-        }
-        if (expected != image.size())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "All image planes must have matching width and height");
-        }
-
-        const int64_t pixelStride = format.planePixelStrideBytes(p);
-        if (plane.rowStride < 0
-            || (static_cast<int64_t>(plane.height - 1) * plane.rowStride
-                    + static_cast<int64_t>(plane.width - 1) * pixelStride
-                > limit))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW,
-                                  "Input or output image-plane maximum byte offset exceeds %d",
-                                  static_cast<int>(limit));
-        }
-    }
-}
-
-inline bool ValidateSrcDstVarBatch(bool &isEmpty, int &numChannels, const nvcv::ImageBatchVarShape &src,
-                                   const nvcv::ImageBatchVarShape                                &dst,
-                                   const nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda> &srcData,
-                                   const nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda> &dstData)
-{
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, varshape pitch-linear image batch");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, varshape pitch-linear image batch");
-    }
-    if (srcData->numImages() != dstData->numImages())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-    isEmpty = srcData->numImages() == 0;
-    if (isEmpty)
-    {
-        return false;
-    }
-
-    const auto &srcFormat = srcData->uniqueFormat();
-    const auto &dstFormat = dstData->uniqueFormat();
-    if (!srcFormat || !dstFormat)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All images in a batch must have the same format");
-    }
-    if (srcFormat != dstFormat)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same format");
-    }
-
-    numChannels = srcFormat.numChannels();
-    if (numChannels != 1 && numChannels != 3)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "The input must have 1 or 3 channels");
-    }
-    if (numChannels == 3
-        && (srcFormat.colorModel() != nvcv::ColorModel::RGB
-            || (srcFormat.swizzle() != nvcv::Swizzle::S_XYZ0 && srcFormat.swizzle() != nvcv::Swizzle::S_XYZ1)))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Three-channel input must use RGB channel order");
-    }
-
-    nvcv::ExtraChannelInfo extraChannels{};
-    srcFormat.extraChannelInfo(&extraChannels);
-    if (extraChannels.numChannels != 0)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Image formats with extra channels are not supported");
-    }
-    if (srcFormat.chromaSubsampling() != nvcv::ChromaSubsampling::CSS_444)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Chroma-subsampled image formats are not supported");
-    }
-
-    const int      numPlanes = srcFormat.numPlanes();
-    nvcv::DataType dtype     = srcFormat.planeDataType(0);
-    if (dtype != nvcv::TYPE_U8 && dtype != nvcv::TYPE_3U8)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid data type: JpegCompressionDistortion supports 8-bit unsigned only");
-    }
-    if (numPlanes == 1)
-    {
-        if (dtype.numChannels() != numChannels || srcFormat.planePixelStrideBytes(0) != dtype.strideBytes())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Single-plane images must have one packed element per pixel");
-        }
-    }
-    else if (numPlanes != numChannels || dtype.numChannels() != 1
-             || srcFormat.planePixelStrideBytes(0) != dtype.strideBytes())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Planar images must have one scalar, full-resolution plane per channel");
-    }
-    for (int p = 1; p < numPlanes; ++p)
-    {
-        if (srcFormat.planeDataType(p) != dtype || srcFormat.planeDataType(p).numChannels() != 1
-            || srcFormat.planePixelStrideBytes(p) != dtype.strideBytes())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "All image planes must have the same packed scalar data type");
-        }
-    }
-
-    for (int i = 0; i < src.numImages(); ++i)
-    {
-        const nvcv::Size2D srcSize = src[i].size();
-        const nvcv::Size2D dstSize = dst[i].size();
-        if (srcSize != dstSize)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Input and output image %d sizes must match: input is %dx%d, output is %dx%d", i,
-                                  srcSize.w, srcSize.h, dstSize.w, dstSize.h);
-        }
-        ValidateImagePlanes(src[i], srcFormat);
-        ValidateImagePlanes(dst[i], dstFormat);
-    }
-
-    return numPlanes > 1;
-}
-
 } // anonymous namespace
 
 namespace cvcuda::priv {
@@ -800,12 +580,19 @@ JpegCompressionDistortion::JpegCompressionDistortion() {}
 void JpegCompressionDistortion::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                            const nvcv::Tensor &quality) const
 {
-    bool       isEmpty;
-    int        numChannels;
-    int        numSamples;
-    auto       srcData  = in.exportData<nvcv::TensorDataStridedCuda>();
-    auto       dstData  = out.exportData<nvcv::TensorDataStridedCuda>();
-    const bool isPlanar = ValidateSrcDstTensors(isEmpty, numChannels, numSamples, srcData, dstData);
+    bool           isEmpty;
+    int            numChannels;
+    int            numSamples;
+    nvcv::DataType dtype;
+    auto           srcData = in.exportData<nvcv::TensorDataStridedCuda>();
+    auto           dstData = out.exportData<nvcv::TensorDataStridedCuda>();
+    const bool     isPlanar
+        = channel_axis::ValidateSrcDstTensors(isEmpty, numChannels, dtype, numSamples, srcData, dstData);
+    if (dtype != nvcv::TYPE_U8 && dtype != nvcv::TYPE_3U8)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Invalid data type: JpegCompressionDistortion supports 8-bit unsigned only");
+    }
 
     const QualityParam param = ValidateQualityTensor(quality, numSamples);
     if (isEmpty)
@@ -821,12 +608,19 @@ void JpegCompressionDistortion::operator()(cudaStream_t stream, const nvcv::Tens
 {
     const QualityParam param = MakeScalarQuality(quality);
 
-    bool       isEmpty;
-    int        numChannels;
-    int        numSamples;
-    auto       srcData  = in.exportData<nvcv::TensorDataStridedCuda>();
-    auto       dstData  = out.exportData<nvcv::TensorDataStridedCuda>();
-    const bool isPlanar = ValidateSrcDstTensors(isEmpty, numChannels, numSamples, srcData, dstData);
+    bool           isEmpty;
+    int            numChannels;
+    int            numSamples;
+    nvcv::DataType dtype;
+    auto           srcData = in.exportData<nvcv::TensorDataStridedCuda>();
+    auto           dstData = out.exportData<nvcv::TensorDataStridedCuda>();
+    const bool     isPlanar
+        = channel_axis::ValidateSrcDstTensors(isEmpty, numChannels, dtype, numSamples, srcData, dstData);
+    if (dtype != nvcv::TYPE_U8 && dtype != nvcv::TYPE_3U8)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Invalid data type: JpegCompressionDistortion supports 8-bit unsigned only");
+    }
     if (isEmpty)
     {
         return;
@@ -838,14 +632,20 @@ void JpegCompressionDistortion::operator()(cudaStream_t stream, const nvcv::Tens
 void JpegCompressionDistortion::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                                            const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &quality) const
 {
-    bool       isEmpty;
-    int        numChannels;
-    auto       srcData  = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    auto       dstData  = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    const bool isPlanar = ValidateSrcDstVarBatch(isEmpty, numChannels, in, out, srcData, dstData);
+    bool           isEmpty;
+    int            numChannels;
+    nvcv::DataType dtype;
+    auto           srcData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+    auto           dstData = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+    const bool isPlanar = channel_axis::ValidateSrcDstVarBatch(isEmpty, numChannels, dtype, in, out, srcData, dstData);
     if (isEmpty)
     {
         return;
+    }
+    if (dtype != nvcv::TYPE_U8 && dtype != nvcv::TYPE_3U8)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Invalid data type: JpegCompressionDistortion supports 8-bit unsigned only");
     }
 
     const QualityParam param = ValidateQualityTensor(quality, srcData->numImages());
@@ -858,14 +658,20 @@ void JpegCompressionDistortion::operator()(cudaStream_t stream, const nvcv::Imag
 {
     const QualityParam param = MakeScalarQuality(quality);
 
-    bool       isEmpty;
-    int        numChannels;
-    auto       srcData  = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    auto       dstData  = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    const bool isPlanar = ValidateSrcDstVarBatch(isEmpty, numChannels, in, out, srcData, dstData);
+    bool           isEmpty;
+    int            numChannels;
+    nvcv::DataType dtype;
+    auto           srcData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+    auto           dstData = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+    const bool isPlanar = channel_axis::ValidateSrcDstVarBatch(isEmpty, numChannels, dtype, in, out, srcData, dstData);
     if (isEmpty)
     {
         return;
+    }
+    if (dtype != nvcv::TYPE_U8 && dtype != nvcv::TYPE_3U8)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Invalid data type: JpegCompressionDistortion supports 8-bit unsigned only");
     }
 
     RunVarShape(stream, *srcData, *dstData, isPlanar, numChannels, param);

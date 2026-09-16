@@ -76,7 +76,7 @@ def _repo_root() -> Path:
 
 def _git_command(*args: str) -> List[str]:
     repo_root = _repo_root()
-    # CI may check out files under a UID different from the benchmark container's UID.
+    # The CI runner may check out files under a UID different from the benchmark container's UID.
     return ["git", "-c", f"safe.directory={repo_root}", *args]
 
 
@@ -189,7 +189,7 @@ def _baseline_regression_errors_against_ref(
             if base_us <= 0:
                 continue
             pct = (current_us / base_us - 1.0) * 100.0
-            if pct <= max_regression_pct:
+            if current_us <= base_us * (1.0 + max_regression_pct / 100.0):
                 continue
             config_key, case_key, sku, language = key
             errors.append(

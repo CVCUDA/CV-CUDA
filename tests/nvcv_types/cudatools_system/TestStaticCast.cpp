@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -66,4 +66,49 @@ TYPED_TEST(StaticCastTest, correct_output)
     {
         EXPECT_EQ(cuda::GetElement(test, e), cuda::GetElement(gold, e));
     }
+}
+
+// --------------------- Testing StaticCast for __half -------------------------
+
+// __half and its vector types (half1/__half2/half3/half4) are not structural types, so they
+// cannot be used in ttype::Value<> non-type template parameters as in the typed suite above;
+// the fp16 coverage below uses plain TESTs with values built at run time.
+
+TEST(StaticCastHalfTest, half_to_float_is_exact)
+{
+    half3 input{__float2half(-1.5f), __float2half(0.f), __float2half(1.5f)};
+
+    const auto test = cuda::StaticCast<float>(input);
+
+    EXPECT_TRUE((std::is_same_v<decltype(test), const float3>));
+
+    EXPECT_EQ(test.x, -1.5f);
+    EXPECT_EQ(test.y, 0.f);
+    EXPECT_EQ(test.z, 1.5f);
+}
+
+TEST(StaticCastHalfTest, float_to_half_rounds_to_nearest)
+{
+    float3 input{0.1f, -1.5f, 65504.f};
+
+    const auto test = cuda::StaticCast<__half>(input);
+
+    EXPECT_TRUE((std::is_same_v<decltype(test), const half3>));
+
+    EXPECT_EQ(__half2float(test.x), __half2float(__float2half(0.1f)));
+    EXPECT_EQ(__half2float(test.y), -1.5f);
+    EXPECT_EQ(__half2float(test.z), 65504.f);
+}
+
+TEST(StaticCastHalfTest, int_to_half_works)
+{
+    int3 input{-2, 0, 3};
+
+    const auto test = cuda::StaticCast<__half>(input);
+
+    EXPECT_TRUE((std::is_same_v<decltype(test), const half3>));
+
+    EXPECT_EQ(__half2float(test.x), -2.f);
+    EXPECT_EQ(__half2float(test.y), 0.f);
+    EXPECT_EQ(__half2float(test.z), 3.f);
 }

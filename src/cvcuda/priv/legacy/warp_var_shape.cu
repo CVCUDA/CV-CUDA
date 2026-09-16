@@ -493,7 +493,8 @@ ErrorCode WarpAffineVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inD
 
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F
+          || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -537,13 +538,18 @@ ErrorCode WarpAffineVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inD
                            const cuda::Tensor2DWrap<float, int32_t> transform, const int interpolation,
                            const int borderMode, const float4 &borderValue, cudaStream_t stream);
 
-    static const func_t funcs[6][4] = {
-        {     warpAffine<uchar1>,  0 /*warpAffine<uchar2>*/,      warpAffine<uchar3>,      warpAffine<uchar4>},
-        {0 /*warpAffine<schar>*/,   0 /*warpAffine<char2>*/, 0 /*warpAffine<char3>*/, 0 /*warpAffine<char4>*/},
-        {    warpAffine<ushort1>, 0 /*warpAffine<ushort2>*/,     warpAffine<ushort3>,     warpAffine<ushort4>},
-        {     warpAffine<short1>,  0 /*warpAffine<short2>*/,      warpAffine<short3>,      warpAffine<short4>},
-        {  0 /*warpAffine<int>*/,    0 /*warpAffine<int2>*/,  0 /*warpAffine<int3>*/,  0 /*warpAffine<int4>*/},
-        {     warpAffine<float1>,  0 /*warpAffine<float2>*/,      warpAffine<float3>,      warpAffine<float4>}
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). Warp interpolates through
+    // InterpolationVarShapeWrap, which accumulates the taps in float and rounds to the element type
+    // once on store, so the F16 rows instantiate real half kernels instead of aliasing integer ones.
+    static const func_t funcs[8][4] = {
+        {       warpAffine<uchar1>,  0 /*warpAffine<uchar2>*/,        warpAffine<uchar3>,        warpAffine<uchar4>},
+        {  0 /*warpAffine<schar>*/,   0 /*warpAffine<char2>*/,   0 /*warpAffine<char3>*/,   0 /*warpAffine<char4>*/},
+        {      warpAffine<ushort1>, 0 /*warpAffine<ushort2>*/,       warpAffine<ushort3>,       warpAffine<ushort4>},
+        {       warpAffine<short1>,  0 /*warpAffine<short2>*/,        warpAffine<short3>,        warpAffine<short4>},
+        {    0 /*warpAffine<int>*/,    0 /*warpAffine<int2>*/,    0 /*warpAffine<int3>*/,    0 /*warpAffine<int4>*/},
+        {       warpAffine<float1>,  0 /*warpAffine<float2>*/,        warpAffine<float3>,        warpAffine<float4>},
+        {0 /*warpAffine<double1>*/, 0 /*warpAffine<double2>*/, 0 /*warpAffine<double3>*/, 0 /*warpAffine<double4>*/},
+        {        warpAffine<half1>,   0 /*warpAffine<half2>*/,         warpAffine<half3>,         warpAffine<half4>}
     };
 
     if (isPlanar)
@@ -555,9 +561,17 @@ ErrorCode WarpAffineVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inD
             cuda::Tensor2DWrap<float, int32_t> transform, const int interpolation, const int borderMode, int channels,
             const float4 &borderValue, cudaStream_t stream);
 
-        static const planar_func_t planar_funcs[6] = {
-            warpAffine_planar<uchar1>, 0 /*schar*/, warpAffine_planar<ushort1>,
-            warpAffine_planar<short1>, 0 /*int*/,   warpAffine_planar<float1>,
+        // Slots 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7); the F16 slot
+        // instantiates the real half plane kernel for the same reason as the interleaved table.
+        static const planar_func_t planar_funcs[8] = {
+            warpAffine_planar<uchar1>,
+            0 /*schar*/,
+            warpAffine_planar<ushort1>,
+            warpAffine_planar<short1>,
+            0 /*int*/,
+            warpAffine_planar<float1>,
+            0 /*64F*/,
+            warpAffine_planar<half1> /*16F*/,
         };
 
         const planar_func_t planarFunc = planar_funcs[data_type];
@@ -649,7 +663,8 @@ ErrorCode WarpPerspectiveVarShape::infer(const ImageBatchVarShapeDataStridedCuda
 
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F
+          || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -693,15 +708,21 @@ ErrorCode WarpPerspectiveVarShape::infer(const ImageBatchVarShapeDataStridedCuda
                            cuda::Tensor2DWrap<float, int32_t> transform, const int interpolation, const int borderMode,
                            const float4 &borderValue, cudaStream_t stream);
 
-    static const func_t funcs[6][4] = {
-        {     warpPerspective<uchar1>,  0 /*warpPerspective<uchar2>*/,      warpPerspective<uchar3>,warpPerspective<uchar4>                                                                                                    },
-        {0 /*warpPerspective<schar>*/,   0 /*warpPerspective<char2>*/, 0 /*warpPerspective<char3>*/,
-         0 /*warpPerspective<char4>*/                                                                                        },
-        {    warpPerspective<ushort1>, 0 /*warpPerspective<ushort2>*/,     warpPerspective<ushort3>, warpPerspective<ushort4>},
-        {     warpPerspective<short1>,  0 /*warpPerspective<short2>*/,      warpPerspective<short3>,  warpPerspective<short4>},
-        {  0 /*warpPerspective<int>*/,    0 /*warpPerspective<int2>*/,  0 /*warpPerspective<int3>*/,
-         0 /*warpPerspective<int4>*/                                                                                         },
-        {     warpPerspective<float1>,  0 /*warpPerspective<float2>*/,      warpPerspective<float3>,  warpPerspective<float4>}
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). Warp interpolates through
+    // InterpolationVarShapeWrap, which accumulates the taps in float and rounds to the element type
+    // once on store, so the F16 rows instantiate real half kernels instead of aliasing integer ones.
+    static const func_t funcs[8][4] = {
+        {       warpPerspective<uchar1>,  0 /*warpPerspective<uchar2>*/,        warpPerspective<uchar3>,warpPerspective<uchar4>                                                                                                        },
+        {  0 /*warpPerspective<schar>*/,   0 /*warpPerspective<char2>*/,   0 /*warpPerspective<char3>*/,
+         0 /*warpPerspective<char4>*/                                                                                            },
+        {      warpPerspective<ushort1>, 0 /*warpPerspective<ushort2>*/,       warpPerspective<ushort3>, warpPerspective<ushort4>},
+        {       warpPerspective<short1>,  0 /*warpPerspective<short2>*/,        warpPerspective<short3>,  warpPerspective<short4>},
+        {    0 /*warpPerspective<int>*/,    0 /*warpPerspective<int2>*/,    0 /*warpPerspective<int3>*/,
+         0 /*warpPerspective<int4>*/                                                                                             },
+        {       warpPerspective<float1>,  0 /*warpPerspective<float2>*/,        warpPerspective<float3>,  warpPerspective<float4>},
+        {0 /*warpPerspective<double1>*/, 0 /*warpPerspective<double2>*/, 0 /*warpPerspective<double3>*/,
+         0 /*warpPerspective<double4>*/                                                                                          },
+        {        warpPerspective<half1>,   0 /*warpPerspective<half2>*/,         warpPerspective<half3>,   warpPerspective<half4>}
     };
 
     if (isPlanar)
@@ -713,9 +734,17 @@ ErrorCode WarpPerspectiveVarShape::infer(const ImageBatchVarShapeDataStridedCuda
             cuda::Tensor2DWrap<float, int32_t> transform, const int interpolation, const int borderMode, int channels,
             const float4 &borderValue, cudaStream_t stream);
 
-        static const planar_func_t planar_funcs[6] = {
-            warpPerspective_planar<uchar1>, 0 /*schar*/, warpPerspective_planar<ushort1>,
-            warpPerspective_planar<short1>, 0 /*int*/,   warpPerspective_planar<float1>,
+        // Slots 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7); the F16 slot
+        // instantiates the real half plane kernel for the same reason as the interleaved table.
+        static const planar_func_t planar_funcs[8] = {
+            warpPerspective_planar<uchar1>,
+            0 /*schar*/,
+            warpPerspective_planar<ushort1>,
+            warpPerspective_planar<short1>,
+            0 /*int*/,
+            warpPerspective_planar<float1>,
+            0 /*64F*/,
+            warpPerspective_planar<half1> /*16F*/,
         };
 
         const planar_func_t planarFunc = planar_funcs[data_type];

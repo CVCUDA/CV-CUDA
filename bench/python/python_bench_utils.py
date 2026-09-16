@@ -176,6 +176,7 @@ def get_dtype(dtype_str: str):
         "int16": cvcuda.Type.S16,
         "int32": cvcuda.Type.S32,
         "int": cvcuda.Type.S32,
+        "float16": cvcuda.Type.F16,
         "float32": cvcuda.Type.F32,
         "float": cvcuda.Type.F32,
         "float64": cvcuda.Type.F64,
@@ -186,6 +187,7 @@ def get_dtype(dtype_str: str):
         "ushort": cvcuda.Type.U16,
         "short": cvcuda.Type.S16,
         "uint": cvcuda.Type.U32,
+        "half": cvcuda.Type.F16,
     }
 
     # Try exact match first, then base type
@@ -251,33 +253,22 @@ def get_dtype_size(dtype) -> int:
     Returns:
         Total size in bytes (base_size * num_channels for string types)
     """
-    if isinstance(dtype, str):
-        base_dtype = get_dtype(dtype)  # Gets base type
-        num_channels = get_num_channels(dtype)
-        base_size = {
-            cvcuda.Type.U8: 1,
-            cvcuda.Type.S8: 1,
-            cvcuda.Type.U16: 2,
-            cvcuda.Type.S16: 2,
-            cvcuda.Type.U32: 4,
-            cvcuda.Type.S32: 4,
-            cvcuda.Type.F32: 4,
-            cvcuda.Type.F64: 8,
-        }.get(base_dtype, 4)
-        return base_size * num_channels
-    else:
-        # Existing logic for cvcuda.Type
-        size_map = {
-            cvcuda.Type.U8: 1,
-            cvcuda.Type.S8: 1,
-            cvcuda.Type.U16: 2,
-            cvcuda.Type.S16: 2,
-            cvcuda.Type.U32: 4,
-            cvcuda.Type.S32: 4,
-            cvcuda.Type.F32: 4,
-            cvcuda.Type.F64: 8,
-        }
-        return size_map.get(dtype, 4)
+    size_map = {
+        cvcuda.Type.U8: 1,
+        cvcuda.Type.S8: 1,
+        cvcuda.Type.U16: 2,
+        cvcuda.Type.S16: 2,
+        cvcuda.Type.F16: 2,
+        cvcuda.Type.U32: 4,
+        cvcuda.Type.S32: 4,
+        cvcuda.Type.F32: 4,
+        cvcuda.Type.F64: 8,
+    }
+    num_channels = get_num_channels(dtype) if isinstance(dtype, str) else 1
+    return (
+        size_map.get(get_dtype(dtype) if isinstance(dtype, str) else dtype, 4)
+        * num_channels
+    )
 
 
 def get_format_from_dtype(
@@ -310,6 +301,10 @@ def get_format_from_dtype(
         (cvcuda.Type.U8, 1): cvcuda.Format.U8,
         (cvcuda.Type.U8, 3): cvcuda.Format.RGB8,
         (cvcuda.Type.U8, 4): cvcuda.Format.RGBA8,
+        (cvcuda.Type.F16, 1): cvcuda.Format.F16,
+        (cvcuda.Type.F16, 2): cvcuda.Format._2F16,
+        (cvcuda.Type.F16, 3): cvcuda.Format.RGBf16,
+        (cvcuda.Type.F16, 4): cvcuda.Format.RGBAf16,
         (cvcuda.Type.F32, 1): cvcuda.Format.F32,
         (cvcuda.Type.F32, 2): cvcuda.Format._2F32,
         (cvcuda.Type.F32, 3): cvcuda.Format.RGBf32,
@@ -326,6 +321,8 @@ def get_format_from_dtype(
         planar_format_map = {
             (cvcuda.Type.U8, 3): cvcuda.Format.RGB8p,
             (cvcuda.Type.U8, 4): cvcuda.Format.RGBA8p,
+            (cvcuda.Type.F16, 3): cvcuda.Format.RGBf16p,
+            (cvcuda.Type.F16, 4): cvcuda.Format.RGBAf16p,
             (cvcuda.Type.F32, 3): cvcuda.Format.RGBf32p,
             (cvcuda.Type.F32, 4): cvcuda.Format.RGBAf32p,
         }
@@ -611,6 +608,7 @@ _LCG_TYPE_SPECS = (
     ("i32", "int32", "int", False, None),
     ("f32", "float32", "float", True, "2.0f / 4294967295.0f"),
     ("f64", "float64", "double", True, "2.0 / 4294967295.0"),
+    ("f16", "float16", "__half", True, None),  # dedicated source below
 )
 
 _LCG_SRC_INT = r"""
@@ -644,6 +642,26 @@ void lcg_fill_{tag}({T} *data, unsigned long long n_elements, unsigned long long
 }}
 """
 
+# f16 mirrors BenchFillKernels' sample_typed<__half>: uniform in [-1, +1] computed in
+# float, narrowed once with __float2half — half arithmetic in the generic float template
+# would round differently and break the byte-identical contract with the C++ fill.
+_LCG_SRC_F16 = r"""
+#include <cuda_fp16.h>
+extern "C" __global__
+void lcg_fill_f16(__half *data, unsigned long long n_elements, unsigned long long seed)
+{
+    unsigned long long idx = (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x
+                             + (unsigned long long)threadIdx.x;
+    if (idx >= n_elements) return;
+    unsigned int s = (unsigned int)(seed ^ idx) ^ (unsigned int)(seed >> 32);
+    s = s * 1664525u + 1013904223u;
+    s = s * 1664525u + 1013904223u;
+    s = s * 1664525u + 1013904223u;
+    const float kInv = 2.0f / 4294967295.0f;
+    data[idx] = __float2half(-1.0f + (float)s * kInv);
+}
+"""
+
 _lcg_kernel_cache = {}
 
 
@@ -654,8 +672,11 @@ def _lcg_kernel_for(dtype):
     spec = next(s for s in _LCG_TYPE_SPECS if cp.dtype(s[1]) == np_dtype)
     tag, _, T, is_float, kInv_lit = spec
     if tag not in _lcg_kernel_cache:
-        tmpl = _LCG_SRC_FLT if is_float else _LCG_SRC_INT
-        src = tmpl.format(tag=tag, T=T, kInv_lit=kInv_lit or "")
+        if tag == "f16":
+            src = _LCG_SRC_F16
+        else:
+            tmpl = _LCG_SRC_FLT if is_float else _LCG_SRC_INT
+            src = tmpl.format(tag=tag, T=T, kInv_lit=kInv_lit or "")
         _lcg_kernel_cache[tag] = cp.RawKernel(src, f"lcg_fill_{tag}")
     return _lcg_kernel_cache[tag]
 
@@ -685,6 +706,9 @@ _CHECKERBOARD_TYPE_SPECS = (
     ("i32", "int32", "int", "2147483647"),
     ("f32", "float32", "float", "1.0f"),
     ("f64", "float64", "double", "1.0"),
+    # __half needs cuda_fp16.h and an explicit float->half conversion; handled by a
+    # dedicated source in _checkerboard_kernel_for.
+    ("f16", "float16", "__half", "1.0f"),
 )
 
 _CHECKERBOARD_SRC = r"""
@@ -744,6 +768,13 @@ def _checkerboard_kernel_for(dtype):
     tag, _, T, hi = spec
     if tag not in _checkerboard_kernel_cache:
         src = _CHECKERBOARD_SRC.format(tag=tag, T=T, hi=hi)
+        if tag == "f16":
+            # __half has no plain C casts under NVRTC; include cuda_fp16.h and convert
+            # through float exactly like benchutils::CheckerboardValues<__half>.
+            src = "#include <cuda_fp16.h>\n" + src.replace(
+                "parity ? (__half)(1.0f) : (__half)0",
+                "parity ? __float2half(1.0f) : __float2half(0.0f)",
+            )
         _checkerboard_kernel_cache[tag] = cp.RawKernel(src, f"checkerboard_fill_{tag}")
     return _checkerboard_kernel_cache[tag]
 
@@ -834,6 +865,7 @@ def create_tensor(
         cvcuda.Type.S8: cp.int8,
         cvcuda.Type.S16: cp.int16,
         cvcuda.Type.S32: cp.int32,
+        cvcuda.Type.F16: cp.float16,
         cvcuda.Type.F32: cp.float32,
         cvcuda.Type.F64: cp.float64,
     }
@@ -978,10 +1010,13 @@ def create_image_batch_varshape(
 
     # Convert string to cvcuda.Type if needed (matches create_tensor pattern)
     if dtype is None:
-        # Check if format suggests uint8 or float
-        format_name = str(img_format)
-        if "F32" in format_name or "F64" in format_name:
+        format_name = str(img_format).upper()
+        if "F16" in format_name:
+            cvcuda_dtype = cvcuda.Type.F16
+        elif "F32" in format_name:
             cvcuda_dtype = cvcuda.Type.F32
+        elif "F64" in format_name:
+            cvcuda_dtype = cvcuda.Type.F64
         else:
             cvcuda_dtype = cvcuda.Type.U8
     elif isinstance(dtype, str):
@@ -997,6 +1032,7 @@ def create_image_batch_varshape(
         cvcuda.Type.S8: cp.int8,
         cvcuda.Type.S16: cp.int16,
         cvcuda.Type.S32: cp.int32,
+        cvcuda.Type.F16: cp.float16,
         cvcuda.Type.F32: cp.float32,
         cvcuda.Type.F64: cp.float64,
     }

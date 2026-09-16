@@ -31,10 +31,11 @@ set(CV_CUDA_PRIV_OP_FILES
     OpOSD.cpp
     OpHistogramEq.cpp
     OpAdvCvtColor.cu
+    OpCvtColor.cu
     OpSIFT.cu
     OpMinMaxLoc.cu
     OpHistogram.cpp
-    OpMinAreaRect.cpp
+    OpMinAreaRect.cu
     OpBndBox.cpp
     OpBoxBlur.cpp
     OpBrightnessContrast.cu
@@ -45,19 +46,18 @@ set(CV_CUDA_PRIV_OP_FILES
     OpHQResize2D.cu
     OpHQResize3D.cu
     OpNonMaximumSuppression.cu
-    OpReformat.cpp
-    OpResize.cpp
+    OpReformat.cu
     OpResize.cu
     OpCustomCrop.cpp
-    OpNormalize.cpp
+    OpNormalize.cu
     OpPadAndStack.cpp
-    OpConvertTo.cpp
+    OpConvertTo.cu
     OpCopyMakeBorder.cpp
-    OpCenterCrop.cpp
+    OpCenterCrop.cu
     OpRotate.cpp
     OpLaplacian.cpp
     OpGaussian.cpp
-    OpErase.cpp
+    OpErase.cu
     OpEraseRegion.cu
     OpAverageBlur.cpp
     OpConv2D.cpp
@@ -65,18 +65,17 @@ set(CV_CUDA_PRIV_OP_FILES
     OpMorphology.cpp
     OpBilateralFilter.cpp
     OpJointBilateralFilter.cpp
-    OpCvtColor.cpp
     OpWarpAffine.cpp
     OpWarpPerspective.cpp
     OpComposite.cpp
     OpChannelReorder.cu
-    OpFlip.cpp
+    OpFlip.cu
     OpGammaContrast.cpp
     OpPillowResize.cpp
-    OpThreshold.cpp
+    OpThreshold.cu
     OpAdaptiveThreshold.cpp
     OpRandomResizedCrop.cpp
-    OpGaussianNoise.cpp
+    OpGaussianNoise.cu
     OpInpaint.cpp
     OpLabel.cu
     OpPairwiseMatcher.cu
@@ -116,6 +115,7 @@ cvcuda_add_targeted_cuda_architectures_to_sources(
         OpInvert.cu
         OpJpegCompressionDistortion.cu
         OpMinMaxLoc.cu
+        OpReformat.cu
         OpResize.cu
     SELECTED_SOURCES_VAR CV_CUDA_PRIV_FILES
 )
@@ -131,6 +131,7 @@ cvcuda_add_targeted_cuda_architectures_to_sources(
     ARCHITECTURES 89
     SOURCES
         OpBrightnessContrast.cu
+        OpFlip.cu
         OpPairwiseMatcher.cu
     SELECTED_SOURCES_VAR CV_CUDA_PRIV_FILES
 )

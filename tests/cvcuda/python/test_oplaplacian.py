@@ -206,7 +206,12 @@ globals().update(
             ("image_batch", cvcuda.laplacian, _laplacian_varshape_params),
         ],
         keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
-        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.U16, cvcuda.Type.F32},
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.F16,
+            cvcuda.Type.F32,
+        },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
         supported_channels={1, 3, 4},
         exclude_dlc=[(None, "NCHW", 2), (None, "CHW", 2)],

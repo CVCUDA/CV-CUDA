@@ -23,7 +23,7 @@
 
 # PyTorch for CUDA 13.x (${torch_cu13_index} wheel index, compatible with CUDA 13.3+)
 --extra-index-url https://download.pytorch.org/whl/${torch_cu13_index}
-torch==${torch_cu13}
+torch==${torch_cu13}+${torch_cu13_index}
 
 cupy-cuda13x==${cupy_cu13}
 

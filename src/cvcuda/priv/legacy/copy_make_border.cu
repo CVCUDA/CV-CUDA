@@ -254,7 +254,8 @@ ErrorCode CopyMakeBorder::infer(const TensorDataStridedCuda &inData, const Tenso
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F
+          || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -286,14 +287,19 @@ ErrorCode CopyMakeBorder::infer(const TensorDataStridedCuda &inData, const Tenso
                                 const int top, const int left, const NVCVBorderType border_type,
                                 const float4 &borderValue, cudaStream_t stream);
 
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). The constant border
+    // value is converted to the element type, so the F16 row instantiates the real half kernels
+    // instead of aliasing the 16-bit integer ones.
     // clang-format off
-    static const func_t funcs[6][4] = {
+    static const func_t funcs[8][4] = {
         {copyMakeBorder<uchar1>      , copyMakeBorder<uchar2>       , copyMakeBorder<uchar3>      , copyMakeBorder<uchar4>      },
         {0 /*copyMakeBorder<char1>*/, 0 /*copyMakeBorder<char2>*/ , 0 /*copyMakeBorder<char3>*/, 0 /*copyMakeBorder<char4>*/},
         {copyMakeBorder<ushort1>     , 0 /*copyMakeBorder<ushort2>*/, copyMakeBorder<ushort3>     , copyMakeBorder<ushort4>     },
         {copyMakeBorder<short1>      , 0 /*copyMakeBorder<short2>*/, copyMakeBorder<short3>      , copyMakeBorder<short4>      },
         {0 /*copyMakeBorder<int, 1>*/  , 0 /*copyMakeBorder<int, 2>*/   , 0 /*copyMakeBorder<int, 3>*/  , 0 /*copyMakeBorder<int, 4>*/  },
-        {copyMakeBorder<float1>      , 0 /*copyMakeBorder<float2>*/, copyMakeBorder<float3>      , copyMakeBorder<float4>      }
+        {copyMakeBorder<float1>      , 0 /*copyMakeBorder<float2>*/, copyMakeBorder<float3>      , copyMakeBorder<float4>      },
+        {0 /*copyMakeBorder<double1>*/, 0 /*copyMakeBorder<double2>*/, 0 /*copyMakeBorder<double3>*/, 0 /*copyMakeBorder<double4>*/},
+        {copyMakeBorder<half1>       , 0 /*copyMakeBorder<half2>*/ , copyMakeBorder<half3>       , copyMakeBorder<half4>       }
     };
     // clang-format on
 

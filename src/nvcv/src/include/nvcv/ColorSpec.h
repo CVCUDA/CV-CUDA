@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,7 +49,8 @@ typedef enum
     NVCV_COLOR_MODEL_XYZ,               /**< CIE XYZ tristimulus color spec. */
     NVCV_COLOR_MODEL_HSV,               /**< hue, saturation, value components. */
     NVCV_COLOR_MODEL_CMYK,              /**< cyan, magenta, yellow, black components. */
-    NVCV_COLOR_MODEL_YCCK               /**< Luma + chroma (blue-luma, red-luma) and black components. */
+    NVCV_COLOR_MODEL_YCCK,              /**< Luma + chroma (blue-luma, red-luma) and black components. */
+    NVCV_COLOR_MODEL_LAB                /**< CIE L*a*b* components. */
 } NVCVColorModel;
 
 /** Defines the color primaries and the white point of a \ref NVCVColorSpec. */

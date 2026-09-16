@@ -20,7 +20,6 @@
 
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpPillowResize.hpp>
-#include <nvcv/Exception.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Rect.h>
@@ -1276,6 +1275,11 @@ const nvcv::ImageFormat FMT_RGBS16{nvcv::ColorModel::RGB,  nvcv::CSPEC_UNDEFINED
 const nvcv::ImageFormat FMT_RGBS16p{nvcv::ColorModel::RGB,  nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
                                     nvcv::DataKind::SIGNED, nvcv::Swizzle::S_XYZ0, nvcv::Packing::X16,
                                     nvcv::Packing::X16,     nvcv::Packing::X16};
+const nvcv::ImageFormat FMT_RGBS8{nvcv::ColorModel::RGB,  nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                  nvcv::DataKind::SIGNED, nvcv::Swizzle::S_XYZ1, nvcv::Packing::X8_Y8_Z8};
+const nvcv::ImageFormat FMT_RGBS8p{nvcv::ColorModel::RGB,  nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                   nvcv::DataKind::SIGNED, nvcv::Swizzle::S_XYZ0, nvcv::Packing::X8,
+                                   nvcv::Packing::X8,      nvcv::Packing::X8};
 
 // Resize identical data in interleaved and planar tensor layout; outputs must match bit-for-bit.
 // The shared scaffolding (upload/run/download/compare) lives in PlanarParityUtils.hpp; here we only
@@ -1329,6 +1333,8 @@ NVCV_TEST_SUITE_P(OpPillowResizePlanar,
                       {100, 80,  50, 40,   NVCV_INTERP_CUBIC, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
  // Float planar (3 and 4 channel).
                       { 64, 48,  96, 72,  NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+                      { 96, 72,  48, 36,  NVCV_INTERP_LINEAR, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+                      { 64, 48,  96, 72,  NVCV_INTERP_LINEAR, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
                       { 96, 72,  48, 36,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
  // Signed 16-bit exercises Pillow's round-to-nearest output path.
                       { 72, 54,  45, 35,  NVCV_INTERP_LINEAR, 2,        FMT_RGBS16p,        FMT_RGBS16},
@@ -1344,6 +1350,19 @@ TEST_P(OpPillowResizePlanar, varshape_matches_interleaved)
 {
     RunPlanarParityVarShapeCase(GetParamValue<6>(), GetParamValue<7>(), GetParamValue<0>(), GetParamValue<1>(),
                                 GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(), GetParamValue<5>());
+}
+
+TEST(OpPillowResizePlanar, unaligned_vector_tail_matches_interleaved)
+{
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 40, 32, 65, 49, NVCV_INTERP_LINEAR, 1);
+}
+
+TEST(OpPillowResizePlanar, signed8_tensor_contract_and_expand_match_interleaved)
+{
+    // Signed 8-bit contract exercises the paired interleaved horizontal round-to-nearest path.
+    RunPlanarParityTensorCase(FMT_RGBS8p, FMT_RGBS8, 72, 54, 44, 34, NVCV_INTERP_LINEAR, 2);
+    // Signed 8-bit expand exercises the paired planar vertical round-to-nearest path.
+    RunPlanarParityTensorCase(FMT_RGBS8p, FMT_RGBS8, 48, 35, 80, 65, NVCV_INTERP_LINEAR, 1);
 }
 
 static auto OpPillowResizeNegativeParams()
@@ -1522,7 +1541,7 @@ TEST(OpPillowResize_Negative, varshape_hasDifferentFormat)
 }
 
 // 2-channel planar (NCHW/CHW) is rejected: nvcv defines no 2-plane planar format, and PillowResize
-// follows the Resize/Normalize convention of disallowing 2-channel planar (see .agents/guidance/PLANAR_GUIDELINES.md).
+// follows the Resize/Normalize convention of disallowing 2-channel planar.
 // The tensor is built by raw (N, C, H, W) shape because no 2-channel image format exists to construct
 // it from. The var-shape 2-channel planar guard is unreachable from any constructable input (no
 // 2-channel format), so only the tensor path is exercised here.
@@ -1553,6 +1572,35 @@ TEST(OpPillowResize_Negative, planar_two_channel_rejected)
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcv::ProtectCall([&pillowResizeOp, &stream, &ws, &src, &dst]
                                 { pillowResizeOp(stream, ws.get(), src, dst, NVCV_INTERP_LINEAR); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpPillowResize_Negative, planar_channel_mismatch_rejected)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor src(
+        {
+            {1, 3, 24, 24},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dst(
+        {
+            {1, 4, 12, 12},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::PillowResize    op;
+    cvcuda::UniqueWorkspace ws
+        = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(1, {24, 24}, {12, 12}, nvcv::FMT_RGBA8));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(stream, ws.get(), src, dst, NVCV_INTERP_LINEAR); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -1644,6 +1692,24 @@ TEST(OpPillowResize_Negative, invalid_interpolation)
               cvcudaPillowResizeSubmit(op, nullptr, nullptr, nullptr, nullptr, static_cast<NVCVInterpolationType>(99)));
 
     EXPECT_NO_THROW(nvcvOperatorDestroy(op));
+}
+
+TEST(OpPillowResize_Negative, rejects_non_image_tensor)
+{
+    cvcuda::PillowResize op;
+    nvcv::Tensor         inTensor{
+        {{16}, "N"},
+        nvcv::TYPE_U8
+    };
+    nvcv::Tensor outTensor{
+        {{16}, "N"},
+        nvcv::TYPE_U8
+    };
+
+    cvcuda::UniqueWorkspace ws
+        = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(1, {1, 1}, {1, 1}, nvcv::FMT_U8));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, ws.get(), inTensor, outTensor, NVCV_INTERP_LINEAR); }));
 }
 
 TEST(OpPillowResize_Negative, invalid_interpolation_varshape)
@@ -1743,9 +1809,11 @@ TEST(OpPillowResize_Negative, oversized_varshape_rejected)
         EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
         EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
     }
-    catch (const nvcv::Exception &e)
+    catch (const std::exception &e)
     {
-        if (e.code() == nvcv::Status::ERROR_OUT_OF_MEMORY)
+        // AllocateWorkspace calls the default allocator callback directly, whose CUDA failure escapes as the
+        // private nvcv::priv::Exception rather than the public nvcv::Exception.
+        if (std::strstr(e.what(), "NVCV_ERROR_OUT_OF_MEMORY") != nullptr)
         {
             GTEST_SKIP() << "insufficient device memory for oversized var-shape input: " << e.what();
         }

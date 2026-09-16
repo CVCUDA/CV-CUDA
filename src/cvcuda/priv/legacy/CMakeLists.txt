@@ -18,20 +18,12 @@ set(CV_CUDA_PRIV_LEGACY_FILES CvCudaLegacyHelpers.cpp)
 set(CV_CUDA_PRIV_LEGACY_OP_FILES
     filter_utils.cu
     custom_crop.cu
-    reformat.cu
-    resize_var_shape.cu
-    convert_to.cu
-    normalize.cu
     pad_and_stack.cu
-    normalize_var_shape.cu
     copy_make_border.cu
     copy_make_border_var_shape.cu
-    center_crop.cu
     rotate.cu
     rotate_var_shape.cu
     filter.cu
-    erase.cu
-    erase_var_shape.cu
     filter_var_shape.cu
     median_blur.cu
     bilateral_filter.cu
@@ -40,48 +32,31 @@ set(CV_CUDA_PRIV_LEGACY_OP_FILES
     joint_bilateral_filter_var_shape.cu
     median_blur_var_shape.cu
     morphology.cu
-    cvt_color.cu
     warp.cu
     warp_var_shape.cu
-    cvt_color_var_shape.cu
     composite.cu
     morphology_var_shape.cu
-    channel_reorder_var_shape.cu
-    flip.cu
-    flip_or_copy_var_shape.cu
     composite_var_shape.cu
     custom_crop.cu
-    reformat.cu
-    resize_var_shape.cu
-    convert_to.cu
-    normalize.cu
     pad_and_stack.cu
-    normalize_var_shape.cu
     gamma_contrast.cu
     gamma_contrast_var_shape.cu
     pillow_resize.cu
     pillow_resize_var_shape.cu
-    threshold.cu
     adaptive_threshold.cu
     adaptive_threshold_var_shape.cu
-    threshold_var_shape.cu
-    threshold_util.cu
     box_blur.cu
     osd.cu
     textbackend/backend.cpp
     textbackend/stb.cpp
     random_resized_crop.cu
     random_resized_crop_var_shape.cu
-    gaussian_noise.cu
-    gaussian_noise_var_shape.cu
-    gaussian_noise_util.cu
     inpaint.cu
     inpaint_var_shape.cu
     inpaint_utils.cu
     calc_hist.cu
     histogram_eq.cu
     histogram_eq_var_shape.cu
-    min_area_rect.cu
 )
 
 add_compile_definitions(ENABLE_TEXT_BACKEND_STB)
@@ -117,8 +92,6 @@ cvcuda_add_targeted_cuda_architectures_to_sources(
         pillow_resize_var_shape.cu
         random_resized_crop.cu
         random_resized_crop_var_shape.cu
-        reformat.cu
-        resize_var_shape.cu
         rotate.cu
         rotate_var_shape.cu
         warp.cu
@@ -131,13 +104,6 @@ cvcuda_add_targeted_cuda_architectures_to_sources(
     SOURCES
         gamma_contrast.cu
         gamma_contrast_var_shape.cu
-    SELECTED_SOURCES_VAR CV_CUDA_PRIV_LEGACY_FILES
-)
-
-cvcuda_add_targeted_cuda_architectures_to_sources(
-    ARCHITECTURES 89
-    SOURCES
-        flip.cu
     SELECTED_SOURCES_VAR CV_CUDA_PRIV_LEGACY_FILES
 )
 

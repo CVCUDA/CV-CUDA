@@ -27,11 +27,17 @@ from _internal.check_bench_sku import (
 )
 
 ENTRIES = [
-    {"gpu_name": "NVIDIA H100 PCIe", "power_cap_w": 350, "locked_sm_clock_mhz": 1095},
+    {
+        "gpu_name": "NVIDIA H100 PCIe",
+        "power_cap_w": 350,
+        "locked_sm_clock_mhz": 1095,
+        "cuda_major": 12,
+    },
     {
         "gpu_name": "NVIDIA A100-PCIE-40GB",
         "power_cap_w": 250,
         "locked_sm_clock_mhz": 1095,
+        "cuda_major": 12,
     },
 ]
 
@@ -48,15 +54,21 @@ ENTRIES = [
     ],
 )
 def test_decide(name, power, clock, expected):
-    code, msg = decide(name, power, clock, ENTRIES)
+    code, msg = decide(name, power, clock, 12, ENTRIES)
     assert code == expected
     assert msg  # always explains the decision
 
 
 def test_decide_ineligible_lists_allowed_skus():
-    code, msg = decide("NVIDIA H100 PCIe", 310, 1095, ENTRIES)
+    code, msg = decide("NVIDIA H100 PCIe", 310, 1095, 12, ENTRIES)
     assert code == EXIT_INELIGIBLE
     assert "(350, 1095)" in msg  # surfaces the allowed combo for triage
+
+
+def test_decide_rejects_unknown_cuda_major():
+    code, msg = decide("NVIDIA H100 PCIe", 350, 1095, 13, ENTRIES)
+    assert code == EXIT_INELIGIBLE
+    assert "CUDA 13" in msg
 
 
 @pytest.mark.parametrize(
@@ -107,10 +119,12 @@ def test_main_fails_fast_when_nvidia_smi_errors(monkeypatch):
         raise cbs.NvidiaSmiError("boom")
 
     monkeypatch.setattr(cbs, "_gpu_name", _raise)
+    monkeypatch.setattr("sys.argv", ["check_bench_sku.py", "--cuda-major", "12"])
     assert cbs.main() == EXIT_ERROR
 
 
 def test_main_fail_open_when_binary_absent(monkeypatch):
     # nvidia-smi absent -> _gpu_name() is None -> fail-open (eligible).
     monkeypatch.setattr(cbs, "_gpu_name", lambda: None)
+    monkeypatch.setattr("sys.argv", ["check_bench_sku.py", "--cuda-major", "12"])
     assert cbs.main() == EXIT_ELIGIBLE

@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 
 #include <common/BorderUtils.hpp>
 #include <common/TensorDataUtils.hpp>
@@ -26,6 +27,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <cstring>
 #include <random>
 #include <type_traits>
 
@@ -391,6 +393,8 @@ NVCV_TEST_SUITE_P(OpPadAndStackPlanar,
     {        17,        13,          2,       23,        21,      2,       3,   NVCV_BORDER_CONSTANT,       11.f,        nvcv::FMT_RGB8,    nvcv::FMT_RGB8p},
     {        19,        11,          3,       27,        18,      1,       0, NVCV_BORDER_REFLECT101,        0.f,       nvcv::FMT_RGBA8,   nvcv::FMT_RGBA8p},
     {        15,        14,          2,       20,        19,      4,       2,  NVCV_BORDER_REPLICATE,        0.f,     nvcv::FMT_RGBf32,  nvcv::FMT_RGBf32p},
+    {        17,        13,          2,       23,        21,      2,       3,   NVCV_BORDER_CONSTANT,       11.f,      nvcv::FMT_RGBf16,  nvcv::FMT_RGBf16p},
+    {        15,        14,          2,       20,        19,      4,       2,  NVCV_BORDER_REPLICATE,        0.f,     nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16p},
 });
 
 // clang-format on
@@ -415,11 +419,157 @@ TEST_P(OpPadAndStackPlanar, varshape_matches_interleaved)
         RunPadAndStackPlanarParity<float>(srcWidth, srcHeight, numBatches, dstWidth, dstHeight, topPad, leftPad,
                                           borderType, borderValue, interleavedFormat, planarFormat);
     }
+    else if (interleavedFormat == nvcv::FMT_RGBf16 || interleavedFormat == nvcv::FMT_RGBAf16)
+    {
+        // PadAndStack does no arithmetic, so F16 parity runs on opaque 16-bit patterns; both
+        // layouts round the CONSTANT borderValue float -> half the same way.
+        RunPadAndStackPlanarParity<uint16_t>(srcWidth, srcHeight, numBatches, dstWidth, dstHeight, topPad, leftPad,
+                                             borderType, borderValue, interleavedFormat, planarFormat);
+    }
     else
     {
         RunPadAndStackPlanarParity<uint8_t>(srcWidth, srcHeight, numBatches, dstWidth, dstHeight, topPad, leftPad,
                                             borderType, borderValue, interleavedFormat, planarFormat);
     }
+}
+
+// PadAndStack is pure data movement, so F16 outputs must match a 16-bit-pattern gold bit-exactly
+// (EXPECT_EQ; kUlps = 0 per the HalfTestUtils.hpp policy). The CONSTANT borderValue is the only
+// conversion in the operator: it rounds the float value to half once (SetAll<T>(borderValue) /
+// static_cast<T>(borderValue)), mirrored here by __float2half.
+static uint16_t PadAndStackValueF16(const std::vector<uint16_t> &hSrc, int2 coord, int2 size, int srcRowElems,
+                                    int channels, int channel, NVCVBorderType borderType, float borderValue)
+{
+    if (!(coord.x >= 0 && coord.x < size.x && coord.y >= 0 && coord.y < size.y))
+    {
+        if (borderType == NVCV_BORDER_CONSTANT)
+        {
+            const __half borderHalf = __float2half(borderValue);
+            return reinterpret_cast<const uint16_t &>(borderHalf);
+        }
+        ApplyBorderIndex(coord, size, borderType);
+    }
+    return hSrc[static_cast<size_t>(coord.y) * srcRowElems + static_cast<size_t>(coord.x) * channels + channel];
+}
+
+// clang-format off
+
+NVCV_TEST_SUITE_P(OpPadAndStackF16,
+                  test::ValueList<int, int, int, int, int, int, int, NVCVBorderType, float, nvcv::ImageFormat>
+{
+    // srcWidth, srcHeight, numBatches, dstWidth, dstHeight, topPad, leftPad,         NVCVBorderType, borderValue,            format
+    {       212,       113,          1,      111,       132,      0,       0,   NVCV_BORDER_CONSTANT,         0.f,     nvcv::FMT_F16},
+    {        12,        13,          2,      211,       232,      0,       3,   NVCV_BORDER_CONSTANT,        0.1f,  nvcv::FMT_RGBf16}, // 0.1 is not half-representable
+    {       212,       613,          4,      311,       532,      7,       7,   NVCV_BORDER_CONSTANT,       134.f, nvcv::FMT_RGBAf16},
+    {       234,       131,          2,      131,       130,     33,      22,  NVCV_BORDER_REPLICATE,         0.f,  nvcv::FMT_RGBf16},
+    {       234,       131,          2,      134,       131,     53,      62,       NVCV_BORDER_WRAP,         0.f,     nvcv::FMT_F16},
+    {       243,       123,          2,      132,       123,     77,      98, NVCV_BORDER_REFLECT101,         0.f, nvcv::FMT_RGBAf16},
+});
+
+// clang-format on
+
+TEST_P(OpPadAndStackF16, correct_output)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int               srcWidth    = GetParamValue<0>();
+    const int               srcHeight   = GetParamValue<1>();
+    const int               numBatches  = GetParamValue<2>();
+    const int               dstWidth    = GetParamValue<3>();
+    const int               dstHeight   = GetParamValue<4>();
+    const int               topPad      = GetParamValue<5>();
+    const int               leftPad     = GetParamValue<6>();
+    const NVCVBorderType    borderType  = GetParamValue<7>();
+    const float             borderValue = GetParamValue<8>();
+    const nvcv::ImageFormat fmt         = GetParamValue<9>();
+
+    const int channels = fmt.numChannels();
+
+    nvcv::Tensor inTop(1, {numBatches, 1}, nvcv::FMT_S32);
+    nvcv::Tensor inLeft(1, {numBatches, 1}, nvcv::FMT_S32);
+
+    auto inTopData  = inTop.exportData<nvcv::TensorDataStridedCuda>();
+    auto inLeftData = inLeft.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, inTopData);
+    ASSERT_NE(nullptr, inLeftData);
+
+    std::vector<int> topVec(numBatches, topPad);
+    std::vector<int> leftVec(numBatches, leftPad);
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(inTopData->basePtr(), topVec.data(), topVec.size() * sizeof(int),
+                                           cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(inLeftData->basePtr(), leftVec.data(), leftVec.size() * sizeof(int),
+                                           cudaMemcpyHostToDevice, stream));
+
+    std::default_random_engine            randEng{0}; // NOSONAR: deterministic test data, not security-sensitive.
+    std::uniform_real_distribution<float> srcRand(0.f, 1.f);
+
+    const int srcRowElems = srcWidth * channels;
+
+    std::vector<nvcv::Image>           srcImgVec;
+    std::vector<std::vector<uint16_t>> batchSrcBits;
+
+    for (int b = 0; b < numBatches; ++b)
+    {
+        srcImgVec.emplace_back(nvcv::Size2D{srcWidth, srcHeight}, fmt);
+
+        std::vector<float> srcFloat(static_cast<size_t>(srcRowElems) * srcHeight);
+        std::ranges::generate(srcFloat, [&srcRand, &randEng]() { return srcRand(randEng); });
+        const std::vector<uint8_t> srcHalf = test::FloatToHalfBytes(srcFloat);
+
+        auto imgSrcData = srcImgVec.back().exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgSrcData, nvcv::NullOpt);
+        const size_t rowBytes = static_cast<size_t>(srcRowElems) * sizeof(__half);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2DAsync(imgSrcData->plane(0).basePtr, imgSrcData->plane(0).rowStride, srcHalf.data(),
+                                    rowBytes, rowBytes, srcHeight, cudaMemcpyHostToDevice, stream));
+
+        std::vector<uint16_t> bits(srcHalf.size() / sizeof(uint16_t));
+        std::memcpy(bits.data(), srcHalf.data(), srcHalf.size());
+        batchSrcBits.push_back(std::move(bits));
+    }
+
+    nvcv::ImageBatchVarShape imgBatchSrc(numBatches);
+    imgBatchSrc.pushBack(srcImgVec.begin(), srcImgVec.end());
+
+    nvcv::Tensor imgDst(numBatches, {dstWidth, dstHeight}, fmt);
+
+    auto dstData = imgDst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, dstData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(dstAccess);
+
+    cvcuda::PadAndStack padAndStackOp;
+    EXPECT_NO_THROW(padAndStackOp(stream, imgBatchSrc, imgDst, inTop, inLeft, borderType, borderValue));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    const int dstRowElems = dstWidth * channels;
+    for (int b = 0; b < numBatches; ++b)
+    {
+        SCOPED_TRACE(b);
+
+        std::vector<uint16_t> testBits(static_cast<size_t>(dstRowElems) * dstHeight);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(testBits.data(), dstRowElems * sizeof(uint16_t), dstAccess->sampleData(b),
+                                            dstAccess->rowStride(), dstRowElems * sizeof(uint16_t), dstHeight,
+                                            cudaMemcpyDeviceToHost));
+
+        std::vector<uint16_t> goldBits(testBits.size());
+        const int             numValues = dstWidth * dstHeight * channels;
+        for (int dstIndex = 0; dstIndex < numValues; ++dstIndex)
+        {
+            const int c = dstIndex % channels;
+            const int x = (dstIndex / channels) % dstWidth;
+            const int y = dstIndex / channels / dstWidth;
+            goldBits[dstIndex]
+                = PadAndStackValueF16(batchSrcBits[b], int2{x - leftPad, y - topPad}, int2{srcWidth, srcHeight},
+                                      srcRowElems, channels, c, borderType, borderValue);
+        }
+
+        EXPECT_EQ(goldBits, testBits);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 static auto OpPadAndStackNegativeParams()
@@ -431,11 +581,16 @@ static auto OpPadAndStackNegativeParams()
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8, nvcv::FMT_S32, nvcv::FMT_S32,
                         static_cast<NVCVBorderType>(255));
 #endif
-    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, nvcv::FMT_S32, nvcv::FMT_S32,
-                        NVCV_BORDER_CONSTANT);
+    // F16 is now supported; these rows exercise the input/output dtype-mismatch check.
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_F16, nvcv::FMT_S32, nvcv::FMT_S32,
                         NVCV_BORDER_CONSTANT);
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_U8, nvcv::FMT_S32, nvcv::FMT_S32,
+                        NVCV_BORDER_CONSTANT);
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_S32, nvcv::FMT_S32,
+                        NVCV_BORDER_CONSTANT);
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U16, nvcv::FMT_S32, nvcv::FMT_S32,
+                        NVCV_BORDER_CONSTANT);
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_2S16, nvcv::FMT_2S16, nvcv::FMT_S32, nvcv::FMT_S32,
                         NVCV_BORDER_CONSTANT);
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8, nvcv::FMT_F32, nvcv::FMT_S32,
                         NVCV_BORDER_CONSTANT);
@@ -530,6 +685,26 @@ TEST(OpPadAndStack_Negative, input_format_not_same)
     // Get test data back
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpPadAndStack_Negative, rejects_two_channel_planar)
+{
+    constexpr int           numBatches = 2;
+    const nvcv::ImageFormat twoChannelPlanar{NVCV_DETAIL_MAKE_NONCOLOR_FMT2(PL, UNSIGNED, XY00, ASSOCIATED, X8, X8)};
+
+    nvcv::Tensor top(1, {numBatches, 1}, nvcv::FMT_S32);
+    nvcv::Tensor left(1, {numBatches, 1}, nvcv::FMT_S32);
+
+    nvcv::ImageBatchVarShape input(numBatches);
+    for (int i = 0; i < numBatches; ++i)
+    {
+        input.pushBack(nvcv::Image(nvcv::Size2D{12, 13}, twoChannelPlanar));
+    }
+    nvcv::Tensor output(numBatches, {16, 17}, twoChannelPlanar);
+
+    cvcuda::PadAndStack op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, input, output, top, left, NVCV_BORDER_CONSTANT, 0.f); }));
 }
 
 TEST(OpPadAndStack_Negative, create_with_null_handle)

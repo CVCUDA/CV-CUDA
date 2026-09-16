@@ -55,6 +55,29 @@ if [[ ! -f "$REQ_FILE" ]]; then
     exit 1
 fi
 
+if [[ "${CVCUDA_SKIP_DRIVER_CHECK:-0}" != "1" ]]; then
+    WHEEL_CUDA=$(sed -n 's|^# cvcuda-driver-cuda-min: *\([0-9][0-9]*\.[0-9][0-9]*\).*|\1|p' "$REQ_FILE" | head -n1)
+    DRIVER_CUDA=$(nvidia-smi 2>/dev/null | sed -n 's|.*CUDA Version: *\([0-9][0-9]*\.[0-9][0-9]*\).*|\1|p' | head -n1)
+
+    if [[ -z "$DRIVER_CUDA" ]]; then
+        echo "Warning: could not read the driver CUDA version from nvidia-smi; skipping the compatibility check."
+    elif [[ -n "$WHEEL_CUDA" ]]; then
+        if [[ "${DRIVER_CUDA%%.*}" -lt "${WHEEL_CUDA%%.*}" ]]; then
+            echo "Error: the driver supports CUDA $DRIVER_CUDA, but $(basename "$REQ_FILE") installs" >&2
+            echo "PyTorch wheels built for CUDA $WHEEL_CUDA. CUDA has no compatibility across major" >&2
+            echo "versions, so those wheels cannot initialize on this driver." >&2
+            echo "Upgrade the NVIDIA driver to a CUDA ${WHEEL_CUDA%%.*} release (on WSL2, upgrade the Windows" >&2
+            echo "driver), or install the samples on a host whose driver matches." >&2
+            exit 1
+        fi
+        if [[ "${DRIVER_CUDA%%.*}" -eq "${WHEEL_CUDA%%.*}" && "${DRIVER_CUDA#*.}" -lt "${WHEEL_CUDA#*.}" ]]; then
+            echo "Warning: the driver supports CUDA $DRIVER_CUDA and the PyTorch wheels target CUDA $WHEEL_CUDA."
+            echo "CUDA minor version compatibility usually covers this, but if a sample dies with"
+            echo "\"named symbol not found\" at the first CUDA call, upgrade the driver."
+        fi
+    fi
+fi
+
 # Install sample dependencies for the detected CUDA version.
 # requirements.samples.cu{12,13}.txt includes torch, torchvision, and all other deps.
 # If CV-CUDA is already installed (e.g. from a wheel), filter it out to avoid reinstalling.

@@ -319,6 +319,68 @@ TEST_P(OpCenterCropExactOutput, matches_host_reference)
                        GetParamValue<4>(), GetParamValue<5>());
 }
 
+TEST(OpCenterCropExactOutput, padded_sample_stride_matches_host_reference)
+{
+    constexpr int numImages  = 2;
+    constexpr int inWidth    = 7;
+    constexpr int inHeight   = 5;
+    constexpr int cropWidth  = 3;
+    constexpr int cropHeight = 3;
+
+    auto makePaddedTensor = [](int numSamples, int width, int height, int rowPadding, int samplePadding)
+    {
+        const int64_t rowStride    = width + rowPadding;
+        const int64_t sampleStride = rowStride * height + samplePadding;
+        NVCVByte     *allocation{};
+        EXPECT_EQ(cudaSuccess,
+                  cudaMalloc(reinterpret_cast<void **>(&allocation), static_cast<size_t>(sampleStride * numSamples)));
+
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = allocation;
+        buffer.strides[0] = sampleStride;
+        buffer.strides[1] = rowStride;
+        buffer.strides[2] = 1;
+        buffer.strides[3] = 1;
+        return nvcv::TensorWrapData(
+            nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{numSamples, height, width, 1}, "NHWC"},
+                nvcv::TYPE_U8, buffer
+        },
+            nvcv::TensorDataCleanupCallback{[allocation](const nvcv::TensorData &)
+                                            {
+                                                EXPECT_EQ(cudaSuccess, cudaFree(allocation));
+                                            }});
+    };
+
+    nvcv::Tensor input   = makePaddedTensor(numImages, inWidth, inHeight, 3, 5);
+    nvcv::Tensor output  = makePaddedTensor(numImages, cropWidth, cropHeight, 2, 5);
+    auto         inData  = input.exportData<nvcv::TensorDataStridedCuda>();
+    auto         outData = output.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inData && outData);
+
+    std::vector<std::vector<nvcv::Byte>> gold(numImages);
+    for (int image = 0; image < numImages; ++image)
+    {
+        auto values = MakeExactOutputInput(inWidth, inHeight, 1, 1, image + 17);
+        gold[image] = CenterCropReference(values, inWidth, inHeight, cropWidth, cropHeight, 1, 1, false);
+        nvcv::util::SetImageTensorFromByteVector(*inData, values, image);
+    }
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::CenterCrop op;
+    ASSERT_NO_THROW(op(stream, input, output, {cropWidth, cropHeight}));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (int image = 0; image < numImages; ++image)
+    {
+        std::vector<nvcv::Byte> actual;
+        nvcv::util::GetImageByteVectorFromTensor(*outData, image, actual);
+        EXPECT_EQ(gold[image], actual);
+    }
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 // =============================================================================
 // Planar (NCHW/CHW) layout support
 //
@@ -375,6 +437,7 @@ NVCV_TEST_SUITE_P(OpCenterCrop_Negative, test::ValueList<nvcv::ImageFormat, nvcv
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 5, 7, 5, 7},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 7, 6, 7},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 7, 5, 8},
+    {nvcv::FMT_U8, nvcv::FMT_U8, 5, 7, 6, 7},
 });
 
 // clang-format on
@@ -406,6 +469,21 @@ TEST_P(OpCenterCrop_Negative, op)
 TEST(OpCenterCrop_Negative, create_null_handle)
 {
     EXPECT_EQ(cvcudaCenterCropCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+TEST(OpCenterCrop_Negative, rejects_non_image_tensor)
+{
+    nvcv::Tensor inTensor{
+        {{16}, "N"},
+        nvcv::TYPE_U8
+    };
+    nvcv::Tensor outTensor{
+        {{16}, "N"},
+        nvcv::TYPE_U8
+    };
+
+    cvcuda::CenterCrop op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, inTensor, outTensor, {1, 1}); }));
 }
 
 TEST(OpCenterCrop_Negative, planar_rejects_two_channels)

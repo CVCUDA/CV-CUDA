@@ -121,6 +121,23 @@ RNG = np.random.default_rng(12345)
                 (17, 17, 17, 17),
             ),
         ),
+        # F16 images use the same F32 argument tensors as F32 images.
+        (
+            ((7, 16, 23, 3), cvcuda.Type.F16, "NHWC"),
+            cvcuda.Type.F16,
+            (
+                cvcuda.Type.F32,
+                (7, 7, 7, 7),
+            ),
+        ),
+        (
+            ((3, 4, 33, 28), cvcuda.Type.F16, "NCHW"),
+            cvcuda.Type.F16,
+            (
+                cvcuda.Type.F32,
+                (3, 3, 1, 3),
+            ),
+        ),
         (
             ((21, 33, 28), cvcuda.Type._3F32, "NHWC"),
             cvcuda.Type._3F32,
@@ -242,6 +259,15 @@ def test_op_brightness_contrast_api(src_args, dst_dtype, args_setup):
             (128, 128),
             cvcuda.Format.RGB8p,
             (cvcuda.Type.F32, (6, 6, 6, 6)),
+        ),
+        # F16 images use the same F32 argument tensors as F32 images.
+        (
+            4,
+            cvcuda.Format.RGBf16,
+            np.float16,
+            (128, 128),
+            cvcuda.Format.RGBf16,
+            (cvcuda.Type.F32, (4, 4, 4, 1)),
         ),
     ],
 )
@@ -441,6 +467,7 @@ globals().update(
             cvcuda.Type.U16,
             cvcuda.Type.S16,
             cvcuda.Type.S32,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
@@ -462,6 +489,7 @@ globals().update(
             cvcuda.Type.U16,
             cvcuda.Type.S16,
             cvcuda.Type.S32,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},

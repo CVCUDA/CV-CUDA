@@ -60,6 +60,11 @@ RNG = np.random.default_rng(0)
             cvcuda.Interp.CUBIC,
         ),
         (((16, 23, 1), np.uint8, "HWC"), (132, 15, 1), None),
+        (
+            ((5, 16, 23, 3), np.float16, "NHWC"),
+            (5, 132, 15, 3),
+            cvcuda.Interp.LINEAR,
+        ),
     ],
 )
 def test_op_random_resized_crop(input_args, out_shape, interp):
@@ -204,6 +209,7 @@ globals().update(
             cvcuda.Type.U8,
             cvcuda.Type.U16,
             cvcuda.Type.S16,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},

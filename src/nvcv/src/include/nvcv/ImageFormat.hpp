@@ -569,6 +569,24 @@ constexpr ImageFormat FMT_BGRAf32p{NVCV_IMAGE_FORMAT_BGRAf32p};
 /** Single plane with interleaved HSV 8-bit channel. */
 constexpr ImageFormat FMT_HSV8{NVCV_IMAGE_FORMAT_HSV8};
 
+/** Single plane with interleaved CIE L*a*b* unsigned 8-bit channels. */
+constexpr ImageFormat FMT_LAB8{NVCV_IMAGE_FORMAT_LAB8};
+
+/** Planar CIE L*a*b* unsigned 8-bit channels. */
+constexpr ImageFormat FMT_LAB8p{NVCV_IMAGE_FORMAT_LAB8p};
+
+/** Single plane with interleaved CIE L*a*b* float16 channels. */
+constexpr ImageFormat FMT_LABf16{NVCV_IMAGE_FORMAT_LABf16};
+
+/** Planar CIE L*a*b* float16 channels. */
+constexpr ImageFormat FMT_LABf16p{NVCV_IMAGE_FORMAT_LABf16p};
+
+/** Single plane with interleaved CIE L*a*b* float32 channels. */
+constexpr ImageFormat FMT_LABf32{NVCV_IMAGE_FORMAT_LABf32};
+
+/** Planar CIE L*a*b* float32 channels. */
+constexpr ImageFormat FMT_LABf32p{NVCV_IMAGE_FORMAT_LABf32p};
+
 /** Single plane with interleaved CMYK unsigned 8-bit channel. */
 constexpr ImageFormat FMT_CMYK8{NVCV_IMAGE_FORMAT_CMYK8};
 

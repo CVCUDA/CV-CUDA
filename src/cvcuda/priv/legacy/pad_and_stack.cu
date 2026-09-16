@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -114,6 +114,7 @@ ErrorCode padAndStackCaller(const ImageBatchVarShapeDataStridedCuda &inData, con
     {
         auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(outData);
         padAndStack<<<grid, block, 0, stream>>>(src, dst, topVec, leftVec, dstSize);
+        NVCV_CHECK_THROW(cudaGetLastError());
     }
     else
     {
@@ -153,6 +154,7 @@ ErrorCode padAndStackPlanarCaller(const ImageBatchVarShapeDataStridedCuda &inDat
     dim3 grid(divUp(dstSize.x, block.x), divUp(dstSize.y, block.y), outAccess->numSamples());
 
     padAndStackPlanar<<<grid, block, 0, stream>>>(src, dst, topVec, leftVec, dstSize, channels);
+    NVCV_CHECK_THROW(cudaGetLastError());
     return ErrorCode::SUCCESS;
 }
 
@@ -234,13 +236,13 @@ ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, co
     }
 
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
-          || data_type == kCV_32F))
+          || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid output DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
     if (!(input_data_type == kCV_8U || input_data_type == kCV_16U || input_data_type == kCV_16S
-          || input_data_type == kCV_32S || input_data_type == kCV_32F))
+          || input_data_type == kCV_32S || input_data_type == kCV_32F || input_data_type == kCV_16F))
     {
         LOG_ERROR("Invalid input DataType " << input_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -316,13 +318,19 @@ ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, co
                                 const TensorDataStridedCuda &top, const TensorDataStridedCuda &left,
                                 const NVCVBorderType borderMode, const float borderValue, cudaStream_t stream);
 
-    static const func_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7). The
+    // copy itself is dtype-agnostic, but the F16 row instantiates real half kernels instead of
+    // aliasing the 16-bit integer ones: the CONSTANT borderValue is converted float -> pixel
+    // type, which must round to half bits, not truncate to an integer reinterpreted as half.
+    static const func_t funcs[8][4] = {
         { padAndStack<uchar1>, padAndStack<uchar2>,  padAndStack<uchar3>,  padAndStack<uchar4>},
         {                   0,                   0,                    0,                    0},
         {padAndStack<ushort1>,                   0, padAndStack<ushort3>, padAndStack<ushort4>},
         { padAndStack<short1>,                   0,  padAndStack<short3>,  padAndStack<short4>},
         {   padAndStack<int1>,                   0,    padAndStack<int3>,    padAndStack<int4>},
-        { padAndStack<float1>,                   0,  padAndStack<float3>,  padAndStack<float4>}
+        { padAndStack<float1>,                   0,  padAndStack<float3>,  padAndStack<float4>},
+        {                   0,                   0,                    0,                    0},
+        {  padAndStack<half1>,                   0,   padAndStack<half3>,   padAndStack<half4>}
     };
 
     const func_t func = funcs[data_type][channels - 1];
@@ -330,9 +338,9 @@ ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, co
 
     if (isPlanar)
     {
-        static const func_t planarFuncs[6]
+        static const func_t planarFuncs[8]
             = {padAndStackPlanar<uchar>, 0, padAndStackPlanar<ushort>, padAndStackPlanar<short>, padAndStackPlanar<int>,
-               padAndStackPlanar<float>};
+               padAndStackPlanar<float>, 0, padAndStackPlanar<__half>};
 
         const func_t planarFunc = planarFuncs[data_type];
         NVCV_ASSERT(planarFunc != 0);

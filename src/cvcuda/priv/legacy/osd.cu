@@ -561,11 +561,56 @@ struct BlendingPixel<SrcWrapper, DstWrapper, T, cuOSDImageFormat::RGBA>
             {
                 uchar4 &rcolor           = plot_colors[i * 2 + j];
                 int     foreground_alpha = rcolor.w;
-                int     background_alpha = in[3];
-                int     blend_alpha      = ((background_alpha * (255 - foreground_alpha)) >> 8) + foreground_alpha;
-                out[0]                   = u8cast(
-                                      (((in[0] * background_alpha * (255 - foreground_alpha)) >> 8) + (rcolor.x * foreground_alpha))
-                                      / blend_alpha);
+                if (foreground_alpha == 0)
+                {
+                    out[0] = in[0];
+                    out[1] = in[1];
+                    out[2] = in[2];
+                    out[3] = in[3];
+                    continue;
+                }
+                int background_alpha = in[3];
+                int blend_alpha      = ((background_alpha * (255 - foreground_alpha)) >> 8) + foreground_alpha;
+                out[0]               = u8cast(
+                                  (((in[0] * background_alpha * (255 - foreground_alpha)) >> 8) + (rcolor.x * foreground_alpha))
+                                  / blend_alpha);
+                out[1] = u8cast(
+                    (((in[1] * background_alpha * (255 - foreground_alpha)) >> 8) + (rcolor.y * foreground_alpha))
+                    / blend_alpha);
+                out[2] = u8cast(
+                    (((in[2] * background_alpha * (255 - foreground_alpha)) >> 8) + (rcolor.z * foreground_alpha))
+                    / blend_alpha);
+                out[3] = blend_alpha;
+            }
+        }
+    }
+
+    static __device__ void callPartial(SrcWrapper src, DstWrapper dst, int x, int y, int width, int height, int stride,
+                                       uchar4 plot_colors[4])
+    {
+        const int batch_idx = get_batch_idx();
+
+        for (int i = 0; i < 2 && y + i < height; ++i)
+        {
+            T *in  = src.ptr(batch_idx, y + i, x, 0);
+            T *out = dst.ptr(batch_idx, y + i, x, 0);
+            for (int j = 0; j < 2 && x + j < width; ++j, in += 4, out += 4)
+            {
+                uchar4 &rcolor           = plot_colors[i * 2 + j];
+                int     foreground_alpha = rcolor.w;
+                if (foreground_alpha == 0)
+                {
+                    out[0] = in[0];
+                    out[1] = in[1];
+                    out[2] = in[2];
+                    out[3] = in[3];
+                    continue;
+                }
+                int background_alpha = in[3];
+                int blend_alpha      = ((background_alpha * (255 - foreground_alpha)) >> 8) + foreground_alpha;
+                out[0]               = u8cast(
+                                  (((in[0] * background_alpha * (255 - foreground_alpha)) >> 8) + (rcolor.x * foreground_alpha))
+                                  / blend_alpha);
                 out[1] = u8cast(
                     (((in[1] * background_alpha * (255 - foreground_alpha)) >> 8) + (rcolor.y * foreground_alpha))
                     / blend_alpha);
@@ -590,6 +635,34 @@ struct BlendingPixel<SrcWrapper, DstWrapper, T, cuOSDImageFormat::RGB>
             T *in  = src.ptr(batch_idx, y + i, x, 0);
             T *out = dst.ptr(batch_idx, y + i, x, 0);
             for (int j = 0; j < 2; ++j, in += 3, out += 3)
+            {
+                uchar4 &rcolor           = plot_colors[i * 2 + j];
+                int     foreground_alpha = rcolor.w;
+                int     background_alpha = 255;
+                int     blend_alpha      = ((background_alpha * (255 - foreground_alpha)) >> 8) + foreground_alpha;
+                out[0]                   = u8cast(
+                                      (((in[0] * background_alpha * (255 - foreground_alpha)) >> 8) + (rcolor.x * foreground_alpha))
+                                      / blend_alpha);
+                out[1] = u8cast(
+                    (((in[1] * background_alpha * (255 - foreground_alpha)) >> 8) + (rcolor.y * foreground_alpha))
+                    / blend_alpha);
+                out[2] = u8cast(
+                    (((in[2] * background_alpha * (255 - foreground_alpha)) >> 8) + (rcolor.z * foreground_alpha))
+                    / blend_alpha);
+            }
+        }
+    }
+
+    static __device__ void callPartial(SrcWrapper src, DstWrapper dst, int x, int y, int width, int height, int stride,
+                                       uchar4 plot_colors[4])
+    {
+        const int batch_idx = get_batch_idx();
+
+        for (int i = 0; i < 2 && y + i < height; ++i)
+        {
+            T *in  = src.ptr(batch_idx, y + i, x, 0);
+            T *out = dst.ptr(batch_idx, y + i, x, 0);
+            for (int j = 0; j < 2 && x + j < width; ++j, in += 3, out += 3)
             {
                 uchar4 &rcolor           = plot_colors[i * 2 + j];
                 int     foreground_alpha = rcolor.w;
@@ -1041,7 +1114,7 @@ static __global__ void render_elements_kernel(int bx, int by, const TextLocation
         text_line_begin     = command->reserved;
     }
 
-    if (ix < 0 || iy < 0 || ix >= image_width - 1 || iy >= image_height - 1)
+    if (ix < 0 || iy < 0 || ix >= image_width || iy >= image_height)
         return;
 
     int    itext_line       = text_line_begin;
@@ -1108,24 +1181,53 @@ static __global__ void render_elements_kernel(int bx, int by, const TextLocation
     {
         if (inplace)
             return;
-        if (format == cuOSDImageFormat::RGB)
+
+        if (ix + 1 < image_width && iy + 1 < image_height)
         {
-            *(uchar3 *)(dst.ptr(batch_idx, iy, ix, 0))         = *(uchar3 *)(src.ptr(batch_idx, iy, ix, 0));
-            *(uchar3 *)(dst.ptr(batch_idx, iy, ix + 1, 0))     = *(uchar3 *)(src.ptr(batch_idx, iy, ix + 1, 0));
-            *(uchar3 *)(dst.ptr(batch_idx, iy + 1, ix, 0))     = *(uchar3 *)(src.ptr(batch_idx, iy + 1, ix, 0));
-            *(uchar3 *)(dst.ptr(batch_idx, iy + 1, ix + 1, 0)) = *(uchar3 *)(src.ptr(batch_idx, iy + 1, ix + 1, 0));
+            if (format == cuOSDImageFormat::RGB)
+            {
+                *(uchar3 *)(dst.ptr(batch_idx, iy, ix, 0))         = *(uchar3 *)(src.ptr(batch_idx, iy, ix, 0));
+                *(uchar3 *)(dst.ptr(batch_idx, iy, ix + 1, 0))     = *(uchar3 *)(src.ptr(batch_idx, iy, ix + 1, 0));
+                *(uchar3 *)(dst.ptr(batch_idx, iy + 1, ix, 0))     = *(uchar3 *)(src.ptr(batch_idx, iy + 1, ix, 0));
+                *(uchar3 *)(dst.ptr(batch_idx, iy + 1, ix + 1, 0)) = *(uchar3 *)(src.ptr(batch_idx, iy + 1, ix + 1, 0));
+            }
+            else if (format == cuOSDImageFormat::RGBA)
+            {
+                *(uchar4 *)(dst.ptr(batch_idx, iy, ix, 0))         = *(uchar4 *)(src.ptr(batch_idx, iy, ix, 0));
+                *(uchar4 *)(dst.ptr(batch_idx, iy, ix + 1, 0))     = *(uchar4 *)(src.ptr(batch_idx, iy, ix + 1, 0));
+                *(uchar4 *)(dst.ptr(batch_idx, iy + 1, ix, 0))     = *(uchar4 *)(src.ptr(batch_idx, iy + 1, ix, 0));
+                *(uchar4 *)(dst.ptr(batch_idx, iy + 1, ix + 1, 0)) = *(uchar4 *)(src.ptr(batch_idx, iy + 1, ix + 1, 0));
+            }
         }
-        else if (format == cuOSDImageFormat::RGBA)
+        else
         {
-            *(uchar4 *)(dst.ptr(batch_idx, iy, ix, 0))         = *(uchar4 *)(src.ptr(batch_idx, iy, ix, 0));
-            *(uchar4 *)(dst.ptr(batch_idx, iy, ix + 1, 0))     = *(uchar4 *)(src.ptr(batch_idx, iy, ix + 1, 0));
-            *(uchar4 *)(dst.ptr(batch_idx, iy + 1, ix, 0))     = *(uchar4 *)(src.ptr(batch_idx, iy + 1, ix, 0));
-            *(uchar4 *)(dst.ptr(batch_idx, iy + 1, ix + 1, 0)) = *(uchar4 *)(src.ptr(batch_idx, iy + 1, ix + 1, 0));
+            for (int y = iy; y < min(iy + 2, image_height); ++y)
+            {
+                for (int x = ix; x < min(ix + 2, image_width); ++x)
+                {
+                    if (format == cuOSDImageFormat::RGB)
+                    {
+                        *(uchar3 *)(dst.ptr(batch_idx, y, x, 0)) = *(uchar3 *)(src.ptr(batch_idx, y, x, 0));
+                    }
+                    else if (format == cuOSDImageFormat::RGBA)
+                    {
+                        *(uchar4 *)(dst.ptr(batch_idx, y, x, 0)) = *(uchar4 *)(src.ptr(batch_idx, y, x, 0));
+                    }
+                }
+            }
         }
         return;
     }
 
-    BlendingPixel<SrcWrapper, DstWrapper, T, format>::call(src, dst, ix, iy, stride, context_color);
+    if (ix + 1 < image_width && iy + 1 < image_height)
+    {
+        BlendingPixel<SrcWrapper, DstWrapper, T, format>::call(src, dst, ix, iy, stride, context_color);
+    }
+    else
+    {
+        BlendingPixel<SrcWrapper, DstWrapper, T, format>::callPartial(src, dst, ix, iy, image_width, image_height,
+                                                                      stride, context_color);
+    }
 }
 
 static void cuosd_clear(cuOSDContext_t context)

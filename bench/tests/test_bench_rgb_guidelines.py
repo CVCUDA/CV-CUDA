@@ -44,6 +44,8 @@ _BASE_BYTES = {
     "int16": 2,
     "ushort": 2,
     "short": 2,
+    "float16": 2,
+    "half": 2,
     "uint32": 4,
     "int32": 4,
     "uint": 4,

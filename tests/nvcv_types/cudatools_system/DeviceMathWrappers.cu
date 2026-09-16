@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -78,6 +78,12 @@ NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::DOWN, double2);
 NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::ZERO, float3);
 NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::NEAREST, float4);
 
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::NEAREST, __half);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::DOWN, __half);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::UP, __half);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::ZERO, __half);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::NEAREST, half3);
+
 #undef NVCV_TEST_INST_ROUND_SAME
 
 #define NVCV_TEST_INST_ROUND_DIFF(RM, SOURCE_TYPE, TARGET_TYPE) \
@@ -142,6 +148,9 @@ NVCV_TEST_INST_MIN(char4);
 NVCV_TEST_INST_MIN(ushort2);
 NVCV_TEST_INST_MIN(uchar4);
 
+NVCV_TEST_INST_MIN(__half);
+NVCV_TEST_INST_MIN(half3);
+
 #undef NVCV_TEST_INST_MIN
 
 // -------------------- To allow testing device-side max ----------------------
@@ -187,6 +196,9 @@ NVCV_TEST_INST_MAX(char4);
 NVCV_TEST_INST_MAX(ushort2);
 NVCV_TEST_INST_MAX(uchar4);
 
+NVCV_TEST_INST_MAX(__half);
+NVCV_TEST_INST_MAX(half3);
+
 #undef NVCV_TEST_INST_MAX
 
 // --------------------- To allow testing device-side pow ----------------------
@@ -226,6 +238,9 @@ NVCV_TEST_INST_POW(char1, char1);
 NVCV_TEST_INST_POW(uint2, uint2);
 NVCV_TEST_INST_POW(float3, int);
 NVCV_TEST_INST_POW(double4_16a, float4);
+
+NVCV_TEST_INST_POW(__half, __half);
+NVCV_TEST_INST_POW(half3, __half);
 
 #undef NVCV_TEST_INST_POW
 
@@ -267,6 +282,8 @@ NVCV_TEST_INST_EXP(uint2);
 NVCV_TEST_INST_EXP(float3);
 NVCV_TEST_INST_EXP(double4_16a);
 
+NVCV_TEST_INST_EXP(__half);
+
 #undef NVCV_TEST_INST_EXP
 
 // -------------------- To allow testing device-side sqrt ----------------------
@@ -306,6 +323,9 @@ NVCV_TEST_INST_SQRT(char1);
 NVCV_TEST_INST_SQRT(uint2);
 NVCV_TEST_INST_SQRT(float3);
 NVCV_TEST_INST_SQRT(double4_16a);
+
+NVCV_TEST_INST_SQRT(__half);
+NVCV_TEST_INST_SQRT(half3);
 
 #undef NVCV_TEST_INST_SQRT
 
@@ -350,6 +370,9 @@ NVCV_TEST_INST_ABS(double4_16a);
 NVCV_TEST_INST_ABS(short2);
 NVCV_TEST_INST_ABS(char4);
 
+NVCV_TEST_INST_ABS(__half);
+NVCV_TEST_INST_ABS(half3);
+
 #undef NVCV_TEST_INST_ABS
 
 // -------------------- To allow testing device-side clamp ---------------------
@@ -389,5 +412,7 @@ NVCV_TEST_INST_CLAMP(char1, char1);
 NVCV_TEST_INST_CLAMP(uint2, uint2);
 NVCV_TEST_INST_CLAMP(float3, short);
 NVCV_TEST_INST_CLAMP(double4_16a, int4);
+
+NVCV_TEST_INST_CLAMP(half3, __half);
 
 #undef NVCV_TEST_INST_CLAMP

@@ -16,9 +16,11 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpConvertTo.hpp>
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
 #include <nvcv/Image.hpp>
@@ -104,6 +106,64 @@ void testConvertTo(nvcv::ImageFormat fmtIn, nvcv::ImageFormat fmtOut, int batch,
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 
     EXPECT_EQ(goldVec, testVec);
+}
+
+// F16-output variant of testConvertTo. The gold expVal is computed in double like every other
+// row, but the kernel evaluates alpha * x + beta in float and rounds once on the half store, so
+// a bit-exact vector compare against a double-derived half is not applicable; per the
+// HalfTestUtils.hpp policy a single mul-add chain with one final rounding justifies kUlps = 1.
+template<typename DT_SOURCE>
+void testConvertToF16Output(nvcv::ImageFormat fmtIn, nvcv::ImageFormat fmtOut, int batch, int width, int height,
+                            double alpha, double beta, DT_SOURCE setVal, float expVal)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(batch, width, height, fmtOut);
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(batch, width, height, fmtIn);
+
+    auto inData  = imgIn.exportData<nvcv::TensorDataStridedCuda>();
+    auto outData = imgOut.exportData<nvcv::TensorDataStridedCuda>();
+
+    ASSERT_NE(nullptr, inData);
+    ASSERT_NE(nullptr, outData);
+
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
+    ASSERT_TRUE(inAccess);
+
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
+    ASSERT_TRUE(outAccess);
+
+    auto inSampleStride  = static_cast<size_t>(inAccess->numRows() * inAccess->rowStride());
+    auto outSampleStride = static_cast<size_t>(outAccess->numRows() * outAccess->rowStride());
+    auto numSamples      = static_cast<size_t>(inAccess->numSamples());
+
+    size_t inBufSizeElements  = (inSampleStride / sizeof(DT_SOURCE)) * numSamples;
+    size_t outBufSizeElements = (outSampleStride / sizeof(__half)) * numSamples;
+    size_t inBufSizeBytes     = inSampleStride * numSamples;
+    size_t outBufSizeBytes    = outSampleStride * numSamples;
+
+    std::vector<DT_SOURCE> srcVec(inBufSizeElements, setVal);
+    std::vector<float>     goldVec(outBufSizeElements); // FP32 reference; padding stays 0 as memset below
+    std::vector<__half>    testVec(outBufSizeElements);
+
+    setGoldBuffer<float>(goldVec, expVal, width * outAccess->numChannels(), height,
+                         static_cast<int>(outAccess->rowStride() / sizeof(__half)),
+                         static_cast<int>(outSampleStride / sizeof(__half)), batch);
+
+    EXPECT_EQ(cudaSuccess,
+              cudaMemcpyAsync(inData->basePtr(), srcVec.data(), inBufSizeBytes, cudaMemcpyHostToDevice, stream));
+    EXPECT_EQ(cudaSuccess, cudaMemsetAsync(outData->basePtr(), 0x0, outBufSizeBytes, stream));
+
+    cvcuda::ConvertTo convertToOp;
+
+    EXPECT_NO_THROW(convertToOp(stream, imgIn, imgOut, alpha, beta, NVCV_ROUND_NEAREST));
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    EXPECT_EQ(cudaSuccess, cudaMemcpy(testVec.data(), outData->basePtr(), outBufSizeBytes, cudaMemcpyDeviceToHost));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    test::ExpectNearHalfUlps(goldVec, testVec, 1.f);
 }
 
 // clang-format off
@@ -254,6 +314,88 @@ TEST_P(OpConvertTo, OpConvertTo_RGBf32toRGBf32)
     testConvertTo<fromType, toType>(nvcv::FMT_RGBf32, nvcv::FMT_RGBf32, batch, width, height, alpha, beta, val, valExp);
 }
 
+// F16 pairs, both directions. F16-input rows with wider outputs reuse the exact comparison: the
+// kernel widens the half to float, so with the integer-valued test input it evaluates the same
+// float mul-add as the u8/f32 rows above (F16 -> integer additionally rounds to nearest in the
+// saturating cast on both host and device). F16-output rows go through testConvertToF16Output.
+
+TEST_P(OpConvertTo, OpConvertTo_RGBAf16toRGBAf32)
+{
+    using fromType = __half;
+    using toType   = float;
+
+    int    width  = GetParamValue<0>();
+    int    height = GetParamValue<1>();
+    double alpha  = GetParamValue<2>();
+    double beta   = GetParamValue<3>();
+    int    batch  = GetParamValue<4>();
+
+    fromType val    = 0x10;
+    toType   valExp = nvcv::cuda::SaturateCast<toType>(alpha * val + beta);
+
+    testConvertTo<fromType, toType>(nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf32, batch, width, height, alpha, beta, val,
+                                    valExp);
+}
+
+TEST_P(OpConvertTo, OpConvertTo_RGBf16toRGB8)
+{
+    using fromType = __half;
+    using toType   = uint8_t;
+
+    int    width  = GetParamValue<0>();
+    int    height = GetParamValue<1>();
+    double alpha  = GetParamValue<2>();
+    double beta   = GetParamValue<3>();
+    int    batch  = GetParamValue<4>();
+
+    fromType val    = 0x10;
+    toType   valExp = nvcv::cuda::SaturateCast<toType>(alpha * val + beta);
+
+    testConvertTo<fromType, toType>(nvcv::FMT_RGBf16, nvcv::FMT_RGB8, batch, width, height, alpha, beta, val, valExp);
+}
+
+TEST_P(OpConvertTo, OpConvertTo_RGBAf32toRGBAf16)
+{
+    int    width  = GetParamValue<0>();
+    int    height = GetParamValue<1>();
+    double alpha  = GetParamValue<2>();
+    double beta   = GetParamValue<3>();
+    int    batch  = GetParamValue<4>();
+
+    float      val    = 0x10;
+    const auto valExp = static_cast<float>(alpha * val + beta);
+
+    testConvertToF16Output<float>(nvcv::FMT_RGBAf32, nvcv::FMT_RGBAf16, batch, width, height, alpha, beta, val, valExp);
+}
+
+TEST_P(OpConvertTo, OpConvertTo_RGB8toRGBf16)
+{
+    int    width  = GetParamValue<0>();
+    int    height = GetParamValue<1>();
+    double alpha  = GetParamValue<2>();
+    double beta   = GetParamValue<3>();
+    int    batch  = GetParamValue<4>();
+
+    uint8_t    val    = 0x10;
+    const auto valExp = static_cast<float>(alpha * val + beta);
+
+    testConvertToF16Output<uint8_t>(nvcv::FMT_RGB8, nvcv::FMT_RGBf16, batch, width, height, alpha, beta, val, valExp);
+}
+
+TEST_P(OpConvertTo, OpConvertTo_F16toF16)
+{
+    int    width  = GetParamValue<0>();
+    int    height = GetParamValue<1>();
+    double alpha  = GetParamValue<2>();
+    double beta   = GetParamValue<3>();
+    int    batch  = GetParamValue<4>();
+
+    __half     val    = 0x10;
+    const auto valExp = static_cast<float>(alpha * val + beta);
+
+    testConvertToF16Output<__half>(nvcv::FMT_F16, nvcv::FMT_F16, batch, width, height, alpha, beta, val, valExp);
+}
+
 // =============================================================================
 // Planar (NCHW/CHW) layout support
 //
@@ -373,6 +515,22 @@ TEST(OpConvertToPlanar, rgb8_to_rgbf32_batched_matches_interleaved)
                                                  24, 24, 1.5, -3.0, 4);
 }
 
+// F16 parity stays bit-exact: interleaved (half3) and planar (flattened single-channel half)
+// kernels evaluate the same alpha * x + beta in float and round to half at the same single point.
+// Widths divisible by 4 additionally route the planar view through the wide half4 path.
+
+TEST(OpConvertToPlanar, rgb8_to_rgbf16_batched_matches_interleaved)
+{
+    RunConvertToPlanarParityCase<uint8_t, __half>(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p,
+                                                  24, 16, 1.5, -3.0, 2);
+}
+
+TEST(OpConvertToPlanar, rgbf16_to_rgbf32_matches_interleaved)
+{
+    RunConvertToPlanarParityCase<__half, float>(nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf32,
+                                                nvcv::FMT_RGBf32p, 20, 12, 0.5, 1.0, 2);
+}
+
 // Rounding mode: NEAREST (historical default) vs TRUNCATE (toward zero), affecting float-to-integer
 // outputs only. Cases pin values whose two roundings differ, incl. a negative, and check the default.
 
@@ -401,8 +559,8 @@ TEST(OpConvertTo_Round, float_output_unaffected)
 
 NVCV_TEST_SUITE_P(OpConvertTo_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, int, int, int, int>{
     {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8, 24, 24, 24, 24, 3, 3}, // mismatched layout (planar in, interleaved out)
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F32, 24, 24, 24, 24, 3, 3}, // invalid input data type
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F32, nvcv::FMT_F16, 24, 24, 24, 24, 3, 3}, // invalid output data type
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U32, nvcv::FMT_F32, 24, 24, 24, 24, 3, 3}, // unsupported input data type (32-bit unsigned; F16 is now valid)
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F32, nvcv::FMT_U32, 24, 24, 24, 24, 3, 3}, // unsupported output data type (32-bit unsigned)
     {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F32, nvcv::FMT_F32, 25, 24, 24, 24, 3, 3}, // width is different
     {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F32, nvcv::FMT_F32, 24, 25, 24, 24, 3, 3}, // height is different
     {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F32, nvcv::FMT_F32, 24, 24, 24, 24, 4, 3}, // batch number is different

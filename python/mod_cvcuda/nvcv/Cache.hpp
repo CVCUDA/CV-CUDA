@@ -97,6 +97,7 @@ class PYBIND11_EXPORT Cache
 {
 public:
     static void Export(py::module &m);
+    static void ExportTestHooks(py::module &m);
 
     static Cache &Instance();
     static void   ClearAll();
@@ -136,13 +137,29 @@ public:
     int64_t getCurrentSizeInBytes() const;
 
 private:
-    inline static std::unordered_set<Cache *> instances;
+    // Lives in the never-destroyed block described in Cache.cpp: ~Cache() runs
+    // from a worker thread's teardown, which can still be erasing from this
+    // registry while the main thread is destroying statics on its way out.
+    static std::unordered_set<Cache *> &instances();
 
     struct Impl;
     std::unique_ptr<Impl> pimpl;
 
+    // Keeps this cache reachable from the owning thread's Python state, and
+    // tells a capsule that outlives it to do nothing. Shared because the
+    // capsule can be destroyed by the finalizing thread, not just the owner.
+    struct Anchor;
+    std::shared_ptr<Anchor> m_anchor;
+
     Cache();
     ~Cache() noexcept;
+
+    // Registers this cache with the calling thread's Python state, so its items
+    // are released while the GIL is held and the interpreter is alive. No-op on
+    // a thread without one, which then falls back to leaking at thread exit.
+    bool        anchorToPythonThreadState();
+    void        releaseItemsUnderGil();
+    static void destroyAnchorCapsule(PyObject *capsule);
 
     std::vector<std::shared_ptr<CacheItem>> doSnapshotItems() const;
     int64_t                                 doGetDeviceSize(int dev) const;

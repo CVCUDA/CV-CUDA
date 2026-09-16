@@ -79,10 +79,11 @@ def medianblur(state):
     cupy_dtype_map = {
         cvcuda.Type.U8: cp.uint8,
         cvcuda.Type.U16: cp.uint16,
+        cvcuda.Type.F16: cp.float16,
         cvcuda.Type.F32: cp.float32,
     }
     cupy_dtype = cupy_dtype_map.get(dtype, cp.float32)
-    is_float = dtype == cvcuda.Type.F32
+    is_float = dtype in (cvcuda.Type.F16, cvcuda.Type.F32)
 
     if is_fake_planar:
         with cp.cuda.Device(device_id):

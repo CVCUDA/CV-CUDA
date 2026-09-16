@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
@@ -500,34 +501,75 @@ static void RunBilateralTensorPlanarParity(nvcv::ImageFormat interleavedFmt, nvc
                                            NVCVBorderType border)
 {
     cvcuda::BilateralFilter op;
-    nvcv::test::planar::RunTensorParity(
-        planarFmt, interleavedFmt, 33, 25, 33, 25, 2,
-        [&op, border](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst, nvcv::ImageFormat)
-        { op(stream, src, dst, 5, 15.f, 3.f, border); });
+    auto                    invoke
+        = [&op, border](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst, nvcv::ImageFormat)
+    {
+        op(stream, src, dst, 5, 15.f, 3.f, border);
+    };
+
+    if (test::IsF16Format(interleavedFmt))
+    {
+        ASSERT_EQ(planarFmt.planePixelStrideBytes(0), static_cast<int>(sizeof(__half)));
+        auto makeInput = [](int sample, int width, int height, int channels)
+        {
+            return test::FloatToHalfBytes(test::MakeFiniteHalfHwc(width, height, channels, sample * 101 + 13));
+        };
+        // Packed and planar kernels accumulate taps in different orders; one half-ULP covers the
+        // possible store-rounding split while rejecting any larger divergence.
+        auto compare = [](const std::vector<uint8_t> &interleaved, const std::vector<uint8_t> &planar)
+        {
+            test::ExpectNearHalfUlps(test::HalfBytesToFloat(interleaved), test::HalfBytesToFloat(planar), 1.f);
+        };
+        nvcv::test::planar::RunTensorParity(planarFmt, interleavedFmt, 33, 25, 33, 25, 2, invoke, makeInput, compare);
+    }
+    else
+    {
+        nvcv::test::planar::RunTensorParity(planarFmt, interleavedFmt, 33, 25, 33, 25, 2, invoke);
+    }
 }
 
 static void RunBilateralVarShapePlanarParity(nvcv::ImageFormat interleavedFmt, nvcv::ImageFormat planarFmt,
-                                             NVCVBorderType border)
+                                             NVCVBorderType border, bool edgeParameters = false)
 {
     cvcuda::BilateralFilter op;
-    nvcv::test::planar::RunVarShapeParity(
-        planarFmt, interleavedFmt, 31, 23, 31, 23, 2,
-        [&op, border](cudaStream_t stream, const nvcv::ImageBatchVarShape &src, const nvcv::ImageBatchVarShape &dst,
-                      nvcv::ImageFormat)
+    auto invoke = [&op, border, edgeParameters](cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                                const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+    {
+        const int numImages = src.numImages();
+        ASSERT_EQ(numImages, 2);
+
+        nvcv::Tensor diameter({{numImages}, "N"}, nvcv::TYPE_S32);
+        nvcv::Tensor sigmaColor({{numImages}, "N"}, nvcv::TYPE_F32);
+        nvcv::Tensor sigmaSpace({{numImages}, "N"}, nvcv::TYPE_F32);
+
+        FillBilateralParamTensor(stream, diameter,
+                                 edgeParameters ? std::vector<int>{0, 1} : std::vector<int>(numImages, 5));
+        FillBilateralParamTensor(stream, sigmaColor,
+                                 edgeParameters ? std::vector<float>{0.f, 15.f} : std::vector<float>(numImages, 15.f));
+        FillBilateralParamTensor(stream, sigmaSpace,
+                                 edgeParameters ? std::vector<float>{0.f, 3.f} : std::vector<float>(numImages, 3.f));
+
+        op(stream, src, dst, diameter, sigmaColor, sigmaSpace, border);
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    };
+
+    if (test::IsF16Format(interleavedFmt))
+    {
+        ASSERT_EQ(planarFmt.planePixelStrideBytes(0), static_cast<int>(sizeof(__half)));
+        auto makeInput = [](int sample, int width, int height, int channels)
         {
-            const int numImages = src.numImages();
-
-            nvcv::Tensor diameter({{numImages}, "N"}, nvcv::TYPE_S32);
-            nvcv::Tensor sigmaColor({{numImages}, "N"}, nvcv::TYPE_F32);
-            nvcv::Tensor sigmaSpace({{numImages}, "N"}, nvcv::TYPE_F32);
-
-            FillBilateralParamTensor(stream, diameter, std::vector<int>(numImages, 5));
-            FillBilateralParamTensor(stream, sigmaColor, std::vector<float>(numImages, 15.f));
-            FillBilateralParamTensor(stream, sigmaSpace, std::vector<float>(numImages, 3.f));
-
-            op(stream, src, dst, diameter, sigmaColor, sigmaSpace, border);
-            ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
-        });
+            return test::FloatToHalfBytes(test::MakeFiniteHalfHwc(width, height, channels, sample * 101 + 17));
+        };
+        auto compare = [](const std::vector<uint8_t> &interleaved, const std::vector<uint8_t> &planar)
+        {
+            test::ExpectNearHalfUlps(test::HalfBytesToFloat(interleaved), test::HalfBytesToFloat(planar), 1.f);
+        };
+        nvcv::test::planar::RunVarShapeParity(planarFmt, interleavedFmt, 31, 23, 31, 23, 2, invoke, makeInput, compare);
+    }
+    else
+    {
+        nvcv::test::planar::RunVarShapeParity(planarFmt, interleavedFmt, 31, 23, 31, 23, 2, invoke);
+    }
 }
 
 static std::vector<uint8_t> MakeFiniteFloatHwc(int width, int height, int channels, int seed)
@@ -943,6 +985,155 @@ static void RunBilateralVarShapePlanarFloatParity(nvcv::ImageFormat interleavedF
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+// =============================================================================
+// F16 (half) support
+//
+// F16 rides the same float-accumulating kernels as every other dtype: pixels are widened to
+// float on load, the exp weights and the numerator/denominator accumulators stay float, and the
+// result is narrowed to half once at the store. The gold reuses the FP32 CPU reference
+// (CPUBilateralFilterFloatHwc) on the half-quantized input, so bit-exactness is not applicable;
+// per the HalfTestUtils.hpp policy the bound is kUlps = 4 half-ULPs: the single store rounding
+// is the only half-scale error, and 4 leaves slack for float-level drift (device expf vs host
+// std::exp weights, tap accumulation order) at near-tie magnitudes. Weights and pixels are all
+// non-negative, so the sums have no cancellation and the reference magnitude anchors the ULP.
+// =============================================================================
+
+static std::vector<float> BytesToFloats(const std::vector<uint8_t> &bytes)
+{
+    std::vector<float> values(bytes.size() / sizeof(float));
+    std::memcpy(values.data(), bytes.data(), bytes.size());
+    return values;
+}
+
+static std::vector<uint8_t> FloatsToBytes(const std::vector<float> &values)
+{
+    std::vector<uint8_t> bytes(values.size() * sizeof(float));
+    std::memcpy(bytes.data(), values.data(), bytes.size());
+    return bytes;
+}
+
+static void RunBilateralPackedTensorHalfReference(nvcv::ImageFormat fmt)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int width     = 33;
+    constexpr int height    = 25;
+    constexpr int numImages = 2;
+
+    const int channels    = fmt.numChannels();
+    const int pixelStride = fmt.planePixelStrideBytes(0);
+    const int rowStride   = width * pixelStride;
+    ASSERT_EQ(pixelStride, channels * static_cast<int>(sizeof(__half)));
+
+    nvcv::Tensor src = nvcv::util::CreateTensor(numImages, width, height, fmt);
+    nvcv::Tensor dst = nvcv::util::CreateTensor(numImages, width, height, fmt);
+
+    auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData && dstData);
+
+    auto srcAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto dstAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(srcAcc && dstAcc);
+
+    std::vector<std::vector<float>> gold(numImages);
+    for (int i = 0; i < numImages; ++i)
+    {
+        auto hwc = test::MakeFiniteHalfHwc(width, height, channels, i * 101 + 31);
+        gold[i]  = BytesToFloats(CPUBilateralFilterFloatHwc(FloatsToBytes(hwc), width, height, channels, 5, 15.f, 3.f));
+        nvcv::test::planar::UploadInterleavedSample(*srcAcc, i, test::FloatToHalfBytes(hwc), width, height, rowStride);
+    }
+
+    cvcuda::BilateralFilter op;
+    op(stream, src, dst, 5, 15.f, 3.f, NVCV_BORDER_CONSTANT);
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        SCOPED_TRACE(i);
+        auto gpu = nvcv::test::planar::DownloadInterleavedSample(*dstAcc, i, width, height, rowStride);
+        // 4 half-ULPs (rationale in the F16 section comment above).
+        test::ExpectNearHalfUlps(gold[i], test::HalfBytesToFloat(gpu), 4.f);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+static void RunBilateralPackedVarShapeHalfReference(nvcv::ImageFormat fmt)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const std::vector<nvcv::Size2D> sizes{
+        {31, 23},
+        {35, 25}
+    };
+    const auto numImages   = static_cast<int>(sizes.size());
+    const int  channels    = fmt.numChannels();
+    const int  pixelStride = fmt.planePixelStrideBytes(0);
+    ASSERT_EQ(pixelStride, channels * static_cast<int>(sizeof(__half)));
+
+    std::vector<nvcv::Image>        src;
+    std::vector<nvcv::Image>        dst;
+    std::vector<std::vector<float>> gold(numImages);
+    for (int i = 0; i < numImages; ++i)
+    {
+        src.emplace_back(sizes[i], fmt);
+        dst.emplace_back(sizes[i], fmt);
+    }
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        const int width     = sizes[i].w;
+        const int height    = sizes[i].h;
+        const int rowStride = width * pixelStride;
+
+        auto hwc = test::MakeFiniteHalfHwc(width, height, channels, i * 101 + 37);
+        gold[i]  = BytesToFloats(CPUBilateralFilterFloatHwc(FloatsToBytes(hwc), width, height, channels, 5, 15.f, 3.f));
+
+        auto halfBytes = test::FloatToHalfBytes(hwc);
+        auto data      = src[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(data, nvcv::NullOpt);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(data->plane(0).basePtr, data->plane(0).rowStride, halfBytes.data(),
+                                            rowStride, rowStride, height, cudaMemcpyHostToDevice));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(numImages);
+    nvcv::ImageBatchVarShape batchDst(numImages);
+    batchSrc.pushBack(src.begin(), src.end());
+    batchDst.pushBack(dst.begin(), dst.end());
+
+    nvcv::Tensor diameter({{numImages}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor sigmaColor({{numImages}, "N"}, nvcv::TYPE_F32);
+    nvcv::Tensor sigmaSpace({{numImages}, "N"}, nvcv::TYPE_F32);
+    FillBilateralParamTensor(stream, diameter, std::vector<int>(numImages, 5));
+    FillBilateralParamTensor(stream, sigmaColor, std::vector<float>(numImages, 15.f));
+    FillBilateralParamTensor(stream, sigmaSpace, std::vector<float>(numImages, 3.f));
+
+    cvcuda::BilateralFilter op;
+    op(stream, batchSrc, batchDst, diameter, sigmaColor, sigmaSpace, NVCV_BORDER_CONSTANT);
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        SCOPED_TRACE(i);
+        const int width     = sizes[i].w;
+        const int height    = sizes[i].h;
+        const int rowStride = width * pixelStride;
+
+        std::vector<uint8_t> gpu(height * rowStride);
+        auto                 data = dst[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(data, nvcv::NullOpt);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(gpu.data(), rowStride, data->plane(0).basePtr, data->plane(0).rowStride,
+                                            rowStride, height, cudaMemcpyDeviceToHost));
+        // 4 half-ULPs (rationale in the F16 section comment above).
+        test::ExpectNearHalfUlps(gold[i], test::HalfBytesToFloat(gpu), 4.f);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpBilateralFilterPackedFloat, tensor_rgbf32_matches_cpu_reference)
 {
     RunBilateralPackedTensorFloatReference(nvcv::FMT_RGBf32);
@@ -993,6 +1184,11 @@ TEST(OpBilateralFilterPlanar, varshape_rgba8_matches_interleaved)
     RunBilateralVarShapePlanarParity(nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p, NVCV_BORDER_CONSTANT);
 }
 
+TEST(OpBilateralFilterPlanar, varshape_edge_parameters_match_interleaved)
+{
+    RunBilateralVarShapePlanarParity(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, true);
+}
+
 TEST(OpBilateralFilterPlanar, varshape_rgbf32_matches_interleaved)
 {
     RunBilateralVarShapePlanarFloatParity(nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p, NVCV_BORDER_REFLECT);
@@ -1001,6 +1197,46 @@ TEST(OpBilateralFilterPlanar, varshape_rgbf32_matches_interleaved)
 TEST(OpBilateralFilterPlanar, varshape_rgbaf32_matches_interleaved)
 {
     RunBilateralVarShapePlanarFloatParity(nvcv::FMT_RGBAf32, nvcv::FMT_RGBAf32p, NVCV_BORDER_CONSTANT);
+}
+
+TEST(OpBilateralFilterPackedHalf, tensor_rgbf16_matches_cpu_reference)
+{
+    RunBilateralPackedTensorHalfReference(nvcv::FMT_RGBf16);
+}
+
+TEST(OpBilateralFilterPackedHalf, tensor_rgbaf16_matches_cpu_reference)
+{
+    RunBilateralPackedTensorHalfReference(nvcv::FMT_RGBAf16);
+}
+
+TEST(OpBilateralFilterPackedHalf, varshape_rgbf16_matches_cpu_reference)
+{
+    RunBilateralPackedVarShapeHalfReference(nvcv::FMT_RGBf16);
+}
+
+TEST(OpBilateralFilterPackedHalf, varshape_rgbaf16_matches_cpu_reference)
+{
+    RunBilateralPackedVarShapeHalfReference(nvcv::FMT_RGBAf16);
+}
+
+TEST(OpBilateralFilterPlanar, tensor_rgbf16_matches_interleaved)
+{
+    RunBilateralTensorPlanarParity(nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p, NVCV_BORDER_REFLECT);
+}
+
+TEST(OpBilateralFilterPlanar, tensor_rgbaf16_matches_interleaved)
+{
+    RunBilateralTensorPlanarParity(nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16p, NVCV_BORDER_CONSTANT);
+}
+
+TEST(OpBilateralFilterPlanar, varshape_rgbf16_matches_interleaved)
+{
+    RunBilateralVarShapePlanarParity(nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p, NVCV_BORDER_REFLECT);
+}
+
+TEST(OpBilateralFilterPlanar, varshape_rgbaf16_matches_interleaved)
+{
+    RunBilateralVarShapePlanarParity(nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16p, NVCV_BORDER_CONSTANT);
 }
 
 #undef NVCV_IMAGE_FORMAT_2U8
@@ -1019,7 +1255,8 @@ static auto OpBilateralFilterVarshapeNegativeParams()
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, static_cast<NVCVBorderType>(255),
                         nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5);
 #endif
-    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32,
+    // unsupported data type (64-bit float; F16 is now valid)
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F64, nvcv::FMT_F64, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32,
                         nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5);
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT, nvcv::TYPE_F32,
                         nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5);
@@ -1045,7 +1282,8 @@ static auto OpBilateralFilterNegativeParams()
 #ifndef ENABLE_SANITIZER
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, static_cast<NVCVBorderType>(255));
 #endif
-    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, NVCV_BORDER_CONSTANT);
+    // unsupported data type (64-bit float; F16 is now valid)
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F64, nvcv::FMT_F64, NVCV_BORDER_CONSTANT);
     return params;
 }
 

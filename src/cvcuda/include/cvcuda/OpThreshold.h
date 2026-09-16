@@ -83,7 +83,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaThresholdCreate(NVCVOperatorHandle *handle, uint3
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       16bit Float    | No
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *       -------------- | -------------   for the thresholding type NVCV_THRESH_OTSU and NVCV_THRESH_TRIANGLE.
@@ -115,7 +115,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaThresholdCreate(NVCVOperatorHandle *handle, uint3
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       16bit Float    | No
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *       -------------- | -------------   for the thresholding type NVCV_THRESH_OTSU and NVCV_THRESH_TRIANGLE.

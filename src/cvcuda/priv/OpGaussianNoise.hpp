@@ -26,12 +26,50 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 
+#include <cstddef>
+#include <utility>
+
 namespace cvcuda::priv {
+
+// Persistent per-device cuRAND state for one submission path.  The generator must continue where
+// the previous call left off, so the buffer cannot be a per-call workspace: it is sized once from
+// the operator's maximum batch and lives as long as the operator.  It holds one curandState per
+// (sample, thread) pair, followed by an equally sized staging half that a segmented launch uses to
+// publish the advanced state while every segment still reads the same starting state.  The
+// pointers are untyped so <curand_kernel.h> stays inside the implementation translation unit.
+struct GaussianNoiseDeviceStates
+{
+    explicit GaussianNoiseDeviceStates(int maxBatchSize);
+    ~GaussianNoiseDeviceStates();
+
+    GaussianNoiseDeviceStates(const GaussianNoiseDeviceStates &)            = delete;
+    GaussianNoiseDeviceStates &operator=(const GaussianNoiseDeviceStates &) = delete;
+
+    // A launcher that publishes the advanced states into the staging half can adopt them by
+    // flipping the two halves instead of copying them back, which is why `allocation` -- and not
+    // `states` -- is the pointer the destructor frees.
+    //
+    // Precondition: `nextStates` must hold a complete image of the state array, including the
+    // entries belonging to threads that had no work.  The generic launch path satisfies this by
+    // seeding the staging half with a device-to-device copy before the launch; a launcher that
+    // skips that copy has to make its kernel carry the idle threads' states across itself.
+    void Swap()
+    {
+        std::swap(states, nextStates);
+    }
+
+    std::byte         *allocation   = nullptr;
+    std::byte         *states       = nullptr;
+    std::byte         *nextStates   = nullptr;
+    unsigned long long seed         = 0;
+    int                maxBatchSize = 0;
+    bool               setupDone    = false;
+};
 
 class GaussianNoise final : public IOperator
 {
@@ -48,8 +86,8 @@ public:
                     const nvcv::Tensor &mu, const nvcv::Tensor &sigma, bool per_channel, unsigned long long seed) const;
 
 private:
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::GaussianNoise>         m_legacyOp;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::GaussianNoiseVarShape> m_legacyOpVarShape;
+    mutable PerDeviceResource<GaussianNoiseDeviceStates> m_tensorStates;
+    mutable PerDeviceResource<GaussianNoiseDeviceStates> m_varShapeStates;
 };
 
 } // namespace cvcuda::priv

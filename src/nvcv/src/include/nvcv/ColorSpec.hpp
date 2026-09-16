@@ -40,7 +40,8 @@ enum class ColorModel : int8_t
     YCbCr     = NVCV_COLOR_MODEL_YCbCr,
     RGB       = NVCV_COLOR_MODEL_RGB,
     RAW       = NVCV_COLOR_MODEL_RAW,
-    XYZ       = NVCV_COLOR_MODEL_XYZ
+    XYZ       = NVCV_COLOR_MODEL_XYZ,
+    LAB       = NVCV_COLOR_MODEL_LAB
 };
 
 enum class ColorSpace : int8_t

@@ -76,7 +76,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRemapCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       16bit Float    | No
+ *       16bit Float    | Yes (only if Channel=1)
  *       32bit Float    | Yes (only if Channel=1)
  *       64bit Float    | No
  *
@@ -92,7 +92,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRemapCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       16bit Float    | No
+ *       16bit Float    | Yes (only if Channel=1)
  *       32bit Float    | Yes (only if Channel=1)
  *       64bit Float    | No
  *

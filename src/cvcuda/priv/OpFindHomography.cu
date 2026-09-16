@@ -1380,6 +1380,9 @@ void FindHomographyWrapper(SrcDstWrapper srcWrap, SrcDstWrapper dstWrap, ModelTy
     grid.z = batchSize;
     LtLOp ltl_op(srcMean, dstMean, srcShiftSum, dstShiftSum);
     compute_LtL<<<grid, block, 0, stream>>>(srcWrap, dstWrap, LtL, ltl_op, numPoints, batchSize);
+    // One check covers the three launches above (cudaGetLastError() is sticky until read). It must
+    // run before the cuSOLVER calls below, which may consume the thread's CUDA error state.
+    NVCV_CHECK_THROW(cudaGetLastError());
 #ifdef DEBUG
     for (int b = 0; b < batchSize; b++)
     {
@@ -1429,6 +1432,7 @@ void FindHomographyWrapper(SrcDstWrapper srcWrap, SrcDstWrapper dstWrap, ModelTy
     grid.z  = 1;
     computeModel<<<grid, block, 0, stream>>>(srcWrap, dstWrap, srcMean, dstMean, srcShiftSum, dstShiftSum, LtL, W, r, J,
                                              calc_buffer, modelWrap, numPoints, batchSize);
+    NVCV_CHECK_THROW(cudaGetLastError());
 }
 
 inline void RunFindHomography(const nvcv::TensorDataStridedCuda &src, const nvcv::TensorDataStridedCuda &dst,

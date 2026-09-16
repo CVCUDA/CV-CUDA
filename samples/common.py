@@ -297,6 +297,7 @@ def zero_copy_split(batch_tensor: cvcuda.Tensor) -> list[cvcuda.Tensor]:
     Returns:
         A list of individual tensors.
     """
+
     # Helper object which has a __cuda_array_interface__
     class CudaBuffer:
         __cuda_array_interface__ = None

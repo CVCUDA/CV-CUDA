@@ -386,6 +386,9 @@ TEST(OpChannelReorderTensor, correct_output_all_declared_types_layouts_channels)
     RunChannelReorderTensorCases<int16_t>(nvcv::TYPE_S16);
     RunChannelReorderTensorCases<int32_t>(nvcv::TYPE_S32);
     RunChannelReorderTensorCases<float>(nvcv::TYPE_F32);
+    // F16 routes through the 16-bit path (pure data movement, bit-exact); uint16_t host values
+    // double as F16 bit patterns for the memcmp comparison.
+    RunChannelReorderTensorCases<uint16_t>(nvcv::TYPE_F16);
 }
 
 TEST(OpChannelReorderTensor, preserves_float_bit_patterns)
@@ -446,6 +449,79 @@ TEST(OpChannelReorderTensor_Negative, invalid_order_and_alias_are_rejected)
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               cvcudaChannelReorderSubmit(op.handle(), nullptr, src.handle(), src.handle(), valid.data(), 3));
     EXPECT_EQ(cudaSuccess, cudaDeviceSynchronize());
+}
+
+TEST(OpChannelReorderTensor_Negative, rejects_layout_shape_dtype_and_planar_channel_mismatches)
+{
+    cvcuda::ChannelReorder       op;
+    const std::array<int32_t, 3> order{2, 1, 0};
+
+    nvcv::Tensor invalidLayout(
+        {
+            {1, 5, 7, 3},
+            "ABCD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor invalidLayoutOut(invalidLayout.shape(), invalidLayout.dtype());
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, invalidLayout, invalidLayoutOut, order.data(), 3); }));
+
+    nvcv::Tensor src(
+        {
+            {1, 5, 7, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor wrongShape(
+        {
+            {1, 5, 6, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, src, wrongShape, order.data(), 3); }));
+
+    nvcv::Tensor wrongDtype(src.shape(), nvcv::TYPE_S16);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, src, wrongDtype, order.data(), 3); }));
+
+    nvcv::Tensor unsupported(
+        {
+            {1, 5, 7, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_U32);
+    nvcv::Tensor unsupportedOut(unsupported.shape(), unsupported.dtype());
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, unsupported, unsupportedOut, order.data(), 3); }));
+
+    nvcv::Tensor planarTwoChannel(
+        {
+            {1, 2, 5, 7},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor                 planarTwoChannelOut(planarTwoChannel.shape(), planarTwoChannel.dtype());
+    const std::array<int32_t, 2> orderTwo{1, 0};
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&] {
+                                                   op(nullptr, planarTwoChannel, planarTwoChannelOut, orderTwo.data(),
+                                                      static_cast<int32_t>(orderTwo.size()));
+                                               }));
+}
+
+TEST(OpChannelReorderTensor, zero_height_returns_success_with_unchanged_metadata)
+{
+    nvcv::TensorShape shape{
+        {1, 0, 7, 3},
+        "NHWC"
+    };
+    nvcv::Tensor                 src(shape, nvcv::TYPE_U8);
+    nvcv::Tensor                 dst(shape, nvcv::TYPE_U8);
+    const std::array<int32_t, 3> order{2, 1, 0};
+
+    cvcuda::ChannelReorder op;
+    EXPECT_NO_THROW(op(nullptr, src, dst, order.data(), static_cast<int32_t>(order.size())));
+    EXPECT_EQ(shape, dst.shape());
+    EXPECT_EQ(nvcv::TYPE_U8, dst.dtype());
 }
 
 static void RunChannelReorderPlanarParityCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int width,
@@ -612,13 +688,14 @@ TEST_F(TestOpChannelReorder, infer_void_samples)
 
 TEST_F(TestOpChannelReorder, infer_invalid_input_dataType)
 {
+    // 64-bit float stays outside the supported dtype set.
     input().pushBack(nvcv::Image{
         nvcv::Size2D{4, 2},
-        nvcv::FMT_RGBAf16
+        nvcv::FMT_F64
     });
     output().pushBack(nvcv::Image{
         nvcv::Size2D{4, 2},
-        nvcv::FMT_RGBA8
+        nvcv::FMT_F64
     });
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
@@ -629,11 +706,11 @@ TEST_F(TestOpChannelReorder, infer_invalid_output_dataType)
 {
     input().pushBack(nvcv::Image{
         nvcv::Size2D{4, 2},
-        nvcv::FMT_RGBA8
+        nvcv::FMT_F32
     });
     output().pushBack(nvcv::Image{
         nvcv::Size2D{4, 2},
-        nvcv::FMT_RGBAf16
+        nvcv::FMT_F64
     });
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
@@ -750,6 +827,8 @@ NVCV_TEST_SUITE_P(OpChannelReorderPlanar,
     {31, 23, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
     {35, 27, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
     {33, 25, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    {29, 21, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+    {27, 19, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 // clang-format on
@@ -785,6 +864,29 @@ TEST_F(TestOpChannelReorder, infer_invalid_input_output_layout_mismatch_interlea
         nvcv::Size2D{4, 2},
         nvcv::FMT_BGRA8p
     });
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([this] { channelReorder()(nullptr, input(), output(), orders()); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_later_output_layout_family)
+{
+    pushDefaultImages();
+    input().pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_RGBA8
+    });
+    output().pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_RGBA8p
+    });
+
+    orders() = nvcv::Tensor(
+        {
+            {2, 4},
+            "NC"
+    },
+        nvcv::TYPE_S32);
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcv::ProtectCall([this] { channelReorder()(nullptr, input(), output(), orders()); }));

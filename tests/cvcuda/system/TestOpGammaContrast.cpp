@@ -17,9 +17,11 @@
 
 #include "ConvUtils.hpp"
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpGammaContrast.hpp>
 #include <cvcuda/cuda_tools/MathWrappers.hpp>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
@@ -157,8 +159,23 @@ void GammaContrastVarShapeCpuOpWrapper(std::vector<uint8_t> &hDst, int dstRowStr
     }
     else
     {
-        GammaContrastVarShapeCpuOp(hDst, dstRowStride, dstSize, hSrc, srcRowStride, srcSize, fmt, gamma, imageIndex,
-                                   perChannel);
+        if (nvcvDataType == NVCV_DATA_TYPE_U16 || nvcvDataType == NVCV_DATA_TYPE_2U16
+            || nvcvDataType == NVCV_DATA_TYPE_3U16 || nvcvDataType == NVCV_DATA_TYPE_4U16)
+        {
+            std::vector<uint16_t> src_tmp(hSrc.size() / sizeof(uint16_t));
+            std::vector<uint16_t> dst_tmp(hDst.size() / sizeof(uint16_t));
+            size_t                copySize = hSrc.size();
+            memcpy(static_cast<void *>(src_tmp.data()), static_cast<const void *>(hSrc.data()), copySize);
+            memcpy(static_cast<void *>(dst_tmp.data()), static_cast<void *>(hDst.data()), copySize);
+            GammaContrastVarShapeCpuOp(dst_tmp, dstRowStride / sizeof(uint16_t), dstSize, src_tmp,
+                                       srcRowStride / sizeof(uint16_t), srcSize, fmt, gamma, imageIndex, perChannel);
+            memcpy(static_cast<void *>(hDst.data()), static_cast<void *>(dst_tmp.data()), copySize);
+        }
+        else
+        {
+            GammaContrastVarShapeCpuOp(hDst, dstRowStride, dstSize, hSrc, srcRowStride, srcSize, fmt, gamma, imageIndex,
+                                       perChannel);
+        }
     }
 }
 
@@ -183,6 +200,7 @@ NVCV_TEST_SUITE_P(OpGammaContrast, test::ValueList<int, int, int, NVCVImageForma
     {   11,    11,       4,   NVCV_IMAGE_FORMAT_RGBA8,        0.4,      false},
     {   7,      8,       3,    NVCV_IMAGE_FORMAT_RGB8,        0.9,      false},
     {   7,      6,       4,   NVCV_IMAGE_FORMAT_RGBA8,        0.8,      false},
+    {  17,      9,       2,     NVCV_IMAGE_FORMAT_U16,        1.2,      false},
 
     {   5,      5,       1,     NVCV_IMAGE_FORMAT_F32,       0.5,        true},
     {   9,     11,       2,     NVCV_IMAGE_FORMAT_F32,      0.75,        true},
@@ -197,6 +215,13 @@ NVCV_TEST_SUITE_P(OpGammaContrast, test::ValueList<int, int, int, NVCVImageForma
     {   11,    11,       4, NVCV_IMAGE_FORMAT_RGBAf32,        0.4,      false},
     {   7,      8,       3,  NVCV_IMAGE_FORMAT_RGBf32,        0.9,      false},
     {   7,      6,       4, NVCV_IMAGE_FORMAT_RGBAf32,        0.8,      false},
+
+    // F16 rows follow the float path (pow, no /255, clamp to [0, 1]) with an FP32-computed gold.
+    {   5,      5,       1,     NVCV_IMAGE_FORMAT_F16,        0.5,       true},
+    {   12,     7,       3,  NVCV_IMAGE_FORMAT_RGBf16,        0.9,       true},
+    {   11,    11,       4, NVCV_IMAGE_FORMAT_RGBAf16,        0.4,       true},
+    {   9,     11,       2,     NVCV_IMAGE_FORMAT_F16,       0.75,      false},
+    {   7,      6,       4, NVCV_IMAGE_FORMAT_RGBAf16,        0.8,      false},
 });
 
 // clang-format on
@@ -216,6 +241,7 @@ TEST_P(OpGammaContrast, varshape_correct_output)
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneDataType(static_cast<NVCVImageFormat>(format), 0, &nvcvDataType));
     float gamma       = GetParamValue<4>();
     bool  isFloatTest = false;
+    bool  isHalfTest  = false;
 
     bool perChannel = GetParamValue<5>();
 
@@ -251,6 +277,18 @@ TEST_P(OpGammaContrast, varshape_correct_output)
             for (size_t idx = 0; idx < (srcVec[i].size() / sizeof(float)); ++idx)
             {
                 reinterpret_cast<float *>(srcVec[i].data())[idx] = udistf(rng);
+            }
+            break;
+        case NVCV_DATA_TYPE_F16:
+        case NVCV_DATA_TYPE_2F16:
+        case NVCV_DATA_TYPE_3F16:
+        case NVCV_DATA_TYPE_4F16:
+            // Same [0, 1] range as the float rows, quantized to half so the FP32 gold consumes
+            // exactly the values the kernel reads.
+            isHalfTest = true;
+            for (size_t idx = 0; idx < (srcVec[i].size() / sizeof(__half)); ++idx)
+            {
+                reinterpret_cast<__half *>(srcVec[i].data())[idx] = __float2half(udistf(rng));
             }
             break;
         default:
@@ -343,6 +381,21 @@ TEST_P(OpGammaContrast, varshape_correct_output)
                                dstRowStride, // vec has no padding
                                dstHeight, cudaMemcpyDeviceToHost));
 
+        if (isHalfTest)
+        {
+            // F16 gold: run the FP32 reference (pow, clamp to [0, 1]) on the widened half input.
+            // Bit-exactness against the FP32 gold is not applicable to the half output; pow is a
+            // transcendental chain, so per the HalfTestUtils.hpp policy the bound is kUlps = 8
+            // half-ULPs at the reference magnitude.
+            std::vector<float> srcF = test::HalfBytesToFloat(srcVec[i]);
+            std::vector<float> goldF(srcF.size());
+            GammaContrastVarShapeCpuOp(goldF, dstRowStride / static_cast<int>(sizeof(__half)), {dstWidth, dstHeight},
+                                       srcF, srcRowStride / static_cast<int>(sizeof(__half)), {srcWidth, srcHeight},
+                                       format, gammaVec, i, perChannel);
+            test::ExpectNearHalfUlps(goldF, test::HalfBytesToFloat(testVec), 8.f);
+            continue;
+        }
+
         std::vector<uint8_t> goldVec(dstHeight * dstRowStride);
         std::ranges::generate(goldVec, []() { return 0; });
 
@@ -373,7 +426,7 @@ NVCV_TEST_SUITE_P(OpGammaContrast_Negative, test::ValueList<int, nvcv::ImageForm
     {6, nvcv::FMT_U8, nvcv::FMT_U8}, // larger than max batches
     {2, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8}, // larger than max channels
     {2, nvcv::FMT_RGB8p, nvcv::FMT_RGB8}, // input/output format mismatch (planar in, interleaved out)
-    {2, nvcv::FMT_RGBf16, nvcv::FMT_RGBf16},
+    {2, nvcv::FMT_F64, nvcv::FMT_F64}, // unsupported data type (64-bit float; F16 is now valid)
     {2, nvcv::FMT_U8, nvcv::FMT_S8},
 });
 
@@ -714,6 +767,12 @@ TEST(OpGammaContrast_Negative, create_rejects_non_positive_max_batch_or_channels
 // the interleaved output bit-for-bit. Scaffolding lives in PlanarParityUtils.hpp.
 namespace {
 
+const nvcv::ImageFormat FMT_RGBU16{nvcv::ColorModel::RGB,    nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                   nvcv::DataKind::UNSIGNED, nvcv::Swizzle::S_XYZ1, nvcv::Packing::X16_Y16_Z16};
+const nvcv::ImageFormat FMT_RGBU16p{nvcv::ColorModel::RGB,    nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                    nvcv::DataKind::UNSIGNED, nvcv::Swizzle::S_XYZ0, nvcv::Packing::X16,
+                                    nvcv::Packing::X16,       nvcv::Packing::X16};
+
 float DeterministicGammaValue(size_t idx, float minValue, float maxValue, int salt)
 {
     const int bucket = (static_cast<int>(idx) * 37 + salt) % 101;
@@ -735,6 +794,7 @@ struct TensorTestData
 {
     NVCVDataType                      dataType;
     bool                              isFloat;
+    bool                              isHalf;
     int                               rowStride;
     size_t                            sampleBytes;
     std::vector<std::vector<uint8_t>> hostSamples;
@@ -752,6 +812,8 @@ void UploadDeterministicTensorInput(nvcv::Tensor &tensor, int samples, int width
               nvcvImageFormatGetPlaneDataType(static_cast<NVCVImageFormat>(format), 0, &testData.dataType));
     testData.isFloat = testData.dataType == NVCV_DATA_TYPE_F32 || testData.dataType == NVCV_DATA_TYPE_2F32
                     || testData.dataType == NVCV_DATA_TYPE_3F32 || testData.dataType == NVCV_DATA_TYPE_4F32;
+    testData.isHalf = testData.dataType == NVCV_DATA_TYPE_F16 || testData.dataType == NVCV_DATA_TYPE_2F16
+                   || testData.dataType == NVCV_DATA_TYPE_3F16 || testData.dataType == NVCV_DATA_TYPE_4F16;
     const int bytesPerElement = format.planePixelStrideBytes(0) / format.numChannels();
     testData.rowStride        = width * format.numChannels() * bytesPerElement;
     testData.sampleBytes      = static_cast<size_t>(testData.rowStride) * height;
@@ -766,6 +828,16 @@ void UploadDeterministicTensorInput(nvcv::Tensor &tensor, int samples, int width
             for (size_t i = 0; i < testData.sampleBytes / sizeof(float); ++i)
             {
                 values[i] = DeterministicUnitValue(i, sample);
+            }
+        }
+        else if (testData.isHalf)
+        {
+            // Same unit-range values as float, quantized to half so the FP32 gold consumes
+            // exactly the values the kernel reads.
+            auto *values = reinterpret_cast<__half *>(hostSample.data());
+            for (size_t i = 0; i < testData.sampleBytes / sizeof(__half); ++i)
+            {
+                values[i] = __float2half(DeterministicUnitValue(i, sample));
             }
         }
         else
@@ -852,6 +924,59 @@ void RunGammaContrastPlanarParityCase(nvcv::ImageFormat planarFmt, nvcv::ImageFo
         });
 }
 
+void RunGammaContrastPaddedPerChannelGammaParity()
+{
+    constexpr int     numImages     = 2;
+    constexpr int     channels      = 3;
+    constexpr int64_t sampleStride  = sizeof(float);
+    constexpr int64_t channelStride = 3 * sizeof(float);
+    constexpr size_t  bufferSize    = channels * channelStride;
+
+    const std::array<std::array<float, channels>, numImages> gammaValues{
+        std::array<float, channels>{0.6f, 0.9f, 1.2f},
+         std::array<float, channels>{1.5f, 1.8f, 2.1f}
+    };
+    std::vector<uint8_t> paddedGamma(bufferSize, 0);
+    for (int channel = 0; channel < channels; ++channel)
+    {
+        for (int image = 0; image < numImages; ++image)
+        {
+            std::memcpy(paddedGamma.data() + channel * channelStride + image * sampleStride,
+                        &gammaValues[image][channel], sizeof(float));
+        }
+    }
+
+    NVCVByte *allocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&allocation), bufferSize));
+    if (allocation == nullptr)
+    {
+        return;
+    }
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(allocation, paddedGamma.data(), bufferSize, cudaMemcpyHostToDevice));
+
+    nvcv::TensorDataStridedCuda::Buffer buffer{};
+    buffer.basePtr           = allocation;
+    buffer.strides[0]        = channelStride;
+    buffer.strides[1]        = sampleStride;
+    nvcv::Tensor gammaTensor = nvcv::TensorWrapData(
+        nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{channels, numImages}, "CN"},
+            nvcv::TYPE_F32, buffer
+    },
+        nvcv::TensorDataCleanupCallback{[allocation](const nvcv::TensorData &)
+                                        {
+                                            cudaFree(allocation);
+                                        }});
+
+    test::planar::RunVarShapeParity(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 37, 23, 37, 23, numImages,
+                                    [&gammaTensor](cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                                   const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+                                    {
+                                        cvcuda::GammaContrast op(numImages, channels);
+                                        EXPECT_NO_THROW(op(stream, src, dst, gammaTensor));
+                                    });
+}
+
 } // namespace
 
 // Parameters: width, height, numImages, perChannelGamma, planarFmt, interleavedFmt
@@ -861,8 +986,12 @@ NVCV_TEST_SUITE_P(OpGammaContrastPlanar,
     {176, 113, 2, false,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8}, // RGB8, per-image gamma
     {123,  66, 2,  true,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8}, // RGB8, per-channel gamma
     { 64,  48, 1,  true,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8}, // RGBA8, per-channel gamma
+    { 41,  33, 2, false,          FMT_RGBU16p,          FMT_RGBU16}, // RGB16, per-image gamma
     { 50,  40, 2, false,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32}, // RGBf32, per-image gamma
     { 72,  54, 2,  true, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32}, // RGBAf32, per-channel gamma
+    // F16 parity is bit-exact: both layouts run the same float chain and round to half once.
+    { 50,  40, 2, false,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16}, // RGBf16, per-image gamma
+    { 72,  54, 2,  true, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16}, // RGBAf16, per-channel gamma
 });
 
 // clang-format on
@@ -871,6 +1000,11 @@ TEST_P(OpGammaContrastPlanar, varshape_matches_interleaved)
 {
     RunGammaContrastPlanarParityCase(GetParamValue<4>(), GetParamValue<5>(), GetParamValue<0>(), GetParamValue<1>(),
                                      GetParamValue<2>(), GetParamValue<3>());
+}
+
+TEST(OpGammaContrastPlanar, padded_per_channel_gamma_matches_interleaved)
+{
+    RunGammaContrastPaddedPerChannelGammaParity();
 }
 
 // ---------------------------------------------------------------------------
@@ -914,6 +1048,9 @@ NVCV_TEST_SUITE_P(OpGammaContrastTensorPlanar,
     { 64,  48, 1,  true,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
     { 50,  40, 3, false,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
     { 72,  54, 2,  true, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    // F16 parity is bit-exact: both layouts run the same float chain and round to half once.
+    { 50,  40, 3, false,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+    { 72,  54, 2,  true, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 // clang-format on
@@ -936,6 +1073,10 @@ NVCV_TEST_SUITE_P(OpGammaContrastTensor,
     {  7,  9, 2, NVCV_IMAGE_FORMAT_RGBA8,  true},
     {  8,  6, 2, NVCV_IMAGE_FORMAT_RGBf32, true},
     {  9,  7, 2, NVCV_IMAGE_FORMAT_RGBAf32, true},
+    // F16 rows are validated against an FP32 gold within 8 half-ULPs (see the F16 gold branch).
+    {  9, 11, 2,     NVCV_IMAGE_FORMAT_F16, false},
+    {  8,  6, 2,  NVCV_IMAGE_FORMAT_RGBf16, true},
+    {  9,  7, 2, NVCV_IMAGE_FORMAT_RGBAf16, true},
 });
 
 // clang-format on
@@ -977,6 +1118,18 @@ TEST_P(OpGammaContrastTensor, correct_output)
         std::vector<uint8_t> got;
         std::vector<uint8_t> gold = testData.hostSamples[n];
         ASSERT_NO_FATAL_FAILURE(DownloadTensorSample(dst, n, testData.rowStride, height, got));
+        if (testData.isHalf)
+        {
+            // F16 gold: FP32 reference (pow, clamp to [0, 1]) on the widened half input, bounded
+            // by 8 half-ULPs -- pow is a transcendental chain per the HalfTestUtils.hpp policy.
+            std::vector<float> srcF = test::HalfBytesToFloat(testData.hostSamples[n]);
+            std::vector<float> goldF(srcF.size());
+            GammaContrastVarShapeCpuOp(goldF, testData.rowStride / static_cast<int>(sizeof(__half)), {width, height},
+                                       srcF, testData.rowStride / static_cast<int>(sizeof(__half)), {width, height},
+                                       fmt, gammaVec, n, perCh);
+            test::ExpectNearHalfUlps(goldF, test::HalfBytesToFloat(got), 8.f);
+            continue;
+        }
         GammaContrastVarShapeCpuOpWrapper(gold, testData.rowStride, {width, height}, testData.hostSamples[n],
                                           testData.rowStride, {width, height}, fmt, gammaVec, n, perCh,
                                           testData.dataType);
@@ -1050,6 +1203,8 @@ NVCV_TEST_SUITE_P(OpGammaContrastTensorScalarPlanar,
     { 64,  48, 1, 0.50f, 0.8f,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8,  NVCV_ROUND_NEAREST},
     { 50,  40, 3, 2.00f, 1.0f,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_ROUND_TRUNCATE},
     { 72,  54, 2, 0.70f, 1.2f, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32,  NVCV_ROUND_NEAREST},
+    // F16 parity is bit-exact: both layouts run the same float chain and round to half once.
+    { 50,  40, 2, 0.75f, 1.1f,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16,  NVCV_ROUND_NEAREST},
 });
 
 // clang-format on
@@ -1071,6 +1226,9 @@ NVCV_TEST_SUITE_P(OpGammaContrastTensorScalar,
     { 11, 11, 2,   NVCV_IMAGE_FORMAT_RGBA8, 0.80f, 1.0f,  NVCV_ROUND_NEAREST},
     {  8,  6, 2,  NVCV_IMAGE_FORMAT_RGBf32, 2.00f, 1.0f, NVCV_ROUND_TRUNCATE},
     { 10,  5, 2, NVCV_IMAGE_FORMAT_RGBAf32, 0.70f, 1.2f,  NVCV_ROUND_NEAREST},
+    // F16 rows are validated against an FP32 gold within 8 half-ULPs; round mode does not apply
+    // to the float path.
+    {  8,  6, 2,  NVCV_IMAGE_FORMAT_RGBf16, 0.75f, 1.1f,  NVCV_ROUND_NEAREST},
 });
 
 // clang-format on
@@ -1104,6 +1262,20 @@ TEST_P(OpGammaContrastTensorScalar, matches_cpu_gold)
         std::vector<uint8_t> got;
         std::vector<uint8_t> gold(testData.sampleBytes);
         ASSERT_NO_FATAL_FAILURE(DownloadTensorSample(dst, n, testData.rowStride, height, got));
+        if (testData.isHalf)
+        {
+            // F16 gold: FP32 reference (gain * in**gamma, clamp to [0, 1]) on the widened half
+            // input, bounded by 8 half-ULPs -- pow is a transcendental chain per the
+            // HalfTestUtils.hpp policy. Round mode does not apply to the float path.
+            std::vector<float> srcF = test::HalfBytesToFloat(testData.hostSamples[n]);
+            std::vector<float> goldF(srcF.size());
+            for (size_t i = 0; i < srcF.size(); ++i)
+            {
+                goldF[i] = nvcv::cuda::clamp(gain * std::pow(srcF[i], gamma), 0.f, 1.f);
+            }
+            test::ExpectNearHalfUlps(goldF, test::HalfBytesToFloat(got), 8.f);
+            continue;
+        }
         GammaContrastScalarCpuGold(gold, testData.hostSamples[n], gamma, gain, testData.isFloat, roundMode);
         ExpectTensorNear(got, gold, testData.isFloat);
     }
@@ -1164,6 +1336,7 @@ NVCV_TEST_SUITE_P(OpGammaContrastScalarVsTensor,
     {  8,  6, 2,      NVCV_IMAGE_FORMAT_S32, 1.10f},
     {  8,  6, 2,  NVCV_IMAGE_FORMAT_RGBf32, 0.70f},
     { 10,  5, 2, NVCV_IMAGE_FORMAT_RGBAf32, 1.30f},
+    {  8,  6, 2,  NVCV_IMAGE_FORMAT_RGBf16, 0.70f},
 });
 
 // clang-format on

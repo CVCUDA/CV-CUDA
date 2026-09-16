@@ -16,11 +16,14 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpAdjustSharpness.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
@@ -116,12 +119,14 @@ void WriteElem(std::vector<uint8_t> &buf, long3 strides, int n, int y, int x, in
 }
 
 // Fill an interleaved buffer with per-element typed random data: float in [0, 1] (matching a
-// normalized float image, keeping the blend finite), integer in [0, dtype-max].
+// normalized float image, keeping the blend finite), integer in [0, dtype-max]. __half takes the
+// float branch (std::is_floating_point excludes it); the cast quantizes each sample to half, so
+// the operator and the FP32 gold consume identical half-representable inputs.
 template<typename BT>
 void FillTypedRandom(std::vector<uint8_t> &buf, long3 strides, int width, int height, int batches, int channels,
                      unsigned seed)
 {
-    std::mt19937 rng(seed);
+    std::mt19937 rng(seed); // NOSONAR: deterministic test data, not security-sensitive.
     for (int i = 0; i < batches * height * width; ++i)
     {
         const int n = i / (height * width);
@@ -130,7 +135,7 @@ void FillTypedRandom(std::vector<uint8_t> &buf, long3 strides, int width, int he
         for (int c = 0; c < channels; ++c)
         {
             BT v;
-            if constexpr (std::is_floating_point_v<BT>)
+            if constexpr (nvcv::cuda::detail::IsFloatingPointV<BT>)
             {
                 std::uniform_real_distribution dist(0.0f, 1.0f);
                 v = static_cast<BT>(dist(rng));
@@ -178,6 +183,46 @@ void AdjustSharpnessGold(std::vector<uint8_t> &dst, const std::vector<uint8_t> &
             WriteElem<BT>(
                 dst, strides, n, y, x, c,
                 AdjustSharpnessRefScalar<BT>(c00, c01, c02, c10, c11, c12, c20, c21, c22, oneMinusFactor, bound));
+        }
+    }
+}
+
+// F16 comparison against an FP32 reference. The kernel widens every half tap to float and runs
+// the same fixed fmaf chain as the F32 path (no rintf on the smoothed value), rounding once on
+// the half store, so the reference is AdjustSharpnessRefScalar<float> with the float bound (1.0)
+// on the widened half-quantized input. AdjustSharpnessGold is deliberately not instantiated for
+// __half: its integer branches are gated on std::is_floating_point / std::numeric_limits, which
+// do not classify __half. Per the HalfTestUtils.hpp policy the half output is validated within
+// kUlps = 4 half-ULPs: a nine-tap fmaf blur plus a blend — a handful of float rounding steps
+// that may contract differently on host and device before the single half rounding.
+constexpr float kSharpF16Ulps = 4.f;
+
+void ExpectSharpnessF16NearGold(const std::vector<uint8_t> &tst, const std::vector<uint8_t> &src, long3 strides,
+                                int width, int height, int batches, int channels, float factor)
+{
+    const float oneMinusFactor = 1.0f - factor;
+    auto        at             = [&](int n, int y, int x, int c)
+    {
+        return __half2float(ReadElem<__half>(src, strides, n, y, x, c));
+    };
+    for (int i = 0; i < batches * height * width; ++i)
+    {
+        const int  n      = i / (height * width);
+        const int  y      = i / width % height;
+        const int  x      = i % width;
+        const bool border = (x == 0 || y == 0 || x == width - 1 || y == height - 1);
+        for (int c = 0; c < channels; ++c)
+        {
+            const float got = __half2float(ReadElem<__half>(tst, strides, n, y, x, c));
+            const float ref = border ? at(n, y, x, c)
+                                     : AdjustSharpnessRefScalar<float>(
+                                         at(n, y - 1, x - 1, c), at(n, y - 1, x, c), at(n, y - 1, x + 1, c),
+                                         at(n, y, x - 1, c), at(n, y, x, c), at(n, y, x + 1, c), at(n, y + 1, x - 1, c),
+                                         at(n, y + 1, x, c), at(n, y + 1, x + 1, c), oneMinusFactor, 1.0f);
+            // Tolerance rationale: 4 half-ULPs per the F16 policy block above — the nine-tap fmaf
+            // blur + blend may contract differently on host and device before the half rounding.
+            EXPECT_NEAR(got, ref, kSharpF16Ulps * test::HalfUlp(ref))
+                << "pixel (" << x << "," << y << ") channel " << c << " sample " << n;
         }
     }
 }
@@ -233,6 +278,49 @@ void RunCorrectness(int width, int height, int batches, nvcv::ImageFormat format
     EXPECT_EQ(testVec, goldVec);
 }
 
+// F16 tensor path: half-quantized random input, FP32 reference, kUlps = 4 (see the F16 block above).
+void RunCorrectnessF16(int width, int height, int batches, nvcv::ImageFormat format, float factor)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int channels = format.numChannels();
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, format);
+
+    auto inData  = inTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto outData = outTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(inData, nullptr);
+    ASSERT_NE(outData, nullptr);
+
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
+    ASSERT_TRUE(inAccess);
+
+    long3 strides{inAccess->sampleStride(), inAccess->rowStride(), inAccess->colStride()};
+    if (inData->rank() == 3) // HWC: no sample dimension, one image
+    {
+        strides.x = inAccess->numRows() * inAccess->rowStride();
+    }
+    const long bufSize = strides.x * batches;
+
+    std::vector<uint8_t> inVec(bufSize, 0);
+    std::vector<uint8_t> testVec(bufSize, 0);
+
+    FillTypedRandom<__half>( // NOSONAR: deterministic test data, not security-sensitive.
+        inVec, strides, width, height, batches, channels, /*seed=*/7u);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(inData->basePtr(), inVec.data(), bufSize, cudaMemcpyHostToDevice));
+
+    cvcuda::AdjustSharpness op;
+    EXPECT_NO_THROW(op(stream, inTensor, outTensor, factor));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(testVec.data(), outData->basePtr(), bufSize, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    ExpectSharpnessF16NearGold(testVec, inVec, strides, width, height, batches, channels, factor);
+}
+
 // Dispatch a fixed-format test case to the matching base type.
 void RunCorrectnessDispatch(int width, int height, int batches, nvcv::ImageFormat format, float factor)
 {
@@ -244,6 +332,10 @@ void RunCorrectnessDispatch(int width, int height, int batches, nvcv::ImageForma
     else if (dtype == nvcv::TYPE_U16 || dtype == nvcv::TYPE_3U16 || dtype == nvcv::TYPE_4U16)
     {
         RunCorrectness<uint16_t>(width, height, batches, format, factor);
+    }
+    else if (dtype == nvcv::TYPE_F16 || dtype == nvcv::TYPE_3F16 || dtype == nvcv::TYPE_4F16)
+    {
+        RunCorrectnessF16(width, height, batches, format, factor);
     }
     else if (dtype == nvcv::TYPE_F32 || dtype == nvcv::TYPE_3F32 || dtype == nvcv::TYPE_4F32)
     {
@@ -289,6 +381,9 @@ NVCV_TEST_SUITE_P(OpAdjustSharpness, test::ValueList<int, int, int, nvcv::ImageF
     {      51,     49,     1,     nvcv::FMT_U16,     0.0f}, // u16 / 1ch, fully smoothed
     {      47,     39,     2, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB16U}, 0.5f}, // u16 / 3ch
     {      31,     37,     1, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBA16U}, 2.0f}, // u16 / 4ch
+    {      33,     23,     1,     nvcv::FMT_F16,     2.0f}, // f16 / 1ch (FP32 gold, 4 half-ULPs)
+    {      57,     41,     2,  nvcv::FMT_RGBf16,     0.5f}, // f16 / 3ch (FP32 gold, 4 half-ULPs)
+    {      48,     36,     2, nvcv::FMT_RGBAf16,     2.0f}, // f16 / 4ch (FP32 gold, 4 half-ULPs)
     {      17,     19,     1,     nvcv::FMT_F32,     2.0f}, // f32 / 1ch
     {     101,     33,     2,  nvcv::FMT_RGBf32,     0.5f}, // f32 / 3ch
     {      64,     48,     3, nvcv::FMT_RGBAf32,     2.0f}, // f32 / 4ch
@@ -316,7 +411,7 @@ void RunVarShapeCorrectness(int batches, nvcv::ImageFormat format, float factor)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    std::mt19937                  rng(11);
+    std::mt19937                  rng(11); // NOSONAR: deterministic test data, not security-sensitive.
     std::uniform_int_distribution udW(60, 90);
     std::uniform_int_distribution udH(50, 70);
 
@@ -376,6 +471,74 @@ void RunVarShapeCorrectness(int batches, nvcv::ImageFormat format, float factor)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+// F16 var-shape path: half-quantized random input per image, FP32 reference, kUlps = 4 (see the
+// F16 block above).
+static void RunVarShapeCorrectnessF16(int batches, nvcv::ImageFormat format, float factor)
+{
+    const int chans = format.numChannels();
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    std::mt19937                  rng(11); // NOSONAR: deterministic test data, not security-sensitive.
+    std::uniform_int_distribution udW(60, 90);
+    std::uniform_int_distribution udH(50, 70);
+
+    std::vector<nvcv::Image>          imgSrc;
+    std::vector<nvcv::Image>          imgDst;
+    std::vector<std::vector<uint8_t>> srcVec(batches);
+    std::vector<int>                  rowStride(batches);
+    std::vector<int2>                 sizes(batches);
+
+    for (int i = 0; i < batches; ++i)
+    {
+        const int w = udW(rng);
+        const int h = udH(rng);
+        sizes[i]    = int2{w, h};
+        imgSrc.emplace_back(nvcv::Size2D{w, h}, format);
+        imgDst.emplace_back(nvcv::Size2D{w, h}, format);
+
+        rowStride[i] = w * format.planePixelStrideBytes(0);
+        srcVec[i].resize(static_cast<size_t>(h) * rowStride[i], 0);
+        long3 str{static_cast<long>(h) * rowStride[i], rowStride[i], format.planePixelStrideBytes(0)};
+        FillTypedRandom<__half>( // NOSONAR: deterministic test data, not security-sensitive.
+            srcVec[i], str, w, h, 1, chans, 100u + i);
+
+        auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgData, nvcv::NullOpt);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2DAsync(imgData->plane(0).basePtr, imgData->plane(0).rowStride, srcVec[i].data(),
+                                    rowStride[i], rowStride[i], h, cudaMemcpyHostToDevice, stream));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(batches);
+    nvcv::ImageBatchVarShape batchDst(batches);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    cvcuda::AdjustSharpness op;
+    EXPECT_NO_THROW(op(stream, batchSrc, batchDst, factor));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (int i = 0; i < batches; ++i)
+    {
+        SCOPED_TRACE(i);
+        const int w = sizes[i].x;
+        const int h = sizes[i].y;
+        long3     str{static_cast<long>(h) * rowStride[i], rowStride[i], format.planePixelStrideBytes(0)};
+
+        std::vector<uint8_t> testVec(static_cast<size_t>(h) * rowStride[i], 0);
+
+        auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(testVec.data(), rowStride[i], dstData->plane(0).basePtr,
+                                            dstData->plane(0).rowStride, rowStride[i], h, cudaMemcpyDeviceToHost));
+
+        ExpectSharpnessF16NearGold(testVec, srcVec[i], str, w, h, 1, chans, factor);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 static void RunVarShapeCorrectnessDispatch(int batches, nvcv::ImageFormat format, float factor)
 {
     const nvcv::DataType dtype = format.planeDataType(0);
@@ -386,6 +549,10 @@ static void RunVarShapeCorrectnessDispatch(int batches, nvcv::ImageFormat format
     else if (dtype == nvcv::TYPE_U16 || dtype == nvcv::TYPE_3U16 || dtype == nvcv::TYPE_4U16)
     {
         RunVarShapeCorrectness<uint16_t>(batches, format, factor);
+    }
+    else if (dtype == nvcv::TYPE_F16 || dtype == nvcv::TYPE_3F16 || dtype == nvcv::TYPE_4F16)
+    {
+        RunVarShapeCorrectnessF16(batches, format, factor);
     }
     else if (dtype == nvcv::TYPE_F32 || dtype == nvcv::TYPE_3F32 || dtype == nvcv::TYPE_4F32)
     {
@@ -405,6 +572,9 @@ NVCV_TEST_SUITE_P(OpAdjustSharpnessVarShape, test::ValueList<int, nvcv::ImageFor
     {2, nvcv::FMT_U16,                                          0.5f},
     {3, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB16U},             2.0f},
     {2, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBA16U},            1.5f},
+    {2, nvcv::FMT_F16,                                          2.0f},
+    {3, nvcv::FMT_RGBf16,                                       0.5f},
+    {2, nvcv::FMT_RGBAf16,                                      1.5f},
     {2, nvcv::FMT_F32,                                          2.0f},
     {3, nvcv::FMT_RGBf32,                                       0.5f},
     {2, nvcv::FMT_RGBAf32,                                      1.5f},
@@ -428,6 +598,10 @@ NVCV_TEST_SUITE_P(OpAdjustSharpnessPlanar,
                          nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB16U}},
     { 58,  46, 1, 2.0f, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBA16Up},
                          nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBA16U}},
+    // F16 parity is bit-exact: both layouts widen the same half taps to float, run the same
+    // fmaf chain, and round to half once.
+    { 60,  44, 2, 0.5f,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+    { 48,  36, 1, 2.0f, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
     { 50,  40, 2, 1.5f,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
     {100,  80, 2, 0.5f, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
 });
@@ -466,7 +640,7 @@ TEST_P(OpAdjustSharpnessPlanar, varshape_matches_interleaved)
 // Negative tests: the complement of the support matrix must be rejected. -------------------------
 // clang-format off
 NVCV_TEST_SUITE_P(OpAdjustSharpness_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
-    {nvcv::FMT_F16,    nvcv::FMT_F16   }, // unsupported dtype (16-bit float)
+    {nvcv::FMT_F64,    nvcv::FMT_F64   }, // unsupported dtype (64-bit float; F16 is now valid)
     {nvcv::FMT_S16,    nvcv::FMT_S16   }, // unsupported dtype (signed 16-bit)
     {nvcv::FMT_RGB8,   nvcv::FMT_RGB8p }, // layout mismatch (interleaved in, planar out)
     {nvcv::FMT_RGB8,   nvcv::FMT_RGBf32}, // input/output data type mismatch

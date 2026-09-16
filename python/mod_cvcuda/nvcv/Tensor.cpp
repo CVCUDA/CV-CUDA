@@ -110,7 +110,12 @@ NVCVTensorData FillNVCVTensorData(const DLTensor &tensor, std::optional<nvcv::Te
     NVCVTensorData tensorData = {};
 
     // dtype ------------
-    tensorData.dtype = static_cast<NVCVDataType>(py::cast<nvcv::DataType>(ToDType(ToNVCVDataType(tensor.dtype))));
+    std::optional<nvcv::DataType> dtype = NormalizeDataType(ToNVCVDataType(tensor.dtype));
+    if (!dtype)
+    {
+        throw TensorError("Buffer data type is not supported");
+    }
+    tensorData.dtype = static_cast<NVCVDataType>(*dtype);
 
     // layout ------------
     if (layout)

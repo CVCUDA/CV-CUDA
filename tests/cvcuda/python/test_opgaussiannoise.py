@@ -48,6 +48,14 @@ import pytest
             ((5, 460, 640, 1), cvcuda.Type.U16, "NHWC"),
             True,
         ),
+        (
+            ((2, 120, 100, 3), cvcuda.Type.F16, "NHWC"),
+            False,
+        ),
+        (
+            ((3, 100, 120, 3), cvcuda.Type.F16, "NHWC"),
+            True,
+        ),
     ],
 )
 def test_op_gaussiannoise(input_args, per_channel):
@@ -99,6 +107,9 @@ def test_op_gaussiannoise(input_args, per_channel):
         ((3, 17, 19), cvcuda.Type.U8, "CHW"),
         ((2, 3, 17, 19), cvcuda.Type.F32, "NCHW"),
         ((17, 19, 3), cvcuda.Type.F32, "HWC"),
+        # F16 rides the F32 policy (float sums, clip clamps to [0, 1]); mu/sigma stay Python floats
+        ((2, 17, 19, 3), cvcuda.Type.F16, "NHWC"),
+        ((2, 3, 17, 19), cvcuda.Type.F16, "NCHW"),
     ],
 )
 @pytest.mark.parametrize("clip", [True, False])
@@ -200,6 +211,13 @@ def test_op_gaussiannoise_scalar_rejects_invalid_parameters():
             (460, 640),
             True,
         ),
+        (
+            2,
+            cvcuda.Format.RGBf16,
+            (120, 100),
+            (120, 100),
+            True,
+        ),
     ],
 )
 def test_op_gaussiannoise_varshape(num_images, format, min_size, max_size, per_channel):
@@ -278,6 +296,7 @@ globals().update(
             cvcuda.Type.U16,
             cvcuda.Type.S16,
             cvcuda.Type.S32,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},

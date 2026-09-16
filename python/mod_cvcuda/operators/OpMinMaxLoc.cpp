@@ -205,6 +205,10 @@ TupleTensor3 MinLoc(InputContainer &input, nvcv::DataType inDataType, int numSam
 TupleTensor3 MinLocTensor(Tensor &input, int maxLocs, std::optional<Stream> pstream)
 {
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(input.exportData());
+    if (!inAccess)
+    {
+        throw MinMaxLocError("Incompatible input tensor layout");
+    }
 
     maxLocs = maxLocs == 0 ? GetDefaultMaxLocs(inAccess->numCols(), inAccess->numRows()) : maxLocs;
 
@@ -238,6 +242,10 @@ TupleTensor3 MaxLoc(InputContainer &input, nvcv::DataType inDataType, int numSam
 TupleTensor3 MaxLocTensor(Tensor &input, int maxLocs, std::optional<Stream> pstream)
 {
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(input.exportData());
+    if (!inAccess)
+    {
+        throw MinMaxLocError("Incompatible input tensor layout");
+    }
 
     maxLocs = maxLocs == 0 ? GetDefaultMaxLocs(inAccess->numCols(), inAccess->numRows()) : maxLocs;
 
@@ -274,6 +282,10 @@ TupleTensor6 MinMaxLoc(InputContainer &input, nvcv::DataType inDataType, int num
 TupleTensor6 MinMaxLocTensor(Tensor &input, int maxLocs, std::optional<Stream> pstream)
 {
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(input.exportData());
+    if (!inAccess)
+    {
+        throw MinMaxLocError("Incompatible input tensor layout");
+    }
 
     maxLocs = maxLocs == 0 ? GetDefaultMaxLocs(inAccess->numCols(), inAccess->numRows()) : maxLocs;
 

@@ -16,11 +16,30 @@
 find_package(cvcuda REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
-find_package(dlpack CONFIG REQUIRED)
+find_package(dlpack CONFIG QUIET)
+if(NOT dlpack_FOUND)
+    # Fall back to fetching the pinned release when dlpack isn't installed.
+    message(STATUS "dlpack not found via find_package; fetching v1.3 with FetchContent")
+    include(FetchContent)
+    FetchContent_Declare(dlpack
+        GIT_REPOSITORY https://github.com/dmlc/dlpack.git
+        GIT_TAG        84d107bf416c6bab9ae68ad285876600d230490d # immutable commit for v1.3
+        GIT_SHALLOW    TRUE
+    )
+    # We only need the headers; skip dlpack's mock and docs targets.
+    set(BUILD_MOCK OFF)
+    set(BUILD_DOCS OFF)
+    FetchContent_MakeAvailable(dlpack)
+    set(_dlpack_fetched TRUE)
+endif()
 
 # dlpack's CMake project version is stuck at 0.6 regardless of release,
 # so check the actual version from header macros.
-get_target_property(_dlpack_inc dlpack::dlpack INTERFACE_INCLUDE_DIRECTORIES)
+if(_dlpack_fetched)
+    set(_dlpack_inc "${dlpack_SOURCE_DIR}/include")
+else()
+    get_target_property(_dlpack_inc dlpack::dlpack INTERFACE_INCLUDE_DIRECTORIES)
+endif()
 file(STRINGS "${_dlpack_inc}/dlpack/dlpack.h" _dlpack_major REGEX "#define DLPACK_MAJOR_VERSION")
 file(STRINGS "${_dlpack_inc}/dlpack/dlpack.h" _dlpack_minor REGEX "#define DLPACK_MINOR_VERSION")
 string(REGEX MATCH "[0-9]+" _dlpack_major "${_dlpack_major}")

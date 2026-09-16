@@ -26,12 +26,33 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 
+#include <cstddef>
+
 namespace cvcuda::priv {
+
+// Persistent per-device scratch for the batched erase paths.  The largest erase extent is found
+// with a cub device reduction, which needs a temporary buffer sized once from the operator's
+// maximum erase-area count, plus a device int3 to receive the result.  Whether the bulk copy
+// paths pay off is a property of the device, so it is resolved here too.
+struct EraseDeviceScratch
+{
+    EraseDeviceScratch(int maxNumErasingArea, bool useBulkCopy);
+    ~EraseDeviceScratch();
+
+    EraseDeviceScratch(const EraseDeviceScratch &)            = delete;
+    EraseDeviceScratch &operator=(const EraseDeviceScratch &) = delete;
+
+    int3      *maxValues         = nullptr;
+    std::byte *tempStorage       = nullptr;
+    size_t     storageBytes      = 0;
+    int        maxNumErasingArea = 0;
+    bool       useBulkCopy       = false;
+};
 
 class Erase final : public IOperator
 {
@@ -50,8 +71,8 @@ public:
                     int64_t h, int64_t w, const nvcv::Tensor &values) const;
 
 private:
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::Erase>         m_legacyOp;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::EraseVarShape> m_legacyOpVarShape;
+    mutable PerDeviceResource<EraseDeviceScratch> m_tensorScratch;
+    mutable PerDeviceResource<EraseDeviceScratch> m_varShapeScratch;
 };
 
 } // namespace cvcuda::priv

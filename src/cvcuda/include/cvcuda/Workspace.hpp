@@ -22,6 +22,7 @@
 
 #include <nvcv/alloc/Allocator.hpp>
 #include <nvcv/detail/Align.hpp>
+#include <nvcv/detail/CheckError.hpp>
 
 #include <cassert>
 #include <functional>
@@ -215,15 +216,28 @@ inline UniqueWorkspace AllocateWorkspace(const WorkspaceRequirements &req, nvcv:
         ws.pinnedMem.req = req.pinnedMem;
         ws.cudaMem.req   = req.cudaMem;
 
+        NVCVMemoryBuffer data = nullptr;
         if (req.hostMem.size)
-            ws.hostMem.data = alloc.hostMem().alloc(static_cast<int64_t>(req.hostMem.size),
-                                                    static_cast<int32_t>(req.hostMem.alignment));
+        {
+            nvcv::detail::CheckThrow(nvcvAllocatorAllocHostMemory(alloc.handle(), &data,
+                                                                  static_cast<int64_t>(req.hostMem.size),
+                                                                  static_cast<int32_t>(req.hostMem.alignment)));
+            ws.hostMem.data = data;
+        }
         if (req.pinnedMem.size)
-            ws.pinnedMem.data = alloc.hostPinnedMem().alloc(static_cast<int64_t>(req.pinnedMem.size),
-                                                            static_cast<int32_t>(req.pinnedMem.alignment));
+        {
+            nvcv::detail::CheckThrow(nvcvAllocatorAllocHostPinnedMemory(alloc.handle(), &data,
+                                                                        static_cast<int64_t>(req.pinnedMem.size),
+                                                                        static_cast<int32_t>(req.pinnedMem.alignment)));
+            ws.pinnedMem.data = data;
+        }
         if (req.cudaMem.size)
-            ws.cudaMem.data = alloc.cudaMem().alloc(static_cast<int64_t>(req.cudaMem.size),
-                                                    static_cast<int32_t>(req.cudaMem.alignment));
+        {
+            nvcv::detail::CheckThrow(nvcvAllocatorAllocCudaMemory(alloc.handle(), &data,
+                                                                  static_cast<int64_t>(req.cudaMem.size),
+                                                                  static_cast<int32_t>(req.cudaMem.alignment)));
+            ws.cudaMem.data = data;
+        }
         return UniqueWorkspace(ws, std::move(del));
     }
     catch (...)

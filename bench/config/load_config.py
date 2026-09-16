@@ -619,6 +619,7 @@ DTYPE_TO_NVBENCH = {
     "int16": "I16",
     "int32": "I32",
     "int64": "I64",
+    "float16": "F16",
     "float32": "F32",
     "float64": "F64",
 }

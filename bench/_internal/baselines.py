@@ -124,6 +124,16 @@ BASELINE_METRIC_FIELDS = (
 )
 GPU_GAP_STDDEV_FIELD = "gpu_gap_stddev_us"
 
+# Artifacts may either be a bare ``{case_key: {sku: metrics}}`` mapping (the
+# original shape, still present in every previously uploaded artifact) or an
+# enveloped document that carries run provenance alongside that same mapping.
+# The nested mapping is byte-identical in both shapes so committed baselines and
+# every consumer of them stay unchanged.
+PAYLOAD_SCHEMA_FIELD = "schema_version"
+PAYLOAD_BASELINES_FIELD = "baselines"
+PAYLOAD_METADATA_FIELD = "run_metadata"
+PAYLOAD_SCHEMA_VERSION = 1
+
 DTYPE_MAP = {
     "U8": "uint8",
     "U16": "uint16",
@@ -663,7 +673,7 @@ def case_key_from_row(row: pd.Series, ref: ConfigRef) -> str:
 
 def load_sku_map(
     sku_map_path: Optional[Path] = DEFAULT_SKU_MAP_PATH, *, strict: bool = False
-) -> Dict[Tuple[str, int, int], str]:
+) -> Dict[Tuple[str, int, int, int], str]:
     if not sku_map_path or not Path(sku_map_path).is_file():
         if strict:
             raise BaselineError(f"sku_map.json not found at {sku_map_path}")
@@ -677,12 +687,13 @@ def load_sku_map(
             ) from exc
         return {}
 
-    out: Dict[Tuple[str, int, int], str] = {}
+    out: Dict[Tuple[str, int, int, int], str] = {}
     for idx, entry in enumerate(raw.get("entries", [])):
         try:
             name = str(entry["gpu_name"])
             cap = int(round(float(entry["power_cap_w"])))
             clock = int(round(float(entry["locked_sm_clock_mhz"])))
+            cuda_major = int(entry["cuda_major"])
             stem = str(entry["stem"])
         except (KeyError, TypeError, ValueError) as exc:
             if strict:
@@ -690,7 +701,7 @@ def load_sku_map(
                     f"invalid sku_map.json entry #{idx}: {entry!r}"
                 ) from exc
             continue
-        out[(name, cap, clock)] = stem
+        out[(name, cap, clock, cuda_major)] = stem
     return out
 
 
@@ -701,7 +712,7 @@ def sku_stems(
 
 
 def resolve_sku_for_row(
-    row: pd.Series, sku_map: Dict[Tuple[str, int, int], str]
+    row: pd.Series, sku_map: Dict[Tuple[str, int, int, int], str], cuda_major: int
 ) -> str:
     missing = [
         column
@@ -715,9 +726,11 @@ def resolve_sku_for_row(
     clock = int(
         round(_finite_float(row[LOCKED_CLOCK_COLUMN], label=LOCKED_CLOCK_COLUMN))
     )
-    sku = sku_map.get((name, cap, clock))
+    sku = sku_map.get((name, cap, clock, cuda_major))
     if not sku:
-        raise BaselineError(f"({name!r}, {cap!r}, {clock!r}) is not in sku_map.json")
+        raise BaselineError(
+            f"({name!r}, {cap!r}, {clock!r}, CUDA {cuda_major}) is not in sku_map.json"
+        )
     return sku
 
 
@@ -737,7 +750,8 @@ def measurement_from_row(
     source: Path,
     row_number: int,
     index: ConfigIndex,
-    sku_map: Dict[Tuple[str, int, int], str],
+    sku_map: Dict[Tuple[str, int, int, int], str],
+    cuda_major: int,
 ) -> RunMeasurement:
     config_key = str(row[CONFIG_KEY_COLUMN]).strip()
     ref = index.require(config_key)
@@ -755,7 +769,7 @@ def measurement_from_row(
             f"Language must be one of {sorted(LANGUAGES)}, got {language!r}"
         )
 
-    sku = resolve_sku_for_row(row, sku_map)
+    sku = resolve_sku_for_row(row, sku_map, cuda_major)
     gpu_time_us = _finite_float(row[GPU_TIME_COLUMN], label=GPU_TIME_COLUMN)
     gpu_noise_us = _finite_float(row[GPU_NOISE_US_COLUMN], label=GPU_NOISE_US_COLUMN)
     gpu_bwutil = _finite_float(row[BWUTIL_COLUMN], label=BWUTIL_COLUMN)
@@ -920,6 +934,7 @@ def measurements_from_dataframe(
     df: pd.DataFrame,
     *,
     index: ConfigIndex,
+    cuda_major: int,
     sku_map_path: Path = DEFAULT_SKU_MAP_PATH,
     source: Path = Path("<dataframe>"),
 ) -> List[RunMeasurement]:
@@ -942,6 +957,7 @@ def measurements_from_dataframe(
                         row_number=row_number,
                         index=index,
                         sku_map=sku_map,
+                        cuda_major=cuda_major,
                     )
                 )
             except Exception as exc:
@@ -978,11 +994,16 @@ def baseline_payload_from_dataframe(
     df: pd.DataFrame,
     *,
     index: ConfigIndex,
+    cuda_major: int,
     sku_map_path: Path = DEFAULT_SKU_MAP_PATH,
     source: Path = Path("<dataframe>"),
 ) -> Dict[str, Dict[str, Dict[str, Any]]]:
     measurements = measurements_from_dataframe(
-        df, index=index, sku_map_path=sku_map_path, source=source
+        df,
+        index=index,
+        cuda_major=cuda_major,
+        sku_map_path=sku_map_path,
+        source=source,
     )
     return baseline_payload_from_updates(aggregate_measurements(measurements).values())
 
@@ -993,15 +1014,113 @@ def _positive_int(value: Any, *, label: str) -> int:
     return value
 
 
+def split_baseline_payload(
+    payload: Any,
+    *,
+    source: Path = Path("<baseline-json>"),
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Return ``(case-key mapping, run metadata)`` for either payload shape."""
+    if not isinstance(payload, dict):
+        raise BaselineError(f"{source}: baseline JSON root must be an object")
+    if PAYLOAD_SCHEMA_FIELD not in payload:
+        return payload, {}
+
+    version = payload[PAYLOAD_SCHEMA_FIELD]
+    if version != PAYLOAD_SCHEMA_VERSION:
+        raise BaselineError(
+            f"{source}: unsupported {PAYLOAD_SCHEMA_FIELD} {version!r}; "
+            f"this tool understands {PAYLOAD_SCHEMA_VERSION}"
+        )
+    baselines = payload.get(PAYLOAD_BASELINES_FIELD)
+    if not isinstance(baselines, dict):
+        raise BaselineError(
+            f"{source}: enveloped payload must carry an object "
+            f"{PAYLOAD_BASELINES_FIELD!r}"
+        )
+    metadata = payload.get(PAYLOAD_METADATA_FIELD, {})
+    if not isinstance(metadata, dict):
+        raise BaselineError(
+            f"{source}: {PAYLOAD_METADATA_FIELD!r} must be an object when present"
+        )
+    return baselines, metadata
+
+
+def build_baseline_document(
+    baselines: Dict[str, Any],
+    *,
+    run_metadata: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Wrap a case-key mapping in the provenance envelope.
+
+    A bare mapping identifies nothing about the run that produced it, so a
+    series of artifacts cannot be keyed or trusted. The envelope carries that
+    provenance without disturbing the nested mapping.
+    """
+    return {
+        PAYLOAD_SCHEMA_FIELD: PAYLOAD_SCHEMA_VERSION,
+        PAYLOAD_METADATA_FIELD: dict(run_metadata or {}),
+        PAYLOAD_BASELINES_FIELD: baselines,
+    }
+
+
+@dataclass(frozen=True)
+class BenchmarkArtifact:
+    """One benchmark JSON, read and split exactly once."""
+
+    path: Path
+    baselines: Dict[str, Any]
+    run_metadata: Dict[str, Any]
+
+
+def load_artifacts(paths: Sequence[Path]) -> List[BenchmarkArtifact]:
+    """Read and split each artifact once.
+
+    Provenance and measurements live in the same file, so reading it twice to
+    get them separately doubles the I/O and JSON decode of payloads that hold
+    thousands of case keys.
+    """
+    artifacts: List[BenchmarkArtifact] = []
+    errors: List[str] = []
+    for path in paths:
+        try:
+            raw = json.loads(Path(path).read_text())
+            baselines, run_metadata = split_baseline_payload(raw, source=Path(path))
+            artifacts.append(
+                BenchmarkArtifact(
+                    path=Path(path), baselines=baselines, run_metadata=run_metadata
+                )
+            )
+        except Exception as exc:
+            errors.append(f"{path}: {exc}")
+    if errors:
+        raise BaselineError(
+            "unreadable benchmark artifact(s):\n  " + "\n  ".join(errors)
+        )
+    return artifacts
+
+
 def baseline_updates_from_payload(
     payload: Dict[str, Any],
     *,
     index: ConfigIndex,
     sku_stem_set: Set[str],
     source: Path = Path("<baseline-json>"),
+    validated_case_keys: Optional[Set[str]] = None,
+    errors_out: Optional[List[str]] = None,
 ) -> List[BaselineUpdate]:
-    if not isinstance(payload, dict):
-        raise BaselineError(f"{source}: baseline JSON root must be an object")
+    """Turn one payload into updates.
+
+    ``validated_case_keys`` lets a caller reading a wave of artifacts share the
+    case-key validation across them. Every artifact in a wave carries the same
+    couple of thousand case keys, and validating a key against its config is
+    pure, so repeating it per artifact is the dominant cost of loading a wave.
+
+    ``errors_out`` collects per-row problems instead of raising. Importing a
+    baseline must reject a row the current config does not declare, but reading
+    a window of past artifacts must not: a config's declared axis values change
+    over time, so history legitimately contains rows that no longer exist.
+    """
+    payload, _ = split_baseline_payload(payload, source=source)
 
     updates: List[BaselineUpdate] = []
     errors: List[str] = []
@@ -1009,7 +1128,11 @@ def baseline_updates_from_payload(
         try:
             config_key, _ = parse_case_key(case_key)
             ref = index.require(config_key)
-            validate_case_key_for_config(case_key, ref)
+            if validated_case_keys is None:
+                validate_case_key_for_config(case_key, ref)
+            elif case_key not in validated_case_keys:
+                validate_case_key_for_config(case_key, ref)
+                validated_case_keys.add(case_key)
             if not isinstance(case_payload, dict):
                 raise BaselineError("SKU map must be an object")
 
@@ -1107,7 +1230,46 @@ def baseline_updates_from_payload(
             errors.append(f"{source}: {case_key}: {exc}")
 
     if errors:
-        raise BaselineError("invalid baseline JSON:\n  " + "\n  ".join(errors))
+        if errors_out is None:
+            raise BaselineError("invalid baseline JSON:\n  " + "\n  ".join(errors))
+        errors_out.extend(errors)
+    return updates
+
+
+def _updates_from_artifacts(
+    artifacts: Sequence[BenchmarkArtifact],
+    *,
+    index: ConfigIndex,
+    sku_map_path: Path,
+    errors_out: Optional[List[str]] = None,
+) -> List[BaselineUpdate]:
+    stems = sku_stems(sku_map_path, strict=True)
+    updates: List[BaselineUpdate] = []
+    errors: List[str] = []
+    # Scoped to this call, so a caller that reloads a different config tree
+    # never sees another tree's validation results.
+    validated_case_keys: Set[str] = set()
+    for artifact in artifacts:
+        try:
+            updates.extend(
+                baseline_updates_from_payload(
+                    artifact.baselines,
+                    index=index,
+                    sku_stem_set=stems,
+                    source=artifact.path,
+                    validated_case_keys=validated_case_keys,
+                    errors_out=errors_out,
+                )
+            )
+        except Exception as exc:
+            errors.append(f"{artifact.path}: {exc}")
+
+    if errors:
+        if errors_out is None:
+            raise BaselineError(
+                "invalid baseline JSON input(s):\n  " + "\n  ".join(errors)
+            )
+        errors_out.extend(errors)
     return updates
 
 
@@ -1117,26 +1279,36 @@ def baseline_updates_from_jsons(
     index: ConfigIndex,
     sku_map_path: Path = DEFAULT_SKU_MAP_PATH,
 ) -> Dict[Tuple[str, str, str], BaselineUpdate]:
-    stems = sku_stems(sku_map_path, strict=True)
-    updates: List[BaselineUpdate] = []
-    errors: List[str] = []
-    for path in paths:
-        try:
-            raw = json.loads(Path(path).read_text())
-            updates.extend(
-                baseline_updates_from_payload(
-                    raw,
-                    index=index,
-                    sku_stem_set=stems,
-                    source=Path(path),
-                )
-            )
-        except Exception as exc:
-            errors.append(f"{path}: {exc}")
+    return merge_baseline_updates(
+        _updates_from_artifacts(
+            load_artifacts(paths), index=index, sku_map_path=sku_map_path
+        )
+    )
 
-    if errors:
-        raise BaselineError("invalid baseline JSON input(s):\n  " + "\n  ".join(errors))
-    return merge_baseline_updates(updates)
+
+def baseline_update_samples_from_artifacts(
+    artifacts: Sequence[BenchmarkArtifact],
+    *,
+    index: ConfigIndex,
+    sku_map_path: Path = DEFAULT_SKU_MAP_PATH,
+    errors_out: Optional[List[str]] = None,
+) -> Dict[Tuple[str, str, str], List[BaselineUpdate]]:
+    """Group per-artifact updates by row without collapsing them into a mean.
+
+    Drift analysis needs the individual observations: a shift is only credible
+    when the artifacts agree on it, which a merged mean cannot express.
+
+    Pass ``errors_out`` to skip rows the current config no longer declares
+    rather than failing; a window of past artifacts always contains some.
+    """
+    grouped: Dict[Tuple[str, str, str], List[BaselineUpdate]] = {}
+    for update in _updates_from_artifacts(
+        artifacts, index=index, sku_map_path=sku_map_path, errors_out=errors_out
+    ):
+        grouped.setdefault((update.config_key, update.case_key, update.sku), []).append(
+            update
+        )
+    return grouped
 
 
 def _ordered_metric_object(metrics: Dict[str, Any]) -> Dict[str, Any]:

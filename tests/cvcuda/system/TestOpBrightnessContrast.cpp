@@ -15,12 +15,14 @@
  * limitations under the License.
  */
 
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/InterpUtils.hpp>
 #include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpBrightnessContrast.hpp>
 #include <cvcuda/cuda_tools/DropCast.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
@@ -41,9 +43,30 @@ namespace ttype = nvcv::test::type;
 
 using uchar = unsigned char;
 
+// __half cannot parameterize std::uniform_real_distribution, so F16 rows sample floats in the
+// same [0, 1] range the float rows use and quantize to half on assignment.
 template<typename T>
-using uniform_distribution
-    = std::conditional_t<std::is_integral_v<T>, std::uniform_int_distribution<T>, std::uniform_real_distribution<T>>;
+using DistValueType = std::conditional_t<std::is_same_v<T, __half>, float, T>;
+
+template<typename T>
+using uniform_distribution = std::conditional_t<std::is_integral_v<T>, std::uniform_int_distribution<T>,
+                                                std::uniform_real_distribution<DistValueType<T>>>;
+
+// Builds the value distribution without naming TypeTraits<T>::max for __half, which has no
+// constexpr max member (non-literal type).
+template<typename T>
+uniform_distribution<T> MakeValueDistribution()
+{
+    using DT = DistValueType<T>;
+    if constexpr (std::is_integral_v<T>)
+    {
+        return uniform_distribution<T>(T{0}, cuda::TypeTraits<T>::max);
+    }
+    else
+    {
+        return uniform_distribution<T>(DT{0}, DT{1});
+    }
+}
 
 template<typename ValueType>
 void ComparePixel(std::vector<uint8_t> &dst, std::vector<uint8_t> &ref, const long4_16a &strides, const int4 &coord,
@@ -53,7 +76,17 @@ void ComparePixel(std::vector<uint8_t> &dst, std::vector<uint8_t> &ref, const lo
     auto refPixel = test::ValueAt<ValueType>(ref, strides, coord);
     for (int k = 0; k < cuda::NumElements<ValueType>; ++k)
     {
-        if (requireExact)
+        if constexpr (std::is_same_v<cuda::BaseType<ValueType>, __half>)
+        {
+            // F16 outputs: the reference evaluates the same single mul-add chain in the float
+            // ArgT and rounds once to half, mirroring the kernel; per the HalfTestUtils.hpp
+            // policy the tolerance is kUlps = 1 half-ULP at the reference magnitude (CPU and
+            // GPU float chains may round differently, e.g. through FMA contraction).
+            const auto refValue = static_cast<float>(cuda::GetElement(refPixel, k));
+            EXPECT_NEAR(static_cast<float>(cuda::GetElement(dstPixel, k)), refValue,
+                        tolerance * test::HalfUlp(refValue));
+        }
+        else if (requireExact)
         {
             EXPECT_EQ(cuda::GetElement(dstPixel, k), cuda::GetElement(refPixel, k));
         }
@@ -351,7 +384,22 @@ NVCV_TYPED_TEST_SUITE(OpBrightnessContrast,
                                    NVCV_CASE(NVCV_SHAPE(128, 32, 17), float, float, NVCV_IMAGE_FORMAT_RGBAf32p,
                                              NVCV_IMAGE_FORMAT_RGBAf32p, float, NVCV_ARGS_COUNT(0, 0, 17, 0)),
                                    NVCV_CASE(NVCV_SHAPE(32, 128, 18), float4, float4, NVCV_IMAGE_FORMAT_RGBAf32,
-                                             NVCV_IMAGE_FORMAT_RGBAf32, float, NVCV_ARGS_COUNT(0, 0, 0, 18))>);
+                                             NVCV_IMAGE_FORMAT_RGBAf32, float, NVCV_ARGS_COUNT(0, 0, 0, 18)),
+                                   // F16 rows use F32 args and are validated within 1 half-ULP (see ComparePixel):
+                                   // interleaved RGB (vectorized uint3-pack path), single channel, planar, RGBA
+                                   // (half4 pack), and both mixed-type directions.
+                                   NVCV_CASE(NVCV_SHAPE(41, 27, 3), half3, half3, NVCV_IMAGE_FORMAT_RGBf16,
+                                             NVCV_IMAGE_FORMAT_RGBf16, float, NVCV_ARGS_COUNT(3, 3, 3, 3)),
+                                   NVCV_CASE(NVCV_SHAPE(37, 19, 2), __half, __half, NVCV_IMAGE_FORMAT_F16,
+                                             NVCV_IMAGE_FORMAT_F16, float, NVCV_ARGS_COUNT(2, 1, 2, 0)),
+                                   NVCV_CASE(NVCV_SHAPE(23, 18, 3), __half, __half, NVCV_IMAGE_FORMAT_RGBf16p,
+                                             NVCV_IMAGE_FORMAT_RGBf16p, float, NVCV_ARGS_COUNT(3, 3, 3, 3)),
+                                   NVCV_CASE(NVCV_SHAPE(17, 17, 2), half4, half4, NVCV_IMAGE_FORMAT_RGBAf16,
+                                             NVCV_IMAGE_FORMAT_RGBAf16, float, NVCV_ARGS_COUNT(2, 2, 0, 2)),
+                                   NVCV_CASE(NVCV_SHAPE(31, 13, 2), uchar3, half3, NVCV_IMAGE_FORMAT_RGB8,
+                                             NVCV_IMAGE_FORMAT_RGBf16, float, NVCV_ARGS_COUNT(2, 2, 2, 2)),
+                                   NVCV_CASE(NVCV_SHAPE(29, 14, 2), half3, float3, NVCV_IMAGE_FORMAT_RGBf16,
+                                             NVCV_IMAGE_FORMAT_RGBf32, float, NVCV_ARGS_COUNT(2, 2, 2, 2))>);
 
 // clang-format on
 
@@ -423,9 +471,9 @@ TYPED_TEST(OpBrightnessContrast, correct_output)
     std::vector<uint8_t> dstVec(dstBufSize, uint8_t{0});
     std::vector<uint8_t> refVec(dstBufSize, uint8_t{0});
 
-    uniform_distribution<SrcBT> srcRand(SrcBT{0}, std::is_integral_v<SrcBT> ? cuda::TypeTraits<SrcBT>::max : SrcBT{1});
-    uniform_distribution<DstBT> dstRand(DstBT{0}, std::is_integral_v<DstBT> ? cuda::TypeTraits<DstBT>::max : DstBT{1});
-    std::mt19937_64             rng(12345);
+    auto            srcRand = MakeValueDistribution<SrcBT>();
+    auto            dstRand = MakeValueDistribution<DstBT>();
+    std::mt19937_64 rng(12345);
 
     const int numPixels = shape.x * shape.y;
     for (int z = 0; z < shape.z; ++z)
@@ -462,8 +510,10 @@ TYPED_TEST(OpBrightnessContrast, correct_output)
                                              args.contrastCenter.GetHostElement(z));
     }
 
-    float      absTolerance = std::is_integral_v<DstBT> ? 1.f : 1e-5f;
-    const bool requireExact = std::is_integral_v<SrcBT> && std::is_same_v<SrcType, DstType> && argCounts.x == 0
+    // For F16 outputs the tolerance is a half-ULP count (see ComparePixel); one mul-add chain
+    // with a single rounding on the half store justifies kUlps = 1 (HalfTestUtils.hpp policy).
+    constexpr float absTolerance = std::is_integral_v<DstBT> || std::is_same_v<DstBT, __half> ? 1.f : 1e-5f;
+    const bool      requireExact = std::is_integral_v<SrcBT> && std::is_same_v<SrcType, DstType> && argCounts.x == 0
                            && argCounts.y == 0 && argCounts.z == 0 && argCounts.w == 0;
     CompareTensors<DstType>(dstVec, refVec, dstStrides, shape, numPlanes, absTolerance, requireExact);
 
@@ -496,9 +546,9 @@ TYPED_TEST(OpBrightnessContrast, varshape_correct_output)
 
     std::uniform_int_distribution randW(shape.x / 2, shape.x * 3 / 2);
     std::uniform_int_distribution randH(shape.y / 2, shape.y * 3 / 2);
-    uniform_distribution<SrcBT> srcRand(SrcBT{0}, std::is_integral_v<SrcBT> ? cuda::TypeTraits<SrcBT>::max : SrcBT{1});
-    uniform_distribution<DstBT> dstRand(DstBT{0}, std::is_integral_v<DstBT> ? cuda::TypeTraits<DstBT>::max : DstBT{1});
-    std::mt19937_64             rng(12345);
+    auto                          srcRand = MakeValueDistribution<SrcBT>();
+    auto                          dstRand = MakeValueDistribution<DstBT>();
+    std::mt19937_64               rng(12345);
 
     ASSERT_EQ(sizeof(SrcType), srcImgFormat.planePixelStrideBytes(0));
     ASSERT_EQ(sizeof(DstType), dstImgFormat.planePixelStrideBytes(0));
@@ -608,8 +658,9 @@ TYPED_TEST(OpBrightnessContrast, varshape_correct_output)
                                              args.brightnessShift.GetHostElement(z),
                                              args.contrastCenter.GetHostElement(z));
 
-        float      absTolerance = std::is_integral_v<DstBT> ? 1.f : 1e-5f;
-        const bool requireExact = std::is_integral_v<SrcBT> && std::is_same_v<SrcType, DstType> && argCounts.x == 0
+        // F16 tolerance is a half-ULP count (kUlps = 1); see the tensor test above.
+        constexpr float absTolerance = std::is_integral_v<DstBT> || std::is_same_v<DstBT, __half> ? 1.f : 1e-5f;
+        const bool      requireExact = std::is_integral_v<SrcBT> && std::is_same_v<SrcType, DstType> && argCounts.x == 0
                                && argCounts.y == 0 && argCounts.z == 0 && argCounts.w == 0;
         CompareTensors<DstType>(dstVec, refVec, dstStrides, sampleShape, numPlanes, absTolerance, requireExact);
     }
@@ -773,6 +824,9 @@ NVCV_TEST_SUITE_P(OpBrightnessContrastPlanar,
     {37, 29, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
     {41, 33, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
     {35, 31, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    // F16 parity is bit-exact: both layouts run the same float chain and round to half once.
+    {41, 33, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+    {35, 31, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 // clang-format on
@@ -812,6 +866,99 @@ TEST(OpBrightnessContrast_Negative, two_channel_planar_tensor)
                                                    op(stream, src, dst, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
                                                       nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr});
                                                }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpBrightnessContrast_Negative, tensor_layout_and_channel_validation)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::BrightnessContrast op;
+    auto                       expectInvalid = [&op, stream](const nvcv::Tensor &src, const nvcv::Tensor &dst)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, src, dst, 1., 1., 0., 0.); }));
+    };
+
+    nvcv::Tensor invalidLayout(
+        {
+            {8, 8, 1},
+            "WHC"
+    },
+        nvcv::TYPE_U8);
+    expectInvalid(invalidLayout, invalidLayout);
+
+    nvcv::Tensor srcThree(
+        {
+            {1, 8, 8, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstFour(
+        {
+            {1, 8, 8, 4},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    expectInvalid(srcThree, dstFour);
+
+    nvcv::Tensor fiveChannel(
+        {
+            {1, 8, 8, 5},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    expectInvalid(fiveChannel, fiveChannel);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpBrightnessContrast_Negative, tensor_sample_count_mismatch)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor src(
+        {
+            {2, 8, 8, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dst(
+        {
+            {1, 8, 8, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::BrightnessContrast op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, src, dst, 1., 1., 0., 0.); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpBrightnessContrast_Negative, varshape_channel_validation)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::BrightnessContrast op;
+    auto                       expectInvalid = [&op, stream](nvcv::ImageFormat srcFmt, nvcv::ImageFormat dstFmt)
+    {
+        nvcv::Image              srcImage({8, 8}, srcFmt);
+        nvcv::Image              dstImage({8, 8}, dstFmt);
+        nvcv::ImageBatchVarShape src(1);
+        nvcv::ImageBatchVarShape dst(1);
+        src.pushBack(srcImage);
+        dst.pushBack(dstImage);
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, src, dst, 1., 1., 0., 0.); }));
+    };
+
+    expectInvalid(nvcv::FMT_RGB8, nvcv::FMT_RGBA8);
+
+    const nvcv::ImageFormat twoChannelPlanar{NVCV_DETAIL_MAKE_NONCOLOR_FMT2(PL, UNSIGNED, XY00, ASSOCIATED, X8, X8)};
+    expectInvalid(twoChannelPlanar, twoChannelPlanar);
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
@@ -858,9 +1005,9 @@ TYPED_TEST(OpBrightnessContrast_Negative, invalid_parameters_src_dst_tensor)
     nvcv::Tensor srcTensor = nvcv::util::CreateTensor(shapeSrc.z, shapeSrc.x, shapeSrc.y, srcImgFormat);
     nvcv::Tensor dstTensor = nvcv::util::CreateTensor(shapeDst.z, shapeDst.x, shapeDst.y, dstImgFormat);
 
-    uniform_distribution<SrcBT> srcRand(SrcBT{0}, std::is_integral_v<SrcBT> ? cuda::TypeTraits<SrcBT>::max : SrcBT{1});
-    uniform_distribution<DstBT> dstRand(DstBT{0}, std::is_integral_v<DstBT> ? cuda::TypeTraits<DstBT>::max : DstBT{1});
-    std::mt19937_64             rng(12345);
+    auto            srcRand = MakeValueDistribution<SrcBT>();
+    auto            dstRand = MakeValueDistribution<DstBT>();
+    std::mt19937_64 rng(12345);
 
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -903,9 +1050,9 @@ TYPED_TEST(OpBrightnessContrast_Negative, invalid_parameters_src_dst_varshape)
     std::vector<nvcv::Image> imgSrc;
     std::vector<nvcv::Image> imgDst;
 
-    uniform_distribution<SrcBT> srcRand(SrcBT{0}, std::is_integral_v<SrcBT> ? cuda::TypeTraits<SrcBT>::max : SrcBT{1});
-    uniform_distribution<DstBT> dstRand(DstBT{0}, std::is_integral_v<DstBT> ? cuda::TypeTraits<DstBT>::max : DstBT{1});
-    std::mt19937_64             rng(12345);
+    auto            srcRand = MakeValueDistribution<SrcBT>();
+    auto            dstRand = MakeValueDistribution<DstBT>();
+    std::mt19937_64 rng(12345);
 
     for (int z = 0; z < shapeSrc.z; ++z)
     {

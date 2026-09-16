@@ -22,7 +22,6 @@
 #include "CvCudaOSD.hpp"
 
 #include <cuda_runtime.h>
-#include <curand_kernel.h>
 #include <cvcuda/Types.h>
 #include <cvcuda/Workspace.hpp>
 #include <nvcv/BorderType.h>
@@ -60,9 +59,6 @@ enum DataFormat
     kCHW  = 2,
     kHWC  = 3,
 };
-
-template<DataFormat D>
-constexpr int FormatDimensions = (D == kNCHW || D == kNHWC) ? 4 : 3;
 
 enum DataType
 {
@@ -226,89 +222,6 @@ private:
     DataShape max_output_shape_;
 };
 
-class ConvertTo : public CudaBaseOp
-{
-public:
-    ConvertTo() = delete;
-
-    ConvertTo(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * @brief Converts an array to another data type with scaling.
-     * The method converts source pixel values to the target data type. saturate_cast<> is applied at the end to avoid
-     * possible overflows:
-     *
-     * ```
-     * outputs(x,y) = saturate_cast<out_type>(α * inputs(x, y) + β)
-     * ```
-     *
-     * Limitations:
-     *
-     * Data Layout, Number, Channels, Width, Height, of input and output must be same.
-     *
-     * Input:
-     *      Data Layout:    [kNHWC, kHWC]
-     *      Channels:       [1-4]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | Yes
-     *      8bit  Signed   | Yes
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | Yes
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | Yes
-     *      64bit Float    | Yes
-     *
-     * Output:
-     *      Data Layout:    [kNHWC, kHWC]
-     *      Channels:       [1-4]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | Yes
-     *      8bit  Signed   | Yes
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | Yes
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | Yes
-     *      64bit Float    | Yes
-     *
-     * Input/Output dependency
-     *
-     *      Property      |  Input == Output
-     *     -------------- | -------------
-     *      Data Layout   | Yes
-     *      Data Type     | No
-     *      Number        | Yes
-     *      Channels      | Yes
-     *      Width         | Yes
-     *      Height        | Yes
-     *
-     *
-     *
-     * @param inputs gpu pointer, inputs[0] are batched input images, whose shape is input_shape and type is data_type.
-     * @param outputs gpu pointer, outputs[0] are batched output images that have the same shape as input_shape and the
-     * type out_type.
-     * @param workspace gpu pointer, gpu memory used to store the temporary variables.
-     * @param out_type desired output type.
-     * @param alpha scale factor.
-     * @param beta shift data added to the scaled values.
-     * @param input_shape shape of the input images.
-     * @param format format of the input images, e.g. kNHWC.
-     * @param data_type data type of the input images, e.g. kCV_32F.
-     * @param stream for the asynchronous execution.
-     *
-     */
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const double alpha,
-                    const double beta, NVCVRoundMode roundMode, cudaStream_t stream);
-};
-
 class CustomCrop : public CudaBaseOp
 {
 public:
@@ -380,283 +293,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, NVCVRectI roi,
                     cudaStream_t stream);
-};
-
-class MinAreaRect : public CudaBaseOp
-{
-public:
-    MinAreaRect() = delete;
-
-    MinAreaRect(DataShape max_input_shape, DataShape max_output_shape, int maxContourNum);
-    ~MinAreaRect() override;
-
-    /**
-     * @brief Creating Bounding rotated boxes and ellipses for contours
-     *        Given a set of contours, and each contour is consist of a set of points, such as [[c1_p1_x, c1_p1_y,...],[c2_p1_x, c2_p1_y,...],
-     *        c1_p1_x means the x-coordinate of the first point in first contour.
-     *        The output will give 4 points' cooridinate(x,y) of each contour's minimum rotated bounding boxes
-     *
-     *
-     * Input:
-     *      Data Layout:    [NWC]
-     *      Channels:       [2]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | No
-     *      8bit  Signed   | No
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | Yes
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | No
-     *      64bit Float    | No
-     *
-     * Output:
-     *      Data Layout:    [NW]
-     *      Channels:       [1]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | No
-     *      8bit  Signed   | No
-     *      16bit Unsigned | No
-     *      16bit Signed   | No
-     *      32bit Unsigned | No
-     *      32bit Signed   | No
-     *      32bit Float    | Yes
-     *      64bit Float    | No
-     *
-     * Input/Output dependency
-     *
-     *      Property      |  Input == Output
-     *     -------------- | -------------
-     *      Data Layout   | No
-     *      Data Type     | No
-     *      Number        | Yes
-     *      Channels      | No
-     *      Width         | No
-     *      Height        | No
-     *
-     *
-     * @param [in] in input tensor.
-     * @param [in] numPointsInContourHost number of point of each contour.
-     * @param [in] totalContours total number of contour.
-     *
-     * @param [out] out output tensor.
-     *
-     * @param stream for the asynchronous execution.
-     */
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                    const TensorDataStridedCuda &numPointsInContour, const int totalContours, cudaStream_t stream);
-
-private:
-    int    mMaxContourNum;
-    float *mRotateCoeffsBufDev = nullptr;
-    int   *mRotatedPointsDev   = nullptr;
-};
-
-class Flip : public CudaBaseOp
-{
-public:
-    Flip() = delete;
-
-    Flip(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * Limitations:
-     *
-     * Input:
-     *      Data Layout:    [kNHWC, kHWC]
-     *      Channels:       [1, 3, 4]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | Yes
-     *      8bit  Signed   | No
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | No
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | Yes
-     *      64bit Float    | No
-     *
-     * Output:
-     *      Data Layout:    [kNHWC, kHWC]
-     *      Channels:       [1, 3, 4]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | Yes
-     *      8bit  Signed   | No
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | No
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | Yes
-     *      64bit Float    | No
-     *
-     * Input/Output dependency
-     *
-     *      Property      |  Input == Output
-     *     -------------- | -------------
-     *      Data Layout   | Yes
-     *      Data Type     | Yes
-     *      Number        | Yes
-     *      Channels      | Yes
-     *      Width         | Yes
-     *      Height        | Yes
-     *
-     * @brief Flips a 2D array around vertical, horizontal, or both axes.
-     * @param flipCode a flag to specify how to flip the array; 0 means flipping
-     *      around the x-axis and positive value (for example, 1) means flipping
-     *      around y-axis. Negative value (for example, -1) means flipping around
-     *      both axes.
-     * @param stream for the asynchronous execution.
-     */
-    ErrorCode infer(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output, const int32_t flipCode,
-                    cudaStream_t stream);
-};
-
-class FlipOrCopyVarShape : public CudaBaseOp
-{
-public:
-    FlipOrCopyVarShape() = delete;
-
-    FlipOrCopyVarShape(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * Limitations:
-     *
-     * Input:
-     *      Data Layout:    [kNHWC, kHWC]
-     *      Channels:       [1, 3, 4]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | Yes
-     *      8bit  Signed   | No
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | Yes
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | Yes
-     *      64bit Float    | No
-     *
-     * Output:
-     *      Data Layout:    [kNHWC, kHWC]
-     *      Channels:       [1, 3, 4]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | Yes
-     *      8bit  Signed   | No
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | Yes
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | Yes
-     *      64bit Float    | No
-     *
-     * Input/Output dependency
-     *
-     *      Property      |  Input == Output
-     *     -------------- | -------------
-     *      Data Layout   | Yes
-     *      Data Type     | Yes
-     *      Number        | Yes
-     *      Channels      | Yes
-     *      Width         | Yes
-     *      Height        | Yes
-     *
-     * @brief Flips a 2D array around vertical, horizontal, or both axes.
-     * @param flipCode a flag to specify how to flip the array; 0 means flipping
-     *      around the x-axis and positive value (for example, 1) means flipping
-     *      around y-axis. Negative value (for example, -1) means flipping around
-     *      both axes.
-     * @param stream for the asynchronous execution.
-     */
-    ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &input, const ImageBatchVarShapeDataStridedCuda &output,
-                    const TensorDataStridedCuda &flipCode, cudaStream_t stream);
-};
-
-class Reformat : public CudaBaseOp
-{
-public:
-    Reformat() = delete;
-
-    Reformat(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * @brief Reformats the input images. Transfor the inputs from kNHWC format to kNCHW format or from kNCHW format to
-     * kNHWC format.
-     *
-     * Limitations:
-     *
-     *
-     * Input:
-     *      Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
-     *      Channels:       [1, 3, 4]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | Yes
-     *      8bit  Signed   | Yes
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | Yes
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | Yes
-     *      64bit Float    | Yes
-     *
-     * Output:
-     *      Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
-     *      Channels:       [1, 3, 4]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | Yes
-     *      8bit  Signed   | Yes
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | Yes
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | Yes
-     *      64bit Float    | Yes
-     *
-     * Input/Output dependency
-     *
-     *      Property      |  Input == Output
-     *     -------------- | -------------
-     *      Data Layout   | No
-     *      Data Type     | Yes
-     *      Number        | Yes
-     *      Channels      | Yes
-     *      Width         | Yes
-     *      Height        | Yes
-     *
-     * @param inputs gpu pointer, inputs[0] are batched input images, whose shape is input_shape and type is data_type.
-     * @param outputs gpu pointer, outputs[0] are batched output images that have the same shape as input_shape and the
-     * same type as data_type.
-     * @param workspace gpu pointer, gpu memory used to store the temporary variables.
-     * @param input_shape shape of the input images.
-     * @param input_format input format. kNHWC -> kNCHW, kNCHW -> kNHWC.
-     * @param output_format output format.
-     * @param data_type data type of the input images, e.g. kCV_32F.
-     * @param stream for the asynchronous execution.
-     */
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, cudaStream_t stream);
-
-    void checkDataFormat(DataFormat format);
 };
 
 class Morphology : public CudaBaseOp
@@ -790,127 +426,6 @@ public:
                     bool enableGenericInterior, cudaStream_t stream);
 };
 
-class Normalize : public CudaBaseOp
-{
-public:
-    Normalize() = delete;
-
-    Normalize(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * @brief Data normalization is done using externally provided base (typically: mean or min) and scale (typically
-     * reciprocal of standard deviation or 1/(max-min)). The normalization follows the formula:
-     * ```
-     * out[data_idx] = (in[data_idx] - base[param_idx]) * scale[param_idx] * global_scale + shift
-     * ```
-     * Where `data_idx` is a position in the data tensor (in, out) and `param_idx` is a position
-     * in the base and scale tensors (see below for details). The two additional constants,
-     * `global_scale` and `shift` can be used to adjust the result to the dynamic range and resolution
-     * of the output type.
-     *
-     * The `scale` parameter may also be interpreted as standard deviation - in that case, its
-     * reciprocal is used and optionally, a regularizing term is added to the variance.
-     * ```
-     * m = 1 / sqrt(square(stddev[param_idx]) + epsilon)
-     * out[data_idx] = (in[data_idx] - mean[param_idx]) * m * global_scale + shift
-     * ```
-     *
-     * `param_idx` is calculated as follows (where axis = N,H,W,C):
-     * ```
-     * param_idx[axis] = param_shape[axis] == 1 ? 0 : data_idx[axis]
-     * ```
-     *
-     * Limitations:
-     *
-     *
-     * Input:
-     *      Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
-     *      Channels:       [1, 3, 4]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | Yes
-     *      8bit  Signed   | Yes
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | Yes
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | Yes
-     *      64bit Float    | No
-     *
-     * Output:
-     *      Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
-     *      Channels:       [1, 3, 4]
-     *
-     *      Data Type      | Allowed
-     *      -------------- | -------------
-     *      8bit  Unsigned | Yes
-     *      8bit  Signed   | Yes
-     *      16bit Unsigned | Yes
-     *      16bit Signed   | Yes
-     *      32bit Unsigned | No
-     *      32bit Signed   | Yes
-     *      32bit Float    | Yes
-     *      64bit Float    | No
-     *
-     * Input/Output dependency
-     *
-     *      Property      |  Input == Output
-     *     -------------- | -------------
-     *      Data Layout   | Yes
-     *      Data Type     | Yes
-     *      Number        | Yes
-     *      Channels      | Yes
-     *      Width         | Yes
-     *      Height        | Yes
-     *
-     * Scale/Base Tensor:
-     *
-     * Scale and Base may be a tensor the same shape as the input/output tensors, or it can be a scalar each dimension.
-     *
-     *
-     * @param inputs gpu pointer,
-     * @param global_scale additional scaling factor, used e.g. when output is of integral type.
-     * @param shift additional bias value, used e.g. when output is of unsigned type.
-     * @param epsilon regularizing term added to variance; only used if scale_is_stddev = true
-     * @param flags if true, scale is interpreted as standard deviation and it's regularized and its
-     * reciprocal is used when scaling.
-     * @param stream for the asynchronous execution.
-     */
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &baseData,
-                    const TensorDataStridedCuda &scaleData, const TensorDataStridedCuda &outData,
-                    const float global_scale, const float shift, const float epsilon, const uint32_t flags,
-                    cudaStream_t stream);
-
-    /**
-     * @brief Tensor-free overload of the normalize operation: base and scale are supplied by value
-     * (packed into float4 lanes) instead of as parameter tensors, so no per-channel parameter tensor
-     * needs to be allocated or uploaded. The normalization math and flags semantics match the tensor
-     * overload above and results are bit-identical for the same values. Interleaved (kNHWC / kHWC) and
-     * planar (kNCHW / kCHW) layouts are supported; per-axis spatial parameters are not supported on this
-     * path.
-     *
-     * @param base base values passed by value (up to four channels in a float4).
-     * @param scale scale values passed by value (up to four channels in a float4).
-     * @param baseCount number of meaningful base lanes: 1 (broadcast to all channels) or the channel count.
-     * @param scaleCount number of meaningful scale lanes: 1 (broadcast to all channels) or the channel count.
-     * @param global_scale additional scaling factor, used e.g. when output is of integral type.
-     * @param shift additional bias value, used e.g. when output is of unsigned type.
-     * @param epsilon regularizing term added to variance; only used if scale_is_stddev = true
-     * @param flags if true, scale is interpreted as standard deviation and it's regularized and its
-     * reciprocal is used when scaling.
-     * @param stream for the asynchronous execution.
-     */
-    ErrorCode infer(const TensorDataStridedCuda &inData, const float4 base, const float4 scale, const int baseCount,
-                    const int scaleCount, const TensorDataStridedCuda &outData, const float global_scale,
-                    const float shift, const float epsilon, const uint32_t flags, cudaStream_t stream);
-
-    bool checkParamShape(DataShape input_shape, DataShape param_shape);
-};
-
 class PadAndStack : public CudaBaseOp
 {
 public:
@@ -1040,126 +555,6 @@ public:
                     cudaStream_t stream);
 };
 
-class NormalizeVarShape : public CudaBaseOp
-{
-public:
-    NormalizeVarShape() = delete;
-
-    NormalizeVarShape(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * @brief Data normalization is done using externally provided base (typically: mean or min) and scale (typically
-     * reciprocal of standard deviation or 1/(max-min)). The normalization follows the formula:
-     * ```
-     * out[data_idx] = (in[data_idx] - base[param_idx]) * scale[param_idx] * global_scale + shift
-     * ```
-     * Where `data_idx` is a position in the data tensor (in, out) and `param_idx` is a position
-     * in the base and scale tensors (see below for details). The two additional constants,
-     * `global_scale` and `shift` can be used to adjust the result to the dynamic range and resolution
-     * of the output type.
-     *
-     * The `scale` parameter may also be interpreted as standard deviation - in that case, its
-     * reciprocal is used and optionally, a regularizing term is added to the variance.
-     * ```
-     * m = 1 / sqrt(square(stddev[param_idx]) + epsilon)
-     * out[data_idx] = (in[data_idx] - mean[param_idx]) * m * global_scale + shift
-     * ```
-     *
-     * `param_idx` is calculated as follows:
-     * ```
-     * param_idx[axis] = param_shape[axis] == 1 ? 0 : data_idx[axis]
-     * ```
-     *
-     * @param inputs gpu pointer, inputs[0] to inputs[batch-1] are input images of different shape, whose shapes are
-     * input_shape and type is data_type.
-     * @param outputs gpu pointer, outputs[0] are batched output images that have the same shape as input_shape and the
-     * type out_data_type.
-     * @param gpu_workspace gpu pointer, gpu memory used to store the temporary variables.
-     * @param cpu_workspace cpu pointer, cpu memory used to store the temporary variables.
-     * @param batch batch_size
-     * @param buffer_size buffer size of gpu_workspace and cpu_workspace
-     * @param base value(s) to be subtracted from input elements.
-     * @param scale value(s) of scales (or standard deviations).
-     * @param input_shape shape of the input images.
-     * @param base_channel channels of base. base can be a scalar or a batch of tensors with the same dimensionality as
-     * the input. The extent in each dimension must match the value of the input or be equal to 1. If the extent is 1,
-     * the value will be broadcast in this dimension.
-     * @param scale_channel channels of scale. See base_param_shape argument for more information about shape
-     * constraints.
-     * @param scale_is_stddev if true, scale is interpreted as standard deviation and it's regularized and its
-     * reciprocal is used when scaling.
-     * @param global_scale additional scaling factor, used e.g. when output is of integral type.
-     * @param shift additional bias value, used e.g. when output is of unsigned type.
-     * @param epsilon regularizing term added to variance; only used if scale_is_stddev = true
-     * @param format format of the input images, e.g. kNHWC.
-     * @param data_type data type of the input images, e.g. kCV_32F.
-     * @param out_data_type data type of the output images, e.g. kCV_32F.
-     * @param stream for the asynchronous execution.
-     */
-    ErrorCode infer(const nvcv::ImageBatchVarShapeDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &baseData,
-                    const nvcv::TensorDataStridedCuda             &scaleData,
-                    const nvcv::ImageBatchVarShapeDataStridedCuda &outData, const float global_scale, const float shift,
-                    const float epsilon, const uint32_t flags, cudaStream_t stream);
-};
-
-// Host-verified uniform batch scale for the var-shape resize fast paths: per-image sizes are only
-// host-accessible through the batch handles, so the caller classifies the batch once and the
-// dispatch picks the matching specialized kernel. kGeneric covers mixed batches and every case
-// without a fast path.
-enum class ResizeVarShapeScale
-{
-    kGeneric,
-    kExpand2x,          // every image pair is exactly 2x up on both axes
-    kContract2x,        // every image pair is exactly 2x down on both axes
-    kFractionalZoomOut, // every image pair zooms out with a non-integer ratio on both axes
-};
-
-class ResizeVarShape : public CudaBaseOp
-{
-public:
-    ResizeVarShape() = delete;
-
-    ResizeVarShape(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * @brief Resizes the input images. The function resize resizes the image down to or up to the specified size.
-     * @param inputs gpu pointer, inputs[0] are batched input images, whose shape is input_shape and type is data_type.
-     * @param outputs gpu pointer, outputs[0] are batched output images that have the same type as data_type. The output
-     * sizes are derived from the dsize,fx, and fy.
-     * @param gpu_workspace gpu pointer, gpu memory used to store the temporary variables.
-     * @param cpu_workspace cpu pointer, cpu memory used to store the temporary variables.
-     * @param batch batch_size.
-     * @param buffer_size buffer size of gpu_workspace and cpu_workspace
-     * @param dsize size of the output images.if it equals zero, it is computed as:
-     * ```
-     * dsize = Size(round(fx*src.cols), round(fy*src.rows)). Either dsize or both fx and fy must be non-zero.
-     * ```
-     * @param fx scale factor along the horizontal axis; when it equals 0, it is computed as
-     * ```
-     * (double)dsize.width/src.cols
-     * ```
-     * @param fy scale factor along the vertical axis; when it equals 0, it is computed as
-     * ```
-     * (double)dsize.height/src.rows
-     * ```
-     * @param interpolation interpolation method. See nvcv::InterpolationFlags for more detials.
-     * @param input_shape shape of the input images.
-     * @param format format of the input images, e.g. kNHWC.
-     * @param data_type data type of the input images, e.g. kCV_32F.
-     * @param stream for the asynchronous execution.
-     *
-     */
-    ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
-                    const NVCVInterpolationType interpolation, cudaStream_t stream,
-                    ResizeVarShapeScale batchScale = ResizeVarShapeScale::kGeneric);
-};
-
 class CopyMakeBorder : public CudaBaseOp
 {
 public:
@@ -1280,31 +675,6 @@ private:
     ErrorCode inferWarp(const ImageBatchVarShapeDataStridedCuda &inData, const OutType &outData,
                         const nvcv::TensorDataStridedCuda &top, const nvcv::TensorDataStridedCuda &left,
                         const NVCVBorderType border_type, const float4 value, cudaStream_t stream);
-};
-
-class CenterCrop : public CudaBaseOp
-{
-public:
-    CenterCrop() = delete;
-
-    CenterCrop(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * @brief Crops the given image at the center based on input crop dimensions.
-     * @param inputs gpu pointer, inputs[0] are batched input images, whose shape is input_shape and type is data_type.
-     * @param outputs gpu pointer, outputs[0] are batched output images that have the size dsize and the same type as
-     * data_type.
-     * @param workspace gpu pointer, gpu memory used to store the temporary variables.
-     * @param crop_rows desired number of rows of the crop
-     * @param crop_columns desired number of columns of the crop
-     * @param input_shape shape of the input images.
-     * @param stream for the asynchronous execution.
-     */
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, int crop_rows,
-                    int crop_columns, cudaStream_t stream);
 };
 
 class RotateVarShape : public CudaBaseOp
@@ -1481,45 +851,6 @@ private:
     Size2D  m_curKernelSize = {0, 0};
     double2 m_curSigma      = {-1.0, -1.0};
     float  *m_kernel        = nullptr;
-};
-
-class Erase : public CudaBaseOp
-{
-public:
-    Erase() = delete;
-
-    Erase(DataShape max_input_shape, DataShape max_output_shape, int num_erasing_area, bool useBulkCopy);
-
-    ~Erase() override;
-
-    /**
-     * @brief erase areas of images. Different images in the same batch can be erased differently.
-     * @param inData gpu pointer, inputs[0] are batched input images, whose shape is input_shape and type is data_type.
-     * @param outData gpu pointer, outputs[0] are batched output images that have the same type as data_type.
-     * @param anchor an array of size num_erasing_area that gives the x coordinate and y coordinate of the top left point in the eraseing areas.
-     * @param erasing_w an array of size num_erasing_area that gives the widths of the eraseing areas.
-     * @param erasing_h an array of size num_erasing_area that gives the heights of the eraseing areas.
-     * @param erasing_c an array of size num_erasing_area that gives integers in range 0-15,
-            each of whose bits indicates whether or not the corresponding channel need to be erased.
-     * @param values an array of size num_erasing_area*4 that gives the filling value for each erase area.
-     * @param imgIdx an array of size num_erasing_area that maps a erase area idx to img idx in the batch.
-     * @param random an boolean for random op.
-     * @param seed random seed for random filling erase area
-     * @param inplace for perform inplace op.
-     * @param stream for the asynchronous execution.
-     *
-     */
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                    const TensorDataStridedCuda &anchor, const TensorDataStridedCuda &erasing,
-                    const TensorDataStridedCuda &values, const TensorDataStridedCuda &imgIdx, bool random,
-                    unsigned int seed, bool inplace, cudaStream_t stream);
-
-private:
-    int3      *d_max_values;
-    std::byte *temp_storage;
-    size_t     storage_bytes;
-    int        max_num_erasing_area;
-    bool       m_useBulkCopy;
 };
 
 class AverageBlur : public CudaBaseOp
@@ -1795,42 +1126,6 @@ private:
     int    m_maxBatchSize    = 0;
     int    m_maxChannelCount = 0;
     float *m_gammaArray      = nullptr;
-};
-
-class EraseVarShape : public CudaBaseOp
-{
-public:
-    EraseVarShape() = delete;
-
-    EraseVarShape(DataShape max_input_shape, DataShape max_output_shape, int num_erasing_area, bool useBulkCopy);
-
-    ~EraseVarShape() override;
-
-    /**
-    * @brief erase areas of images. Different images in the same batch can be erased differently.
-    * @param inbatch gpu pointer, inputs[0] are batched input images, whose shape is input_shape and type is data_type.
-    * @param outbatch gpu pointer, outputs[0] are batched output images that have the same type as data_type.
-    * @param anchor an array of size num_erasing_area that gives the x coordinate and y coordinate of the top left point in the eraseing areas.
-    * @param erasing an array of size num_erasing_area that gives the widths of the eraseing areas, the heights of the eraseing areas and
-    *               integers in range 0-15, each of whose bits indicates whether or not the corresponding channel need to be erased.
-    * @param values an array of size num_erasing_area*4 that gives the filling value for each erase area.
-    * @param imgIdx an array of size num_erasing_area that maps a erase area idx to img idx in the batch.
-    * @param random an boolean for random op.
-    * @param seed random seed for random filling erase area
-    * @param inplace for perform inplace op.
-    * @param stream for the asynchronous execution.
-    */
-    ErrorCode infer(const ImageBatchVarShape &inbatch, const ImageBatchVarShape &outbatch,
-                    const TensorDataStridedCuda &anchor, const TensorDataStridedCuda &erasing,
-                    const TensorDataStridedCuda &values, const TensorDataStridedCuda &imgIdx, bool random,
-                    unsigned int seed, bool inplace, cudaStream_t stream);
-
-private:
-    int3      *d_max_values;
-    std::byte *temp_storage;
-    size_t     storage_bytes;
-    int        max_num_erasing_area;
-    bool       m_useBulkCopy;
 };
 
 class GaussianVarShape : public CudaBaseOp
@@ -2181,27 +1476,6 @@ private:
     nvcv::cuda::osd::cuOSDContext_t m_context;
 };
 
-class CvtColor : public CudaBaseOp
-{
-public:
-    CvtColor() = delete;
-
-    CvtColor(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * @brief Converts an image from one color space to another.
-     * @param inData Input tensor.
-     * @param outData Output tensor.
-     * @param code Color space conversion code, \ref NVCVColorConversionCode.
-     * @param stream for the asynchronous execution.
-     */
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                    NVCVColorConversionCode code, cudaStream_t stream);
-};
-
 class WarpAffine : public CudaBaseOp
 {
 public:
@@ -2342,27 +1616,6 @@ private:
     float    *m_transformationMatrix = nullptr;
 };
 
-class CvtColorVarShape : public CudaBaseOp
-{
-public:
-    CvtColorVarShape() = delete;
-
-    CvtColorVarShape(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * @brief Converts each image from one color space to another.
-     * @param inData Input batch.
-     * @param outData Output batch.
-     * @param code color space conversion code
-     * @param stream for the asynchronous execution.
-     */
-    ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
-                    NVCVColorConversionCode code, cudaStream_t stream);
-};
-
 class Composite : public CudaBaseOp
 {
 public:
@@ -2388,39 +1641,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &foreground, const TensorDataStridedCuda &background,
                     const TensorDataStridedCuda &fgMask, const TensorDataStridedCuda &outData, cudaStream_t stream);
-};
-
-class ChannelReorderVarShape : public CudaBaseOp
-{
-public:
-    ChannelReorderVarShape() = delete;
-
-    ChannelReorderVarShape(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
-
-    /**
-     * @brief Reorder the channel of the input images with the given orders.
-     * @param inputs gpu pointer, inputs[i] is input image where i ranges from 0 to batch-1, whose shape is
-     * input_shape[i] and type is data_type.
-     * @param outputs gpu pointer, outputs[i] is output image where i ranges from 0 to batch-1, whose size is
-     * input_shape[i] and type is data_type.
-     * @param gpu_workspace gpu pointer, gpu memory used to store the temporary variable.
-     * @param cpu_workspace cpu pointer, cpu memory used to store the temporary variable.
-     * @param batch batch size of the input images.
-     * @param buffer_size size of the gpu_workspace/cpu_workspace.
-     * @param orders the new channel order represented by the channel index. All the values are flatted into a 1d array.
-     * @param output_channels the channel size of each output image. The value can be different from the original
-     * channel size.
-     * @param input_shapes shape of the input images.
-     * @param format format of the input images, e.g. kNHWC.
-     * @param data_type data type of the input images, e.g. kCV_32F.
-     * @param stream for the asynchronous execution.
-     */
-
-    ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
-                    const TensorDataStridedCuda &order, cudaStream_t stream);
 };
 
 class CompositeVarShape : public CudaBaseOp
@@ -2503,36 +1723,6 @@ public:
                                                        DataType max_data_type);
 };
 
-class Threshold : public CudaBaseOp
-{
-public:
-    Threshold() = delete;
-
-    Threshold(DataShape max_input_shape, DataShape max_output_shape, uint32_t type, int maxBatchSize);
-
-    ~Threshold() override;
-
-    /**
-     * @brief Applies a fixed-level threshold to each array element.
-     * @param inData gpu pointer, batched input images.
-     * @param outData gpu pointer, batched output images that have the same type as data_type.
-     * @param type thresholding type, see NVCVThresholdType.
-     * @param threshold threshold value.
-     * @param maxval maximum value to use with the NVCV_THRESH_BINARY and NVCV_THRESH_BINARY_INV thresholding types.
-     * @param stream for the asynchronous execution.
-     *
-     */
-
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                    const TensorDataStridedCuda &thresh, const TensorDataStridedCuda &maxval, cudaStream_t stream);
-
-private:
-    int     *m_histogram;
-    uint32_t m_type;
-    uint32_t m_automatic_thresh;
-    int      m_maxBatchSize;
-};
-
 class AdaptiveThreshold : public CudaBaseOp
 {
 public:
@@ -2599,36 +1789,6 @@ private:
     const int                           m_maxBlockSize;
     const AdaptiveThresholdKernelPolicy m_kernelPolicy;
     float                              *m_kernel = nullptr;
-};
-
-class ThresholdVarShape : public CudaBaseOp
-{
-public:
-    ThresholdVarShape() = delete;
-
-    ThresholdVarShape(DataShape max_input_shape, DataShape max_output_shape, uint32_t type, int maxBatchSize);
-
-    ~ThresholdVarShape() override;
-
-    /**
-     * @brief Applies a fixed-level threshold to each array element.
-     * @param inData gpu pointer, batched input images.
-     * @param outData gpu pointer, batched output images that have the same type as data_type.
-     * @param type thresholding type, see NVCVThresholdType.
-     * @param threshold threshold value.
-     * @param maxval maximum value to use with the NVCV_THRESH_BINARY and NVCV_THRESH_BINARY_INV thresholding types.
-     * @param stream for the asynchronous execution.
-     *
-     */
-
-    ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
-                    const TensorDataStridedCuda &thresh, const TensorDataStridedCuda &maxval, cudaStream_t stream);
-
-private:
-    int     *m_histogram;
-    uint32_t m_type;
-    uint32_t m_automatic_thresh;
-    int      m_maxBatchSize;
 };
 
 class RandomResizedCrop : public CudaBaseOp
@@ -2712,71 +1872,6 @@ public:
      */
     ErrorCode infer(const ImageBatchVarShape &inData, const ImageBatchVarShape &outData,
                     const NVCVInterpolationType interpolation, cudaStream_t stream);
-};
-
-class GaussianNoise : public CudaBaseOp
-{
-public:
-    GaussianNoise() = delete;
-
-    GaussianNoise(DataShape max_input_shape, DataShape max_output_shape, int maxBatchSize);
-
-    ~GaussianNoise() override;
-
-    /**
-     * @brief Add gaussian noise on images.
-     * @param inData gpu pointer, batched input images.
-     * @param outData gpu pointer, batched output images.
-     * @param mu mu value for gaussian noise.
-     * @param sigma sigma value for gaussian noise.
-     * @param per_channel whether to add the same noise for all channels.
-     * @param stream for the asynchronous execution.
-     */
-
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                    const TensorDataStridedCuda &mu, const TensorDataStridedCuda &sigma, bool per_channel,
-                    unsigned long long seed, cudaStream_t stream);
-
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, float mu, float sigma,
-                    bool per_channel, unsigned long long seed, bool reseed, bool clip, cudaStream_t stream);
-
-private:
-    curandState       *m_states;
-    curandState       *m_nextStates;
-    unsigned long long m_seed;
-    bool               m_setupDone = false;
-    int                m_maxBatchSize;
-};
-
-class GaussianNoiseVarShape : public CudaBaseOp
-{
-public:
-    GaussianNoiseVarShape() = delete;
-
-    GaussianNoiseVarShape(DataShape max_input_shape, DataShape max_output_shape, int maxBatchSize);
-
-    ~GaussianNoiseVarShape() override;
-
-    /**
-     * @brief Add gaussian noise on images.
-     * @param inData gpu pointer, batched input images.
-     * @param outData gpu pointer, batched output images.
-     * @param mu mu value for gaussian noise.
-     * @param sigma sigma value for gaussian noise.
-     * @param per_channel whether to add the same noise for all channels.
-     * @param stream for the asynchronous execution.
-     */
-
-    ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
-                    const TensorDataStridedCuda &mu, const TensorDataStridedCuda &sigma, bool per_channel,
-                    unsigned long long seed, cudaStream_t stream);
-
-private:
-    curandState       *m_states;
-    curandState       *m_nextStates;
-    unsigned long long m_seed;
-    bool               m_setupDone = false;
-    int                m_maxBatchSize;
 };
 
 class Histogram : public CudaBaseOp

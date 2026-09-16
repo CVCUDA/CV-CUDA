@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/BorderUtils.hpp>
@@ -33,6 +34,7 @@
 #include <map>
 #include <random>
 #include <string_view>
+#include <type_traits>
 
 namespace cuda = nvcv::cuda;
 namespace test = nvcv::test;
@@ -61,9 +63,12 @@ static void printVec([[maybe_unused]] const std::vector<uint8_t> &vec, [[maybe_u
 #endif
 }
 
+// Strides are in T elements (identical to bytes for the uint8 suite); the F16 suite runs the
+// reference with T=float on the widened half input.
+template<typename T>
 struct PerspectiveSource
 {
-    const uint8_t *ptr;
+    const T       *ptr;
     nvcv::Size2D   size;
     int            rowStride;
     int            elementsPerPixel;
@@ -84,7 +89,8 @@ struct WarpPerspectiveGoldParams
     float4                          borderVal;
 };
 
-static uint8_t getPixelForPerspectiveTransform(const PerspectiveSource &src, const int y, const int x, int k)
+template<typename T>
+static T getPixelForPerspectiveTransform(const PerspectiveSource<T> &src, const int y, const int x, int k)
 {
     const int width  = src.size.w;
     const int height = src.size.h;
@@ -93,7 +99,7 @@ static uint8_t getPixelForPerspectiveTransform(const PerspectiveSource &src, con
     if (src.borderMode == NVCV_BORDER_CONSTANT)
     {
         return (x >= 0 && x < width && y >= 0 && y < height) ? src.ptr[y * src.rowStride + x * src.elementsPerPixel + k]
-                                                             : static_cast<uint8_t>(cuda::GetElement(src.borderVal, k));
+                                                             : static_cast<T>(cuda::GetElement(src.borderVal, k));
     }
     else if (src.borderMode == NVCV_BORDER_REPLICATE)
     {
@@ -138,21 +144,29 @@ inline float calcBicubicCoeff(float x_)
     }
 }
 
-inline uint8_t clampU8(float value)
+template<typename T>
+inline T clampU8(float value)
 {
+    // Floating-point destinations keep the interpolated value: the CUDA kernel only rounds and
+    // saturates integer element types (the FP32/F16 gold paths reuse this template with T=float).
+    if constexpr (std::is_floating_point_v<T>)
+    {
+        return value;
+    }
     const float rounded = std::rint(value);
     if (rounded < 0.0f)
     {
-        return static_cast<uint8_t>(0);
+        return static_cast<T>(0);
     }
     if (rounded > 255.0f)
     {
-        return static_cast<uint8_t>(255);
+        return static_cast<T>(255);
     }
-    return static_cast<uint8_t>(rounded);
+    return static_cast<T>(rounded);
 }
 
-static void StoreLinearPixel(uint8_t *dstPtr, int dstBase, const PerspectiveSource &src, float src_x, float src_y)
+template<typename T>
+static void StoreLinearPixel(T *dstPtr, int dstBase, const PerspectiveSource<T> &src, float src_x, float src_y)
 {
     const auto x1 = static_cast<int>(std::floor(src_x));
     const auto y1 = static_cast<int>(std::floor(src_y));
@@ -164,7 +178,7 @@ static void StoreLinearPixel(uint8_t *dstPtr, int dstBase, const PerspectiveSour
     {
         float out = 0;
 
-        uint8_t srcReg = getPixelForPerspectiveTransform(src, y1, x1, k);
+        T srcReg = getPixelForPerspectiveTransform(src, y1, x1, k);
         out += static_cast<float>(srcReg) * ((static_cast<float>(x2) - src_x) * (static_cast<float>(y2) - src_y));
 
         srcReg = getPixelForPerspectiveTransform(src, y1, x2, k);
@@ -176,11 +190,12 @@ static void StoreLinearPixel(uint8_t *dstPtr, int dstBase, const PerspectiveSour
         srcReg = getPixelForPerspectiveTransform(src, y2, x2, k);
         out = out + static_cast<float>(srcReg) * ((src_x - static_cast<float>(x1)) * (src_y - static_cast<float>(y1)));
 
-        dstPtr[dstBase + k] = clampU8(out);
+        dstPtr[dstBase + k] = clampU8<T>(out);
     }
 }
 
-static void StoreNearestPixel(uint8_t *dstPtr, int dstBase, const PerspectiveSource &src, float src_x, float src_y)
+template<typename T>
+static void StoreNearestPixel(T *dstPtr, int dstBase, const PerspectiveSource<T> &src, float src_x, float src_y)
 {
     const auto x1 = static_cast<int>(std::floor(src_x + .5f));
     const auto y1 = static_cast<int>(std::floor(src_y + .5f));
@@ -191,7 +206,8 @@ static void StoreNearestPixel(uint8_t *dstPtr, int dstBase, const PerspectiveSou
     }
 }
 
-static void StoreCubicPixel(uint8_t *dstPtr, int dstBase, const PerspectiveSource &src, float src_x, float src_y)
+template<typename T>
+static void StoreCubicPixel(T *dstPtr, int dstBase, const PerspectiveSource<T> &src, float src_x, float src_y)
 {
     const auto xmin = static_cast<int>(std::ceil(src_x - 2.0f));
     const auto xmax = static_cast<int>(std::floor(src_x + 2.0f));
@@ -210,25 +226,26 @@ static void StoreCubicPixel(uint8_t *dstPtr, int dstBase, const PerspectiveSourc
             {
                 const float w = calcBicubicCoeff(src_x - static_cast<float>(cx))
                               * calcBicubicCoeff(src_y - static_cast<float>(cy));
-                uint8_t srcReg = getPixelForPerspectiveTransform(src, cy, cx, k);
+                T srcReg = getPixelForPerspectiveTransform(src, cy, cx, k);
                 sum += w * static_cast<float>(srcReg);
                 wsum += w;
             }
         }
 
-        dstPtr[dstBase + k] = clampU8(wsum == 0.0f ? 0.0f : sum / wsum);
+        dstPtr[dstBase + k] = clampU8<T>(wsum == 0.0f ? 0.0f : sum / wsum);
     }
 }
 
-static void WarpPerspectiveGold(std::vector<uint8_t> &hDst, const std::vector<uint8_t> &hSrc,
+template<typename T>
+static void WarpPerspectiveGold(std::vector<T> &hDst, const std::vector<T> &hSrc,
                                 const WarpPerspectiveGoldParams &params)
 {
     assert(params.fmt.numPlanes() == 1);
 
-    PerspectiveSource src{hSrc.data(),       params.srcSize,  params.srcRowStride, params.fmt.numChannels(),
-                          params.borderMode, params.borderVal};
+    PerspectiveSource<T> src{hSrc.data(),       params.srcSize,  params.srcRowStride, params.fmt.numChannels(),
+                             params.borderMode, params.borderVal};
 
-    uint8_t  *dstPtr           = hDst.data();
+    T        *dstPtr           = hDst.data();
     const int elementsPerPixel = src.elementsPerPixel;
     const int interpolation    = params.flags & NVCV_INTERP_MAX;
 
@@ -886,8 +903,15 @@ NVCV_TEST_SUITE_P(OpWarpPerspectivePlanar,
     {   nvcv::FMT_RGB8p,    nvcv::FMT_RGB8,  NVCV_INTERP_LINEAR,      NVCV_BORDER_WRAP,  1, 64, 48, 64, 48},
     {  nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8, NVCV_INTERP_NEAREST,  NVCV_BORDER_CONSTANT,  2, 50, 40, 60, 50},
     {  nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8,  NVCV_INTERP_LINEAR, NVCV_BORDER_REPLICATE,  1, 50, 40, 50, 40},
+    {  nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8,   NVCV_INTERP_CUBIC,  NVCV_BORDER_CONSTANT,  2, 53, 41, 67, 55},
     { nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32,   NVCV_INTERP_CUBIC,  NVCV_BORDER_CONSTANT,  1, 64, 48, 96, 72},
     {nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32,  NVCV_INTERP_LINEAR,  NVCV_BORDER_CONSTANT,  2, 64, 48, 64, 48},
+    // F16 planes run the same half kernel as interleaved single-channel F16, so parity stays
+    // bit-exact; the CUBIC row is the device coverage for the cubic half kernel (the F16 gold
+    // suite below sticks to gather/linear cases it can bound).
+    { nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16,  NVCV_INTERP_LINEAR,  NVCV_BORDER_CONSTANT,  2, 64, 48, 96, 72},
+    {nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16, NVCV_INTERP_NEAREST, NVCV_BORDER_REPLICATE,  1, 50, 40, 50, 40},
+    { nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16,   NVCV_INTERP_CUBIC,  NVCV_BORDER_CONSTANT,  2, 64, 48, 64, 48},
 });
 
 // clang-format on
@@ -906,19 +930,277 @@ TEST_P(OpWarpPerspectivePlanar, varshape_matches_interleaved)
                                 GetParamValue<4>());
 }
 
+// =============================================================================
+// F16 correctness
+//
+// The main OpWarpPerspective suite has no format axis (it is fixed to RGBA8), so F16 gets a
+// dedicated suite. Inputs are half-quantized so kernel and reference consume identical values;
+// the gold is the in-file FP32 reference run on the widened input, per the F16 tolerance policy
+// in HalfTestUtils.hpp. NEAREST rows use dyadic (power-of-two-fraction) matrices with an
+// affine bottom row so the FP32 source coordinates are exact on host and device and the gather
+// cannot diverge; LINEAR rows also cover a real projective division, which is safe under the ULP
+// bound because LINEAR responds continuously to sub-ULP coordinate differences. Inputs sit in
+// [16, 38] so the relative half-ULP bound stays well above residual FP32 ordering noise. CUBIC
+// rows keep integer or dyadic shifts (fractional-cubic device coverage across arbitrary
+// transforms is the planar-parity CUBIC row above).
+// =============================================================================
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpWarpPerspectiveF16, test::ValueList<int, int, int, int, float, float, float, float, float, float, float, float, float, NVCVInterpolationType, NVCVBorderType, float, float, float, float, int, bool, nvcv::ImageFormat>
+{
+    {24, 18, 24, 18,          1, 0, 0.5f, 0, 1, 0.25f, 0, 0, 1,               NVCV_INTERP_LINEAR,    NVCV_BORDER_CONSTANT, 32.5f, 100.7f, 96.125f, 200.3f, 2,  true, nvcv::FMT_RGBAf16}, // C4, fractional translation
+    {24, 18, 30, 22, 0.5f, 0.25f, 1.5f, 0.25f, 0.75f, 2, 0, 0, 1,             NVCV_INTERP_LINEAR,   NVCV_BORDER_REPLICATE, 32.5f, 100.7f, 96.125f, 200.3f, 2,  true,  nvcv::FMT_RGBf16}, // C3, general dyadic, upscale
+    {25, 17, 20, 15,       0.5f, 2, 1, 0.75f, 1, 2, 0, 0, 1,                  NVCV_INTERP_LINEAR,        NVCV_BORDER_WRAP, 32.5f, 100.7f, 96.125f, 200.3f, 3,  true,     nvcv::FMT_F16}, // C1 scalar kernel
+    {24, 18, 24, 18, 0.50f, 0.47f, 0, -0.13f, 1.14f, 0.52f, -0.14f, 0.14f, 1, NVCV_INTERP_LINEAR,   NVCV_BORDER_REPLICATE, 32.5f, 100.7f, 96.125f, 200.3f, 2,  true,  nvcv::FMT_RGBf16}, // C3, real projective division
+    {24, 18, 24, 18,          2, 2, 1, 3, 1, 2, 0, 0, 1,                     NVCV_INTERP_NEAREST,    NVCV_BORDER_CONSTANT, 32.5f, 100.7f, 96.125f, 200.3f, 2,  true,  nvcv::FMT_RGBf16}, // C3, gather + constant border
+    {24, 18, 20, 16,          1, 0, 0.5f, 0, 1, 0.25f, 0, 0, 1,              NVCV_INTERP_NEAREST,  NVCV_BORDER_REFLECT101, 32.5f, 100.7f, 96.125f, 200.3f, 2,  true, nvcv::FMT_RGBAf16}, // C4, fractional gather
+    {24, 18, 24, 18,          1, 0, 1, 0, 1, 2, 0, 0, 1,                       NVCV_INTERP_CUBIC,    NVCV_BORDER_CONSTANT, 32.5f, 100.7f, 96.125f, 200.3f, 2,  true, nvcv::FMT_RGBAf16}, // C4, integer-shift cubic
+    {26, 19, 22, 16, 0.5f, 0.25f, 1.5f, 0.25f, 0.75f, 2, 0, 0, 1,              NVCV_INTERP_CUBIC,     NVCV_BORDER_REFLECT, 32.5f, 100.7f, 96.125f, 200.3f, 2,  true,  nvcv::FMT_RGBf16}, // C3, dyadic fractional cubic
+    {24, 18, 24, 18,          1, 0, 1, 0, 1, 2, 0, 0, 1,                      NVCV_INTERP_LINEAR,    NVCV_BORDER_CONSTANT, 32.5f, 100.7f, 96.125f, 200.3f, 2, false, nvcv::FMT_RGBAf16}, // C4, forward map (exactly invertible)
+});
+
+// clang-format on
+
+TEST_P(OpWarpPerspectiveF16, tensor_matches_fp32_gold)
+{
+    const int srcWidth  = GetParamValue<0>();
+    const int srcHeight = GetParamValue<1>();
+    const int dstWidth  = GetParamValue<2>();
+    const int dstHeight = GetParamValue<3>();
+
+    NVCVPerspectiveTransform transMatrix;
+    transMatrix[0] = GetParamValue<4>();
+    transMatrix[1] = GetParamValue<5>();
+    transMatrix[2] = GetParamValue<6>();
+    transMatrix[3] = GetParamValue<7>();
+    transMatrix[4] = GetParamValue<8>();
+    transMatrix[5] = GetParamValue<9>();
+    transMatrix[6] = GetParamValue<10>();
+    transMatrix[7] = GetParamValue<11>();
+    transMatrix[8] = GetParamValue<12>();
+
+    const NVCVInterpolationType interpolation = GetParamValue<13>();
+    const NVCVBorderType        borderMode    = GetParamValue<14>();
+    const float4                borderValue   = test::QuantizeToHalf(
+                         float4{GetParamValue<15>(), GetParamValue<16>(), GetParamValue<17>(), GetParamValue<18>()});
+    const int               numberOfImages = GetParamValue<19>();
+    const bool              inverseMap     = GetParamValue<20>();
+    const nvcv::ImageFormat fmt            = GetParamValue<21>();
+
+    const int flags = interpolation | (inverseMap ? NVCV_WARP_INVERSE_MAP : 0);
+
+    const int srcRowElems = srcWidth * fmt.numChannels();
+    const int srcRowBytes = srcWidth * fmt.planePixelStrideBytes(0);
+    const int dstRowElems = dstWidth * fmt.numChannels();
+    const int dstRowBytes = dstWidth * fmt.planePixelStrideBytes(0);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor imgSrc(numberOfImages, {srcWidth, srcHeight}, fmt);
+    nvcv::Tensor imgDst(numberOfImages, {dstWidth, dstHeight}, fmt);
+
+    auto srcData = imgSrc.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, srcData);
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    ASSERT_TRUE(srcAccess);
+
+    std::vector<std::vector<float>> srcFloat(numberOfImages);
+    for (int i = 0; i < numberOfImages; ++i)
+    {
+        srcFloat[i] = test::MakeHalfQuantizedPattern(srcHeight * srcRowElems, i, 16.f, 0.25f,
+                                                     89); // quarter steps over [16, 38]
+
+        std::vector<uint8_t> srcHalf = test::FloatToHalfBytes(srcFloat[i]);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(srcAccess->sampleData(i), srcAccess->rowStride(), srcHalf.data(),
+                                            srcRowBytes, srcRowBytes, srcHeight, cudaMemcpyHostToDevice));
+    }
+
+    cvcuda::WarpPerspective warpPerspectiveOp(0);
+    EXPECT_NO_THROW(warpPerspectiveOp(stream, imgSrc, imgDst, transMatrix, flags, borderMode, borderValue));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    auto dstData = imgDst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, dstData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(dstAccess);
+
+    for (int i = 0; i < numberOfImages; ++i)
+    {
+        SCOPED_TRACE(i);
+
+        std::vector<uint8_t> testHalf(dstHeight * dstRowBytes);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(testHalf.data(), dstRowBytes, dstAccess->sampleData(i),
+                                            dstAccess->rowStride(), dstRowBytes, dstHeight, cudaMemcpyDeviceToHost));
+
+        std::vector<float> goldFloat(dstHeight * dstRowElems);
+
+        const WarpPerspectiveGoldParams goldParams{
+            dstRowElems, {dstWidth, dstHeight},
+             srcRowElems, {srcWidth, srcHeight},
+             fmt, transMatrix, flags, borderMode,
+            borderValue
+        };
+        WarpPerspectiveGold<float>(goldFloat, srcFloat[i], goldParams);
+
+        test::ExpectF16InterpOutput(goldFloat, testHalf, interpolation);
+    }
+}
+
+TEST_P(OpWarpPerspectiveF16, varshape_matches_fp32_gold)
+{
+    const int srcWidthBase  = GetParamValue<0>();
+    const int srcHeightBase = GetParamValue<1>();
+    const int dstWidthBase  = GetParamValue<2>();
+    const int dstHeightBase = GetParamValue<3>();
+
+    NVCVPerspectiveTransform transMatrix;
+    transMatrix[0] = GetParamValue<4>();
+    transMatrix[1] = GetParamValue<5>();
+    transMatrix[2] = GetParamValue<6>();
+    transMatrix[3] = GetParamValue<7>();
+    transMatrix[4] = GetParamValue<8>();
+    transMatrix[5] = GetParamValue<9>();
+    transMatrix[6] = GetParamValue<10>();
+    transMatrix[7] = GetParamValue<11>();
+    transMatrix[8] = GetParamValue<12>();
+
+    const NVCVInterpolationType interpolation = GetParamValue<13>();
+    const NVCVBorderType        borderMode    = GetParamValue<14>();
+    const float4                borderValue   = test::QuantizeToHalf(
+                         float4{GetParamValue<15>(), GetParamValue<16>(), GetParamValue<17>(), GetParamValue<18>()});
+    const int               numberOfImages = GetParamValue<19>();
+    const bool              inverseMap     = GetParamValue<20>();
+    const nvcv::ImageFormat fmt            = GetParamValue<21>();
+
+    const int flags = interpolation | (inverseMap ? NVCV_WARP_INVERSE_MAP : 0);
+
+    // Deterministically vary the per-image size so the var-shape path is exercised for real.
+    // REFLECT/REFLECT101 keep uniform sizes, matching the caveat in the main var-shape suite
+    // (legacy reflect borders misbehave with mixed sizes).
+    const bool varySizes = !(borderMode == NVCV_BORDER_REFLECT || borderMode == NVCV_BORDER_REFLECT101);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor transMatrixTensor(nvcv::TensorShape({numberOfImages, 9}, nvcv::TENSOR_NW), nvcv::TYPE_F32);
+    {
+        auto data = transMatrixTensor.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(nullptr, data);
+        auto acc = nvcv::TensorDataAccessStrided::Create(*data);
+        ASSERT_TRUE(acc);
+        for (int i = 0; i < numberOfImages; ++i)
+        {
+            ASSERT_EQ(cudaSuccess, cudaMemcpy2D(acc->sampleData(i), acc->sampleStride(), transMatrix, sizeof(float) * 9,
+                                                sizeof(float) * 9, 1, cudaMemcpyHostToDevice));
+        }
+    }
+
+    std::vector<nvcv::Image>        imgSrc;
+    std::vector<nvcv::Image>        imgDst;
+    std::vector<std::vector<float>> srcFloat(numberOfImages);
+
+    for (int i = 0; i < numberOfImages; ++i)
+    {
+        const int srcWidth  = srcWidthBase + (varySizes ? 3 * i : 0);
+        const int srcHeight = srcHeightBase + (varySizes ? 2 * i : 0);
+        const int dstWidth  = dstWidthBase + (varySizes ? 2 * i : 0);
+        const int dstHeight = dstHeightBase + (varySizes ? 3 * i : 0);
+
+        imgSrc.emplace_back(nvcv::Size2D{srcWidth, srcHeight}, fmt);
+        imgDst.emplace_back(nvcv::Size2D{dstWidth, dstHeight}, fmt);
+
+        const int srcRowElems = srcWidth * fmt.numChannels();
+        const int srcRowBytes = srcWidth * fmt.planePixelStrideBytes(0);
+
+        srcFloat[i] = test::MakeHalfQuantizedPattern(srcHeight * srcRowElems, i, 16.f, 0.25f,
+                                                     89); // quarter steps over [16, 38]
+
+        std::vector<uint8_t> srcHalf = test::FloatToHalfBytes(srcFloat[i]);
+
+        const auto data = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(data, nvcv::NullOpt);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(data->plane(0).basePtr, data->plane(0).rowStride, srcHalf.data(),
+                                            srcRowBytes, srcRowBytes, srcHeight, cudaMemcpyHostToDevice));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(numberOfImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    nvcv::ImageBatchVarShape batchDst(numberOfImages);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    cvcuda::WarpPerspective warpPerspectiveOp(numberOfImages);
+    EXPECT_NO_THROW(warpPerspectiveOp(stream, batchSrc, batchDst, transMatrixTensor, flags, borderMode, borderValue));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (int i = 0; i < numberOfImages; ++i)
+    {
+        SCOPED_TRACE(i);
+
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
+        const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(srcData, nvcv::NullOpt);
+        ASSERT_NE(dstData, nvcv::NullOpt);
+
+        const int srcWidth    = srcData->plane(0).width;
+        const int srcHeight   = srcData->plane(0).height;
+        const int dstWidth    = dstData->plane(0).width;
+        const int dstHeight   = dstData->plane(0).height;
+        const int srcRowElems = srcWidth * fmt.numChannels();
+        const int dstRowElems = dstWidth * fmt.numChannels();
+        const int dstRowBytes = dstWidth * fmt.planePixelStrideBytes(0);
+
+        std::vector<uint8_t> testHalf(dstHeight * dstRowBytes);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(testHalf.data(), dstRowBytes, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
+                               dstRowBytes, dstHeight, cudaMemcpyDeviceToHost));
+
+        std::vector<float> goldFloat(dstHeight * dstRowElems);
+
+        const WarpPerspectiveGoldParams goldParams{
+            dstRowElems, {dstWidth, dstHeight},
+             srcRowElems, {srcWidth, srcHeight},
+             fmt, transMatrix, flags, borderMode,
+            borderValue
+        };
+        WarpPerspectiveGold<float>(goldFloat, srcFloat[i], goldParams);
+
+        test::ExpectF16InterpOutput(goldFloat, testHalf, interpolation);
+    }
+}
+
+TEST(OpWarpPerspectivePlanar, single_channel_tensor_matches_interleaved)
+{
+    const std::array<float, 9> xform       = PlanarPerspective();
+    const float4               borderValue = {13.f, 57.f, 101.f, 211.f};
+
+    test::planar::RunTensorSingleChannelLayoutParity(
+        57, 43, 71, 59, 2, nvcv::TYPE_U8,
+        [xform, borderValue](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst)
+        {
+            cvcuda::WarpPerspective op(2);
+            EXPECT_NO_THROW(op(stream, src, dst, xform.data(), NVCV_INTERP_CUBIC, NVCV_BORDER_CONSTANT, borderValue));
+        });
+}
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpWarpPerspective_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
     // input format, output format,
     {nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p},
     {nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8},
-    {nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16}
+    {nvcv::FMT_F64, nvcv::FMT_F64}  // unsupported data type (64-bit float)
 });
 
 NVCV_TEST_SUITE_P(OpWarpPerspectiveVarshape_Negative, test::ValueList<int, int, nvcv::ImageFormat, nvcv::ImageFormat>{
     // maxBatchSize, numImages, input format, output format
     {5, 5, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p},
     {5, 5, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8},
-    {5, 5, nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16},
+    {5, 5, nvcv::FMT_F64, nvcv::FMT_F64},  // unsupported data type (64-bit float)
     {0, 5, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8},
     {2, 5, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8}
 });

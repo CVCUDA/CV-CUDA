@@ -20,6 +20,7 @@
 
 #include <common/BorderUtils.hpp>
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpCopyMakeBorder.hpp>
 #include <nvcv/DataLayout.hpp>
 #include <nvcv/DataType.hpp>
@@ -267,7 +268,15 @@ NVCV_TEST_SUITE_P(OpCopyMakeBorder, test::ValueList<int, int, int, int, int, int
     {        31,        17,          3,        2,         3,      5,       4,   NVCV_BORDER_CONSTANT,       37.f,     0.f,     0.f,     0.f, nvcv::FMT_U8},
     {        35,        19,          3,        3,         2,      4,       6,  NVCV_BORDER_REPLICATE,        0.f,     0.f,     0.f,     0.f, nvcv::FMT_U8},
     {        37,        23,          3,        4,         5,      3,       2, NVCV_BORDER_REFLECT101,        0.f,     0.f,     0.f,     0.f, nvcv::FMT_U8},
+    {        41,        27,          2,        5,         3,      4,       6, NVCV_BORDER_REFLECT101,        0.f,     0.f,     0.f,     0.f, nvcv::FMT_RGB8},
     {        29,        21,          3,        5,         4,      2,       3, NVCV_BORDER_REFLECT101,        0.f,     0.f,     0.f,     0.f, nvcv::FMT_F32},
+
+    // F16 is a copy plus a single float->half constant-border conversion; host and device both
+    // round to nearest even, so results are deterministic and compare bit-exactly via EXPECT_EQ.
+    // The fractional border components exercise that rounding parity.
+    {        55,        33,          2,        4,         5,      3,       2,   NVCV_BORDER_CONSTANT,      12.5f,  100.7f,   245.f,     0.f, nvcv::FMT_RGBf16},
+    {        64,        21,          3,        3,         2,      4,       6,  NVCV_BORDER_REPLICATE,        0.f,     0.f,     0.f,     0.f, nvcv::FMT_F16},
+    {        23,        54,          2,        6,         2,      4,       3, NVCV_BORDER_REFLECT101,        0.f,     0.f,     0.f,     0.f, nvcv::FMT_RGBAf16},
 
 });
 
@@ -371,6 +380,9 @@ TEST_P(OpCopyMakeBorder, tensor_correct_output)
     else if (nvcv::FMT_F32 == format || nvcv::FMT_RGBf32 == format || nvcv::FMT_RGBAf32 == format)
         StartTest<float>(srcWidth, srcHeight, numBatches, topPad, bottomPad, leftPad, rightPad, borderType, borderValue,
                          format);
+    else if (nvcv::FMT_F16 == format || nvcv::FMT_RGBf16 == format || nvcv::FMT_RGBAf16 == format)
+        StartTest<__half>(srcWidth, srcHeight, numBatches, topPad, bottomPad, leftPad, rightPad, borderType,
+                          borderValue, format);
 }
 
 template<typename T>
@@ -500,7 +512,15 @@ void StartTestVarShape(int srcWidthBase, int srcHeightBase, int numBatches, int 
         }
 #endif
 
-        EXPECT_EQ(goldVec, testVec);
+        const int dstRowStride = ElementCountFromBytes<T>(imgAccess->plane(0).rowStride);
+        const int validRowSize = ElementCountFromBytes<T>(img.size().w * format.planePixelStrideBytes(0));
+        for (int row = 0; row < img.size().h; ++row)
+        {
+            SCOPED_TRACE(row);
+            EXPECT_TRUE(std::equal(goldVec.begin() + row * dstRowStride,
+                                   goldVec.begin() + row * dstRowStride + validRowSize,
+                                   testVec.begin() + row * dstRowStride));
+        }
         idx++;
     }
 }
@@ -530,6 +550,9 @@ TEST_P(OpCopyMakeBorder, varshape_correct_output)
     else if (nvcv::FMT_F32 == format || nvcv::FMT_RGBf32 == format || nvcv::FMT_RGBAf32 == format)
         StartTestVarShape<float>(srcWidth, srcHeight, numBatches, topPad, bottomPad, leftPad, rightPad, borderType,
                                  borderValue, format);
+    else if (nvcv::FMT_F16 == format || nvcv::FMT_RGBf16 == format || nvcv::FMT_RGBAf16 == format)
+        StartTestVarShape<__half>(srcWidth, srcHeight, numBatches, topPad, bottomPad, leftPad, rightPad, borderType,
+                                  borderValue, format);
 }
 
 template<typename T>
@@ -672,6 +695,9 @@ TEST_P(OpCopyMakeBorder, stack_correct_output)
     else if (nvcv::FMT_F32 == format || nvcv::FMT_RGBf32 == format || nvcv::FMT_RGBAf32 == format)
         StartTestStack<float>(srcWidth, srcHeight, numBatches, topPad, bottomPad, leftPad, rightPad, borderType,
                               borderValue, format);
+    else if (nvcv::FMT_F16 == format || nvcv::FMT_RGBf16 == format || nvcv::FMT_RGBAf16 == format)
+        StartTestStack<__half>(srcWidth, srcHeight, numBatches, topPad, bottomPad, leftPad, rightPad, borderType,
+                               borderValue, format);
 }
 
 // =============================================================================
@@ -826,6 +852,8 @@ NVCV_TEST_SUITE_P(OpCopyMakeBorderPlanar,
     {   26,   21,   5,      4,    3,     2,       NVCV_BORDER_WRAP,   0.f,   0.f,   0.f,   0.f,      2,   nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
     {   25,   18,   2,      3,    5,     4, NVCV_BORDER_REFLECT101,   0.f,   0.f,   0.f,   0.f,      2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
     {   18,   16,   1,      2,    2,     1,   NVCV_BORDER_CONSTANT,   3.f,   7.f,  11.f,  13.f,      1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    {   26,   21,   5,      4,    3,     2,       NVCV_BORDER_WRAP,   0.f,   0.f,   0.f,   0.f,      2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+    {   18,   16,   1,      2,    2,     1,   NVCV_BORDER_CONSTANT,   3.f,   7.f,  11.f,  13.f,      1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 // clang-format on
@@ -861,12 +889,13 @@ static auto OpCopyMakeBorderNegativeParams()
 {
     test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, NVCVBorderType> params{
         {NVCV_ERROR_INVALID_ARGUMENT,  nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 0, 0,
-         NVCV_BORDER_CONSTANT                                                                     }, // data format is different
+         NVCV_BORDER_CONSTANT}, // data format is different
         {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, 0, 0,
-         NVCV_BORDER_CONSTANT                                                                     }, // data format is different
+         NVCV_BORDER_CONSTANT}, // data format is different
         {NVCV_ERROR_INVALID_ARGUMENT,    nvcv::FMT_U8,   nvcv::FMT_U16, 0, 0,
-         NVCV_BORDER_CONSTANT                                                                     }, // data type is different
-        {NVCV_ERROR_INVALID_ARGUMENT,   nvcv::FMT_F16,   nvcv::FMT_F16, 0, 0, NVCV_BORDER_CONSTANT}, // invalid data type
+         NVCV_BORDER_CONSTANT}, // data type is different
+        {NVCV_ERROR_INVALID_ARGUMENT,   nvcv::FMT_F64,   nvcv::FMT_F64, 0, 0,
+         NVCV_BORDER_CONSTANT}, // unsupported data type (64-bit float)
     };
 #ifndef ENABLE_SANITIZER
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 0, 0,
@@ -962,13 +991,13 @@ TEST(OpCopyMakeBorder_Negative, invalid_out_size)
 static auto OpCopyMakeBorderVarshapeNegativeParams()
 {
     test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType> params{
-        {  nvcv::FMT_RGB8,  nvcv::FMT_RGB8p,   nvcv::FMT_S32,   nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
-        { nvcv::FMT_RGB8p,   nvcv::FMT_RGB8,   nvcv::FMT_S32,   nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
-        {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16,   nvcv::FMT_S32,   nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
-        {  nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_F32,   nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
-        {  nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_S32,   nvcv::FMT_F32, NVCV_BORDER_CONSTANT},
-        {  nvcv::FMT_RGB8,   nvcv::FMT_RGB8, nvcv::FMT_RGB8p,   nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
-        {  nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_S32, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT},
+        { nvcv::FMT_RGB8, nvcv::FMT_RGB8p,   nvcv::FMT_S32,   nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
+        {nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,   nvcv::FMT_S32,   nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
+        {  nvcv::FMT_F64,   nvcv::FMT_F64,   nvcv::FMT_S32,   nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
+        { nvcv::FMT_RGB8,  nvcv::FMT_RGB8,   nvcv::FMT_F32,   nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
+        { nvcv::FMT_RGB8,  nvcv::FMT_RGB8,   nvcv::FMT_S32,   nvcv::FMT_F32, NVCV_BORDER_CONSTANT},
+        { nvcv::FMT_RGB8,  nvcv::FMT_RGB8, nvcv::FMT_RGB8p,   nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
+        { nvcv::FMT_RGB8,  nvcv::FMT_RGB8,   nvcv::FMT_S32, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT},
     };
 #ifndef ENABLE_SANITIZER
     params.emplace_back(nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_S32, nvcv::FMT_S32, static_cast<NVCVBorderType>(255));

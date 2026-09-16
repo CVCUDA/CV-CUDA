@@ -22,11 +22,59 @@
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
 #include <nvcv/Exception.hpp>
+#include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/util/CheckError.hpp>
+
+#include <cmath>
 
 namespace cvcuda::priv {
 
-namespace legacy = nvcv::legacy::cuda_op;
+namespace legacy         = nvcv::legacy::cuda_op;
+namespace legacy_helpers = nvcv::legacy::helpers;
+
+namespace {
+
+bool IsExactlyRepresentableInteger(float value)
+{
+    constexpr float kMaxExactInteger = 16777216.0f;
+    return std::isfinite(value) && -kMaxExactInteger <= value && value <= kMaxExactInteger
+        && std::trunc(value) == value;
+}
+
+bool IsIntegerGridU8NHWCCubicReflect(const nvcv::TensorDataStridedCuda &inData,
+                                     const nvcv::TensorDataStridedCuda &outData, const NVCVAffineTransform xform,
+                                     const int32_t flags, const NVCVBorderType borderMode)
+{
+    if (flags != (NVCV_INTERP_CUBIC | NVCV_WARP_INVERSE_MAP) || borderMode != NVCV_BORDER_REFLECT)
+    {
+        return false;
+    }
+
+    if (legacy_helpers::GetLegacyDataFormat(inData.layout()) != legacy::kNHWC
+        || legacy_helpers::GetLegacyDataFormat(outData.layout()) != legacy::kNHWC
+        || legacy_helpers::GetLegacyDataType(inData.dtype()) != legacy::kCV_8U || inData.dtype() != outData.dtype())
+    {
+        return false;
+    }
+
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
+    if (auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
+        !inAccess || !outAccess || inAccess->numChannels() != 3 || outAccess->numChannels() != 3)
+    {
+        return false;
+    }
+
+    for (int i = 0; i < 6; ++i)
+    {
+        if (!IsExactlyRepresentableInteger(xform[i]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
 
 std::unique_ptr<legacy::WarpAffine> WarpAffine::CreateLegacyOp(int)
 {
@@ -62,7 +110,13 @@ void WarpAffine::operator()(cudaStream_t stream, const nvcv::Tensor &in, const n
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, xform, flags, borderMode, borderValue, stream));
+    // Integer inverse coordinates make cubic weights collapse to the center tap; use the
+    // cheaper nearest specialization for the RGB8 reflect path where that is bit-exact.
+    const int32_t effectiveFlags = IsIntegerGridU8NHWCCubicReflect(*inData, *outData, xform, flags, borderMode)
+                                     ? (flags & ~NVCV_INTERP_MAX) | NVCV_INTERP_NEAREST
+                                     : flags;
+
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, xform, effectiveFlags, borderMode, borderValue, stream));
 }
 
 void WarpAffine::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,

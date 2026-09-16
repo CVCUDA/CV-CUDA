@@ -491,10 +491,10 @@ def test_domain_filter_scopes_output():
 
 
 def test_gaussian_shared_sources_are_checked():
-    assert ro.SHARED_KERNEL_SOURCES["gaussian"] == [
+    assert ro.SHARED_KERNEL_SOURCES["gaussian"] == (
         "legacy/filter.cu",
         "legacy/filter_var_shape.cu",
-    ]
+    )
 
 
 def test_planar_not_applicable_declarations_are_colocated():
@@ -639,7 +639,8 @@ def test_ben7_reports_malformed_case_payload_as_gap():
 
 def test_legacy_kernel_files_match_across_underscores():
     """Op names drop the underscores their legacy kernel files keep; the longest op name
-    owns a file so a prefix op never steals it (regression for pillow_resize/convert_to)."""
+    owns a file so a prefix op never steals it (regression for pillow_resize/convert_to).
+    """
     ops = ro.all_op_names()
     assert ro.legacy_belongs("pillow_resize", "pillowresize", ops)
     assert ro.legacy_belongs("convert_to", "convertto", ops)

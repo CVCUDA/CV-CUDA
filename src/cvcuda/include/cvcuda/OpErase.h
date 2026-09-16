@@ -71,7 +71,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t m
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
- *       16bit Float    | No
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -87,7 +87,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t m
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
- *       16bit Float    | No
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -130,6 +130,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t m
  *      Must be 'N' (dim = 1) with W = number of erasing area * 4.
  *      Data Type must be 32bit Float.
  *      DataType must be TYPE_F32.
+ *      Values stay 32bit Float for all image types. For FP16 images, each fill value
+ *      is converted to FP16 in a single round-to-nearest step.
  *
  *
  * @param [in] handle Handle to the operator.

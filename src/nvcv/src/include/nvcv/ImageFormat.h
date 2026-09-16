@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -385,6 +385,24 @@ typedef uint64_t NVCVImageFormat;
 
 /** Single plane with interleaved HSV 8-bit channel. */
 #define NVCV_IMAGE_FORMAT_HSV8 NVCV_DETAIL_MAKE_COLOR_FMT1(HSV, UNDEFINED, PL, UNSIGNED, XYZ0, ASSOCIATED, X8_Y8_Z8)
+
+/** Single plane with interleaved CIE L*a*b* unsigned 8-bit channels. */
+#define NVCV_IMAGE_FORMAT_LAB8 NVCV_DETAIL_MAKE_COLOR_FMT1(LAB, UNDEFINED, PL, UNSIGNED, XYZ0, ASSOCIATED, X8_Y8_Z8)
+
+/** Planar CIE L*a*b* unsigned 8-bit channels. */
+#define NVCV_IMAGE_FORMAT_LAB8p NVCV_DETAIL_MAKE_COLOR_FMT3(LAB, UNDEFINED, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8)
+
+/** Single plane with interleaved CIE L*a*b* float16 channels. */
+#define NVCV_IMAGE_FORMAT_LABf16 NVCV_DETAIL_MAKE_COLOR_FMT1(LAB, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X16_Y16_Z16)
+
+/** Planar CIE L*a*b* float16 channels. */
+#define NVCV_IMAGE_FORMAT_LABf16p NVCV_DETAIL_MAKE_COLOR_FMT3(LAB, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X16, X16, X16)
+
+/** Single plane with interleaved CIE L*a*b* float32 channels. */
+#define NVCV_IMAGE_FORMAT_LABf32 NVCV_DETAIL_MAKE_COLOR_FMT1(LAB, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X32_Y32_Z32)
+
+/** Planar CIE L*a*b* float32 channels. */
+#define NVCV_IMAGE_FORMAT_LABf32p NVCV_DETAIL_MAKE_COLOR_FMT3(LAB, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X32, X32, X32)
 
 /** Single plane with interleaved CMYK 8-bit channel. */
 #define NVCV_IMAGE_FORMAT_CMYK8 NVCV_DETAIL_MAKE_COLOR_FMT1(CMYK, UNDEFINED, PL, UNSIGNED, XYZW, ASSOCIATED, X8_Y8_Z8_W8)

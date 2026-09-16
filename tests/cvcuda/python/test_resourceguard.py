@@ -161,7 +161,9 @@ _SUBMISSION_ERROR_WITH_CLEANUP_FAILURE_SCRIPT = textwrap.dedent(
         cvcuda._test.fail_hold_resources(False)
 
     assert isinstance(error, RuntimeError), repr(error)
-    assert "INVALID_DATA_TYPE" in str(error), str(error)
+    # The status name is the contract; the message body is the operator's own text.
+    assert "NVCV_ERROR_INVALID_ARGUMENT" in str(error), str(error)
+    assert "data type" in str(error), str(error)
     print("PASS", flush=True)
     """
 )

@@ -250,9 +250,8 @@ __global__ void gamma_contrast_float_kernel(const cuda::ImageBatchVarShapeWrap<D
 
     gamma_type gamma = gamma_[batch_idx];
 
-    D out = nvcv::cuda::SaturateCast<D>(cuda::pow(cuda::StaticCast<float>(*src.ptr(batch_idx, dst_y, dst_x)), gamma));
-
-    *dst.ptr(batch_idx, dst_y, dst_x) = cuda::clamp(cuda::StaticCast<float>(out), 0.f, 1.f);
+    *dst.ptr(batch_idx, dst_y, dst_x) = nvcv::cuda::SaturateCast<D>(
+        cuda::clamp(cuda::pow(cuda::StaticCast<float>(*src.ptr(batch_idx, dst_y, dst_x)), gamma), 0.f, 1.f));
 }
 
 template<typename D, typename gamma_type, int NIX>
@@ -276,8 +275,8 @@ __global__ void gamma_contrast_float_batched_kernel(const cuda::ImageBatchVarSha
     {
         if (dst_x + i < width)
         {
-            const D out = nvcv::cuda::SaturateCast<D>(cuda::pow(cuda::StaticCast<float>(src_ptr[i]), gamma));
-            dst_ptr[i]  = cuda::clamp(cuda::StaticCast<float>(out), 0.f, 1.f);
+            dst_ptr[i] = nvcv::cuda::SaturateCast<D>(
+                cuda::clamp(cuda::pow(cuda::StaticCast<float>(src_ptr[i]), gamma), 0.f, 1.f));
         }
     }
 }
@@ -379,10 +378,8 @@ __global__ void gamma_contrast_float_planar_kernel(const cuda::ImageBatchVarShap
     {
         const float gamma = gamma_[batch_idx * channels + plane];
 
-        D out = nvcv::cuda::SaturateCast<D>(
-            cuda::pow(cuda::StaticCast<float>(*src.ptr(batch_idx, plane, dst_y, dst_x)), gamma));
-
-        *dst.ptr(batch_idx, plane, dst_y, dst_x) = cuda::clamp(cuda::StaticCast<float>(out), 0.f, 1.f);
+        *dst.ptr(batch_idx, plane, dst_y, dst_x) = nvcv::cuda::SaturateCast<D>(
+            cuda::clamp(cuda::pow(cuda::StaticCast<float>(*src.ptr(batch_idx, plane, dst_y, dst_x)), gamma), 0.f, 1.f));
     }
 }
 
@@ -618,7 +615,7 @@ ErrorCode GammaContrastVarShape::infer(const ImageBatchVarShapeDataStridedCuda &
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
-          || data_type == kCV_32F))
+          || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -717,6 +714,11 @@ ErrorCode GammaContrastVarShape::infer(const ImageBatchVarShapeDataStridedCuda &
     static const func_t funcs_float[4] = {gamma_contrast_float_batched<float>, gamma_contrast_float<float2>,
                                           gamma_contrast_float<float3>, gamma_contrast_float<float4>};
 
+    // F16 instantiates the float-path kernels (pow with no /255 normalization, clamp to [0, 1])
+    // with real __half image types; the gamma values remain float.
+    static const func_t funcs_half[4] = {gamma_contrast_float_batched<__half>, gamma_contrast_float<__half2>,
+                                         gamma_contrast_float<half3>, gamma_contrast_float<half4>};
+
     if (isPlanar)
     {
         // Planar dispatch indexes by dtype only: each channel is a separate single-channel plane, so
@@ -733,6 +735,11 @@ ErrorCode GammaContrastVarShape::infer(const ImageBatchVarShapeDataStridedCuda &
         {
             gamma_contrast_float_planar<float>(inData, outData, m_gammaArray, channels, stream);
         }
+        // F16 follows the float path (pow with no /255 normalization, clamp to [0, 1]).
+        else if (data_type == kCV_16F)
+        {
+            gamma_contrast_float_planar<__half>(inData, outData, m_gammaArray, channels, stream);
+        }
         else
         {
             const planar_func_t planar_func = planar_funcs[data_type];
@@ -746,6 +753,11 @@ ErrorCode GammaContrastVarShape::infer(const ImageBatchVarShapeDataStridedCuda &
     if (data_type == kCV_32F)
     {
         const func_t func = funcs_float[channels - 1];
+        func(inData, outData, m_gammaArray, stream);
+    }
+    else if (data_type == kCV_16F)
+    {
+        const func_t func = funcs_half[channels - 1];
         func(inData, outData, m_gammaArray, stream);
     }
     else

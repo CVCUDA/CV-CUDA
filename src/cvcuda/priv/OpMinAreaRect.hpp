@@ -26,8 +26,8 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/Tensor.hpp>
 
 namespace cvcuda::priv {
@@ -41,7 +41,25 @@ public:
                     const nvcv::Tensor &numPointsInContour, const int totalContours) const;
 
 private:
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::MinAreaRect> m_legacyOp;
+    // One instance per CUDA device, shared by every submit on that device. Concurrent submits on
+    // distinct streams would race on this scratch; that is inherited from the legacy operator.
+    struct DeviceBuffers
+    {
+        explicit DeviceBuffers(int maxContourNum);
+        ~DeviceBuffers();
+
+        DeviceBuffers(const DeviceBuffers &)            = delete;
+        DeviceBuffers &operator=(const DeviceBuffers &) = delete;
+
+        float *rotateCoeffs  = nullptr;
+        int   *rotatedPoints = nullptr;
+
+    private:
+        void cleanup() noexcept;
+    };
+
+    int                                      m_maxContourNum;
+    mutable PerDeviceResource<DeviceBuffers> m_buffers;
 };
 
 } // namespace cvcuda::priv

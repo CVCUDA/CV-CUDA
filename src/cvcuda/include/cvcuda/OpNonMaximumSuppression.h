@@ -58,6 +58,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNonMaximumSuppressionCreate(NVCVOperatorHandle *h
  *  bboxes with scores less than the score threshold are discarded.  Then, all input bboxes with sufficient overlap
  *  and lower score than another input bbox are discarded.  The overlap is calculated via IoU fraction, i.e. the
  *  intersection area divided by the area of the union, where sufficient overlap means greater than IoU threshold.
+ *  For sufficiently overlapping bboxes with equal scores, smaller-area bboxes are discarded.  If their areas are
+ *  also equal, the bbox occurring first in the input is retained.
  *
  *  Limitations:
  *

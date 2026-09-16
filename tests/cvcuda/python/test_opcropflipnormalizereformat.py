@@ -44,6 +44,42 @@ RNG = np.random.default_rng(0)
             np.uint8,
             "NHWC",
         ),
+        (
+            # F16 input and output; base/scale stay float32.
+            cvcuda.Format.RGBAf16,
+            1,
+            (10, 10),
+            (20, 20),
+            cvcuda.Border.REPLICATE,
+            0,
+            (((1, 1, 1, 4), np.float32, "NHWC")),
+            (((1, 1, 1, 4), np.float32, "NHWC")),
+            1,
+            2,
+            3,
+            cvcuda.NormalizeFlags.SCALE_IS_STDDEV,
+            4,
+            np.float16,
+            "NHWC",
+        ),
+        (
+            # Mixed U8 input to F16 output with an NCHW reformat.
+            cvcuda.Format.RGBA8,
+            1,
+            (10, 10),
+            (20, 20),
+            cvcuda.Border.REPLICATE,
+            0,
+            (((1, 1, 1, 4), np.float32, "NHWC")),
+            (((1, 1, 1, 4), np.float32, "NHWC")),
+            1,
+            2,
+            3,
+            cvcuda.NormalizeFlags.SCALE_IS_STDDEV,
+            4,
+            np.float16,
+            "NCHW",
+        ),
     ],
 )
 def test_op_crop_flip_normalize_reformat_tensor_out(
@@ -143,17 +179,22 @@ _supported_scalar_formats = {
     cvcuda.Format.S8,
     cvcuda.Format.S16,
     cvcuda.Format.S32,
+    cvcuda.Format.F16,
     cvcuda.Format.F32,
 }
 _supported_interleaved_formats = {
     # 3 channels interleaved
     cvcuda.Format.RGB8,
     cvcuda.Format.BGR8,
+    cvcuda.Format.RGBf16,
+    cvcuda.Format.BGRf16,
     cvcuda.Format.RGBf32,
     cvcuda.Format.BGRf32,
     # 4 channels interleaved
     cvcuda.Format.RGBA8,
     cvcuda.Format.BGRA8,
+    cvcuda.Format.RGBAf16,
+    cvcuda.Format.BGRAf16,
     cvcuda.Format.RGBAf32,
     cvcuda.Format.BGRAf32,
 }
@@ -161,11 +202,15 @@ _supported_planar_formats = {
     # 3 channels planar
     cvcuda.Format.RGB8p,
     cvcuda.Format.BGR8p,
+    cvcuda.Format.RGBf16p,
+    cvcuda.Format.BGRf16p,
     cvcuda.Format.RGBf32p,
     cvcuda.Format.BGRf32p,
     # 4 channels planar
     cvcuda.Format.RGBA8p,
     cvcuda.Format.BGRA8p,
+    cvcuda.Format.RGBAf16p,
+    cvcuda.Format.BGRAf16p,
     cvcuda.Format.RGBAf32p,
     cvcuda.Format.BGRAf32p,
 }

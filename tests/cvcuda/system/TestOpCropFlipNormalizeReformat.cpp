@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/BorderUtils.hpp>
@@ -23,6 +24,7 @@
 #include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpCropFlipNormalizeReformat.hpp>
 #include <cvcuda/OpNormalize.hpp>
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
@@ -36,6 +38,7 @@
 #include <cmath>
 #include <iostream>
 #include <random>
+#include <type_traits>
 
 namespace gt    = ::testing;
 namespace test  = nvcv::test;
@@ -375,6 +378,12 @@ void testCropFlipNormalizeReformatPad(int width, int height, int numImages, bool
     int dst_plane_ch_stride = dst_fmt.numPlanes() == 1 ? (dst_fmt.planePixelStrideBytes(0) / dst_fmt.numChannels())
                                                        : dst_fmt.planePixelStrideBytes(0);
 
+    // F16 outputs validate against an FP32-computed reference (HalfTestUtils.hpp policy): the
+    // gold pipeline stores floats, so its buffer and strides scale by sizeof(float)/sizeof(__half).
+    using GoldT                        = std::conditional_t<std::is_same_v<T_Dst, __half>, float, T_Dst>;
+    constexpr int gold_scale           = sizeof(GoldT) / sizeof(T_Dst);
+    const int     gold_plane_ch_stride = dst_plane_ch_stride * gold_scale;
+
     // Check test data against gold
     auto dstTensorData = imgDstTensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(nullptr, dstTensorData);
@@ -402,7 +411,7 @@ void testCropFlipNormalizeReformatPad(int width, int height, int numImages, bool
                                             dstRowStride, // vec has no padding
                                             dst_height * dst_planes, cudaMemcpyDeviceToHost));
 
-        std::vector<uint8_t> goldVec(dst_height * dstRowStride * dst_planes);
+        std::vector<uint8_t> goldVec(static_cast<size_t>(dst_height) * dstRowStride * dst_planes * gold_scale);
 
         NVCVRectI cropRectValue = {cropVec[4 * i], cropVec[4 * i + 1], cropVec[4 * i + 2], cropVec[4 * i + 3]};
 
@@ -427,36 +436,48 @@ void testCropFlipNormalizeReformatPad(int width, int height, int numImages, bool
             inStrides.w = src_plane_ch_stride;
         }
 
+        // outStrides describe the gold buffer, whose element type is GoldT (float for F16 outputs).
         if (dst_planar)
         {
-            outStrides.x = dst_width * dst_height * numChannels * dst_plane_ch_stride;
-            outStrides.y = dst_width * dst_height * dst_plane_ch_stride;
-            outStrides.z = dst_width * dst_plane_ch_stride;
-            outStrides.w = dst_plane_ch_stride;
+            outStrides.x = dst_width * dst_height * numChannels * gold_plane_ch_stride;
+            outStrides.y = dst_width * dst_height * gold_plane_ch_stride;
+            outStrides.z = dst_width * gold_plane_ch_stride;
+            outStrides.w = gold_plane_ch_stride;
         }
         else
         {
-            outStrides.x = dst_width * dst_height * numChannels * dst_plane_ch_stride;
-            outStrides.y = dst_width * numChannels * dst_plane_ch_stride;
-            outStrides.z = numChannels * dst_plane_ch_stride;
-            outStrides.w = dst_plane_ch_stride;
+            outStrides.x = dst_width * dst_height * numChannels * gold_plane_ch_stride;
+            outStrides.y = dst_width * numChannels * gold_plane_ch_stride;
+            outStrides.z = numChannels * gold_plane_ch_stride;
+            outStrides.w = gold_plane_ch_stride;
         }
 
         // Generate gold result
-        CropFlipNormalizeReformat<T_Src, T_Dst, B>(
+        CropFlipNormalizeReformat<T_Src, GoldT, B>(
             goldVec, dstRowStride, outStrides, srcVec[i], srcVecRowStride[i], inStrides, {src_width, src_height},
             {dst_width, dst_height}, fmt, dst_fmt, borderValue, flip_vec[i], cropRectValue, baseVec, 0, {1, 1},
             baseFormat, scaleVec, 0, {1, 1}, scaleFormat, globalScale, globalShift, epsilon, flags);
 
         // Compare test and gold with correct type
         std::vector<T_Dst> testVecTyped(dst_height * dst_width * numChannels);
-        std::vector<T_Dst> goldVecTyped(dst_height * dst_width * numChannels);
+        std::vector<GoldT> goldVecTyped(dst_height * dst_width * numChannels);
         auto              *testData = reinterpret_cast<T_Dst *>(testVec.data());
-        auto              *goldData = reinterpret_cast<T_Dst *>(goldVec.data());
+        auto              *goldData = reinterpret_cast<GoldT *>(goldVec.data());
         std::copy_n(testData, testVecTyped.size(), testVecTyped.begin());
         std::copy_n(goldData, goldVecTyped.size(), goldVecTyped.begin());
 
-        VEC_EXPECT_NEAR(goldVecTyped, testVecTyped, 1e-4);
+        if constexpr (std::is_same_v<T_Dst, __half>)
+        {
+            // Single normalize mul-add evaluated in float with one rounding on the half store:
+            // 1 half-ULP at the FP32 reference magnitude (HalfTestUtils.hpp policy).
+            test::ExpectNearHalfUlps(goldVecTyped, testVecTyped, 1.f);
+        }
+        else
+        {
+            // Historical tolerance: 1e-4 absorbs FMA/association differences between the CPU
+            // gold and the kernel for float outputs; integer outputs must match exactly.
+            VEC_EXPECT_NEAR(goldVecTyped, testVecTyped, 1e-4);
+        }
     }
 }
 
@@ -504,7 +525,21 @@ NVCV_TYPED_TEST_SUITE(
                  NVCV_TEST_ROW(51, 53, 10, false, false, normalScale, 1.f, 12.3f, 0.f, NVCV_IMAGE_FORMAT_RGBAf32p,
                                NVCV_IMAGE_FORMAT_RGBAf32, NVCV_BORDER_REPLICATE, float, float),
                  NVCV_TEST_ROW(51, 53, 10, false, true, scaleIsStdDev, 1.1f, 0.3f, 1.23f, NVCV_IMAGE_FORMAT_RGBAf32,
-                               NVCV_IMAGE_FORMAT_RGBAf32p, NVCV_BORDER_REPLICATE, float, float)>);
+                               NVCV_IMAGE_FORMAT_RGBAf32p, NVCV_BORDER_REPLICATE, float, float),
+                 // F16 rows (both sides plus mixed pairs): the kernel widens every source to float
+                 // for the normalize mul-add, so F16 sources with integer-valued test data are
+                 // lossless; F16 outputs round once on the half store and validate against the
+                 // FP32 gold via ExpectNearHalfUlps in the harness above.
+                 NVCV_TEST_ROW(51, 53, 10, true, true, normalScale, 1.234f, 33.21f, 0.f, NVCV_IMAGE_FORMAT_RGBf16,
+                               NVCV_IMAGE_FORMAT_RGBf16, NVCV_BORDER_REPLICATE, __half, __half),
+                 NVCV_TEST_ROW(51, 53, 10, true, true, scaleIsStdDev, 1.1f, 0.3f, 1.23f, NVCV_IMAGE_FORMAT_RGBAf16,
+                               NVCV_IMAGE_FORMAT_RGBAf16p, NVCV_BORDER_REPLICATE, __half, __half),
+                 NVCV_TEST_ROW(15, 15, 3, true, true, normalScale, 1.f, 0.f, 0.f, NVCV_IMAGE_FORMAT_RGBAf16p,
+                               NVCV_IMAGE_FORMAT_RGBAf32, NVCV_BORDER_CONSTANT, __half, float),
+                 NVCV_TEST_ROW(15, 15, 3, true, true, normalScale, 1.234f, 12.3f, 0.f, NVCV_IMAGE_FORMAT_RGBAf32,
+                               NVCV_IMAGE_FORMAT_RGBAf16, NVCV_BORDER_REPLICATE, float, __half),
+                 NVCV_TEST_ROW(9, 13, 10, true, true, normalScale, 1.f, 0.f, 0.f, NVCV_IMAGE_FORMAT_RGBA8,
+                               NVCV_IMAGE_FORMAT_RGBAf16, NVCV_BORDER_CONSTANT, uint8_t, __half)>);
 #undef NVCV_TEST_ROW
 
 TYPED_TEST(OpCropFlipNormalizeReformat, correct_output)
@@ -687,4 +722,74 @@ TEST(OpCropFlipNormalizeReformat_Negative, invalid_base_channels)
                  nvcv::Exception);
 
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpCropFlipNormalizeReformat_Negative, rejects_layout_border_and_unsupported_types)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    auto makeBatch = [](nvcv::ImageFormat fmt)
+    {
+        nvcv::ImageBatchVarShape batch(1);
+        batch.pushBack(nvcv::Image({10, 10}, fmt));
+        return batch;
+    };
+
+    nvcv::Tensor flipCode({{1}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor cropRect(
+        {
+            {1, 1, 1, 4},
+            nvcv::TENSOR_NHWC
+    },
+        nvcv::TYPE_S32);
+    nvcv::Tensor base(
+        {
+            {1, 1, 1, 3},
+            nvcv::TENSOR_NHWC
+    },
+        nvcv::TYPE_F32);
+    nvcv::Tensor scale(base.shape(), base.dtype());
+
+    cvcuda::CropFlipNormalizeReformat op;
+    auto expectInvalid = [&](const nvcv::ImageBatchVarShape &src, const nvcv::Tensor &dst, NVCVBorderType border)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall(
+                      [&] { op(stream, src, dst, cropRect, border, 0.f, flipCode, base, scale, 1.f, 0.f, 0.f, 0); }));
+    };
+
+    nvcv::ImageBatchVarShape srcU8 = makeBatch(nvcv::FMT_RGB8);
+    nvcv::Tensor             dstU8(1, {10, 10}, nvcv::FMT_RGB8);
+    expectInvalid(srcU8, dstU8, static_cast<NVCVBorderType>(255));
+
+    nvcv::Tensor dstHWC(
+        {
+            {10, 10, 3},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+    expectInvalid(srcU8, dstHWC, NVCV_BORDER_CONSTANT);
+
+    nvcv::Tensor dstF64(
+        {
+            {1, 10, 10, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_F64);
+    expectInvalid(srcU8, dstF64, NVCV_BORDER_CONSTANT);
+
+    nvcv::Tensor dstOneChannel(
+        {
+            {1, 10, 10, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::ImageBatchVarShape srcC64 = makeBatch(nvcv::FMT_C64);
+    expectInvalid(srcC64, dstOneChannel, NVCV_BORDER_CONSTANT);
+
+    nvcv::ImageBatchVarShape srcF64 = makeBatch(nvcv::FMT_F64);
+    expectInvalid(srcF64, dstOneChannel, NVCV_BORDER_CONSTANT);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

@@ -191,6 +191,16 @@ def test_opminmaxloc_tensor_api(src_args):
 
 
 @pytest.mark.parametrize(
+    "operator", [cvcuda.min_loc, cvcuda.max_loc, cvcuda.min_max_loc]
+)
+def test_opminmaxloc_rejects_non_image_tensor_layout(operator):
+    src = cvcuda.Tensor((2, 3), cvcuda.Type.U8, "NC")
+
+    with pytest.raises(RuntimeError, match="Incompatible input tensor layout"):
+        operator(src, max_locations=1)
+
+
+@pytest.mark.parametrize(
     "num_images, img_format, max_size",
     [
         (1, cvcuda.Format.U8, (73, 98)),

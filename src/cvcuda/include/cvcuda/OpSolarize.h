@@ -22,7 +22,7 @@
  *
  * Solarize computes, element-wise, @f$ out = (in \ge threshold) ? (bound - in) : in @f$, where
  * @p bound is the maximum representable value of the data type (255 for 8-bit unsigned, 65535 for
- * 16-bit unsigned, and 1.0 for 32-bit float). The above-threshold branch is the photometric
+ * 16-bit unsigned, and 1.0 for 16- and 32-bit float). The above-threshold branch is the photometric
  * negative; the below-threshold branch passes the pixel through unchanged. The operation is
  * channel-independent.
  *
@@ -78,6 +78,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaSolarizeCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -93,6 +94,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaSolarizeCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | No
  *

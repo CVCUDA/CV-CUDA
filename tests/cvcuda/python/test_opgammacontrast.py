@@ -102,6 +102,7 @@ def test_op_gamma_contrastvarshape(
         ((2, 3, 16, 23), "NCHW", np.uint8),
         ((3, 16, 23), "CHW", np.float32),
         ((4, 16, 23, 4), "NHWC", np.float32),
+        ((4, 16, 23, 3), "NHWC", np.float16),
     ],
 )
 @pytest.mark.parametrize("gamma, gain", [(0.5, 1.0), (1.8, 0.9), (0.7, 1.2)])
@@ -110,7 +111,9 @@ def test_op_gamma_contrast_scalar(shape, layout, dtype, gamma, gain):
     # passed by value (no gamma tensor). Validated against a numpy gold.
     is_float = np.issubdtype(dtype, np.floating)
     if is_float:
-        h_src = RNG.random(shape, dtype=np.float32)
+        # For float16 the astype quantizes to half, so the gold consumes exactly the
+        # values the kernel reads.
+        h_src = RNG.random(shape, dtype=np.float32).astype(dtype)
     else:
         h_src = RNG.integers(0, 256, size=shape, dtype=dtype)
     src = util.to_cvcuda_tensor(h_src, layout)
@@ -121,7 +124,15 @@ def test_op_gamma_contrast_scalar(shape, layout, dtype, gamma, gain):
     assert str(out.layout) == layout
     got = util.to_cpu_numpy_buffer(out.cuda())
 
-    if is_float:
+    if dtype == np.float16:
+        # F16 gold computed in FP32 on the half-quantized input; pow is a transcendental
+        # chain, so per the HalfTestUtils policy the bound is 8 half-ULPs, taken at the
+        # unit output scale (values are in [0, 1], so one ULP is at most 2**-11).
+        gold = np.clip(gain * np.power(h_src.astype(np.float32), gamma), 0.0, 1.0)
+        np.testing.assert_allclose(
+            got.astype(np.float32), gold, atol=8 * 2.0**-11, rtol=0
+        )
+    elif is_float:
         gold = np.clip(gain * np.power(h_src, gamma), 0.0, 1.0).astype(np.float32)
         np.testing.assert_allclose(got, gold, atol=5e-7, rtol=0)
     else:
@@ -212,27 +223,37 @@ globals().update(
             cvcuda.Format.U16,
             cvcuda.Format.S16,
             cvcuda.Format.S32,
+            cvcuda.Format.F16,
             cvcuda.Format.F32,
             # 2 channels
+            cvcuda.Format._2F16,
             cvcuda.Format._2F32,
             # 3 channels
             cvcuda.Format.RGB8,
             cvcuda.Format.BGR8,
+            cvcuda.Format.RGBf16,
+            cvcuda.Format.BGRf16,
             cvcuda.Format.RGBf32,
             cvcuda.Format.BGRf32,
             # 4 channels
             cvcuda.Format.RGBA8,
             cvcuda.Format.BGRA8,
+            cvcuda.Format.RGBAf16,
+            cvcuda.Format.BGRAf16,
             cvcuda.Format.RGBAf32,
             cvcuda.Format.BGRAf32,
             # 3-channel planar (NCHW/CHW)
             cvcuda.Format.RGB8p,
             cvcuda.Format.BGR8p,
+            cvcuda.Format.RGBf16p,
+            cvcuda.Format.BGRf16p,
             cvcuda.Format.RGBf32p,
             cvcuda.Format.BGRf32p,
             # 4-channel planar (NCHW/CHW)
             cvcuda.Format.RGBA8p,
             cvcuda.Format.BGRA8p,
+            cvcuda.Format.RGBAf16p,
+            cvcuda.Format.BGRAf16p,
             cvcuda.Format.RGBAf32p,
             cvcuda.Format.BGRAf32p,
         },
@@ -251,6 +272,7 @@ globals().update(
             cvcuda.Type.U16,
             cvcuda.Type.S16,
             cvcuda.Type.S32,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
@@ -276,6 +298,7 @@ globals().update(
             cvcuda.Type.U16,
             cvcuda.Type.S16,
             cvcuda.Type.S32,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},

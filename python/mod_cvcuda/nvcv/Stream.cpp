@@ -49,6 +49,7 @@ std::unordered_map<int, cudaStream_t> Stream::m_auxStreams;
 std::atomic<int>                      Stream::m_instanceCount = 0;
 std::shared_mutex                     Stream::m_auxStreamMutex;
 std::mutex                            Stream::m_gcMutex;
+std::weak_ptr<Stream>                 Stream::m_defaultStream;
 
 // Here we define the representation of external cuda streams.
 // It defines pybind11's type casters from the python object
@@ -471,17 +472,19 @@ void Stream::wait_stream(std::shared_ptr<Stream> other)
 
 Stream &Stream::Current()
 {
-    auto defStream = StreamStack::Instance().top();
-    if (!defStream)
+    auto currentStream = StreamStack::Instance().top();
+    if (!currentStream)
     {
-        // Empty stream stack means Stream::Export skipped wrapping the legacy
-        // default stream — only happens on no-device hosts. Throw a Python-
-        // visible error rather than NVCV_ASSERT (which would abort()), so
-        // that introspection tools (pybind11_stubgen, sphinx) can read the
-        // class without crashing.
+        currentStream = m_defaultStream.lock();
+    }
+    if (!currentStream)
+    {
+        // An unavailable default stream means Stream::Export skipped wrapping
+        // the legacy default stream — only happens on no-device hosts. Throw
+        // a Python-visible error rather than NVCV_ASSERT (which would abort()).
         throw StreamError("No default cvcuda.Stream available (no CUDA device visible).");
     }
-    return *defStream;
+    return *currentStream;
 }
 
 void Stream::activate()
@@ -500,10 +503,22 @@ void Stream::activate()
     StreamStack::Instance().push(*this);
 }
 
-void Stream::deactivate(py::object, py::object, py::object) const
+void Stream::deactivate(py::object exc_type, py::object, py::object) const
 {
     ::cvcudapy::NvtxRange nvtxRange("cvcuda.Stream.__exit__");
-    StreamStack::Instance().pop();
+    StreamStack          &streamStack = StreamStack::Instance();
+    if (streamStack.top().get() != this)
+    {
+        // Raising while the with-body is already unwinding would make this the
+        // visible failure and demote the caller's to __context__, so the bug
+        // they need to see gets buried behind a report of the mess it made.
+        if (!exc_type.is_none())
+        {
+            return;
+        }
+        throw StreamError("Cannot deactivate cvcuda.Stream because it is not the current stream on this thread.");
+    }
+    streamStack.pop();
 }
 
 // Stores the data held by a cuda host callback function in a cuda stream.
@@ -714,16 +729,14 @@ void Stream::CleanupAtExit(const std::shared_ptr<Stream> &globalStream)
         globalStream->sync();
         SyncAuxStream();
 
-        // There should only be 1 stream in the stack, namely the global stream.
-        if (auto s = StreamStack::Instance().top(); s != globalStream)
+        // Nothing seeds the stack, so anything left is a context that was
+        // entered and never exited. Draining it would release nothing -- the
+        // entries are weak, and the thread-local storage goes away with the
+        // thread -- so just report it. This runs on whichever thread finalizes
+        // the interpreter, which need not be the one that imported the module.
+        if (StreamStack::Instance().top())
         {
-            std::cerr << "Stream stack leak detected" << std::endl;
-        }
-
-        // Make sure stream stack is empty.
-        while (auto s = StreamStack::Instance().top())
-        {
-            StreamStack::Instance().pop();
+            std::cerr << "Stream stack leak detected on cleanup thread" << std::endl;
         }
 
         // Make sure the gc bag is also cleaned up *after* all streams are done,
@@ -818,9 +831,9 @@ void Stream::Export(py::module &m)
     py::module_ internal = m.attr(INTERNAL_SUBMODULE_NAME);
     internal.def("syncAuxStream", &SyncAuxStream);
 
-    // Wrap the CUDA legacy default stream as `cvcuda.Stream.default` and seed
-    // the per-thread stream stack so `cvcuda.Stream.current` has something to
-    // return.
+    // Wrap the CUDA legacy default stream as `cvcuda.Stream.default`. It is not
+    // pushed onto a stream stack: that would seed only the importing thread's,
+    // so `m_defaultStream` serves every thread uniformly instead.
     //
     // Skipped on hosts with no CUDA device (CPU-only build/CI nodes,
     // CUDA_VISIBLE_DEVICES=""): wrapping stream 0 unavoidably touches the
@@ -841,12 +854,24 @@ void Stream::Export(py::module &m)
     {
         stream.def_property_readonly_static(
             "current", [](py::object) { return Current().sharedStream(); },
-            "Get the current CUDA stream for this thread.");
+            "Get the current CUDA stream for this thread. Threads with no active stream context get "
+            "cvcuda.Stream.default.");
 
         static priv::ExternalStream<priv::VOIDP> cudaDefaultStream(static_cast<cudaStream_t>(nullptr));
-        globalStream = std::make_shared<Stream>(cudaDefaultStream);
-        StreamStack::Instance().push(*globalStream);
-        stream.attr("default") = globalStream;
+        globalStream    = std::make_shared<Stream>(cudaDefaultStream);
+        m_defaultStream = globalStream;
+
+        // Owns the wrapper. It cannot live under the public name, which is a
+        // read-only property: assigning `default` used to succeed and change
+        // nothing, since Current() resolves through m_defaultStream. The
+        // atexit handler drops its own capture while the interpreter is still
+        // alive, so something Python-owned has to outlast it.
+        internal.attr("default_stream") = globalStream;
+
+        stream.def_property_readonly_static(
+            "default", [](py::object) { return m_defaultStream.lock(); },
+            "The CUDA legacy default stream (stream 0). Read-only: to run work on another stream, enter "
+            "its context or pass it as the operator's stream argument.");
     }
 
     // Order from most specific to less specific
@@ -858,7 +883,10 @@ void Stream::Export(py::module &m)
     fflush(stdout);
 
     stream.def("__enter__", &Stream::activate, "Activate the CUDA stream as the current stream for this thread.")
-        .def("__exit__", &Stream::deactivate, "Deactivate the CUDA stream as the current stream for this thread.")
+        .def("__exit__", &Stream::deactivate,
+             "Deactivate the CUDA stream as the current stream for this thread. Raises RuntimeError if it is "
+             "not the current stream on this thread, unless an exception is already propagating out of the "
+             "context body, which is left to reach the caller unchanged.")
         .def("sync", &Stream::sync, "Wait for all preceding CUDA calls in the current stream to complete.")
         .def("wait_stream", &Stream::wait_stream, py::arg("other"),
              "Insert a dependency on 'other' into this stream. All subsequent work enqueued on this stream "

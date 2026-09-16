@@ -262,6 +262,14 @@ def test_op_minarearect(contourData, numPointsInContour, openCvRes):
     assert tmp is out
 
 
+def test_op_minarearect_rejects_rank_one_num_points_tensor():
+    src = cvcuda.Tensor((1, 2), cvcuda.Type.S16, "NC")
+    num_points = cvcuda.Tensor((1,), cvcuda.Type.S32, "N")
+
+    with pytest.raises(RuntimeError, match="must have rank at least 2"):
+        cvcuda.minarearect(src, num_points, 1)
+
+
 def _minarearect_params(dtype, layout, channels):
     num_contours = 1
     points_per_contour = 5

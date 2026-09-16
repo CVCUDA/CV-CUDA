@@ -5,7 +5,6 @@
 
 How to reproduce and patch a bug in CV-CUDA. These guidelines apply to both
 humans and AI agents and are derived from the project's recent bug-fix PRs.
-For *reviewing* a bug-fix PR, see [REVIEW_PR_GUIDELINES.md](REVIEW_PR_GUIDELINES.md).
 
 The single most important rule:
 

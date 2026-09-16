@@ -90,26 +90,62 @@ bool IsPlanarVarShapeFormat(nvcv::ImageFormat format)
 
 nvcv::ImageFormat PlanarRGBOutputFormat(nvcv::ImageFormat outputFormat)
 {
-    if (nvcv::DataType channelType = outputFormat.planeDataType(0).channelType(0); channelType != nvcv::TYPE_U8)
-    {
-        throw CvtColorOpError{"Unsupported planar var-shape CvtColor output data type"};
-    }
+    const nvcv::DataType channelType = outputFormat.planeDataType(0).channelType(0);
 
     switch (outputFormat.swizzle())
     {
     case nvcv::Swizzle::S_XYZ1:
     case nvcv::Swizzle::S_XYZ0:
-        return nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB8p};
+        if (channelType == nvcv::TYPE_U8)
+            return nvcv::FMT_RGB8p;
+        if (channelType == nvcv::TYPE_F16)
+            return nvcv::FMT_RGBf16p;
+        if (channelType == nvcv::TYPE_F32)
+            return nvcv::FMT_RGBf32p;
+        break;
     case nvcv::Swizzle::S_ZYX1:
     case nvcv::Swizzle::S_ZYX0:
-        return nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8p};
+        if (channelType == nvcv::TYPE_U8)
+            return nvcv::FMT_BGR8p;
+        if (channelType == nvcv::TYPE_F16)
+            return nvcv::FMT_BGRf16p;
+        if (channelType == nvcv::TYPE_F32)
+            return nvcv::FMT_BGRf32p;
+        break;
     case nvcv::Swizzle::S_XYZW:
-        return nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBA8p};
+        if (channelType == nvcv::TYPE_U8)
+            return nvcv::FMT_RGBA8p;
+        if (channelType == nvcv::TYPE_F16)
+            return nvcv::FMT_RGBAf16p;
+        if (channelType == nvcv::TYPE_F32)
+            return nvcv::FMT_RGBAf32p;
+        break;
     case nvcv::Swizzle::S_ZYXW:
-        return nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGRA8p};
+        if (channelType == nvcv::TYPE_U8)
+            return nvcv::FMT_BGRA8p;
+        if (channelType == nvcv::TYPE_F16)
+            return nvcv::FMT_BGRAf16p;
+        if (channelType == nvcv::TYPE_F32)
+            return nvcv::FMT_BGRAf32p;
+        break;
     default:
         return outputFormat;
     }
+
+    throw CvtColorOpError{"Unsupported planar var-shape CvtColor RGB output data type"};
+}
+
+nvcv::ImageFormat PlanarLabOutputFormat(nvcv::ImageFormat outputFormat)
+{
+    const nvcv::DataType channelType = outputFormat.planeDataType(0).channelType(0);
+    if (channelType == nvcv::TYPE_U8)
+        return nvcv::FMT_LAB8p;
+    if (channelType == nvcv::TYPE_F16)
+        return nvcv::FMT_LABf16p;
+    if (channelType == nvcv::TYPE_F32)
+        return nvcv::FMT_LABf32p;
+
+    throw CvtColorOpError{"Unsupported planar var-shape CvtColor Lab output data type"};
 }
 
 nvcv::ImageFormat PreservePlanarVarShapeOutput(nvcv::ImageFormat inputFormat, nvcv::ImageFormat outputFormat)
@@ -127,6 +163,11 @@ nvcv::ImageFormat PreservePlanarVarShapeOutput(nvcv::ImageFormat inputFormat, nv
     if (outputFormat.colorModel() == nvcv::ColorModel::RGB)
     {
         return PlanarRGBOutputFormat(outputFormat);
+    }
+
+    if (outputFormat.colorModel() == nvcv::ColorModel::LAB)
+    {
+        return PlanarLabOutputFormat(outputFormat);
     }
 
     if (outputFormat.colorModel() == nvcv::ColorModel::YCbCr

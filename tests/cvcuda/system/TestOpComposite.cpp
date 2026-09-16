@@ -755,6 +755,32 @@ TEST(OpComposite_Negative, createWithNullHandle)
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaCompositeCreate(nullptr));
 }
 
+TEST(OpComposite_Negative, planar_varshape_batch_exceeds_cuda_grid_limit)
+{
+    constexpr int batchSize = 65536;
+
+    nvcv::Image foregroundImage(nvcv::Size2D{1, 1}, nvcv::FMT_RGB8p);
+    nvcv::Image backgroundImage(nvcv::Size2D{1, 1}, nvcv::FMT_RGB8p);
+    nvcv::Image maskImage(nvcv::Size2D{1, 1}, nvcv::FMT_U8);
+    nvcv::Image outputImage(nvcv::Size2D{1, 1}, nvcv::FMT_RGB8p);
+
+    nvcv::ImageBatchVarShape foreground(batchSize);
+    nvcv::ImageBatchVarShape background(batchSize);
+    nvcv::ImageBatchVarShape mask(batchSize);
+    nvcv::ImageBatchVarShape output(batchSize);
+    for (int i = 0; i < batchSize; ++i)
+    {
+        foreground.pushBack(foregroundImage);
+        background.pushBack(backgroundImage);
+        mask.pushBack(maskImage);
+        output.pushBack(outputImage);
+    }
+
+    cvcuda::Composite op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, foreground, background, mask, output); }));
+}
+
 struct CompositeMismatchTestCase
 {
     int          foregroundImages;

@@ -84,6 +84,8 @@ inline void flip(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std:
 
 NVCV_TEST_INST(uint8_t);
 NVCV_TEST_INST(ushort);
+NVCV_TEST_INST(ushort3);
+NVCV_TEST_INST(ushort4);
 NVCV_TEST_INST(uchar3);
 NVCV_TEST_INST(uchar4);
 NVCV_TEST_INST(float4);
@@ -111,11 +113,16 @@ void FlipCPU(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vec
         NVCV_TEST_CASE(4U8, uchar4);
         NVCV_TEST_CASE(4F32, float4);
         NVCV_TEST_CASE(3F32, float3);
+        // Flip moves values without arithmetic, so F16 flips as opaque 16-bit values.
+        NVCV_TEST_CASE(F16, ushort);
+        NVCV_TEST_CASE(3F16, ushort3);
+        NVCV_TEST_CASE(4F16, ushort4);
 
 #undef NVCV_TEST_CASE
 
     default:
-        break;
+        // A silent fallthrough would leave the gold zero-filled and fail comparisons cryptically.
+        NVCV_ASSERT(!"Unsupported flip reference data type");
     }
 }
 

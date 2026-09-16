@@ -33,7 +33,9 @@
 #include <nvcv/python/TensorBatch.hpp>
 #include <pybind11/stl.h>
 
+#include <cstddef>
 #include <memory>
+#include <stdexcept>
 
 namespace cvcudapy {
 
@@ -54,6 +56,11 @@ public:
             : m_batchSize(batchSize)
             , m_maxNumPoints(maxNumPoints)
         {
+        }
+
+        bool matches(int batchSize, int maxNumPoints) const noexcept
+        {
+            return m_batchSize == batchSize && m_maxNumPoints == maxNumPoints;
         }
 
     private:
@@ -90,6 +97,11 @@ public:
         m_op(stream, srcPts, dstPts, models);
     }
 
+    bool isCompatible(int32_t batchSize, int32_t maxNumPoints) const noexcept
+    {
+        return m_key.matches(batchSize, maxNumPoints);
+    }
+
     py::object container() const override
     {
         return py::reinterpret_borrow<py::object>(this->ptr());
@@ -114,6 +126,16 @@ private:
 };
 
 namespace {
+
+constexpr const char *kFindHomographyOperatorCapsuleName = "FindHomographyOperator";
+
+// Provenance tag for capsules created by this module. Only the address is meaningful; the storage is
+// never read or written, so the object stays local to this accessor instead of at namespace scope.
+std::byte &FindHomographyOperatorCapsuleContext()
+{
+    static std::byte context;
+    return context;
+}
 
 Tensor FindHomographyInto(Tensor &models, Tensor &srcPts, Tensor &dstPts, std::optional<Stream> pstream)
 {
@@ -209,17 +231,25 @@ TensorBatch VarShapeFindHomography(TensorBatch &srcPts, TensorBatch &dstPts, std
 // Returns a PyCapsule containing the shared_ptr to the operator.
 py::object GetFindHomographyOperator(int32_t batchSize, int32_t numPoints)
 {
-    auto op = CreateOperatorEx<PyOpFindHomography>(batchSize, numPoints);
+    auto        op = CreateOperatorEx<PyOpFindHomography>(batchSize, numPoints);
     // Store the shared_ptr on the heap so it can be held by the capsule.
-    auto opPtr = std::make_unique<std::shared_ptr<PyOpFindHomography>>(std::move(op));
-    return py::capsule(opPtr.release(), "FindHomographyOperator",
-                       [](PyObject *capsule)
-                       {
-                           auto ptr = PyCapsule_GetPointer(capsule, "FindHomographyOperator");
-                           std::unique_ptr<std::shared_ptr<PyOpFindHomography>> opPtr(
-                               static_cast<std::shared_ptr<PyOpFindHomography> *>(ptr));
-                           (void)opPtr;
-                       });
+    auto        opPtr = std::make_unique<std::shared_ptr<PyOpFindHomography>>(std::move(op));
+    py::capsule capsule(opPtr.release(), kFindHomographyOperatorCapsuleName,
+                        [](PyObject *capsule)
+                        {
+                            auto ptr = PyCapsule_GetPointer(capsule, kFindHomographyOperatorCapsuleName);
+                            std::unique_ptr<std::shared_ptr<PyOpFindHomography>> opPtr(
+                                static_cast<std::shared_ptr<PyOpFindHomography> *>(ptr));
+                            (void)opPtr;
+                        });
+
+    // The capsule name is public and forgeable, so identify capsules created by this module with a private address.
+    if (PyCapsule_SetContext(capsule.ptr(), &FindHomographyOperatorCapsuleContext()) != 0)
+    {
+        throw py::error_already_set();
+    }
+
+    return capsule;
 }
 
 // Version of FindHomographyInto that accepts a pre-fetched operator.
@@ -232,9 +262,30 @@ Tensor FindHomographyIntoWithOp(Tensor &models, Tensor &srcPts, Tensor &dstPts, 
         pstream = Stream::Current();
     }
 
-    // Extract the shared_ptr from the capsule
-    const auto *opPtr          = static_cast<std::shared_ptr<PyOpFindHomography> *>(pyOp.get_pointer());
-    auto        findHomography = *opPtr;
+    // Validate provenance before dereferencing: the payload is only a shared_ptr if this module
+    // created the capsule.
+    if (!PyCapsule_IsValid(pyOp.ptr(), kFindHomographyOperatorCapsuleName)
+        || PyCapsule_GetContext(pyOp.ptr()) != &FindHomographyOperatorCapsuleContext())
+    {
+        throw py::type_error("Invalid FindHomography operator capsule");
+    }
+
+    const auto *opPtr = static_cast<std::shared_ptr<PyOpFindHomography> *>(
+        PyCapsule_GetPointer(pyOp.ptr(), kFindHomographyOperatorCapsuleName));
+    if (opPtr == nullptr || !*opPtr)
+    {
+        throw py::type_error("Invalid FindHomography operator capsule");
+    }
+
+    auto findHomography = *opPtr;
+    if (srcPts.rank() < 2 || dstPts.rank() < 2
+        || !findHomography->isCompatible(static_cast<int32_t>(srcPts.shape()[0]),
+                                         static_cast<int32_t>(srcPts.shape()[1]))
+        || !findHomography->isCompatible(static_cast<int32_t>(dstPts.shape()[0]),
+                                         static_cast<int32_t>(dstPts.shape()[1])))
+    {
+        throw std::invalid_argument("FindHomography operator dimensions do not match srcPts and dstPts");
+    }
 
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_MODE_READ, {srcPts});

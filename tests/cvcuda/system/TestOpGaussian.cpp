@@ -17,10 +17,12 @@
 
 #include "ConvUtils.hpp"
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpGaussian.hpp>
 #include <cvcuda/cuda_tools/MathWrappers.hpp> // for round
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
@@ -29,6 +31,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <cstring>
 #include <random>
 
 namespace test = nvcv::test;
@@ -145,7 +148,7 @@ TEST_P(OpGaussian, correct_output)
 
     std::vector<uint8_t> inVec(inBufSize);
 
-    std::default_random_engine    randEng(0);
+    std::default_random_engine    randEng(0); // NOSONAR: deterministic test data, not security-sensitive.
     std::uniform_int_distribution rand(0u, 255u);
 
     std::ranges::generate(inVec, [&rand, &randEng]() { return rand(randEng); });
@@ -216,7 +219,7 @@ TEST_P(OpGaussian, varshape_correct_output)
     nvcv::Size2D kernelSize(newKsizeX, newKsizeY);
 
     // Create input varshape
-    std::default_random_engine    rng;
+    std::default_random_engine    rng; // NOSONAR: deterministic test data, not security-sensitive.
     std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
     std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
@@ -326,6 +329,281 @@ TEST_P(OpGaussian, varshape_correct_output)
 }
 
 // =============================================================================
+// F16 (half) support
+//
+// F16 rides the same float-accumulating kernels as every other dtype, so the gold runs the FP32
+// CPU reference (test::Convolve with an F32 format) on the widened half input. Bit-exactness
+// against that gold is not applicable: the reference keeps the accumulator unrounded while the
+// kernel narrows it once to half at the store. Per the HalfTestUtils.hpp policy the bound is
+// kUlps = 4 half-ULPs (n-tap filter: one store rounding plus device FMA-contraction drift across
+// the taps, which the half-ULP scale comfortably absorbs).
+// =============================================================================
+
+// clang-format off
+
+NVCV_TEST_SUITE_P(OpGaussianF16, test::ValueList<int, int, int, NVCVImageFormat, int, int, double, double, NVCVBorderType>
+{
+    // width, height, batches,                    format, ksizeX, ksizeY, sigmaX, sigmaY,           borderMode
+    {    176,    113,       1,     NVCV_IMAGE_FORMAT_F16,      3,      3,    0.5,    0.5, NVCV_BORDER_CONSTANT},
+    {    123,     66,       2,  NVCV_IMAGE_FORMAT_RGBf16,      5,      5,   0.75,   0.75, NVCV_BORDER_REPLICATE},
+    {     42,     53,       4, NVCV_IMAGE_FORMAT_RGBAf16,      7,      7,    0.4,    0.4, NVCV_BORDER_REFLECT},
+    {     62,     33,       3,  NVCV_IMAGE_FORMAT_RGBf16,      3,      3,    1.0,   -1.0, NVCV_BORDER_WRAP},
+    {    128,     64,       2,     NVCV_IMAGE_FORMAT_F16,     -1,     -1,    0.5,    0.5, NVCV_BORDER_REFLECT101},
+});
+
+// clang-format on
+
+TEST_P(OpGaussianF16, tensor_correct_output)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int width   = GetParamValue<0>();
+    int height  = GetParamValue<1>();
+    int batches = GetParamValue<2>();
+
+    nvcv::ImageFormat format{GetParamValue<3>()};
+
+    int    ksizeX = GetParamValue<4>();
+    int    ksizeY = GetParamValue<5>();
+    double sigmaX = GetParamValue<6>();
+    double sigmaY = GetParamValue<7>();
+
+    NVCVBorderType borderMode = GetParamValue<8>();
+
+    float4 borderValue = cuda::SetAll<float4>(0);
+
+    int3 shape{width, height, batches};
+
+    double2 sigma{sigmaX, sigmaY};
+    int2    kernelAnchor{-1, -1};
+
+    // auto detection of kernel size from sigma (F16 uses the non-U8 4*sigma rule)
+    int newKsizeX = ksizeX;
+    int newKsizeY = ksizeY;
+    if (ksizeX <= 0 && sigmaX > 0)
+    {
+        newKsizeX = nvcv::cuda::round<int>(sigmaX * 4 * 2 + 1) | 1;
+    }
+    if (ksizeY <= 0 && sigmaY > 0)
+    {
+        newKsizeY = nvcv::cuda::round<int>(sigmaY * 4 * 2 + 1) | 1;
+    }
+
+    nvcv::Size2D kernelSize(ksizeX, ksizeY);
+    nvcv::Size2D newKernelSize(newKsizeX, newKsizeY);
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, format);
+
+    auto inData  = inTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto outData = outTensor.exportData<nvcv::TensorDataStridedCuda>();
+
+    ASSERT_NE(inData, nullptr);
+    ASSERT_NE(outData, nullptr);
+
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
+    ASSERT_TRUE(inAccess);
+
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
+    ASSERT_TRUE(outAccess);
+
+    long3 inStrides{inAccess->sampleStride(), inAccess->rowStride(), inAccess->colStride()};
+    long3 outStrides{outAccess->sampleStride(), outAccess->rowStride(), outAccess->colStride()};
+
+    if (inData->rank() == 3)
+    {
+        inStrides.x  = inAccess->numRows() * inAccess->rowStride();
+        outStrides.x = outAccess->numRows() * outAccess->rowStride();
+    }
+
+    long inBufSize  = inStrides.x * inAccess->numSamples();
+    long outBufSize = outStrides.x * outAccess->numSamples();
+
+    // [0, 1] input already quantized to half, so the FP32 gold consumes exactly the values the
+    // kernel reads.
+    std::vector<uint8_t>       inVec(inBufSize);
+    std::default_random_engine randEng(0); // NOSONAR: deterministic test data, not security-sensitive.
+    test::FillRandomHalfBytes(inVec, randEng, 0.f, 1.f);
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(inData->basePtr(), inVec.data(), inBufSize, cudaMemcpyHostToDevice));
+
+    cvcuda::Gaussian gaussianOp(newKernelSize, batches);
+
+    EXPECT_NO_THROW(gaussianOp(stream, inTensor, outTensor, kernelSize, sigma, borderMode));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::vector<uint8_t> testVec(outBufSize);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(testVec.data(), outData->basePtr(), outBufSize, cudaMemcpyDeviceToHost));
+
+    // FP32 gold: widen the half input into a float buffer with doubled strides (__half is 2
+    // bytes, float is 4) and run the shared F32 CPU reference on it.
+    std::vector<float>   inFloats = test::HalfBytesToFloat(inVec);
+    std::vector<uint8_t> inVecF(inBufSize * 2);
+    std::memcpy(inVecF.data(), inFloats.data(), inVecF.size());
+
+    long3 inStridesF{inStrides.x * 2, inStrides.y * 2, inStrides.z * 2};
+    long3 outStridesF{outStrides.x * 2, outStrides.y * 2, outStrides.z * 2};
+
+    std::vector<float> kernel = test::ComputeGaussianKernel(newKernelSize, sigma);
+
+    std::vector<uint8_t> goldVecF(outBufSize * 2);
+    test::Convolve(goldVecF, outStridesF, inVecF, inStridesF, shape, test::EquivalentFloatFormat(format), kernel,
+                   newKernelSize, kernelAnchor, borderMode, borderValue);
+
+    // Gather per-element (skipping row padding) and compare within 4 half-ULPs (rationale above).
+    const int           channels = format.numChannels();
+    std::vector<float>  goldVals;
+    std::vector<__half> testVals;
+    for (int b = 0; b < batches; ++b)
+    {
+        for (int y = 0; y < height; ++y)
+        {
+            for (int xc = 0; xc < width * channels; ++xc)
+            {
+                const int x = xc / channels;
+                const int c = xc % channels;
+                goldVals.push_back(*reinterpret_cast<const float *>(
+                    &goldVecF[b * outStridesF.x + y * outStridesF.y + x * outStridesF.z + c * sizeof(float)]));
+                testVals.push_back(*reinterpret_cast<const __half *>(
+                    &testVec[b * outStrides.x + y * outStrides.y + x * outStrides.z + c * sizeof(__half)]));
+            }
+        }
+    }
+    test::ExpectNearHalfUlps(goldVals, testVals, 4.f);
+}
+
+TEST_P(OpGaussianF16, varshape_correct_output)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int width   = GetParamValue<0>();
+    int height  = GetParamValue<1>();
+    int batches = GetParamValue<2>();
+
+    nvcv::ImageFormat format{GetParamValue<3>()};
+
+    int    ksizeX = GetParamValue<4>();
+    int    ksizeY = GetParamValue<5>();
+    double sigmaX = GetParamValue<6>();
+    double sigmaY = GetParamValue<7>();
+
+    NVCVBorderType borderMode = GetParamValue<8>();
+
+    float4 borderValue = cuda::SetAll<float4>(0);
+
+    double2 sigma{sigmaX, sigmaY};
+    int2    kernelAnchor{-1, -1};
+
+    // auto detection of kernel size from sigma (F16 uses the non-U8 4*sigma rule)
+    int newKsizeX = ksizeX;
+    int newKsizeY = ksizeY;
+    if (ksizeX <= 0 && sigmaX > 0)
+    {
+        newKsizeX = nvcv::cuda::round<int>(sigmaX * 4 * 2 + 1) | 1;
+    }
+    if (ksizeY <= 0 && sigmaY > 0)
+    {
+        newKsizeY = nvcv::cuda::round<int>(sigmaY * 4 * 2 + 1) | 1;
+    }
+
+    nvcv::Size2D kernelSize(newKsizeX, newKsizeY);
+
+    // Create input varshape with [0, 1] values already quantized to half
+    std::default_random_engine    rng; // NOSONAR: deterministic test data, not security-sensitive.
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
+
+    std::vector<nvcv::Image> imgSrc;
+
+    std::vector<std::vector<uint8_t>> srcVec(batches);
+    std::vector<int>                  srcVecRowStride(batches);
+
+    for (int i = 0; i < batches; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, format);
+
+        int srcRowStride   = imgSrc[i].size().w * format.planePixelStrideBytes(0);
+        srcVecRowStride[i] = srcRowStride;
+
+        srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
+        test::FillRandomHalfBytes(srcVec[i], rng, 0.f, 1.f);
+
+        auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgData, nvcv::NullOpt);
+
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2DAsync(imgData->plane(0).basePtr, imgData->plane(0).rowStride, srcVec[i].data(),
+                                    srcRowStride, srcRowStride, imgSrc[i].size().h, cudaMemcpyHostToDevice, stream));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(batches);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < batches; ++i)
+    {
+        imgDst.emplace_back(imgSrc[i].size(), imgSrc[i].format());
+    }
+    nvcv::ImageBatchVarShape batchDst(batches);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    auto kernelSizeTensor = test::planar::MakePerImageTensor(batches, nvcv::TYPE_2S32, int2{ksizeX, ksizeY});
+    auto sigmaTensor      = test::planar::MakePerImageTensor(batches, nvcv::TYPE_2F64, double2{sigma.x, sigma.y});
+
+    cvcuda::Gaussian gaussianOp(kernelSize, batches);
+
+    EXPECT_NO_THROW(gaussianOp(stream, batchSrc, batchDst, kernelSizeTensor, sigmaTensor, borderMode));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (int i = 0; i < batches; ++i)
+    {
+        SCOPED_TRACE(i);
+
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(srcData->numPlanes(), 1);
+
+        const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(dstData->numPlanes(), 1);
+
+        int dstRowStride = srcVecRowStride[i];
+
+        int3  shape{srcData->plane(0).width, srcData->plane(0).height, 1};
+        long3 pitches{shape.y * dstRowStride, dstRowStride, format.planePixelStrideBytes(0)};
+
+        std::vector<uint8_t> testVec(shape.y * pitches.y);
+
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(testVec.data(), dstRowStride, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
+                               dstRowStride, shape.y, cudaMemcpyDeviceToHost));
+
+        // FP32 gold on the widened half input (doubled strides), as in the tensor test above.
+        std::vector<float>   srcFloats = test::HalfBytesToFloat(srcVec[i]);
+        std::vector<uint8_t> srcVecF(srcVec[i].size() * 2);
+        std::memcpy(srcVecF.data(), srcFloats.data(), srcVecF.size());
+
+        long3 pitchesF{pitches.x * 2, pitches.y * 2, pitches.z * 2};
+
+        std::vector<float> kernel = test::ComputeGaussianKernel(kernelSize, sigma);
+
+        std::vector<uint8_t> goldVecF(shape.y * pitchesF.y);
+        test::Convolve(goldVecF, pitchesF, srcVecF, pitchesF, shape, test::EquivalentFloatFormat(format), kernel,
+                       kernelSize, kernelAnchor, borderMode, borderValue);
+
+        // 4 half-ULPs: n-tap FP32-accumulated filter with one half store rounding (see suite
+        // comment). Both buffers are packed (no row padding), so they compare whole.
+        std::vector<float> goldFloats(goldVecF.size() / sizeof(float));
+        std::memcpy(goldFloats.data(), goldVecF.data(), goldVecF.size());
+        test::ExpectNearHalfUlps(goldFloats, test::HalfBytesToFloat(testVec), 4.f);
+    }
+}
+
+// =============================================================================
 // Planar (NCHW/CHW) layout support
 //
 // Gaussian filters each channel independently, so a planar input is filtered plane-by-plane and
@@ -348,6 +626,10 @@ NVCV_TEST_SUITE_P(OpGaussianPlanar,
     { 33, 29, -1, -1, 15.0, 15.0,  NVCV_BORDER_CONSTANT, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
     { 33, 29, 95, 95, 18.0, 18.0,   NVCV_BORDER_REFLECT, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
     { 33, 29, -1, -1, 16.0, 16.0, NVCV_BORDER_REPLICATE, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
+    // F16 parity is bit-exact like the other dtypes: both layouts run the same float-accumulating
+    // kernel with identical tap order, so the single half store rounding matches.
+    { 64, 48, 3, 3, 0.5, 0.5, NVCV_BORDER_CONSTANT,  2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+    { 50, 40, 7, 7, 1.2, 1.2, NVCV_BORDER_REPLICATE, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 // clang-format on
@@ -417,7 +699,8 @@ static auto OpGaussianNegativeParams()
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 3, 0.5, 0.5,
                         static_cast<NVCVBorderType>(255));
 #endif
-    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 3, 3, 0.5, 0.5,
+    // unsupported data type (64-bit float; F16 is now valid)
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F64, nvcv::FMT_F64, 3, 3, 0.5, 0.5,
                         NVCV_BORDER_CONSTANT);
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 4, 3, 0.5, 0.5, NVCV_BORDER_CONSTANT);
     params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 4, 0.5, 0.5, NVCV_BORDER_CONSTANT);
@@ -458,7 +741,25 @@ TEST_P(OpGaussian_Negative, op)
                                 { gaussianOp(stream, inTensor, outTensor, kernelSize, sigma, borderMode); }));
 }
 
-NVCV_TEST_SUITE_P(OpGaussianVarshape_Negative, test::PlanarFilterVarShapeNegativeParams());
+// Same matrix as test::PlanarFilterVarShapeNegativeParams(), except the unsupported-dtype row is
+// F64: Gaussian now accepts F16, while the shared list keeps RGBf16 for the filter ops that
+// still reject it.
+static auto OpGaussianVarShapeNegativeParams()
+{
+    test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType, int, int> params{
+        { nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, 3,  3},
+        {nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 3,  3},
+        {  nvcv::FMT_F64,   nvcv::FMT_F64, NVCV_BORDER_CONSTANT, 3,  3},
+        { nvcv::FMT_RGB8,  nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 3, -1},
+        { nvcv::FMT_RGB8,  nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 5,  3},
+    };
+#ifndef ENABLE_SANITIZER
+    params.emplace_back(nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVBorderType>(255), 3, 3);
+#endif
+    return params;
+}
+
+NVCV_TEST_SUITE_P(OpGaussianVarshape_Negative, OpGaussianVarShapeNegativeParams());
 
 TEST_P(OpGaussianVarshape_Negative, op)
 {

@@ -35,9 +35,6 @@ from python_bench_utils import (  # noqa: E402
     run_benchmark,
 )
 
-# Threshold value is irrelevant to throughput; use a fixed mid-range value.
-THRESHOLD = 128.0
-
 
 def solarize(state):
     """Solarize operator benchmark matching C++ BenchSolarize.cpp"""
@@ -65,6 +62,11 @@ def solarize(state):
 
     # Solarize preserves size.
     dtype_size = get_dtype_size(dtype_str)
+    threshold = (
+        0.5
+        if dtype in (cvcuda.Type.F16, cvcuda.Type.F32)
+        else ((1 << (8 * get_dtype_size(dtype))) - 1) / 2.0
+    )
     bytes_ = N * H * W * dtype_size
     if is_fake_planar:
         # reformat(NCHW->NHWC) + solarize + reformat(NHWC->NCHW)
@@ -97,7 +99,7 @@ def solarize(state):
         def run_fake(launch):
             stream = get_stream(launch)
             cvcuda.reformat_into(inter_src, src, stream=stream)
-            cvcuda.solarize_into(inter_dst, inter_src, THRESHOLD, stream=stream)
+            cvcuda.solarize_into(inter_dst, inter_src, threshold, stream=stream)
             cvcuda.reformat_into(dst, inter_dst, stream=stream)
 
         return run_fake
@@ -123,7 +125,7 @@ def solarize(state):
         )
 
     def run(launch):
-        cvcuda.solarize_into(dst, src, THRESHOLD, stream=get_stream(launch))
+        cvcuda.solarize_into(dst, src, threshold, stream=get_stream(launch))
 
     return run
 

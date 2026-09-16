@@ -13,13 +13,92 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import numpy as np
+import subprocess
+import sys
+import textwrap
 
 import cvcuda
 import cvcuda_util
+import numpy as np
 import pytest
 import cvcuda_types as cv_types
 import cvcuda_tools as cv_tools
+
+
+def _run_findhomography_subprocess(source):
+    result = subprocess.run(
+        [sys.executable, "-c", textwrap.dedent(source)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0 and "PASS" in result.stdout, (
+        f"FindHomography subprocess failed (returncode={result.returncode})\n"
+        f"stdout: {result.stdout[:1000]}\n"
+        f"stderr: {result.stderr[:2000]}"
+    )
+
+
+@pytest.mark.parametrize(
+    "capsule_name",
+    [b"NotFindHomographyOperator", b"FindHomographyOperator"],
+)
+def test_findhomography_reusable_operator_rejects_invalid_capsule(capsule_name):
+    _run_findhomography_subprocess(
+        f"""\
+        import ctypes
+
+        import cvcuda
+        import numpy as np
+
+        capsule_new = ctypes.pythonapi.PyCapsule_New
+        capsule_new.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+        capsule_new.restype = ctypes.py_object
+        invalid_operator = capsule_new(1, {capsule_name!r}, None)
+
+        src = cvcuda.Tensor((1, 8, 2), np.float32, "NWC")
+        dst = cvcuda.Tensor(src.shape, src.dtype, src.layout)
+        models = cvcuda.Tensor((1, 3, 3), np.float32, "NHW")
+        try:
+            cvcuda.findhomography_into_with_op(models, src, dst, invalid_operator)
+        except TypeError as exc:
+            assert "Invalid FindHomography operator capsule" in str(exc), str(exc)
+        else:
+            raise AssertionError("invalid reusable operator capsule was accepted")
+
+        print("PASS", flush=True)
+        """
+    )
+
+
+@pytest.mark.parametrize(
+    "request_shape",
+    [(2, 8, 2), (1, 16, 2)],
+    ids=["batch_size", "num_points"],
+)
+def test_findhomography_reusable_operator_rejects_undersized_operator(
+    request_shape,
+):
+    _run_findhomography_subprocess(
+        f"""\
+        import cvcuda
+        import numpy as np
+
+        request_shape = {request_shape}
+        operator = cvcuda.get_findhomography_operator(1, 8)
+        src = cvcuda.Tensor(request_shape, np.float32, "NWC")
+        dst = cvcuda.Tensor(request_shape, np.float32, "NWC")
+        models = cvcuda.Tensor((request_shape[0], 3, 3), np.float32, "NHW")
+        try:
+            cvcuda.findhomography_into_with_op(models, src, dst, operator)
+        except ValueError as exc:
+            assert "operator dimensions do not match" in str(exc), str(exc)
+        else:
+            raise AssertionError("mismatched reusable operator was accepted")
+
+        print("PASS", flush=True)
+        """
+    )
 
 
 @pytest.mark.parametrize(

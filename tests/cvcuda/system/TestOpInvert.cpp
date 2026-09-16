@@ -97,6 +97,41 @@ TEST_P(OpInvertVarShapeTyped, correct_output)
     }
 }
 
+// F16 correctness: the kernel computes 1 - x in native half, the reference in FP32 on the
+// half-quantized input; kUlps = 1 because the kernel is a single correctly-rounded subtract (one
+// rounding step; see HalfTestUtils.hpp). The FP32 gold for out = 1 - x on half input.
+constexpr float kInvertF16Ulps = 1.f;
+
+const auto goldInvertF32 = [](float v)
+{
+    return 1.0f - v;
+};
+
+// The single-channel FMT_F16 rows matter: 1-channel F16 must take the scalar kernel that the
+// wide-load (ushort4) exclusion in OpInvert.cu falls back to, in both Tensor and VarShape paths.
+// clang-format off
+NVCV_TEST_SUITE_P(OpInvertF16, test::ValueList<int, int, int, nvcv::ImageFormat>
+{
+    //   width, height, batch,            format          (dtype / channels)
+    {       61,     23,     2,   nvcv::FMT_F16    }, // f16 / 1ch
+    {       55,     33,     2,   nvcv::FMT_RGBf16 }, // f16 / 3ch
+    {       23,     54,     1,   nvcv::FMT_RGBAf16}, // f16 / 4ch
+});
+
+// clang-format on
+TEST_P(OpInvertF16, tensor_correct_output)
+{
+    ew::RunTensorCorrectF16(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(),
+                            nvcv::ImageFormat{GetParamValue<3>()}, goldInvertF32, invoke, kInvertF16Ulps);
+}
+
+NVCV_TEST_SUITE_P(OpInvertF16VarShape, test::ValueList<nvcv::ImageFormat>{nvcv::FMT_F16, nvcv::FMT_RGBf16});
+
+TEST_P(OpInvertF16VarShape, correct_output)
+{
+    ew::RunVarShapeCorrectF16(GetParam(), goldInvertF32, invoke, kInvertF16Ulps);
+}
+
 // Planar ≡ interleaved parity (fake-planar): native planar output must be byte-for-byte identical
 // to the interleaved result on the same data. Uses the shared PlanarParityUtils scaffolding. -----
 // clang-format off
@@ -105,12 +140,14 @@ NVCV_TEST_SUITE_P(OpInvertPlanar,
     {177, 113, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
     { 65,  48, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
     {101,  80, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    { 66,  49, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 NVCV_TEST_SUITE_P(OpInvertPlanarVarShape,
                   test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat>{
     {177, 113, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
     {101,  80, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    { 66,  49, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 // clang-format on
@@ -274,7 +311,7 @@ TEST(OpInvert, tensor_padded_strides_correct_output)
 // Negative tests: the complement of the support matrix must be rejected -------------------------
 // clang-format off
 NVCV_TEST_SUITE_P(OpInvert_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
-    {nvcv::FMT_F16,   nvcv::FMT_F16  }, // unsupported dtype (16-bit float)
+    {nvcv::FMT_F64,   nvcv::FMT_F64  }, // unsupported dtype (64-bit float)
     {nvcv::FMT_S16,   nvcv::FMT_S16  }, // unsupported dtype (signed 16-bit)
     {nvcv::FMT_RGB8,  nvcv::FMT_RGB8p}, // layout mismatch (interleaved in, planar out)
     {nvcv::FMT_RGB8,  nvcv::FMT_RGBf32}, // input/output data type mismatch

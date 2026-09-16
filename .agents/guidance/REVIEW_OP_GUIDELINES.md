@@ -5,14 +5,12 @@
 
 The single source of truth for the per-operator review harness. It is **implemented by**
 `tools/review_op.py` (the deterministic checker) and **cited by** the thin skill
-wrappers (`.agents/skills/review-op*/SKILL.md`, symlinked into `.claude/skills` for
-Claude Code). The checklist substance lives here once; every tool's skill delegates
-to it — no duplication.
+wrappers (`.agents/skills/review-op*/SKILL.md`). The checklist substance lives here
+once; every tool's skill delegates to it — no duplication.
 
 This document does not restate house policy; it *cites* the authoritative docs and turns
-their requirements into concrete, machine-checkable items:
-`AGENTS.md`, `REVIEW_PR_GUIDELINES.md`, `docs/sphinx/advanced/make_operator.rst`,
-and `OPTIMIZATION_GUIDELINES.md`.
+their requirements into concrete, machine-checkable items: `AGENTS.md`,
+`docs/sphinx/advanced/make_operator.rst`, and `OPTIMIZATION_GUIDELINES.md`.
 
 ## How to use
 
@@ -85,8 +83,8 @@ SUP-1/2 classify the **primary data input**, meaning the first Tensor/TensorBatc
 handle after the operator and stream parameters. Tensor outputs and auxiliary tensors do not
 declare Tensor-input support for mixed-container legacy APIs.
 
-Source: `make_operator.rst` (Limitations table, runtime validation), `REVIEW_PR_GUIDELINES.md`
-(input-type support documented & tested), and `OPTIMIZATION_GUIDELINES.md`.
+Source: `make_operator.rst` (Limitations table, runtime validation) and
+`OPTIMIZATION_GUIDELINES.md`.
 
 ---
 
@@ -184,8 +182,7 @@ container/overload parity (support SUP-3/4).
 | DOC-6 | Doxygen param docs explain "why" | — | MANUAL | report |
 | DOC-7 | SPDX 2026 headers | the op's new/changed src/test/bench/doc files | present | add header (mechanical) |
 
-Source: `make_operator.rst` (docs steps), `AGENTS.md` (SPDX), `REVIEW_PR_GUIDELINES.md`
-(docs consistency).
+Source: `make_operator.rst` (docs steps) and `AGENTS.md` (SPDX).
 
 ---
 

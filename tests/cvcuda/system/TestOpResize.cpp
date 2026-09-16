@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 #include "ResizeUtils.hpp"
 
@@ -34,14 +35,45 @@
 #include <cmath>
 #include <cstring>
 #include <random>
+#include <utility>
 
 namespace cuda = nvcv::cuda;
 namespace test = nvcv::test;
 namespace t    = ::testing;
 
+TEST(HalfTestUtils, fill_random_half_bytes_validates_buffer_size)
+{
+    std::default_random_engine randEng; // NOSONAR: deterministic test data, not security-sensitive.
+    std::vector<uint8_t>       even(4);
+    std::vector<uint8_t>       odd(3);
+
+    EXPECT_NO_THROW(test::FillRandomHalfBytes(even, randEng));
+    EXPECT_EQ(even.size(), 4);
+    EXPECT_THROW(test::FillRandomHalfBytes(odd, randEng), std::invalid_argument);
+    EXPECT_EQ(odd.size(), 3);
+}
+
 static int ScaledSize(int size, double scale)
 {
     return static_cast<int>(static_cast<double>(size) * scale);
+}
+
+TEST(ResizeUtilsF16, preserves_negative_interpolated_output)
+{
+    const std::vector<uint8_t> src = test::FloatToHalfBytes({-4.f, -3.f, -2.f, -1.f});
+    std::vector<uint8_t>       resized(3 * 3 * sizeof(__half));
+    std::vector<uint8_t>       cropped(resized.size());
+    std::vector<uint8_t>       area(sizeof(__half));
+
+    test::Resize(resized, 3 * sizeof(__half), {3, 3}, src, 2 * sizeof(__half), {2, 2}, nvcv::FMT_F16,
+                 NVCV_INTERP_LINEAR, false);
+    test::Resize(area, sizeof(__half), {1, 1}, src, 2 * sizeof(__half), {2, 2}, nvcv::FMT_F16, NVCV_INTERP_AREA, false);
+    test::ResizedCrop(cropped, 3 * sizeof(__half), {3, 3}, src, 2 * sizeof(__half), {2, 2}, 0, 0, 2, 2, nvcv::FMT_F16,
+                      NVCV_INTERP_LINEAR);
+
+    EXPECT_THAT(test::HalfBytesToFloat(resized), t::Each(t::Lt(0.f)));
+    EXPECT_THAT(test::HalfBytesToFloat(area), t::Each(t::Lt(0.f)));
+    EXPECT_THAT(test::HalfBytesToFloat(cropped), t::Each(t::Lt(0.f)));
 }
 
 // clang-format off
@@ -102,6 +134,8 @@ NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolatio
     {        128,       96,       32,        24,    NVCV_INTERP_AREA,           1,     nvcv::FMT_U8},
     {        128,       96,       32,        24,    NVCV_INTERP_AREA,           2,     nvcv::FMT_RGB8},
     {         90,       60,       45,        30,    NVCV_INTERP_AREA,           1,     nvcv::FMT_U8},
+    // 8/7 rounds the final fractional endpoint one ULP past the source extent.
+    {          8,        8,        7,         7,    NVCV_INTERP_AREA,           1,     nvcv::FMT_U8},
     {         90,       60,       45,        30,    NVCV_INTERP_AREA,           1,     nvcv::FMT_RGB8},
     {         90,       60,       45,        30,    NVCV_INTERP_AREA,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4U8}},
     // (float LINEAR/CUBIC/AREA are NOT host-gold tested here: this test compares output bytes with a
@@ -119,6 +153,18 @@ NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolatio
     {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_F32},
     {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_3F32}},
     {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4F32}},
+    // F16 NEAREST is pure data movement (compared bit-exactly); F16 LINEAR accumulates in FP32
+    // and rounds to half once on store, so it CAN be host-gold tested against the FP32 reference
+    // within half-ULP bounds (see the F16 comparison branch below). Dims reuse existing integer
+    // rows, so tap selection is already validated by the byte suites. CUBIC/AREA F16 are covered
+    // bit-exactly by the OpResizePlanar parity rows, mirroring the float treatment above.
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_F16},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_RGBf16},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_RGBAf16},
+    {         42,       40,       21,        20,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_F16},
+    {         45,       30,       90,        60,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_F16},
+    {         48,       36,       96,        72,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_RGBf16},
+    {         37,       40,       19,        20,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_RGBAf16},
 });
 
 #undef NVCV_IMAGE_FORMAT_4U8
@@ -167,7 +213,14 @@ TEST_P(OpResize, tensor_correct_output)
         std::uniform_int_distribution<uint8_t> rand(0, 255);
 
         srcVec[i].resize(srcHeight * srcVecRowStride);
-        std::ranges::generate(srcVec[i], [&rand, &randEng]() { return rand(randEng); });
+        if (test::IsF16Format(fmt))
+        {
+            test::FillRandomHalfBytes(srcVec[i], randEng);
+        }
+        else
+        {
+            std::ranges::generate(srcVec[i], [&rand, &randEng]() { return rand(randEng); });
+        }
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -210,6 +263,12 @@ TEST_P(OpResize, tensor_correct_output)
         // Generate gold result
         test::Resize(goldVec, dstVecRowStride, {dstWidth, dstHeight}, srcVec[i], srcVecRowStride, {srcWidth, srcHeight},
                      fmt, interpolation, false);
+
+        if (test::IsF16Format(fmt))
+        {
+            test::ExpectF16InterpOutput(goldVec, testVec, interpolation);
+            continue;
+        }
 
         std::vector<int> absDiff(testVec.size());
         for (size_t idx = 0; idx < absDiff.size(); ++idx)
@@ -284,7 +343,14 @@ TEST_P(OpResize, varshape_correct_output)
         std::uniform_int_distribution<uint8_t> rand(0, 255);
 
         srcVec[i].resize(srcHeight * srcRowStride);
-        std::ranges::generate(srcVec[i], [&rand, &randEng]() { return rand(randEng); });
+        if (test::IsF16Format(fmt))
+        {
+            test::FillRandomHalfBytes(srcVec[i], randEng);
+        }
+        else
+        {
+            std::ranges::generate(srcVec[i], [&rand, &randEng]() { return rand(randEng); });
+        }
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -332,6 +398,12 @@ TEST_P(OpResize, varshape_correct_output)
         // Generate gold result
         test::Resize(goldVec, dstRowStride, {dstWidth, dstHeight}, srcVec[i], srcVecRowStride[i], {srcWidth, srcHeight},
                      fmt, interpolation, true);
+
+        if (test::IsF16Format(fmt))
+        {
+            test::ExpectF16InterpOutput(goldVec, testVec, interpolation);
+            continue;
+        }
 
         // maximum absolute error
         std::vector<int> absDiff(testVec.size());
@@ -622,8 +694,9 @@ NVCV_TEST_SUITE_P(OpResize_Negative, test::ValueList<nvcv::ImageFormat, nvcv::Im
     {nvcv::FMT_RGB8p, nvcv::FMT_U8, 1, 1, NVCV_INTERP_NEAREST}, // in/out image layout not same (planar in, interleaved out)
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 1, 2, NVCV_INTERP_NEAREST}, // in/out image num are different
     {nvcv::FMT_U8, nvcv::FMT_RGB8, 1, 1, NVCV_INTERP_NEAREST}, // in/out image channels are different
-    {nvcv::FMT_F16, nvcv::FMT_F16, 1, 1, NVCV_INTERP_NEAREST}, // invalid datatype
-    {nvcv::FMT_F16, nvcv::FMT_F16, 1, 1, NVCV_INTERP_HAMMING}, // invalid interpolation
+    {nvcv::FMT_F64, nvcv::FMT_F64, 1, 1, NVCV_INTERP_NEAREST}, // unsupported data type (64-bit float)
+    {nvcv::FMT_F16, nvcv::FMT_F16, 1, 1, NVCV_INTERP_HAMMING}, // invalid interpolation (F16 dtype itself is valid)
+    {nvcv::FMT_U8, nvcv::FMT_U8, 1, 1, NVCV_INTERP_HAMMING}, // invalid interpolation with supported dtype
 });
 
 NVCV_TEST_SUITE_P(OpResizeVarshape_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVInterpolationType>
@@ -633,7 +706,8 @@ NVCV_TEST_SUITE_P(OpResizeVarshape_Negative, test::ValueList<nvcv::ImageFormat, 
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_INTERP_NEAREST},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_U8, nvcv::FMT_RGB8, NVCV_INTERP_NEAREST},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_U8, NVCV_INTERP_NEAREST},
-    {nvcv::FMT_RGBf16, nvcv::FMT_RGB8, nvcv::FMT_RGBf16, nvcv::FMT_RGB8, NVCV_INTERP_NEAREST},
+    // unsupported data type (64-bit float; F16 is now valid)
+    {nvcv::FMT_F64, nvcv::FMT_F64, nvcv::FMT_F64, nvcv::FMT_F64, NVCV_INTERP_NEAREST},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_INTERP_HAMMING},
 });
 
@@ -649,7 +723,9 @@ TEST_P(OpResize_Negative, op)
     int dstWidth  = 23;
     int dstHeight = 24;
 
-    NVCVInterpolationType interpolation = NVCV_INTERP_NEAREST;
+    // The interpolation column must reach the operator, or interpolation negatives silently
+    // degrade into (passing) NEAREST submissions.
+    NVCVInterpolationType interpolation = GetParamValue<4>();
 
     const nvcv::ImageFormat inputFmt        = GetParamValue<0>();
     const nvcv::ImageFormat outputFmt       = GetParamValue<1>();
@@ -668,6 +744,31 @@ TEST_P(OpResize_Negative, op)
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpResize_Negative, invalid_layout_and_planar_grid_z_are_rejected)
+{
+    cvcuda::Resize op;
+
+    nvcv::Tensor invalidLayout(
+        {
+            {1, 4, 4, 3},
+            "ABCD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor invalidLayoutOut(invalidLayout.shape(), invalidLayout.dtype());
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, invalidLayout, invalidLayoutOut, NVCV_INTERP_NEAREST); }));
+
+    constexpr int64_t samples = 21846; // samples * 3 channels = 65538, above CUDA grid.z.
+    nvcv::TensorShape planarShape{
+        {samples, 3, 1, 1},
+        "NCHW"
+    };
+    nvcv::Tensor planarSrc(planarShape, nvcv::TYPE_U8);
+    nvcv::Tensor planarDst(planarShape, nvcv::TYPE_U8);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, planarSrc, planarDst, NVCV_INTERP_NEAREST); }));
 }
 
 TEST_P(OpResizeVarshape_Negative, op)
@@ -804,39 +905,79 @@ void RunPlanarParityVarShapeCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat 
 
 } // namespace
 
+TEST(OpResizeRegression, wide_float_fractional_area_matches_planar_reference)
+{
+    constexpr int srcWidth  = 97;
+    constexpr int srcHeight = 73;
+    constexpr int dstWidth  = 37;
+    constexpr int dstHeight = 29;
+
+    for (const auto &[planarFormat, interleavedFormat] : std::array{
+             std::pair{ nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+             std::pair{nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32}
+    })
+    {
+        RunPlanarParityTensorCase(planarFormat, interleavedFormat, srcWidth, srcHeight, dstWidth, dstHeight,
+                                  NVCV_INTERP_AREA, 1);
+        RunPlanarParityVarShapeCase(planarFormat, interleavedFormat, srcWidth, srcHeight, dstWidth, dstHeight,
+                                    NVCV_INTERP_AREA, 1);
+    }
+}
+
 // Parameters: srcW, srcH, dstW, dstH, interpolation, numImages, planarFmt, interleavedFmt
-NVCV_TEST_SUITE_P(OpResizePlanar,
-                  test::ValueList<int, int, int, int, NVCVInterpolationType, int, nvcv::ImageFormat, nvcv::ImageFormat>{
+NVCV_TEST_SUITE_P(
+    OpResizePlanar,
+    test::ValueList<int, int, int, int, NVCVInterpolationType, int, nvcv::ImageFormat, nvcv::ImageFormat>{
   // RGB8 (3 channel uint8), every interpolation, expand and contract.
-                      { 64, 48, 128, 96, NVCV_INTERP_NEAREST, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-                      {128, 96,  64, 48,  NVCV_INTERP_LINEAR, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-                      { 64, 48, 128, 96,  NVCV_INTERP_LINEAR, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-                      { 64, 48, 128, 96,   NVCV_INTERP_CUBIC, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-                      {128, 96,  64, 48,   NVCV_INTERP_CUBIC, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-                      { 90, 60,  45, 30,   NVCV_INTERP_CUBIC, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-                      {128, 96,  32, 24,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-                      { 90, 60,  45, 30,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-                      { 97, 73,  37, 29,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-                      { 31, 23,  79, 61,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 64,  48, 128,  96, NVCV_INTERP_NEAREST, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        {128,  96,  64,  48,  NVCV_INTERP_LINEAR, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 64,  48, 128,  96,  NVCV_INTERP_LINEAR, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 64,  48, 128,  96,   NVCV_INTERP_CUBIC, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        {128,  96,  64,  48,   NVCV_INTERP_CUBIC, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 90,  60,  45,  30,   NVCV_INTERP_CUBIC, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        {128,  96,  32,  24,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 90,  60,  45,  30,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+ // 8/7 reaches the same endpoint-rounding edge in the separate varshape-planar kernel.
+        {  8,   8,   7,   7,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 97,  73,  37,  29,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 31,  23,  79,  61,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
  // RGBA8 (4 channel uint8).
-                      { 50, 40, 100, 80, NVCV_INTERP_NEAREST, 2,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
-                      {100, 80,  50, 40,  NVCV_INTERP_LINEAR, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
-                      {120, 90,  30, 22,    NVCV_INTERP_AREA, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+        { 50,  40, 100,  80, NVCV_INTERP_NEAREST, 2,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+        {100,  80,  50,  40,  NVCV_INTERP_LINEAR, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+        {120,  90,  30,  22,    NVCV_INTERP_AREA, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
  // Float planar, every interpolation, expand and contract -- exercises the float kernel paths
   // (vectorized LinearResize, gated CubicResize/AreaResizeVec) bit-exactly against interleaved.
-                      { 64, 48,  96, 72, NVCV_INTERP_NEAREST, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-                      { 96, 72,  48, 36,  NVCV_INTERP_LINEAR, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-                      { 48, 36,  96, 72,  NVCV_INTERP_LINEAR, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-                      { 64, 48,  96, 72,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-                      { 64, 48, 128, 96,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-                      { 96, 72,  32, 24,    NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-                      { 32, 24,  96, 72,    NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-                      { 64, 48, 128, 96,  NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-                      {128, 96,  64, 48,   NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-                      { 64, 48, 128, 96,   NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-                      { 45, 30,  90, 60,   NVCV_INTERP_CUBIC, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-                      {128, 96,  32, 24,    NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-                      { 90, 60,  45, 30,    NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 64,  48,  96,  72, NVCV_INTERP_NEAREST, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 96,  72,  48,  36,  NVCV_INTERP_LINEAR, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 48,  36,  96,  72,  NVCV_INTERP_LINEAR, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 64,  48,  96,  72,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 64,  48, 128,  96,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 96,  72,  32,  24,    NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 32,  24,  96,  72,    NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 64,  48, 128,  96,  NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+ // 320/299 is non-dyadic and wide enough that one ULP of the source coordinate (2^-15 at x ~ 268)
+  // exceeds the interpolation weight's significance. The planar float path packs four output columns
+  // per thread while interleaved float3/float4 pack one, so the two layouts only agree here if both
+  // derive every column's coordinate the same way. NEAREST additionally moves a whole pixel.
+        {320, 320, 299, 299,  NVCV_INTERP_LINEAR, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        {320, 320, 299, 299, NVCV_INTERP_NEAREST, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        {128,  96,  64,  48,   NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 64,  48, 128,  96,   NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 45,  30,  90,  60,   NVCV_INTERP_CUBIC, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 31,  23,  73,  55,   NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        {128,  96,  32,  24,    NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 90,  60,  45,  30,    NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 97,  73,  29,  19,    NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+ // F16 planar, every interpolation, expand and contract -- the planar path flattens planes into a
+  // single-channel view, so parity with interleaved stays bit-exact; this is the mandated F16
+  // coverage for the interpolations without host-gold rows (CUBIC/AREA), mirroring float above.
+        { 64,  48,  96,  72, NVCV_INTERP_NEAREST, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
+        { 96,  72,  48,  36,  NVCV_INTERP_LINEAR, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
+        { 64,  48, 128,  96,  NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+        {128,  96,  64,  48,   NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+        { 64,  48, 128,  96,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
+        {128,  96,  32,  24,    NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+        { 32,  24,  96,  72,    NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 TEST_P(OpResizePlanar, tensor_matches_interleaved)
@@ -866,4 +1007,30 @@ TEST(OpResize_Negative, planar_input_interleaved_output_layout_mismatch)
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Pins the var-shape planar grid-z bound: the launched grid.z is numImages, not numImages*channels.
+// The planar kernels loop channel planes per thread, so the true CUDA grid-z constraint is only on
+// numImages. This test uses FMT_RGBA8p (4 channels) at N=16384, where the old numImages*channels
+// guard would have thrown (16384*4 = 65536 > 65535) even though grid.z = 16384 is well within
+// CUDA's limit. The call must succeed.
+TEST(OpResize, varshape_planar_grid_z_is_images_not_planes)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Resize resizeOp;
+    constexpr int  N = 16384; // 16384 * 4 channels = 65536 > 65535 (old guard would reject)
+
+    nvcv::ImageBatchVarShape src(N);
+    nvcv::ImageBatchVarShape dst(N);
+    for (int i = 0; i < N; ++i)
+    {
+        src.pushBack(nvcv::Image(nvcv::Size2D{1, 1}, nvcv::FMT_RGBA8p));
+        dst.pushBack(nvcv::Image(nvcv::Size2D{1, 1}, nvcv::FMT_RGBA8p));
+    }
+    EXPECT_NO_THROW(resizeOp(stream, src, dst, NVCV_INTERP_NEAREST));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

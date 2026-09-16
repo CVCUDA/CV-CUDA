@@ -17,6 +17,8 @@
 
 #include "BenchFillKernels.hpp"
 
+#include <cuda_fp16.h>
+
 #include <cstdint>
 #include <type_traits>
 
@@ -42,11 +44,14 @@ inline __device__ std::uint32_t hash32(std::uint64_t seed, std::uint64_t idx)
 template<typename T>
 inline __device__ T sample_typed(std::uint32_t s)
 {
-    if constexpr (std::is_floating_point_v<T>)
+    // Compute type: half draws in float and narrows once on return (mirrors the host
+    // LcgGenerator, which draws half values from a float distribution).
+    using CT = std::conditional_t<std::is_same_v<T, __half>, float, T>;
+    if constexpr (std::is_floating_point_v<CT>)
     {
         // Default float range in host LcgValues is uniform_real_distribution(-1, +1).
-        constexpr T kInv = static_cast<T>(2.0) / static_cast<T>(4294967295.0);
-        return static_cast<T>(-1) + static_cast<T>(s) * kInv;
+        constexpr CT kInv = static_cast<CT>(2.0) / static_cast<CT>(4294967295.0);
+        return static_cast<T>(static_cast<CT>(-1) + static_cast<CT>(s) * kInv);
     }
     else
     {
@@ -174,6 +179,7 @@ CVCUDA_BENCH_INSTANTIATE_FILL(std::int16_t)
 CVCUDA_BENCH_INSTANTIATE_FILL(std::int32_t)
 CVCUDA_BENCH_INSTANTIATE_FILL(float)
 CVCUDA_BENCH_INSTANTIATE_FILL(double)
+CVCUDA_BENCH_INSTANTIATE_FILL(__half)
 
 #undef CVCUDA_BENCH_INSTANTIATE_FILL
 

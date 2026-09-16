@@ -148,6 +148,18 @@ static void ApplyErasePixelGold(std::vector<uint8_t> &image, size_t pixelOffset,
     }
 }
 
+static void ApplyErasePixelGold(std::vector<uint16_t> &image, size_t pixelOffset, int channels, int channelMask,
+                                const float *values)
+{
+    for (int c = 0; c < channels; ++c)
+    {
+        if ((channelMask & (1 << c)) != 0)
+        {
+            image[pixelOffset + c] = __half_raw(__float2half(values[c])).x;
+        }
+    }
+}
+
 static void ApplyEraseGold(std::vector<std::vector<uint8_t>> &images, const std::vector<nvcv::Size2D> &sizes,
                            int channels, const EraseParamValues &params)
 {
@@ -876,6 +888,8 @@ NVCV_TEST_SUITE_P(OpErasePlanar, nvcv::test::ValueList<int, int, int, nvcv::Imag
                                      {29, 19, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
                                      {21, 15, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
                                      {25, 13, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+                                     {21, 15, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+                                     {25, 13, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 TEST_P(OpErasePlanar, tensor_matches_interleaved)
@@ -890,6 +904,8 @@ NVCV_TEST_SUITE_P(OpErasePlanarVarShape, nvcv::test::ValueList<int, int, int, nv
                                              {29, 19, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
                                              {21, 15, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
                                              {25, 13, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+                                             {21, 15, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+                                             {25, 13, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 TEST_P(OpErasePlanarVarShape, varshape_matches_interleaved)
@@ -902,6 +918,109 @@ TEST(OpErasePlanarRandom, varshape_matches_interleaved)
 {
     PlanarParityEraseRunner runner(3, 2, true);
     nvcv::test::planar::RunVarShapeParity(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 23, 17, 23, 17, 2, runner);
+}
+
+// F16 dispatches real __half kernels: the base overload copies the source unchanged and fills
+// erased pixels with SaturateCast<__half>(value) -- one float->half round-to-nearest
+// conversion -- so the output is deterministic and must match a __float2half gold bit-exactly.
+TEST(OpEraseF16, tensor_and_varshape_match_float2half_gold)
+{
+    constexpr int width    = 18;
+    constexpr int height   = 12;
+    constexpr int channels = 3;
+
+    const auto halfBits = [](float value)
+    {
+        return __half_raw(__float2half(value)).x;
+    };
+
+    std::vector<uint16_t> source(width * height * channels);
+    for (size_t i = 0; i < source.size(); ++i)
+    {
+        source[i] = halfBits(0.25f * static_cast<float>(i % 97) - 3.5f);
+    }
+
+    const std::vector<int2> anchorVec{
+        { 1, 1},
+        {12, 7}
+    };
+    const std::vector<int3> erasingVec{
+        {5, 4, 0x7},
+        {4, 3, 0x5}
+    };
+    // Fractional fill values are not exactly representable in half, so the gold below only
+    // matches if the kernel performs the single float->half rounding.
+    const std::vector<float> valuesVec{0.1f, 25.6f, -1.3f, 300.7f, 0.2f, 99999.f};
+    const std::vector<int>   imgIdxVec{0, 0};
+    const EraseParamValues   params{anchorVec, erasingVec, valuesVec, imgIdxVec};
+
+    std::vector<uint16_t> gold = source;
+    for (size_t area = 0; area < anchorVec.size(); ++area)
+    {
+        for (int y = 0; y < erasingVec[area].y && anchorVec[area].y + y < height; ++y)
+        {
+            for (int x = 0; x < erasingVec[area].x && anchorVec[area].x + x < width; ++x)
+            {
+                const auto pixelOffset
+                    = static_cast<size_t>(((anchorVec[area].y + y) * width + anchorVec[area].x + x) * channels);
+                ApplyErasePixelGold(gold, pixelOffset, channels, erasingVec[area].z, &valuesVec[area * channels]);
+            }
+        }
+    }
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    {
+        SCOPED_TRACE("tensor");
+        nvcv::Tensor src(
+            {
+                {1, height, width, channels},
+                "NHWC"
+        },
+            nvcv::TYPE_F16);
+        nvcv::Tensor dst(
+            {
+                {1, height, width, channels},
+                "NHWC"
+        },
+            nvcv::TYPE_F16);
+        nvcv::util::SetImageTensorFromVector<uint16_t>(src.exportData(), source, 0);
+
+        ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, src, dst, channels, params));
+
+        std::vector<uint16_t> got;
+        nvcv::util::GetImageVectorFromTensor<uint16_t>(dst.exportData(), 0, got);
+        EXPECT_EQ(gold, got);
+    }
+
+    {
+        SCOPED_TRACE("varshape");
+        nvcv::Image imgSrc(nvcv::Size2D{width, height}, nvcv::FMT_RGBf16);
+        nvcv::Image imgDst(nvcv::Size2D{width, height}, nvcv::FMT_RGBf16);
+
+        const int  rowBytes = width * nvcv::FMT_RGBf16.planePixelStrideBytes(0);
+        const auto srcData  = imgSrc.exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(srcData, nullptr);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(srcData->plane(0).basePtr, srcData->plane(0).rowStride, source.data(),
+                                            rowBytes, rowBytes, height, cudaMemcpyHostToDevice));
+
+        nvcv::ImageBatchVarShape batchSrc(1);
+        nvcv::ImageBatchVarShape batchDst(1);
+        batchSrc.pushBack(imgSrc);
+        batchDst.pushBack(imgDst);
+
+        ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, batchSrc, batchDst, channels, params));
+
+        std::vector<uint16_t> got(source.size());
+        const auto            dstData = imgDst.exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(dstData, nullptr);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(got.data(), rowBytes, dstData->plane(0).basePtr,
+                                            dstData->plane(0).rowStride, rowBytes, height, cudaMemcpyDeviceToHost));
+        EXPECT_EQ(gold, got);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 namespace {
@@ -1370,7 +1489,7 @@ NVCV_TEST_SUITE_P(OpErase_Negative, nvcv::test::ValueList<nvcv::ImageFormat, nvc
 {
     //   in_format, out_format, anchor_layout, anchor_datatype, erasingData_layout, erasingData_datatype, imgIdxData_layout, imgIdxData_datatype, valuesData_layout, valuesData_type, num_erasing_area
     { nvcv::FMT_RGB8p, nvcv::FMT_RGB8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // layout mismatch
-    { nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // invalid in layout
+    { nvcv::FMT_F64, nvcv::FMT_F64, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // unsupported data type (64-bit float)
     { nvcv::FMT_RGB8, nvcv::FMT_RGB8p, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // layout mismatch
     { nvcv::FMT_RGB8, nvcv::FMT_RGBf32, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // different datatype
     { nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_2F32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // invalid anchor datatype

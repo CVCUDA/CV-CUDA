@@ -101,7 +101,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCropFlipNormalizeReformatCreate(NVCVOperatorHandl
  *      16bit Signed   | Yes
  *      32bit Unsigned | Yes
  *      32bit Signed   | Yes
- *      16bit Float    | No
+ *      16bit Float    | Yes
  *      32bit Float    | Yes
  *      64bit Float    | No
  *
@@ -117,7 +117,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCropFlipNormalizeReformatCreate(NVCVOperatorHandl
  *      16bit Signed   | Yes
  *      32bit Unsigned | Yes
  *      32bit Signed   | Yes
- *      16bit Float    | No
+ *      16bit Float    | Yes
  *      32bit Float    | Yes
  *      64bit Float    | No
  *

@@ -18,6 +18,9 @@
 #include "Nvtx.hpp"
 #include "OpSolarize.hpp"
 
+#include "PhotometricBound.cuh"
+#include "SameShapeCommon.cuh"
+
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
@@ -33,24 +36,13 @@
 
 #include <type_traits>
 
-namespace cuda = nvcv::cuda;
-namespace util = nvcv::util;
+namespace cuda       = nvcv::cuda;
+namespace util       = nvcv::util;
+namespace same_shape = cvcuda::priv::same_shape;
 
 namespace {
 
-// Photometric-negative bound per base type: dtype max for unsigned integers, 1.0 for float.
-template<typename BT>
-inline __host__ __device__ BT InvertBound()
-{
-    if constexpr (std::is_floating_point_v<BT>)
-    {
-        return BT(1);
-    }
-    else
-    {
-        return cuda::TypeTraits<BT>::max;
-    }
-}
+using cvcuda::priv::PhotometricUpperBound;
 
 // Threshold comparison hoisted out of the FP64 pipe. The gold semantics are
 // `static_cast<double>(v) >= threshold`; per element that runs on the (1/64-rate on consumer SM)
@@ -61,6 +53,9 @@ inline __host__ __device__ BT InvertBound()
 //   - integer v:  (double)v >= threshold  <=>  (long long)v >= ceil(threshold)
 //   - float32 v:  (double)v >= threshold  <=>  v >= vmin, vmin = smallest float >= threshold
 // The boundary is computed once per thread (one FP64 op, amortized) instead of once per element.
+// __half takes the float branch: every half value is exactly representable as float, so the
+// float32 boundary equivalence above holds for it too.
+// The integer branch would instead compare the value truncated to long long — wrong semantics.
 template<typename BT>
 struct SolarizeThreshold
 {
@@ -69,7 +64,7 @@ struct SolarizeThreshold
 
     inline __device__ explicit SolarizeThreshold(double threshold)
     {
-        if constexpr (std::is_floating_point_v<BT>)
+        if constexpr (cuda::detail::IsFloatingPointV<BT>)
         {
             float f = static_cast<float>(threshold);
             if (static_cast<double>(f) < threshold) // round up to the smallest float >= threshold
@@ -95,9 +90,11 @@ struct SolarizeThreshold
 
     inline __device__ bool ge(BT v) const
     {
-        if constexpr (std::is_floating_point_v<BT>)
+        if constexpr (cuda::detail::IsFloatingPointV<BT>)
         {
-            return v >= vmin_f;
+            // __half widens to float losslessly, so the compare runs in float precision for F16
+            // exactly as it does for float32 (the cast is an identity for float v).
+            return static_cast<float>(v) >= vmin_f;
         }
         else
         {
@@ -117,13 +114,16 @@ inline __device__ BT SolarizeApply(BT v, BT bound, const SolarizeThreshold<BT> &
 // pixels the FP64 threshold compares dominate (uchar3/uchar4 NHWC are ~36% BWUtil, FP64-bound), so
 // hoist the boundary once per pixel (one ceil amortized over 3-4 integer compares = net win). For
 // 1-channel (hoist would add a ceil with nothing to amortize -> regression) and float (already
-// bandwidth-bound at the ridge) keep the original double compare. Bit-identical to the gold either way.
+// bandwidth-bound at the ridge) keep the original double compare. Multi-channel __half also lands
+// in the hoisted branch (is_floating_point_v<__half> is false), where SolarizeThreshold's float
+// branch gives it the exact float-domain compare while amortizing the per-pixel FP64 boundary
+// setup over the channels. Bit-identical to the gold either way.
 template<typename T>
 inline __device__ T SolarizeElem(T pixel, double threshold)
 {
     using BT                         = cuda::BaseType<T>;
     static constexpr int numChannels = cuda::NumElements<T>;
-    const BT             bound       = InvertBound<BT>();
+    const BT             bound       = PhotometricUpperBound<BT>();
 
     T out{};
     if constexpr (numChannels > 1 && !std::is_floating_point_v<BT>)
@@ -147,19 +147,6 @@ inline __device__ T SolarizeElem(T pixel, double threshold)
     return out;
 }
 
-template<bool IsPlanar>
-inline __device__ std::conditional_t<IsPlanar, int4, int3> GetCoordForLayout(int3 nhwCoord, int p)
-{
-    if constexpr (!IsPlanar)
-    {
-        return nhwCoord;
-    }
-    else
-    {
-        return {nhwCoord.x, nhwCoord.y, p, nhwCoord.z};
-    }
-}
-
 template<bool IsPlanar, class SrcWrapper, class DstWrapper>
 inline __device__ void DoSolarize(SrcWrapper src, DstWrapper dst, const int2 size, const int p, double threshold)
 {
@@ -174,7 +161,7 @@ inline __device__ void DoSolarize(SrcWrapper src, DstWrapper dst, const int2 siz
     {
         return;
     }
-    auto coord = GetCoordForLayout<IsPlanar>(nhwCoord, p);
+    auto coord = same_shape::GetCoordForLayout<IsPlanar>(nhwCoord, p);
     dst[coord] = SolarizeElem<DstT>(src[coord], threshold);
 }
 
@@ -225,29 +212,8 @@ __global__ void Solarize(SrcWrapper src, DstWrapper dst, int numPlanes, double t
 // 1-channel-interleaved paths memory-latency bound (long-scoreboard stalls, low BWUtil). These map
 // each (sample, plane) to grid.z and have each thread issue NGROUP wide vector loads (uchar4 /
 // ushort4 / float4) before compute, raising memory-level parallelism. Per element bit-identical to
-// SolarizeElem (same (in>=threshold)?(bound-in):in). Modeled on legacy/normalize_planar.cuh; caller
+// SolarizeElem (same (in>=threshold)?(bound-in):in). Modeled on OpNormalize.cu's planar vector body; caller
 // guards sizeof(Vec4)-aligned base+strides with a scalar fallback; per-thread tail handles width%4.
-template<typename T, int Size = sizeof(T)>
-struct SolarizeVec4Type;
-
-template<typename T>
-struct SolarizeVec4Type<T, 1>
-{
-    using type = uchar4;
-};
-
-template<typename T>
-struct SolarizeVec4Type<T, 2>
-{
-    using type = ushort4;
-};
-
-template<typename T>
-struct SolarizeVec4Type<T, 4>
-{
-    using type = float4;
-};
-
 template<int NGROUP, typename BT>
 __global__ void SolarizePlanarVec4Kernel(cuda::Tensor4DWrap<const BT, int32_t> src, cuda::Tensor4DWrap<BT, int32_t> dst,
                                          int4 inout_size, double threshold)
@@ -264,8 +230,8 @@ __global__ void SolarizePlanarVec4Kernel(cuda::Tensor4DWrap<const BT, int32_t> s
         return;
     }
 
-    using Vec4                        = typename SolarizeVec4Type<BT>::type;
-    const BT                    bound = InvertBound<BT>();
+    using Vec4                        = cuda::MakeType<BT, 4>;
+    const BT                    bound = PhotometricUpperBound<BT>();
     const SolarizeThreshold<BT> th(threshold);
 
     int  cx[NGROUP];
@@ -322,7 +288,7 @@ __global__ void SolarizePlanarVarShapeVec4Kernel(cuda::ImageBatchVarShapeWrap<co
     }
 
     using Vec4                        = uchar4; // 1-byte planes only (caller guards sizeof(BT) == 1)
-    const BT                    bound = InvertBound<BT>();
+    const BT                    bound = PhotometricUpperBound<BT>();
     const SolarizeThreshold<BT> th(threshold);
 
     int  cx[NGROUP];
@@ -398,9 +364,12 @@ inline void RunSolarize(cudaStream_t stream, const SrcData &srcData, const DstDa
             // 1-channel interleaved (e.g. U16) is byte-identical to a single plane and latency-bound;
             // route it through the vectorized planar kernel (C == 1). Multi-channel interleaved
             // (uchar3/uchar4/float3/float4) already moves 3-4 B/thread at the ridge -> keep scalar.
-            if constexpr (cuda::NumElements<ValueT> == 1)
+            // F16 is excluded: SolarizeVec4Type maps 2-byte types to ushort4, whose lanes would feed
+            // raw half bit patterns into SolarizeApply as integers. Falling back to the scalar kernel
+            // keeps real half arithmetic; a dedicated half wide-load path is a future optimization.
+            if constexpr (cuda::NumElements<ValueT> == 1 && !cuda::detail::IsHalfV<BT>)
             {
-                using Vec4            = typename SolarizeVec4Type<BT>::type;
+                using Vec4            = cuda::MakeType<BT, 4>;
                 constexpr int NGROUP  = 4;
                 const int64_t sStride = srcAccess->sampleStride(), rStride = srcAccess->rowStride();
                 const int64_t dsStride = dstAccess->sampleStride(), drStride = dstAccess->rowStride();
@@ -437,7 +406,7 @@ inline void RunSolarize(cudaStream_t stream, const SrcData &srcData, const DstDa
             bool      launchedVec = false;
             if constexpr (sizeof(BT) == 1 || sizeof(BT) == 4)
             {
-                using Vec4            = typename SolarizeVec4Type<BT>::type;
+                using Vec4            = cuda::MakeType<BT, 4>;
                 constexpr int NGROUP  = sizeof(BT) == 1 ? 4 : 2;
                 const int64_t planes  = static_cast<int64_t>(numSamples) * numPlanes;
                 const int64_t sStride = srcAccess->sampleStride(), pStride = srcAccess->planeStride(),
@@ -518,7 +487,7 @@ inline void RunSolarize(cudaStream_t stream, const SrcData &srcData, const DstDa
     }
 }
 
-// Dispatch over base data type (u8 / u16 / f32) and channel count (1 / 3 / 4) -------------
+// Dispatch over base data type (u8 / u16 / f16 / f32) and channel count (1 / 3 / 4) -------
 
 template<typename Cb>
 inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
@@ -533,11 +502,13 @@ inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
     // clang-format off
     if NVCV_SOLARIZE_RUN_TYPED(U8, uchar)
     else if NVCV_SOLARIZE_RUN_TYPED(U16, ushort)
+    else if NVCV_SOLARIZE_RUN_TYPED(F16, __half)
     else if NVCV_SOLARIZE_RUN_TYPED(F32, float)
     else
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid data type: Solarize supports 8-bit unsigned, 16-bit unsigned and 32-bit float");
+                              "Invalid data type: Solarize supports 8-bit unsigned, 16-bit unsigned, 16-bit float and "
+                              "32-bit float");
     }
         // clang-format on
 
@@ -547,172 +518,8 @@ inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
 template<typename Cb>
 inline void RunChannelSwitch(int numChannels, int numPlanes, nvcv::DataType dType, const Cb &cb)
 {
-    RunTypeSwitch(dType,
-                  [&numChannels, &numPlanes, &cb](auto dummyVal)
-                  {
-                      using ValBase = decltype(dummyVal);
-                      // clang-format off
-            if (numChannels == 1)
-            {
-                using Val = cuda::MakeType<ValBase, 1>;
-                if (numPlanes == 1)
-                {
-                    cb(Val{}, std::integral_constant<bool, false>{});
-                }
-                else
-                {
-                    cb(Val{}, std::integral_constant<bool, true>{});
-                }
-            }
-            else if (numChannels == 3)
-            {
-                cb(cuda::MakeType<ValBase, 3>{}, std::integral_constant<bool, false>{});
-            }
-            else if (numChannels == 4)
-            {
-                cb(cuda::MakeType<ValBase, 4>{}, std::integral_constant<bool, false>{});
-            }
-            else
-            {
-                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                      "Invalid number of channels: Solarize supports 1, 3 or 4 channels");
-            }
-                      // clang-format on
-                  });
-}
-
-// Validation ------------------------------------------------------------------------------
-
-inline void ValidateSrcDstTensors(int &numInterleavedChannels, int &numPlanes, nvcv::DataType &dtype,
-                                  const nvcv::Optional<nvcv::TensorDataStridedCuda> &srcData,
-                                  const nvcv::Optional<nvcv::TensorDataStridedCuda> &dstData)
-{
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-    if (srcData->layout() != dstData->layout())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
-    }
-    if (!(srcData->layout() == nvcv::TENSOR_HWC || srcData->layout() == nvcv::TENSOR_NHWC
-          || srcData->layout() == nvcv::TENSOR_CHW || srcData->layout() == nvcv::TENSOR_NCHW))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have (N)HWC or (N)CHW layout");
-    }
-    if (srcData->dtype() != dstData->dtype())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same data type");
-    }
-
-    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
-    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
-    NVCV_ASSERT(srcAccess && dstAccess);
-
-    if (srcAccess->numSamples() != dstAccess->numSamples())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-
-    int numChannels = srcAccess->numChannels();
-    if (numChannels != dstAccess->numChannels())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of channels");
-    }
-
-    numPlanes = srcAccess->numPlanes();
-    if (numPlanes != dstAccess->numPlanes())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of planes");
-    }
-    if (numPlanes > 1 && numChannels == 2)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel planar images are not supported");
-    }
-
-    if (srcAccess->numCols() != dstAccess->numCols() || srcAccess->numRows() != dstAccess->numRows())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input and output must have matching width and height");
-    }
-
-    dtype                  = srcData->dtype();
-    numInterleavedChannels = srcAccess->infoLayout().isChannelLast() ? numChannels : 1;
-}
-
-inline auto ValidateSrcDstVarBatch(int &numInterleavedChannels, int &numPlanes, nvcv::DataType &dtype,
-                                   cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
-                                   const nvcv::ImageBatchVarShape &dst)
-{
-    using maybeVarShape = nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda>;
-    std::tuple<maybeVarShape, maybeVarShape> srcDstData{
-        src.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream),
-        dst.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream)};
-    auto &[srcData, dstData] = srcDstData;
-
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, varshape pitch-linear image batch");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    int numSamples = srcData->numImages();
-    if (numSamples != dstData->numImages())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-
-    const auto &srcFormat = srcData->uniqueFormat();
-    const auto &dstFormat = dstData->uniqueFormat();
-    if (!srcFormat || !dstFormat)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All images in a batch must have the same format");
-    }
-    if (srcFormat != dstFormat)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same format");
-    }
-
-    int numChannels = srcFormat.numChannels();
-    numPlanes       = srcFormat.numPlanes();
-    if (numPlanes > 1 && numChannels == 2)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel planar images are not supported");
-    }
-
-    dtype = srcFormat.planeDataType(0);
-    for (int i = 1; i < numPlanes; ++i)
-    {
-        if (dtype != srcFormat.planeDataType(i))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "All planes in the input image must have the same data type");
-        }
-    }
-
-    numInterleavedChannels = dtype.numChannels();
-
-    for (int i = 0; i < numSamples; i++)
-    {
-        if (src[i].size() != dst[i].size())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Input and output must have matching width and height");
-        }
-    }
-
-    return srcDstData;
+    RunTypeSwitch(dType, [&](auto dummyVal)
+                  { same_shape::DispatchChannels<decltype(dummyVal)>(numChannels, numPlanes, "Solarize", cb); });
 }
 
 } // anonymous namespace
@@ -730,7 +537,7 @@ void Solarize::operator()(cudaStream_t stream, const nvcv::Tensor &src, const nv
     nvcv::DataType dtype;
     auto           srcData = src.exportData<nvcv::TensorDataStridedCuda>();
     auto           dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
-    ValidateSrcDstTensors(numInterleavedChannels, numPlanes, dtype, srcData, dstData);
+    same_shape::ValidateSrcDstTensors(numInterleavedChannels, numPlanes, dtype, srcData, dstData);
 
     RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
                      [&stream, &srcData, &dstData, threshold](auto dummyVal, auto isPlanar)
@@ -749,7 +556,7 @@ void Solarize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &s
     int            numInterleavedChannels;
     int            numPlanes;
     nvcv::DataType dtype;
-    auto           srcDstData = ValidateSrcDstVarBatch(numInterleavedChannels, numPlanes, dtype, stream, src, dst);
+    auto srcDstData = same_shape::ValidateSrcDstVarBatch(numInterleavedChannels, numPlanes, dtype, stream, src, dst);
 
     RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
                      [&stream, &srcDstData, threshold](auto dummyVal, auto isPlanar)

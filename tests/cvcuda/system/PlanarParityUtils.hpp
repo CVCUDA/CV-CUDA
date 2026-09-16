@@ -22,12 +22,14 @@
 //
 // An operator that treats channels independently must produce byte-for-byte the same pixels in a
 // planar (NCHW/CHW) layout as in the interleaved ((N)HWC) layout. These helpers feed identical data
-// through an operator in both layouts and assert the (re-interleaved) planar output equals the
-// interleaved output exactly. The op call is supplied as a lambda so every operator reuses the same
-// upload/run/download/compare flow; see TestOpResize.cpp and TestOpFlip.cpp for usage.
+// through an operator in both layouts and, by default, assert the (re-interleaved) planar output
+// equals the interleaved output exactly. Input and comparison policies cover the few operators
+// whose test data or arithmetic tolerance differs, while retaining the same transfer flow.
 
 #include <common/TensorDataUtils.hpp>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#include <cvcuda/cuda_tools/TypeTraits.hpp> // for detail::IsFloatingPointV, etc.
 #include <gtest/gtest.h>
 #include <nvcv/BorderType.h>
 #include <nvcv/Exception.hpp>
@@ -81,7 +83,7 @@ inline void FillDeterministicValues(std::vector<uint8_t> &buf, size_t seed)
     {
         const auto pattern = static_cast<int>((k * 31 + seed) % 251);
         T          value;
-        if constexpr (std::is_floating_point_v<T>)
+        if constexpr (nvcv::cuda::detail::IsFloatingPointV<T>)
         {
             value = static_cast<T>((pattern + 1) / 252.0);
         }
@@ -121,6 +123,10 @@ inline void FillDeterministicValues(std::vector<uint8_t> &buf, size_t seed, nvcv
         break;
     case NVCV_DATA_TYPE_S32:
         FillDeterministicValues<int32_t>(buf, seed);
+        break;
+    case NVCV_DATA_TYPE_F16:
+        // Values round to half on fill, so both parity sides consume identical F16 bits.
+        FillDeterministicValues<__half>(buf, seed);
         break;
     case NVCV_DATA_TYPE_F32:
         FillDeterministicValues<float>(buf, seed);
@@ -200,14 +206,16 @@ inline nvcv::Tensor MakePerImageTensor(int numImages, nvcv::DataType dtype, cons
     return tensor;
 }
 
-// Run the same data through `invoke` in interleaved and planar tensor layouts; require bit-exact
-// outputs. `invoke(stream, src, dst, fmt)` performs the operator call (the caller binds op-specific
-// parameters); `fmt` is that pair's image format, for ops that need it (e.g. workspace sizing).
+// Run the same data through `invoke` in interleaved and planar tensor layouts.
+// `invoke(stream, src, dst, fmt)` performs the operator call (the caller binds op-specific
+// parameters); `makeInput(sample, width, height, channels)` supplies packed HWC bytes and
+// `compare(interleaved, planar)` validates the outputs. The shorter overload below supplies the
+// default deterministic input and requires bit-exact output. `fmt` is that pair's image format.
 // `srcW/srcH` is the input size, `dstW/dstH` the output size (equal for size-preserving ops). The
 // data is uploaded at the input size and the result compared at the output size.
-template<class OpInvoke>
+template<class OpInvoke, class InputFn, class CompareFn>
 inline void RunTensorParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int srcW, int srcH, int dstW,
-                            int dstH, int numImages, OpInvoke &&invoke)
+                            int dstH, int numImages, OpInvoke &&invoke, InputFn &&makeInput, CompareFn &&compare)
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -237,8 +245,8 @@ inline void RunTensorParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat inter
 
     for (int i = 0; i < numImages; ++i)
     {
-        std::vector<uint8_t> hwc(srcH * srcRowStr);
-        FillDeterministicValues(hwc, static_cast<size_t>(i) * 101 + 1, planarFmt.planeDataType(0));
+        std::vector<uint8_t> hwc = makeInput(i, srcW, srcH, channels);
+        ASSERT_EQ(hwc.size(), static_cast<size_t>(srcH * srcRowStr));
 
         UploadInterleavedSample(*srcIAcc, i, hwc, srcW, srcH, srcRowStr);
         UploadPlanarSample(*srcPAcc, i, DeinterleaveToPlanes(hwc, srcW, srcH, channels, elemSize), srcW, srcH, channels,
@@ -261,7 +269,101 @@ inline void RunTensorParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat inter
         auto planesOut   = DownloadPlanarSample(*dstPAcc, i, dstW, dstH, channels, elemSize);
         auto planarInter = InterleaveFromPlanes(planesOut, dstW, dstH, channels, elemSize);
 
-        EXPECT_EQ(gpuInter, planarInter);
+        compare(gpuInter, planarInter);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+template<class OpInvoke>
+inline void RunTensorParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int srcW, int srcH, int dstW,
+                            int dstH, int numImages, OpInvoke &&invoke)
+{
+    auto makeInput = [dtype = planarFmt.planeDataType(0), elemSize = planarFmt.planePixelStrideBytes(0)](
+                         int sample, int width, int height, int channels)
+    {
+        std::vector<uint8_t> hwc(static_cast<size_t>(width) * height * channels * elemSize);
+        FillDeterministicValues(hwc, static_cast<size_t>(sample) * 101 + 1, dtype);
+        return hwc;
+    };
+    auto compare = [](const std::vector<uint8_t> &interleaved, const std::vector<uint8_t> &planar)
+    {
+        EXPECT_EQ(interleaved, planar);
+    };
+    RunTensorParity(planarFmt, interleavedFmt, srcW, srcH, dstW, dstH, numImages, std::forward<OpInvoke>(invoke),
+                    makeInput, compare);
+}
+
+// A one-channel image has no distinct planar ImageFormat, so CreateTensor(Y8) cannot express both
+// NHWC and NCHW. Build the two layouts explicitly and require the same bit-exact result.
+template<class OpInvoke>
+inline void RunTensorSingleChannelLayoutParity(int srcW, int srcH, int dstW, int dstH, int numImages,
+                                               nvcv::DataType dtype, OpInvoke &&invoke)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int elemSize  = dtype.bitsPerPixel() / 8;
+    const int srcRowStr = srcW * elemSize;
+    const int dstRowStr = dstW * elemSize;
+
+    nvcv::Tensor srcI(
+        {
+            {numImages, srcH, srcW, 1},
+            "NHWC"
+    },
+        dtype);
+    nvcv::Tensor dstI(
+        {
+            {numImages, dstH, dstW, 1},
+            "NHWC"
+    },
+        dtype);
+    nvcv::Tensor srcP(
+        {
+            {numImages, 1, srcH, srcW},
+            "NCHW"
+    },
+        dtype);
+    nvcv::Tensor dstP(
+        {
+            {numImages, 1, dstH, dstW},
+            "NCHW"
+    },
+        dtype);
+
+    auto srcIData = srcI.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstIData = dstI.exportData<nvcv::TensorDataStridedCuda>();
+    auto srcPData = srcP.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstPData = dstP.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcIData && dstIData && srcPData && dstPData);
+
+    auto srcIAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcIData);
+    auto dstIAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstIData);
+    auto srcPAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcPData);
+    auto dstPAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstPData);
+    ASSERT_TRUE(srcIAcc && dstIAcc && srcPAcc && dstPAcc);
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        std::vector<uint8_t> input(srcH * srcRowStr);
+        FillDeterministicValues(input, static_cast<size_t>(i) * 101 + 1, dtype);
+        UploadInterleavedSample(*srcIAcc, i, input, srcW, srcH, srcRowStr);
+        UploadPlanarSample(*srcPAcc, i, input, srcW, srcH, 1, elemSize);
+        UploadInterleavedSample(*dstIAcc, i, std::vector<uint8_t>(dstH * dstRowStr, 0xA5), dstW, dstH, dstRowStr);
+        UploadPlanarSample(*dstPAcc, i, std::vector<uint8_t>(dstH * dstRowStr, 0x5A), dstW, dstH, 1, elemSize);
+    }
+
+    invoke(stream, srcI, dstI);
+    invoke(stream, srcP, dstP);
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        SCOPED_TRACE(i);
+        auto interleaved = DownloadInterleavedSample(*dstIAcc, i, dstW, dstH, dstRowStr);
+        auto planar      = DownloadPlanarSample(*dstPAcc, i, dstW, dstH, 1, elemSize);
+        EXPECT_EQ(interleaved, planar);
     }
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -270,8 +372,122 @@ inline void RunTensorParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat inter
 // Var-shape counterpart of RunTensorParity. `invoke(stream, batchSrc, batchDst)` performs the
 // operator call on the two image batches.
 template<class OpInvoke>
+inline void RunVarShapeParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt,
+                              const std::vector<nvcv::Size2D> &srcSizes, const std::vector<nvcv::Size2D> &dstSizes,
+                              OpInvoke &&invoke)
+{
+    ASSERT_EQ(srcSizes.size(), dstSizes.size());
+    ASSERT_FALSE(srcSizes.empty());
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int  channels  = planarFmt.numChannels();
+    const int  elemSize  = planarFmt.planePixelStrideBytes(0);
+    const auto numImages = static_cast<int>(srcSizes.size());
+
+    std::vector<nvcv::Image> srcI;
+    std::vector<nvcv::Image> dstI;
+    std::vector<nvcv::Image> srcP;
+    std::vector<nvcv::Image> dstP;
+    for (int i = 0; i < numImages; ++i)
+    {
+        srcI.emplace_back(srcSizes[i], interleavedFmt);
+        dstI.emplace_back(dstSizes[i], interleavedFmt);
+        srcP.emplace_back(srcSizes[i], planarFmt);
+        dstP.emplace_back(dstSizes[i], planarFmt);
+    }
+
+    nvcv::ImageBatchVarShape batchSrcI(numImages);
+    nvcv::ImageBatchVarShape batchDstI(numImages);
+    nvcv::ImageBatchVarShape batchSrcP(numImages);
+    nvcv::ImageBatchVarShape batchDstP(numImages);
+    batchSrcI.pushBack(srcI.begin(), srcI.end());
+    batchDstI.pushBack(dstI.begin(), dstI.end());
+    batchSrcP.pushBack(srcP.begin(), srcP.end());
+    batchDstP.pushBack(dstP.begin(), dstP.end());
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        const int srcW      = srcSizes[i].w;
+        const int srcH      = srcSizes[i].h;
+        const int srcRowStr = srcW * channels * elemSize;
+
+        std::vector<uint8_t> hwc(srcH * srcRowStr);
+        FillDeterministicValues(hwc, static_cast<size_t>(i) * 101 + 7, planarFmt.planeDataType(0));
+
+        auto idata = srcI[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(idata->plane(0).basePtr, idata->plane(0).rowStride, hwc.data(), srcRowStr,
+                                            srcRowStr, srcH, cudaMemcpyHostToDevice));
+
+        auto      planes     = DeinterleaveToPlanes(hwc, srcW, srcH, channels, elemSize);
+        auto      pdata      = srcP[i].exportData<nvcv::ImageDataStridedCuda>();
+        const int planeBytes = srcW * srcH * elemSize;
+        ASSERT_EQ(pdata->numPlanes(), channels);
+        for (int c = 0; c < channels; ++c)
+        {
+            ASSERT_EQ(cudaSuccess,
+                      cudaMemcpy2D(pdata->plane(c).basePtr, pdata->plane(c).rowStride, planes.data() + c * planeBytes,
+                                   srcW * elemSize, srcW * elemSize, srcH, cudaMemcpyHostToDevice));
+        }
+
+        const int            dstW        = dstSizes[i].w;
+        const int            dstH        = dstSizes[i].h;
+        const int            dstRowStr   = dstW * channels * elemSize;
+        const int            dstPlaneByt = dstW * dstH * elemSize;
+        auto                 dstIData    = dstI[i].exportData<nvcv::ImageDataStridedCuda>();
+        std::vector<uint8_t> interleavedCanary(dstH * dstRowStr, 0xA5);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(dstIData->plane(0).basePtr, dstIData->plane(0).rowStride, interleavedCanary.data(),
+                               dstRowStr, dstRowStr, dstH, cudaMemcpyHostToDevice));
+
+        auto dstPData = dstP[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(dstPData->numPlanes(), channels);
+        std::vector<uint8_t> planarCanary(dstPlaneByt, 0x5A);
+        for (int c = 0; c < channels; ++c)
+        {
+            ASSERT_EQ(cudaSuccess,
+                      cudaMemcpy2D(dstPData->plane(c).basePtr, dstPData->plane(c).rowStride, planarCanary.data(),
+                                   dstW * elemSize, dstW * elemSize, dstH, cudaMemcpyHostToDevice));
+        }
+    }
+
+    invoke(stream, batchSrcI, batchDstI, interleavedFmt);
+    invoke(stream, batchSrcP, batchDstP, planarFmt);
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        SCOPED_TRACE(i);
+        const int dstW        = dstSizes[i].w;
+        const int dstH        = dstSizes[i].h;
+        const int dstRowStr   = dstW * channels * elemSize;
+        const int dstPlaneByt = dstW * dstH * elemSize;
+
+        std::vector<uint8_t> gpuInter(dstH * dstRowStr);
+        auto                 idata = dstI[i].exportData<nvcv::ImageDataStridedCuda>();
+        EXPECT_EQ(cudaSuccess, cudaMemcpy2D(gpuInter.data(), dstRowStr, idata->plane(0).basePtr,
+                                            idata->plane(0).rowStride, dstRowStr, dstH, cudaMemcpyDeviceToHost));
+
+        std::vector<uint8_t> planesOut(dstW * dstH * channels * elemSize);
+        auto                 pdata = dstP[i].exportData<nvcv::ImageDataStridedCuda>();
+        for (int c = 0; c < channels; ++c)
+        {
+            EXPECT_EQ(cudaSuccess,
+                      cudaMemcpy2D(planesOut.data() + c * dstPlaneByt, dstW * elemSize, pdata->plane(c).basePtr,
+                                   pdata->plane(c).rowStride, dstW * elemSize, dstH, cudaMemcpyDeviceToHost));
+        }
+
+        EXPECT_EQ(gpuInter, InterleaveFromPlanes(planesOut, dstW, dstH, channels, elemSize));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+template<class OpInvoke, class InputFn, class CompareFn>
 inline void RunVarShapeParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int srcW, int srcH,
-                              int dstW, int dstH, int numImages, OpInvoke &&invoke)
+                              int dstW, int dstH, int numImages, OpInvoke &&invoke, InputFn &&makeInput,
+                              CompareFn &&compare)
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -303,8 +519,8 @@ inline void RunVarShapeParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat int
 
     for (int i = 0; i < numImages; ++i)
     {
-        std::vector<uint8_t> hwc(srcH * srcRowStr);
-        FillDeterministicValues(hwc, static_cast<size_t>(i) * 101 + 7, planarFmt.planeDataType(0));
+        std::vector<uint8_t> hwc = makeInput(i, srcW, srcH, channels);
+        ASSERT_EQ(hwc.size(), static_cast<size_t>(srcH * srcRowStr));
 
         auto idata = srcI[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(cudaSuccess, cudaMemcpy2D(idata->plane(0).basePtr, idata->plane(0).rowStride, hwc.data(), srcRowStr,
@@ -364,10 +580,29 @@ inline void RunVarShapeParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat int
         }
         auto planarInter = InterleaveFromPlanes(planesOut, dstW, dstH, channels, elemSize);
 
-        EXPECT_EQ(gpuInter, planarInter);
+        compare(gpuInter, planarInter);
     }
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+template<class OpInvoke>
+inline void RunVarShapeParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int srcW, int srcH,
+                              int dstW, int dstH, int numImages, OpInvoke &&invoke)
+{
+    auto makeInput = [dtype = planarFmt.planeDataType(0), elemSize = planarFmt.planePixelStrideBytes(0)](
+                         int sample, int width, int height, int channels)
+    {
+        std::vector<uint8_t> hwc(static_cast<size_t>(width) * height * channels * elemSize);
+        FillDeterministicValues(hwc, static_cast<size_t>(sample) * 101 + 7, dtype);
+        return hwc;
+    };
+    auto compare = [](const std::vector<uint8_t> &interleaved, const std::vector<uint8_t> &planar)
+    {
+        EXPECT_EQ(interleaved, planar);
+    };
+    RunVarShapeParity(planarFmt, interleavedFmt, srcW, srcH, dstW, dstH, numImages, std::forward<OpInvoke>(invoke),
+                      makeInput, compare);
 }
 
 // Build two NCHW U8 tensors with the given {N, C, H, W} extents, invoke `invoke(stream, in, out)`,

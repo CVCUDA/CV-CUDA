@@ -161,6 +161,43 @@ TEST(OpAdjustSaturation, varshape_grayscale_output)
         invokeSat(0.0), kU8MaxDiff);
 }
 
+// F16 correctness: the kernel widens every half to float, evaluates the luma dot product and the
+// per-channel blend in float (identical to the F32 path, no grayscale floor), clamps to [0, 1],
+// and rounds once on the half store. kUlps = 4 per the HalfTestUtils.hpp policy: a 3-tap luma dot
+// plus a blend whose host/device FMA contraction may differ at a few rounding steps.
+constexpr float kSatF16Ulps = 4.f;
+
+static auto satGoldF32(double saturation)
+{
+    return [saturation](const std::vector<float> &in, int channels)
+    {
+        return AdjustSaturationGold<float>(in, channels, saturation);
+    };
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpAdjustSaturationF16, test::ValueList<int, int, int, nvcv::ImageFormat, double>
+{
+    //   width, height, batch,           format             saturation
+    {       33,     23,     2,   nvcv::FMT_F16,       0.5}, // f16 / 1ch (identity)
+    {       57,     41,     2,   nvcv::FMT_RGBf16,    0.5}, // f16 / 3ch blend
+    {       50,     40,     1,   nvcv::FMT_RGBf16,    1.5}, // f16 / 3ch over-saturate (clamp to 1)
+    {       50,     40,     1,   nvcv::FMT_RGBf16,    0.0}, // f16 / 3ch -> grayscale
+});
+
+// clang-format on
+TEST_P(OpAdjustSaturationF16, tensor_matches_fp32_gold)
+{
+    const double sat = GetParamValue<4>();
+    ew::RunTensorCorrectBufferF16(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(),
+                                  satGoldF32(sat), invokeSat(sat), kSatF16Ulps);
+}
+
+TEST(OpAdjustSaturationF16, varshape_matches_fp32_gold)
+{
+    ew::RunVarShapeCorrectBufferF16(nvcv::FMT_RGBf16, satGoldF32(0.5), invokeSat(0.5), kSatF16Ulps);
+}
+
 TEST(OpAdjustSaturation, zero_extent_tensors_are_noops)
 {
     ew::ExpectZeroExtentTensorNoop(
@@ -193,6 +230,7 @@ TEST(OpAdjustSaturation, empty_matching_varshape_is_noop)
 NVCV_TEST_SUITE_P(OpAdjustSaturationPlanar,
                   test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat>{
     {176, 113, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+    {100,  80, 2, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16},
     {100,  80, 2, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32},
 });
 
@@ -218,7 +256,7 @@ TEST_P(OpAdjustSaturationPlanar, varshape_matches_interleaved)
 // clang-format off
 NVCV_TEST_SUITE_P(OpAdjustSaturation_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
     {nvcv::FMT_U16,      nvcv::FMT_U16   }, // unsupported dtype (16-bit unsigned)
-    {nvcv::FMT_F16,      nvcv::FMT_F16   }, // unsupported dtype (16-bit float)
+    {nvcv::FMT_F64,      nvcv::FMT_F64   }, // unsupported dtype (64-bit float; F16 is now valid)
     {nvcv::FMT_RGBA8,    nvcv::FMT_RGBA8 }, // unsupported channel count (4)
     {nvcv::FMT_RGB8,     nvcv::FMT_RGB8p }, // layout mismatch (interleaved in, planar out)
     {nvcv::FMT_RGB8,     nvcv::FMT_RGBf32}, // input/output data type mismatch

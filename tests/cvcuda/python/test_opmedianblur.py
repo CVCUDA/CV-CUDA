@@ -141,7 +141,12 @@ globals().update(
             ("image_batch", cvcuda.median_blur, _medianblur_varshape_params),
         ],
         keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
-        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.U16, cvcuda.Type.F32},
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.F16,
+            cvcuda.Type.F32,
+        },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
         supported_channels={1, 3, 4},
     )

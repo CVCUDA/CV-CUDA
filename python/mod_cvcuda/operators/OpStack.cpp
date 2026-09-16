@@ -79,6 +79,14 @@ void checkTensorList(std::vector<Tensor> &tensorList, std::array<int64_t, 4> &ou
     dtype          = tensorList[0].dtype();
 }
 
+void checkOutputMetadata(const Tensor &output, nvcv::TensorLayout layout, nvcv::DataType dtype)
+{
+    if (output.shape().layout() != layout || output.dtype() != dtype)
+    {
+        throw StackError("Output tensor layout and data type must match the input tensors");
+    }
+}
+
 void StackIntoInternal(Tensor &output, std::vector<Tensor> &tensorList, std::optional<Stream> pstream,
                        int32_t numberOfTensors)
 {
@@ -117,6 +125,8 @@ Tensor StackInto(Tensor &output, std::vector<Tensor> &tensorList, std::optional<
     if (output.shape()[0] != outputShape[0])
         throw StackError("Invalid output tensor shape");
 
+    checkOutputMetadata(output, layout, dtype);
+
     StackIntoInternal(output, tensorList, pstream, static_cast<int32_t>(outputShape[0]));
     return std::move(output);
 }
@@ -142,6 +152,19 @@ Tensor Stack(std::vector<Tensor> &tensorList, std::optional<Stream> pstream)
 // TensorBatch direct input functions
 Tensor StackTensorBatchInto(Tensor &output, nvcvpy::TensorBatch &inTensorBatch, std::optional<Stream> pstream)
 {
+    if (inTensorBatch.numTensors() > 0)
+    {
+        nvcv::TensorLayout inputLayout = inTensorBatch.layout();
+        if (inputLayout == nvcv::TENSOR_CHW || inputLayout == nvcv::TENSOR_NCHW)
+        {
+            checkOutputMetadata(output, nvcv::TENSOR_NCHW, inTensorBatch.dtype());
+        }
+        else if (inputLayout == nvcv::TENSOR_HWC || inputLayout == nvcv::TENSOR_NHWC)
+        {
+            checkOutputMetadata(output, nvcv::TENSOR_NHWC, inTensorBatch.dtype());
+        }
+    }
+
     if (!pstream)
     {
         pstream = Stream::Current();

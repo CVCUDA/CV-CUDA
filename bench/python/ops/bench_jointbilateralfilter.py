@@ -70,8 +70,10 @@ def jointbilateralfilter(state):
     sigma_color_scalar = -1.0
 
     dtype_size = get_dtype_size(dtype_str)
-    state.add_global_memory_reads(N * H * W * dtype_size)
-    state.add_global_memory_writes(N * H * W * dtype_size)
+    state.add_global_memory_reads((4 if is_fake_planar else 2) * N * H * W * dtype_size)
+    state.add_global_memory_writes(
+        (3 if is_fake_planar else 1) * N * H * W * dtype_size
+    )
 
     get_stream = create_stream_cache()
 

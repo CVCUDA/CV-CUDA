@@ -41,6 +41,10 @@ inline nvcv::DataType GetConvertToDataType(const std::string &dtype)
     {
         return nvcv::TYPE_S32;
     }
+    else if (dtype == "float16")
+    {
+        return nvcv::TYPE_F16;
+    }
     else if (dtype == "float32")
     {
         return nvcv::TYPE_F32;
@@ -59,7 +63,7 @@ inline long GetConvertToTypeSize(const std::string &dtype)
     {
         return 1;
     }
-    else if (dtype == "uint16" || dtype == "int16")
+    else if (dtype == "uint16" || dtype == "int16" || dtype == "float16")
     {
         return 2;
     }

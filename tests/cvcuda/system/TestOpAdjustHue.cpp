@@ -243,6 +243,42 @@ TEST(OpAdjustHue, varshape_negative_shift_output)
         invokeHue(-0.4), kU8MaxDiff);
 }
 
+// F16 correctness: the kernel widens every half to float, runs the whole RGB->HSV->rotate->RGB
+// chain in float (identical to the F32 path), and rounds once on the half store. kUlps = 8 per
+// the HalfTestUtils.hpp policy: a transcendental-class HSV chain of divides, multiplies, and
+// sector blends whose host/device float contraction may differ across several steps.
+constexpr float kHueF16Ulps = 8.f;
+
+static auto hueGoldF32(double hue)
+{
+    return [hue](const std::vector<float> &in, int channels)
+    {
+        return AdjustHueGold<float>(in, channels, hue);
+    };
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpAdjustHueF16, test::ValueList<int, int, int, nvcv::ImageFormat, double>
+{
+    //   width, height, batch,           format               hue
+    {       33,     23,     2,   nvcv::FMT_F16,       0.25}, // f16 / 1ch (identity)
+    {       57,     41,     2,   nvcv::FMT_RGBf16,    0.25}, // f16 / 3ch
+    {       50,     40,     1,   nvcv::FMT_RGBf16,   -0.30}, // f16 / 3ch (negative shift wraps)
+});
+
+// clang-format on
+TEST_P(OpAdjustHueF16, tensor_matches_fp32_gold)
+{
+    const double hue = GetParamValue<4>();
+    ew::RunTensorCorrectBufferF16(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(),
+                                  hueGoldF32(hue), invokeHue(hue), kHueF16Ulps);
+}
+
+TEST(OpAdjustHueF16, varshape_matches_fp32_gold)
+{
+    ew::RunVarShapeCorrectBufferF16(nvcv::FMT_RGBf16, hueGoldF32(0.25), invokeHue(0.25), kHueF16Ulps);
+}
+
 TEST(OpAdjustHue, zero_extent_tensors_are_noops)
 {
     ew::ExpectZeroExtentTensorNoop(
@@ -275,6 +311,7 @@ TEST(OpAdjustHue, empty_matching_varshape_is_noop)
 NVCV_TEST_SUITE_P(OpAdjustHuePlanar,
                   test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat>{
     {176, 113, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+    {100,  80, 2, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16},
     {100,  80, 2, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32},
 });
 
@@ -300,7 +337,7 @@ TEST_P(OpAdjustHuePlanar, varshape_matches_interleaved)
 // clang-format off
 NVCV_TEST_SUITE_P(OpAdjustHue_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
     {nvcv::FMT_U16,      nvcv::FMT_U16   }, // unsupported dtype (16-bit unsigned)
-    {nvcv::FMT_F16,      nvcv::FMT_F16   }, // unsupported dtype (16-bit float)
+    {nvcv::FMT_F64,      nvcv::FMT_F64   }, // unsupported dtype (64-bit float; F16 is now valid)
     {nvcv::FMT_RGBA8,    nvcv::FMT_RGBA8 }, // unsupported channel count (4)
     {nvcv::FMT_RGB8,     nvcv::FMT_RGB8p }, // layout mismatch (interleaved in, planar out)
     {nvcv::FMT_RGB8,     nvcv::FMT_RGBf32}, // input/output data type mismatch

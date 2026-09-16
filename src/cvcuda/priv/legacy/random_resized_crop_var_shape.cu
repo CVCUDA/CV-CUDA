@@ -653,7 +653,8 @@ ErrorCode RandomResizedCropVarShape::infer(const ImageBatchVarShape &in, const I
     DataType in_data_type  = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
 
-    if (!(in_data_type == kCV_8U || in_data_type == kCV_16U || in_data_type == kCV_16S || in_data_type == kCV_32F))
+    if (!(in_data_type == kCV_8U || in_data_type == kCV_16U || in_data_type == kCV_16S || in_data_type == kCV_32F
+          || in_data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << in_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -701,13 +702,18 @@ ErrorCode RandomResizedCropVarShape::infer(const ImageBatchVarShape &in, const I
                            const NVCVInterpolationType interpolation, cudaStream_t stream, float *scale_y,
                            float *scale_x, int *top, int *left);
 
-    static const func_t funcs[6][4] = {
-        {      resize<uchar>,  0 /*resize<uchar2>*/,      resize<uchar3>,      resize<uchar4>},
-        {0 /*resize<schar>*/,   0 /*resize<char2>*/, 0 /*resize<char3>*/, 0 /*resize<char4>*/},
-        {     resize<ushort>, 0 /*resize<ushort2>*/,     resize<ushort3>,     resize<ushort4>},
-        {      resize<short>,  0 /*resize<short2>*/,      resize<short3>,      resize<short4>},
-        {  0 /*resize<int>*/,    0 /*resize<int2>*/,  0 /*resize<int3>*/,  0 /*resize<int4>*/},
-        {      resize<float>,  0 /*resize<float2>*/,      resize<float3>,      resize<float4>}
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). RandomResizedCrop
+    // interpolates, so the F16 row instantiates real half kernels (FP32 accumulation, one final
+    // rounding to half) instead of aliasing the 16-bit integer ones.
+    static const func_t funcs[8][4] = {
+        {       resize<uchar>,  0 /*resize<uchar2>*/,        resize<uchar3>,        resize<uchar4>},
+        { 0 /*resize<schar>*/,   0 /*resize<char2>*/,   0 /*resize<char3>*/,   0 /*resize<char4>*/},
+        {      resize<ushort>, 0 /*resize<ushort2>*/,       resize<ushort3>,       resize<ushort4>},
+        {       resize<short>,  0 /*resize<short2>*/,        resize<short3>,        resize<short4>},
+        {   0 /*resize<int>*/,    0 /*resize<int2>*/,    0 /*resize<int3>*/,    0 /*resize<int4>*/},
+        {       resize<float>,  0 /*resize<float2>*/,        resize<float3>,        resize<float4>},
+        {0 /*resize<double>*/, 0 /*resize<double2>*/, 0 /*resize<double3>*/, 0 /*resize<double4>*/},
+        {      resize<__half>, 0 /*resize<__half2>*/,         resize<half3>,         resize<half4>}
     };
 
     if (isPlanar)
@@ -722,9 +728,12 @@ ErrorCode RandomResizedCropVarShape::infer(const ImageBatchVarShape &in, const I
                                       const NVCVInterpolationType interpolation, cudaStream_t stream, float *scale_y,
                                       float *scale_x, int *top, int *left, int channels);
 
-        static const planar_func_t planar_funcs[6] = {
-            resize_planar<uchar>, 0 /*resize_planar<schar>*/, resize_planar<ushort>,
-            resize_planar<short>, 0 /*resize_planar<int>*/,   resize_planar<float>,
+        // Slots 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7); F16 instantiates a
+        // real half kernel like the interleaved table above.
+        static const planar_func_t planar_funcs[8] = {
+            resize_planar<uchar>,        0 /*resize_planar<schar>*/,    resize_planar<ushort>,
+            resize_planar<short>,        0 /*resize_planar<int>*/,      resize_planar<float>,
+            0 /*resize_planar<double>*/, resize_planar<__half> /*16F*/,
         };
 
         const planar_func_t planar_func = planar_funcs[in_data_type];

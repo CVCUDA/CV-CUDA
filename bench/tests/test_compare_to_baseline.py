@@ -30,7 +30,16 @@ from _internal.baselines import (
     parse_case_key,
     sku_stems,
 )
-from compare_to_baseline import Thresholds, compare_updates, format_markdown
+from compare_to_baseline import (
+    CONSOLE_SECTION_ROWS,
+    CompareResult,
+    MissingRow,
+    RowResult,
+    Thresholds,
+    compare_updates,
+    format_markdown,
+    main,
+)
 
 
 def _write_json(path, payload):
@@ -47,6 +56,7 @@ def _write_sku_map(path, *entries):
                     "gpu_name": name,
                     "power_cap_w": cap,
                     "locked_sm_clock_mhz": clock,
+                    "cuda_major": 13,
                     "stem": stem,
                 }
                 for name, cap, clock, stem in entries
@@ -332,10 +342,26 @@ def test_load_sku_map_skips_invalid_entries_when_not_strict(tmp_path):
         '{"entries": ['
         '{"gpu_name": "bad", "power_cap_w": 1},'
         '{"gpu_name": "NVIDIA Test GPU", "power_cap_w": 350, '
-        '"locked_sm_clock_mhz": 1095, "stem": "TESTSKU"}'
+        '"locked_sm_clock_mhz": 1095, "cuda_major": 13, "stem": "TESTSKU"}'
         "]}"
     )
-    assert load_sku_map(path) == {("NVIDIA Test GPU", 350, 1095): "TESTSKU"}
+    assert load_sku_map(path) == {("NVIDIA Test GPU", 350, 1095, 13): "TESTSKU"}
+
+
+def test_load_sku_map_keeps_same_hardware_for_distinct_cuda_majors(tmp_path):
+    path = tmp_path / "sku_map.json"
+    path.write_text(
+        '{"entries": ['
+        '{"gpu_name": "NVIDIA Test GPU", "power_cap_w": 350, '
+        '"locked_sm_clock_mhz": 1095, "cuda_major": 12, "stem": "TEST_CUDA12"},'
+        '{"gpu_name": "NVIDIA Test GPU", "power_cap_w": 350, '
+        '"locked_sm_clock_mhz": 1095, "cuda_major": 13, "stem": "TEST_CUDA13"}'
+        "]}"
+    )
+    assert load_sku_map(path, strict=True) == {
+        ("NVIDIA Test GPU", 350, 1095, 12): "TEST_CUDA12",
+        ("NVIDIA Test GPU", 350, 1095, 13): "TEST_CUDA13",
+    }
 
 
 def test_markdown_summary_reports_delta_stats(tmp_path):
@@ -346,3 +372,110 @@ def test_markdown_summary_reports_delta_stats(tmp_path):
     report = format_markdown(result, "TESTSKU", "operators", current, Thresholds())
     assert "all-rows |Delta|:" in report
     assert "Regressions (1)" in report
+
+
+def _run_main(tmp_path, payload, *extra_args):
+    """Drive the CLI end to end over a config and artifact written to disk."""
+    config_dir = tmp_path / "config"
+    _write_config(config_dir)
+    _write_sku_map(
+        config_dir / "sku_map.json", ("NVIDIA Test GPU", 350, 1095, "TESTSKU")
+    )
+    current = tmp_path / "bench_output.json"
+    _write_json(current, payload)
+    return main(
+        [
+            "--current",
+            str(current),
+            "--config-dir",
+            str(config_dir),
+            *extra_args,
+        ]
+    )
+
+
+def test_main_prints_flagged_rows_when_writing_markdown(tmp_path, capsys):
+    """--markdown must not silence the console: CI reads only the job log."""
+    markdown = tmp_path / "regression_report.md"
+    rc = _run_main(
+        tmp_path,
+        _current_payload(cpp_us=80.0, python_us=88.0),
+        "--markdown",
+        str(markdown),
+    )
+    out = capsys.readouterr().out
+
+    assert rc == 1
+    assert "improvements=2" in out
+    # The counts line alone was the old behaviour; the rows themselves are the
+    # point of this test.
+    assert "Unexpected improvements (2)" in out
+    assert "resize_basic [cpp]" in out
+    assert "-20.00%" in out
+    assert str(markdown) in out
+    assert markdown.read_text().count("resize_basic [cpp]") == 1
+
+
+def test_main_prints_every_outcome_section(tmp_path, capsys):
+    _run_main(tmp_path, _current_payload(), "--markdown", str(tmp_path / "r.md"))
+    out = capsys.readouterr().out
+
+    for section in (
+        "Regressions (",
+        "Unexpected improvements (",
+        "Missing in current (",
+        "New in current (",
+        "Missing SKU (",
+    ):
+        assert section in out
+
+
+def _bulk_result(count):
+    result = CompareResult(matched=count)
+    for i in range(count):
+        result.improvements.append(
+            RowResult(
+                benchmark="resize",
+                config_key=f"resize_basic_{i}",
+                language="cpp",
+                axes=(("shape", "1x2x3"),),
+                base_mean_us=100.0,
+                cur_gpu_us=80.0,
+                delta=-0.2,
+            )
+        )
+        result.new_in_current.append(
+            MissingRow(
+                benchmark="resize",
+                config_key=f"resize_new_{i}",
+                language="cpp",
+                axes=(("shape", "1x2x3"),),
+            )
+        )
+    return result
+
+
+def test_console_copy_caps_rows_per_section(tmp_path):
+    """A bootstrap run flags thousands of rows; the log must stay readable."""
+    count = CONSOLE_SECTION_ROWS + 7
+    result = _bulk_result(count)
+
+    full = format_markdown(
+        result, "TESTSKU", "operators", tmp_path / "cur.json", Thresholds()
+    )
+    capped = format_markdown(
+        result,
+        "TESTSKU",
+        "operators",
+        tmp_path / "cur.json",
+        Thresholds(),
+        max_rows_per_section=CONSOLE_SECTION_ROWS,
+    )
+
+    # Both report the true totals; only the listed rows differ.
+    assert f"Unexpected improvements ({count})" in full
+    assert f"Unexpected improvements ({count})" in capped
+    assert full.count("- resize_basic_") == count
+    assert capped.count("- resize_basic_") == CONSOLE_SECTION_ROWS
+    assert capped.count("...and 7 more") == 2
+    assert "...and" not in full

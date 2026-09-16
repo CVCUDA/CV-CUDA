@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -264,4 +264,93 @@ TEST(RangeCastCornerCasesTest, identity_values)
 {
     EXPECT_EQ(make_float2(142, 23), cuda::RangeCast<float>(make_float2(142, 23)));
     EXPECT_EQ(make_int2(142, 23), cuda::RangeCast<int>(make_int2(142, 23)));
+}
+
+// ---------------------- Testing RangeCast for __half -------------------------
+
+// __half and its vector types (half1/__half2/half3/half4) are not structural types, so they
+// cannot be used in ttype::Value<> non-type template parameters as in the typed suite above;
+// the fp16 coverage below uses plain TESTs with values built at run time.
+
+TEST(RangeCastHalfCornerCasesTest, float_to_half)
+{
+    // float -> __half clamps to the finite half range [-65504, 65504] before the
+    // round-to-nearest conversion
+    EXPECT_EQ(65504.f, __half2float(cuda::RangeCast<__half>(1.e9f)));
+    EXPECT_EQ(-65504.f, __half2float(cuda::RangeCast<__half>(-1.e9f)));
+    EXPECT_EQ(65504.f, __half2float(cuda::RangeCast<__half>(65504.f)));
+    EXPECT_EQ(0.5f, __half2float(cuda::RangeCast<__half>(0.5f)));
+    EXPECT_EQ(__half2float(__float2half(0.1f)), __half2float(cuda::RangeCast<__half>(0.1f)));
+}
+
+TEST(RangeCastHalfCornerCasesTest, double_to_half)
+{
+    EXPECT_EQ(65504.f, __half2float(cuda::RangeCast<__half>(1.e9)));
+    EXPECT_EQ(-65504.f, __half2float(cuda::RangeCast<__half>(-1.e9)));
+    EXPECT_EQ(-2.5f, __half2float(cuda::RangeCast<__half>(-2.5)));
+}
+
+TEST(RangeCastHalfCornerCasesTest, half_to_float_and_double)
+{
+    // __half -> float/double is an exact widening
+    EXPECT_EQ(0.25f, cuda::RangeCast<float>(__float2half(0.25f)));
+    EXPECT_EQ(65504.f, cuda::RangeCast<float>(cuda::HalfMax()));
+    EXPECT_EQ(-65504.f, cuda::RangeCast<float>(cuda::HalfLowest()));
+    EXPECT_EQ(1.5, cuda::RangeCast<double>(__float2half(1.5f)));
+}
+
+TEST(RangeCastHalfCornerCasesTest, unsigned_char_to_half)
+{
+    // u / 255 is computed in float and rounded once to half
+    EXPECT_EQ(0.f, __half2float(cuda::RangeCast<__half>((unsigned char)0)));
+    EXPECT_EQ(1.f, __half2float(cuda::RangeCast<__half>((unsigned char)255)));
+    EXPECT_EQ(__half2float(__float2half(128.f / 255.f)), __half2float(cuda::RangeCast<__half>((unsigned char)128)));
+}
+
+TEST(RangeCastHalfCornerCasesTest, half_to_unsigned_char)
+{
+    EXPECT_EQ((unsigned char)0, cuda::RangeCast<unsigned char>(__float2half(0.f)));
+    EXPECT_EQ((unsigned char)0, cuda::RangeCast<unsigned char>(__float2half(-0.5f)));
+    EXPECT_EQ((unsigned char)128, cuda::RangeCast<unsigned char>(__float2half(0.5f)));
+    EXPECT_EQ((unsigned char)255, cuda::RangeCast<unsigned char>(__float2half(1.f)));
+    EXPECT_EQ((unsigned char)255, cuda::RangeCast<unsigned char>(__float2half(1.5f)));
+}
+
+TEST(RangeCastHalfCornerCasesTest, signed_char_to_half)
+{
+    // symmetric scale by 1 / 127, i.e. [-max, max] -> [-1, 1]
+    EXPECT_EQ(0.f, __half2float(cuda::RangeCast<__half>((signed char)0)));
+    EXPECT_EQ(1.f, __half2float(cuda::RangeCast<__half>((signed char)127)));
+    EXPECT_EQ(-1.f, __half2float(cuda::RangeCast<__half>((signed char)-127)));
+    EXPECT_EQ(-1.f, __half2float(cuda::RangeCast<__half>((signed char)-128)));
+}
+
+TEST(RangeCastHalfCornerCasesTest, half_to_signed_char)
+{
+    EXPECT_EQ((signed char)0, cuda::RangeCast<signed char>(__float2half(0.f)));
+    EXPECT_EQ((signed char)64, cuda::RangeCast<signed char>(__float2half(0.5f)));
+    EXPECT_EQ((signed char)127, cuda::RangeCast<signed char>(__float2half(1.f)));
+    EXPECT_EQ((signed char)127, cuda::RangeCast<signed char>(__float2half(1.5f)));
+    EXPECT_EQ((signed char)-64, cuda::RangeCast<signed char>(__float2half(-0.5f)));
+    EXPECT_EQ((signed char)-127, cuda::RangeCast<signed char>(__float2half(-1.f)));
+    EXPECT_EQ((signed char)-127, cuda::RangeCast<signed char>(__float2half(-1.5f)));
+}
+
+TEST(RangeCastHalfCornerCasesTest, half_composite_types)
+{
+    auto test = cuda::RangeCast<float>(half3{__float2half(0.25f), __float2half(-1.5f), cuda::HalfMax()});
+    EXPECT_TRUE((std::is_same_v<decltype(test), float3>));
+    EXPECT_EQ(test, make_float3(0.25f, -1.5f, 65504.f));
+
+    auto test2 = cuda::RangeCast<__half>(make_uchar2(0, 255));
+    EXPECT_TRUE((std::is_same_v<decltype(test2), __half2>));
+    EXPECT_EQ(0.f, __half2float(test2.x));
+    EXPECT_EQ(1.f, __half2float(test2.y));
+}
+
+TEST(RangeCastHalfCornerCasesTest, half_identity_values)
+{
+    auto test = cuda::RangeCast<__half>(__float2half(0.25f));
+    EXPECT_TRUE((std::is_same_v<decltype(test), __half>));
+    EXPECT_EQ(0.25f, __half2float(test));
 }

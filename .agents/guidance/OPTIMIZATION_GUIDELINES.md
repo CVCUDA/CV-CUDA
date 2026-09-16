@@ -7,7 +7,6 @@ How to land a performance change in CV-CUDA -- kernels, host-side overhead,
 caches, allocators, and Python bindings -- without regressing correctness or
 neighbouring code paths. These guidelines apply to humans and AI agents.
 
-For *reviewing* an optimization MR, see [REVIEW_PR_GUIDELINES.md](REVIEW_PR_GUIDELINES.md).
 For bug fixes that may incidentally improve performance, see
 [BUGFIX_GUIDELINES.md](BUGFIX_GUIDELINES.md).
 
@@ -116,8 +115,33 @@ scalar tail, and each broadcast or parameter mode. Coverage of one layout or
 variant is not coverage of another kernel.
 
 Capture the baseline before coding. Local numbers are acceptable for iteration;
-CI on the benchmark-only SHA is the reference for new benchmarks. Existing
-benchmarks may already have a usable CI baseline.
+CI on the benchmark-only SHA is the reference for new benchmarks.
+
+The before wave must be current. Capture a fresh reference-SKU burn-in at the
+commit the campaign starts from, using the named `baseline-regen` config scoped
+to the operator:
+
+````markdown
+```ci
+{"config": "baseline-regen", "benchmark_operators": "<op>"}
+```
+````
+
+That fan-out runs `basic,advanced` on both reference SKUs, which is what makes
+it usable as a before wave. Do not reuse previously committed baseline rows
+instead. Structural completeness is not freshness: `BEN-7` proves every case and
+SKU is present, and `PRE-3` proves the block is non-empty, but neither shows the
+numbers were measured against the code being optimized. Advanced rows are the
+usual offender: the all-operator `basic` leg runs only on Ready merge requests and
+merge trains, not on Drafts, and only the changed-operator leg and the nightly
+re-measure `advanced` at all. A speedup
+computed against rows that predate a driver, toolkit, or shared-kernel change is
+not attributable to the campaign.
+
+`PRE-6` enforces this deterministically: it finds the commit that last wrote the
+operator's config, then reports a GAP if anything attributed to that operator
+changed between it and the campaign base. Import the new wave with
+`bench/_internal/update_baseline.py`; do not hand-edit baseline blocks.
 
 ### 3. Profile Before Coding
 

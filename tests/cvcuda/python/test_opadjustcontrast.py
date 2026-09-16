@@ -30,6 +30,8 @@ RNG = np.random.default_rng(0)
         (((5, 16, 23, 3), np.uint8, "NHWC"), 1.5),
         (((4, 9, 3), np.uint8, "HWC"), 0.5),
         (((3, 88, 13, 1), np.uint8, "NHWC"), 2.0),
+        (((2, 16, 23, 3), np.float16, "NHWC"), 1.5),
+        (((2, 3, 16, 23), np.float16, "NCHW"), 0.75),
         (((2, 3, 16, 23), np.float32, "NCHW"), 1.25),
         (((1, 8, 8), np.float32, "CHW"), 0.0),
     ],
@@ -54,6 +56,7 @@ def test_op_adjust_contrast(tensor_params, contrast_factor):
     [
         (10, cvcuda.Format.RGB8, (123, 321), 256, 1.5),
         (7, cvcuda.Format.RGBf32, (62, 35), 1.0, 0.75),
+        (3, cvcuda.Format.RGBf16, (50, 40), 1.0, 1.5),
         (1, cvcuda.Format.U8, (33, 48), 256, 2.0),
     ],
 )
@@ -93,7 +96,7 @@ globals().update(
             ("image_batch", cvcuda.adjust_contrast, _adjust_contrast_params),
         ],
         keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
-        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.F32},
+        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.F16, cvcuda.Type.F32},
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
         supported_channels={1, 3},
         extra_params_negative={"contrast_factor": {-0.5}},

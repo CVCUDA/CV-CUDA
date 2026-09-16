@@ -45,6 +45,12 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.REFLECT,
         ),
         (
+            ((2, 16, 23, 3), np.float16, "NHWC"),
+            [5, 5],
+            [0.8, 0.8],
+            cvcuda.Border.CONSTANT,
+        ),
+        (
             ((3, 4, 4), np.int32, "HWC"),
             [9, 9],
             [0.8, 0.8],
@@ -101,6 +107,15 @@ def test_op_gaussian(input_args, kernel_size, sigma, border):
             (5, 5),
             (4, 4),
             cvcuda.Border.REPLICATE,
+        ),
+        (
+            5,
+            cvcuda.Format.RGBf16,
+            (48, 27),
+            1.0,
+            (5, 5),
+            (4, 4),
+            cvcuda.Border.CONSTANT,
         ),
         (
             1,
@@ -216,6 +231,7 @@ globals().update(
             cvcuda.Type.U16,
             cvcuda.Type.S16,
             cvcuda.Type.S32,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},

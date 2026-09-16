@@ -31,6 +31,7 @@ import difflib
 import subprocess
 import threading
 import pandas as pd
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 from abc import ABC, abstractmethod
@@ -44,6 +45,7 @@ from _internal.baselines import (
     DEFAULT_SKU_MAP_PATH,
     BaselineError,
     baseline_payload_from_dataframe,
+    build_baseline_document,
     load_config_index,
 )
 from _internal.quality import (
@@ -85,6 +87,10 @@ _CLOCK_SAMPLE_INTERVAL_S = float(os.environ.get("BENCH_CLOCK_SAMPLE_INTERVAL_S",
 _CLOCK_LOG_PATH = os.environ.get("BENCH_CLOCK_LOG", "")  # set after parse_args
 
 _clock_lock_acquired = False
+# Whether the lock was ever obtained. `_clock_lock_acquired` is cleared during
+# teardown, and the applied-MHz value is the free-running clock when locking
+# failed, so neither can answer "was this run locked?" after the fact.
+_clock_lock_verified = False
 _clock_lock_applied_mhz: Optional[int] = None
 _clock_sampler_stop = threading.Event()
 _clock_sampler_thread: Optional[threading.Thread] = None
@@ -308,11 +314,13 @@ def init_clock_control(out_dir: str) -> None:
     Idempotent on cleanup.
     """
     global _clock_lock_acquired, _clock_lock_applied_mhz, _clock_sampler_thread
+    global _clock_lock_verified
     if _clock_lock_acquired or _clock_sampler_thread is not None:
         return  # already initialized
     _clock_lock_acquired, _clock_lock_applied_mhz = _try_lock_sm_clock(
         _CLOCK_LOCK_PREFERRED_MHZ
     )
+    _clock_lock_verified = _clock_lock_acquired
     _write_gpu_fingerprint(out_dir)
     log_path = _CLOCK_LOG_PATH or os.path.join(out_dir, "clock_log.jsonl")
     _clock_sampler_thread = threading.Thread(
@@ -453,6 +461,7 @@ DTYPE_MAP = {
     "I16": "int16",
     "I32": "int32",
     "I64": "int64",
+    "F16": "float16",
     "F32": "float32",
     "F64": "float64",
 }
@@ -543,9 +552,9 @@ def _write_gpu_fingerprint(out_dir: str) -> None:
 
     Captures vBIOS, UUID, product name/brand, the full `clocks.gr.supported`
     list, and the K8s `spec.nodeName` (per-build ephemeral name; the
-    stable host name lives in the node's `kubernetes.io/hostname`
+    stable physical hostname lives in the node's `kubernetes.io/hostname`
     label, which the pod's default ServiceAccount can't read — physical
-    host identification is done out of band).  Every
+    host identification is done out-of-band).  Every
     signal we have for distinguishing silicon variants in a multi-host
     K8s pool.  Purely diagnostic; routing keys do not consume these
     fields.
@@ -566,15 +575,16 @@ def _write_gpu_fingerprint(out_dir: str) -> None:
                 f.write(f"{label}: {(out or '').strip()}\n")
             supported = _query_supported_sm_clocks_mhz() or []
             f.write(f"clocks.gr.supported: {supported}\n")
-            # Read K8S_NODE_NAME (not NODE_NAME) — the CI agent reserves
-            # NODE_NAME and overwrites the pod-level Downward API var of
-            # that name with the agent's own name (= the pod name).
-            # K8S_NODE_NAME is the Downward API spec.nodeName value the
-            # K8s scheduler placed the pod on.  That is the ephemeral
-            # agent name, not the underlying physical host; the stable
-            # host name is in the node's `kubernetes.io/hostname` label,
-            # readable only via the K8s API (RBAC denied here, so it is
-            # looked up out of band).
+            # Read K8S_NODE_NAME (not NODE_NAME) — the CI orchestrator
+            # reserves NODE_NAME and overwrites the pod-level Downward API
+            # var of that name with its own agent name (= the pod name).
+            # K8S_NODE_NAME is the Downward API spec.nodeName value the K8s
+            # scheduler placed the pod on.  That is the ephemeral
+            # agent-shaped name, not the underlying physical host; the
+            # stable physical hostname is in the node's
+            # `kubernetes.io/hostname` label, readable only via the K8s API
+            # (which the pod is not authorized for), so it is looked up
+            # out-of-band.
             f.write(f"k8s_node_name: {os.environ.get('K8S_NODE_NAME', '')}\n")
     except OSError as e:
         print(f"[gpu-fingerprint] failed to write {path}: {e}", file=sys.stderr)
@@ -1870,6 +1880,33 @@ Exit status:
         ),
     )
     parser.add_argument(
+        "--cuda-major",
+        type=int,
+        choices=[12, 13],
+        default=None,
+        help="CUDA major used to select the JSON performance baseline.",
+    )
+    parser.add_argument(
+        "--run-context",
+        type=str,
+        choices=["local", "mr", "nightly"],
+        default="local",
+        help=(
+            "Provenance recorded in the JSON artifact. Drift analysis only "
+            "consumes 'nightly' runs (default: local)."
+        ),
+    )
+    parser.add_argument(
+        "--git-ref",
+        type=str,
+        default=None,
+        help=(
+            "Branch this run was built from, recorded in the JSON artifact. CI "
+            "passes it explicitly because a pinned-SHA checkout leaves no branch "
+            "for the environment to report."
+        ),
+    )
+    parser.add_argument(
         "--tier",
         type=str,
         default="basic",
@@ -2024,6 +2061,9 @@ Exit status:
         else:
             args.output = os.path.join(args.bench_folder, "bench_output.csv")
 
+    if Path(args.output).suffix.lower() == ".json" and args.cuda_major is None:
+        parser.error("--cuda-major is required for JSON output")
+
     # Apply global settings
     global VERBOSE, QUIET
     VERBOSE = args.verbose
@@ -2108,18 +2148,95 @@ def _baseline_config_paths(config_file: Optional[str]) -> Tuple[List[Path], Path
     return paths, sku_map_path
 
 
+def _unique_column_value(df: pd.DataFrame, column: str):
+    """Return the single value of a run-constant column, else None."""
+    if column not in df.columns:
+        return None
+    values = {value for value in df[column].tolist() if pd.notna(value)}
+    if len(values) != 1:
+        return None
+    value = values.pop()
+    return value.item() if hasattr(value, "item") else value
+
+
+def _git_revision() -> Optional[str]:
+    # The CI runner pins the checkout to an explicit SHA, so prefer the parameter
+    # it passes over asking git, which can disagree after a retry.
+    for env_var in ("COMMIT_SHA", "GIT_COMMIT", "CI_COMMIT_SHA"):
+        value = os.environ.get(env_var, "").strip()
+        if value:
+            return value
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def _run_metadata(args, df_combined: pd.DataFrame) -> dict:
+    """Collect the provenance that makes an artifact keyable as a time series."""
+    driver_version = _nvidia_smi(
+        "--query-gpu=driver_version", "--format=csv,noheader", "-i", "0", timeout=5.0
+    )
+    # Prefer what CI told us. The nightly job checks out a pinned SHA, so the
+    # environment reports no branch and these vars are usually absent; the
+    # drift analysis keys its series on this field.
+    git_ref = (getattr(args, "git_ref", None) or "").strip()
+    if not git_ref:
+        for env_var in ("GIT_BRANCH", "CI_COMMIT_REF_NAME", "BRANCH_NAME"):
+            git_ref = os.environ.get(env_var, "").strip()
+            if git_ref:
+                break
+    return {
+        "git_sha": _git_revision(),
+        "git_ref": git_ref or None,
+        # Read directly, never defaulted: if this flag is ever renamed the
+        # artifact must fail loudly rather than quietly claim "not nightly",
+        # which would silently drop every nightly run from the analysis.
+        "run_context": args.run_context,
+        "is_nightly": args.run_context == "nightly",
+        "timestamp_utc": datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "cuda_major": args.cuda_major,
+        "tier": args.tier,
+        "gpu_name": _unique_column_value(df_combined, "Device Name"),
+        "power_cap_w": _unique_column_value(df_combined, "Power Cap (W)"),
+        "locked_sm_clock_mhz": _unique_column_value(
+            df_combined, "Locked SM Clock (MHz)"
+        ),
+        # The clock value alone cannot show the lock succeeded: a failed lock
+        # still reports the free-running clock the sampler observed.
+        "sm_clock_locked": _clock_lock_verified,
+        "vbios_version": _unique_column_value(df_combined, "vBIOS Version"),
+        "driver_version": (driver_version or "").strip() or None,
+        "k8s_node_name": os.environ.get("K8S_NODE_NAME", "").strip() or None,
+    }
+
+
 def _write_output_json(args, df_combined: pd.DataFrame) -> None:
     config_paths, sku_map_path = _baseline_config_paths(args.config_file)
     index = load_config_index(paths=config_paths)
     payload = baseline_payload_from_dataframe(
         df_combined,
         index=index,
+        cuda_major=args.cuda_major,
         sku_map_path=sku_map_path,
         source=Path(args.output),
     )
+    document = build_baseline_document(
+        payload, run_metadata=_run_metadata(args, df_combined)
+    )
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(payload, indent=4) + "\n")
+    out_path.write_text(json.dumps(document, indent=4) + "\n")
     log_success(f"Results written to {out_path}")
 
 

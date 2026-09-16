@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,6 +43,12 @@ void convertRGBtoHSV(std::vector<T> &dst, const std::vector<T> &src, size_t numP
 
 template<typename T, bool FullRange>
 void convertHSVtoRGB(std::vector<T> &dst, const std::vector<T> &src, size_t numPixels, bool rgba, bool bgr);
+
+template<typename T>
+void convertRGBtoLab(std::vector<T> &dst, const std::vector<T> &src, size_t numPixels, bool bgr, bool srgb);
+
+template<typename T>
+void convertLabToRGB(std::vector<T> &dst, const std::vector<T> &src, size_t numPixels, bool bgr, bool srgb);
 
 template<typename T>
 void convertRGBtoYUV_PAL(std::vector<T> &dst, const std::vector<T> &src, size_t numPixels, bool rgba, bool bgr);

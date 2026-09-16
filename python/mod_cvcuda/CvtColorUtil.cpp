@@ -61,6 +61,14 @@ const std::unordered_map<NVCVColorConversionCode, NVCVImageFormat> kOutputFormat
     { NVCV_COLOR_RGB2HSV_FULL,  NVCV_IMAGE_FORMAT_HSV8},
     { NVCV_COLOR_HSV2BGR_FULL,  NVCV_IMAGE_FORMAT_BGR8},
     { NVCV_COLOR_HSV2RGB_FULL,  NVCV_IMAGE_FORMAT_RGB8},
+    {      NVCV_COLOR_BGR2Lab,  NVCV_IMAGE_FORMAT_LAB8},
+    {      NVCV_COLOR_RGB2Lab,  NVCV_IMAGE_FORMAT_LAB8},
+    {      NVCV_COLOR_Lab2BGR,  NVCV_IMAGE_FORMAT_BGR8},
+    {      NVCV_COLOR_Lab2RGB,  NVCV_IMAGE_FORMAT_RGB8},
+    {     NVCV_COLOR_LBGR2Lab,  NVCV_IMAGE_FORMAT_LAB8},
+    {     NVCV_COLOR_LRGB2Lab,  NVCV_IMAGE_FORMAT_LAB8},
+    {     NVCV_COLOR_Lab2LBGR,  NVCV_IMAGE_FORMAT_BGR8},
+    {     NVCV_COLOR_Lab2LRGB,  NVCV_IMAGE_FORMAT_RGB8},
     {      NVCV_COLOR_BGR2YUV,  NVCV_IMAGE_FORMAT_YUV8},
     {      NVCV_COLOR_RGB2YUV,  NVCV_IMAGE_FORMAT_YUV8},
     {      NVCV_COLOR_YUV2BGR,  NVCV_IMAGE_FORMAT_BGR8},
@@ -174,6 +182,11 @@ nvcv::ImageFormat GetOutputFormat(nvcv::DataType in, NVCVColorConversionCode cod
     auto outPacking = nvcv::MakePacking(outPackingParams);
     outFormat = outFormat.swizzleAndPacking(outFormat.swizzle(), outPacking, nvcv::Packing::NONE, nvcv::Packing::NONE,
                                             nvcv::Packing::NONE);
+
+    // The code->format templates are unsigned 8-bit; the bit-depth is carried over above, and the
+    // data kind must follow the input too, or float inputs would infer an invalid unsigned
+    // wide-channel output (e.g. RGBf32 -> gray previously inferred unsigned 32-bit and failed).
+    outFormat = outFormat.dataKind(in.dataKind());
 
     return outFormat;
 }

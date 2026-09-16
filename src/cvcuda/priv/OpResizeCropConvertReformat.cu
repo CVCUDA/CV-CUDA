@@ -17,31 +17,114 @@
 
 #include "Nvtx.hpp"
 #include "OpResizeCropConvertReformat.hpp"
-#include "legacy/CvCudaLegacy.h"
-#include "legacy/CvCudaLegacyHelpers.hpp"
 
 #include <cvcuda/cuda_tools/DropCast.hpp>
+#include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/InterpolationVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/InterpolationWrap.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
+#include <cvcuda/cuda_tools/SaturateCast.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
+#include <cvcuda/cuda_tools/TensorWrap.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/DataType.hpp>
 #include <nvcv/Exception.hpp>
+#include <nvcv/ImageBatchData.hpp>
+#include <nvcv/ImageFormat.hpp>
 #include <nvcv/TensorData.hpp>
+#include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/TensorLayout.hpp>
 #include <nvcv/util/Assert.h>
+#include <nvcv/util/CheckError.hpp>
 #include <nvcv/util/Math.hpp>
 
+#include <cstdint>
 #include <limits> // for numeric_limits
+#include <string>
 #include <type_traits>
 
 namespace cuda = nvcv::cuda;
 namespace util = nvcv::util;
 
-namespace cuda_op = nvcv::legacy::cuda_op;
-namespace helpers = nvcv::legacy::helpers;
-
 namespace {
+
+// Admission is on (per-channel width, data kind), not on the whole data type: comparing against
+// nvcv::TYPE_U8 instead would reject the packed spellings TYPE_2U8/TYPE_3U8/TYPE_4U8, which this
+// operator has always accepted.
+struct ChannelType
+{
+    int32_t        bits;
+    nvcv::DataKind kind;
+
+    bool operator==(const ChannelType &that) const
+    {
+        return bits == that.bits && kind == that.kind;
+    }
+
+    bool operator!=(const ChannelType &that) const
+    {
+        return !(*this == that);
+    }
+};
+
+constexpr ChannelType kChannelU8{8, nvcv::DataKind::UNSIGNED};
+constexpr ChannelType kChannelF16{16, nvcv::DataKind::FLOAT};
+constexpr ChannelType kChannelF32{32, nvcv::DataKind::FLOAT};
+
+// This classifies without judging: every (width, kind) pair that is not one of the three constants
+// above is left for the caller's dtype tests to reject. nvcv::DataType::channelType() cannot be
+// used for that job because it additionally requires the width to be a representable packing, so a
+// uniform width with no single-channel spelling (X5Y5b1Z5 -> 5 bits) throws rather than returning.
+inline ChannelType GetChannelType(const nvcv::DataType &dtype)
+{
+    const auto bpc         = dtype.bitsPerChannel();
+    const int  numChannels = dtype.numChannels();
+
+    for (int i = 1; i < numChannels; ++i)
+    {
+        if (bpc[i] != bpc[0])
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All channels must have same bit-depth");
+        }
+    }
+
+    return {bpc[0], dtype.dataKind()};
+}
+
+// The plane-uniformity rejection is load-bearing, not defensive: NV12 reports 3 channels across 2
+// planes, so it clears the 1-or-3-channel check and would reach ImageBatchVarShapePlanarSrc::read,
+// which indexes plane 2.
+inline ChannelType GetChannelType(const nvcv::ImageFormat &fmt)
+{
+    const nvcv::DataType plane0    = fmt.planeDataType(0);
+    const int            numPlanes = fmt.numPlanes();
+
+    for (int i = 1; i < numPlanes; ++i)
+    {
+        if (fmt.planeDataType(i) != plane0)
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All planes must have the same data type");
+        }
+    }
+
+    return GetChannelType(plane0);
+}
+
+// Both callers must compute srcType and dstType before either test: GetChannelType itself throws,
+// so folding a call into the first test would let a bad source dtype pre-empt the
+// "All channels must have same bit-depth" rejection a malformed destination is owed.
+inline void ValidateChannelTypes(const ChannelType srcType, const ChannelType dstType)
+{
+    if (srcType != kChannelU8)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "Input must be of data type uchar.");
+    }
+
+    if (dstType != kChannelU8 && dstType != kChannelF32 && dstType != kChannelF16)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "Output must be of data type uchar, float, or half.");
+    }
+}
 
 // clang-format off
 
@@ -381,6 +464,9 @@ void LaunchTensorResizeCrop(DstMap dst, SrcWrapper src, const dim3 &gridSize, co
     default:
         break;
     } // switch
+
+    // cudaGetLastError() is sticky until read: one check here covers every launch above.
+    NVCV_CHECK_THROW(cudaGetLastError());
 }
 
 template<class DstMap, class SrcWrapper>
@@ -401,6 +487,9 @@ void LaunchVarShapeResizeCrop(DstMap dst, SrcWrapper src, const dim3 &gridSize, 
     default:
         break;
     } // switch
+
+    // cudaGetLastError() is sticky until read: one check here covers every launch above.
+    NVCV_CHECK_THROW(cudaGetLastError());
 }
 
 // clang-format on
@@ -532,6 +621,22 @@ void resizeCropConvertReformat(const nvcv::ImageBatchVarShapeDataStridedCuda &sr
     LaunchVarShapeResizeCrop(dst, src, gridSize, blockSize, stream, interp, resizeDim, cropPos, scale, offset, srcCast);
 }
 
+template<typename SrcT, typename SrcDataT>
+void dispatchByDstType(const SrcDataT &srcData, const nvcv::TensorDataStridedCuda &dstData, const ChannelType dstType,
+                       const NVCVSize2D resizeDim, const NVCVInterpolationType interp, const int2 cropPos,
+                       const NVCVChannelManip manip, float scale, float offset, bool srcCast, cudaStream_t stream)
+{
+    if (dstType == kChannelU8)
+        resizeCropConvertReformat<SrcT, uint8_t>(srcData, dstData, resizeDim, interp, cropPos, manip, scale, offset,
+                                                 srcCast, stream);
+    else if (dstType == kChannelF32)
+        resizeCropConvertReformat<SrcT, float>(srcData, dstData, resizeDim, interp, cropPos, manip, scale, offset,
+                                               srcCast, stream);
+    else // the caller has already rejected every dstType but these three
+        resizeCropConvertReformat<SrcT, __half>(srcData, dstData, resizeDim, interp, cropPos, manip, scale, offset,
+                                                srcCast, stream);
+}
+
 } // anonymous namespace
 
 // clang-format off
@@ -591,18 +696,10 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Tens
         throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "%s", msg.c_str());
     }
 
-    cuda_op::DataType srcType = helpers::GetLegacyDataType((*srcData).dtype());
-    cuda_op::DataType dstType = helpers::GetLegacyDataType((*dstData).dtype());
+    ChannelType srcType = GetChannelType((*srcData).dtype());
+    ChannelType dstType = GetChannelType((*dstData).dtype());
 
-    if (srcType != cuda_op::kCV_8U)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "Input must be of data type uchar.");
-    }
-
-    if (dstType != cuda_op::kCV_8U && dstType != cuda_op::kCV_32F)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "Output must be of data type uchar or float.");
-    }
+    ValidateChannelTypes(srcType, dstType);
 
     nvcv::TensorLayout srcLayout = srcData->layout();
     nvcv::TensorLayout dstLayout = dstData->layout();
@@ -666,27 +763,12 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Tens
         } // switch
     }
 
-    if (srcType == cuda_op::kCV_8U)
-    {
-        if (channels == 1)
-        {
-            if (dstType == cuda_op::kCV_8U)
-                resizeCropConvertReformat<uchar1, uint8_t>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                           offset, srcCast, stream);
-            else if (dstType == cuda_op::kCV_32F)
-                resizeCropConvertReformat<uchar1, float>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                         offset, srcCast, stream);
-        }
-        else
-        {
-            if (dstType == cuda_op::kCV_8U)
-                resizeCropConvertReformat<uchar3, uint8_t>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                           offset, srcCast, stream);
-            else if (dstType == cuda_op::kCV_32F)
-                resizeCropConvertReformat<uchar3, float>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                         offset, srcCast, stream);
-        }
-    }
+    if (channels == 1)
+        dispatchByDstType<uchar1>(*srcData, *dstData, dstType, resizeDim, interp, cropPos, manip, scale, offset,
+                                  srcCast, stream);
+    else
+        dispatchByDstType<uchar3>(*srcData, *dstData, dstType, resizeDim, interp, cropPos, manip, scale, offset,
+                                  srcCast, stream);
 }
 
 void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
@@ -747,18 +829,10 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Imag
         throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "%s", msg.c_str());
     }
 
-    cuda_op::DataType srcType = helpers::GetLegacyDataType(srcFrmt);
-    cuda_op::DataType dstType = helpers::GetLegacyDataType((*dstData).dtype());
+    ChannelType srcType = GetChannelType(srcFrmt);
+    ChannelType dstType = GetChannelType((*dstData).dtype());
 
-    if (srcType != cuda_op::kCV_8U)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "Input must be of data type uchar.");
-    }
-
-    if (dstType != cuda_op::kCV_8U && dstType != cuda_op::kCV_32F)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "Output must be of data type uchar or float.");
-    }
+    ValidateChannelTypes(srcType, dstType);
 
     nvcv::TensorLayout dstLayout = dstData->layout();
 
@@ -799,26 +873,11 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Imag
         } // switch
     }
 
-    if (srcType == cuda_op::kCV_8U)
-    {
-        if (channels == 1)
-        {
-            if (dstType == cuda_op::kCV_8U)
-                resizeCropConvertReformat<uchar1, uint8_t>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                           offset, srcCast, stream);
-            else if (dstType == cuda_op::kCV_32F)
-                resizeCropConvertReformat<uchar1, float>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                         offset, srcCast, stream);
-        }
-        else
-        {
-            if (dstType == cuda_op::kCV_8U)
-                resizeCropConvertReformat<uchar3, uint8_t>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                           offset, srcCast, stream);
-            else if (dstType == cuda_op::kCV_32F)
-                resizeCropConvertReformat<uchar3, float>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                         offset, srcCast, stream);
-        }
-    }
+    if (channels == 1)
+        dispatchByDstType<uchar1>(*srcData, *dstData, dstType, resizeDim, interp, cropPos, manip, scale, offset,
+                                  srcCast, stream);
+    else
+        dispatchByDstType<uchar3>(*srcData, *dstData, dstType, resizeDim, interp, cropPos, manip, scale, offset,
+                                  srcCast, stream);
 }
 } // namespace cvcuda::priv

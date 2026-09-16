@@ -92,6 +92,7 @@ def _write_config_tree(
             "gpu_name": "NVIDIA Test GPU",
             "power_cap_w": 350,
             "locked_sm_clock_mhz": 1095,
+            "cuda_major": 13,
             "stem": "TESTSKU",
         }
     ]
@@ -101,6 +102,7 @@ def _write_config_tree(
                 "gpu_name": "NVIDIA Test GPU 2",
                 "power_cap_w": 250,
                 "locked_sm_clock_mhz": 1095,
+                "cuda_major": 13,
                 "stem": "TESTSKU2",
             }
         )

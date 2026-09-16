@@ -129,6 +129,42 @@ struct DTypeTraits<Float16Tag>
     }
 };
 
+// Canonical DataType for `nchannels` components of base type T, each
+// `itemsize` bytes wide. Shared by the numpy-dtype lookup and the direct
+// normalization below so both produce byte-identical results.
+template<class T>
+nvcv::DataType MakeSupportedDataType(int nchannels, int itemsize)
+{
+    nvcv::PackingParams pp = {};
+    pp.byteOrder           = nvcv::ByteOrder::MSB;
+
+    switch (nchannels)
+    {
+    case 1:
+        pp.swizzle = nvcv::Swizzle::S_X000;
+        break;
+    case 2:
+        pp.swizzle = nvcv::Swizzle::S_XY00;
+        break;
+    case 3:
+        pp.swizzle = nvcv::Swizzle::S_XYZ0;
+        break;
+    case 4:
+        pp.swizzle = nvcv::Swizzle::S_XYZW;
+        break;
+    default:
+        NVCV_ASSERT(!"Invalid number of channels");
+    }
+
+    // Use traits to get bits per component
+    for (int i = 0; i < nchannels; ++i)
+    {
+        pp.bits[i] = DTypeTraits<T>::bits_per_component(itemsize);
+    }
+
+    return nvcv::DataType{DTypeTraits<T>::infer_kind(), MakePacking(pp)};
+}
+
 template<class T>
 bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
 {
@@ -166,40 +202,9 @@ bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
         return false;
     }
 
-    // get the data kind from the traits
-    auto                dataKind = DTypeTraits<T>::infer_kind();
-    nvcv::PackingParams pp       = {};
-    pp.byteOrder                 = nvcv::ByteOrder::MSB;
-
-    switch (nchannels)
-    {
-    case 1:
-        pp.swizzle = nvcv::Swizzle::S_X000;
-        break;
-    case 2:
-        pp.swizzle = nvcv::Swizzle::S_XY00;
-        break;
-    case 3:
-        pp.swizzle = nvcv::Swizzle::S_XYZ0;
-        break;
-    case 4:
-        pp.swizzle = nvcv::Swizzle::S_XYZW;
-        break;
-    default:
-        NVCV_ASSERT(!"Invalid number of channels");
-    }
-
-    // Use traits to get bits per component
-    for (int i = 0; i < nchannels; ++i)
-    {
-        pp.bits[i] = DTypeTraits<T>::bits_per_component(itemsize);
-    }
-
-    nvcv::Packing packing = MakePacking(pp);
-
     // Finally, infer the data type
     NVCV_ASSERT(dtype != nullptr);
-    *dtype = nvcv::DataType{dataKind, packing};
+    *dtype = MakeSupportedDataType<T>(nchannels, itemsize);
     return true;
 }
 
@@ -259,6 +264,53 @@ bool FindDType(T *, const nvcv::DataType &dtype, py::dtype *dt)
     return true;
 }
 
+// Direct equivalent of the DataType -> numpy dtype -> DataType round trip:
+// same match predicate as FindDType, same reconstruction as FindDataType, but
+// without building the intermediate Python object. Wrapping a buffer runs this
+// on every call, and materializing a numpy dtype there dominated the cost.
+template<class T>
+bool FindNormalizedDataType(T *, const nvcv::DataType &dtype, nvcv::DataType *out)
+{
+    int nchannels = dtype.numChannels();
+    int itemsize  = dtype.bitsPerPixel() / 8;
+
+    if (nchannels < 1 || nchannels > 4)
+    {
+        return false;
+    }
+
+    int componentSize = itemsize / nchannels;
+
+    if (DTypeTraits<T>::itemsize() != componentSize)
+    {
+        return false;
+    }
+
+    if (DTypeTraits<T>::infer_kind() != dtype.dataKind())
+    {
+        return false;
+    }
+
+    NVCV_ASSERT(out != nullptr);
+    *out = MakeSupportedDataType<T>(nchannels, componentSize);
+    return true;
+}
+
+template<class... TT>
+std::optional<nvcv::DataType> SelectNormalizedDataType(std::tuple<TT...>, const nvcv::DataType &dtype)
+{
+    nvcv::DataType out;
+
+    if ((FindNormalizedDataType((TT *)nullptr, dtype, &out) || ...))
+    {
+        return out;
+    }
+    else
+    {
+        return std::nullopt;
+    }
+}
+
 template<class... TT>
 py::dtype SelectDType(std::tuple<TT...>, const nvcv::DataType &dtype)
 {
@@ -276,6 +328,11 @@ py::dtype SelectDType(std::tuple<TT...>, const nvcv::DataType &dtype)
 std::optional<nvcv::DataType> ToNVCVDataType(const py::dtype &dt)
 {
     return SelectDataType(SupportedBaseTypes(), dt);
+}
+
+std::optional<nvcv::DataType> NormalizeDataType(const nvcv::DataType &dtype)
+{
+    return SelectNormalizedDataType(SupportedBaseTypes(), dtype);
 }
 
 py::dtype ToDType(nvcv::DataType dtype)

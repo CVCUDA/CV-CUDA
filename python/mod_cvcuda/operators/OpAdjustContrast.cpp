@@ -15,36 +15,67 @@
  * limitations under the License.
  */
 
-#include "UnaryElementwiseOp.hpp"
+#include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpAdjustContrast.hpp>
+#include <nvcv/python/ImageBatchVarShape.hpp>
+#include <nvcv/python/ResourceGuard.hpp>
+#include <nvcv/python/Stream.hpp>
+#include <nvcv/python/Tensor.hpp>
 
 namespace cvcudapy {
 
 namespace {
-// Thin Python-facing wrappers; the create/guard/submit body lives in UnaryElementwiseOp.hpp, with
-// the contrast factor forwarded as the trailing submit() parameter.
+
+template<typename Container>
+Container AdjustContrastIntoImpl(Container &output, Container &input, double contrastFactor,
+                                 std::optional<Stream> pstream)
+{
+    if (!pstream)
+    {
+        pstream = Stream::Current();
+    }
+
+    auto op = CreateOperator<cvcuda::AdjustContrast>();
+
+    ResourceGuard guard(*pstream);
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    // The operator owns scratch read by the kernels, so keep and serialize it through completion.
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
+
+    guard.run([&op, &pstream, &input, &output, contrastFactor]()
+              { op->submit(pstream->cudaHandle(), input, output, contrastFactor); });
+
+    return output;
+}
+
 Tensor AdjustContrastInto(Tensor &output, Tensor &input, double contrast_factor, std::optional<Stream> pstream)
 {
-    return UnaryElementwiseInto<cvcuda::AdjustContrast>(output, input, pstream, contrast_factor);
+    return AdjustContrastIntoImpl(output, input, contrast_factor, pstream);
 }
 
 Tensor AdjustContrast(Tensor &input, double contrast_factor, std::optional<Stream> pstream)
 {
-    return UnaryElementwiseTensor<cvcuda::AdjustContrast>(input, pstream, contrast_factor);
+    Tensor output = Tensor::Create(input.shape(), input.dtype());
+
+    return AdjustContrastInto(output, input, contrast_factor, pstream);
 }
 
 ImageBatchVarShape AdjustContrastVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
                                               double contrast_factor, std::optional<Stream> pstream)
 {
-    return UnaryElementwiseInto<cvcuda::AdjustContrast>(output, input, pstream, contrast_factor);
+    return AdjustContrastIntoImpl(output, input, contrast_factor, pstream);
 }
 
 ImageBatchVarShape AdjustContrastVarShape(ImageBatchVarShape &input, double contrast_factor,
                                           std::optional<Stream> pstream)
 {
-    return UnaryElementwiseVarShape<cvcuda::AdjustContrast>(input, pstream, contrast_factor);
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+
+    return AdjustContrastVarShapeInto(output, input, contrast_factor, pstream);
 }
 
 } // namespace
@@ -62,7 +93,7 @@ void ExportOpAdjustContrast(py::module &m)
         Blends each image toward its grayscale mean by a scalar factor:
         ``out = clamp(contrast_factor * in + (1 - contrast_factor) * mean, 0, bound)``, where ``mean``
         is the per-image grayscale mean (BT.601 luma ``0.2989 R + 0.587 G + 0.114 B``) and ``bound``
-        is 1.0 for float32 and 255 for uint8. Mirrors
+        is 1.0 for float images (float32/float16) and 255 for uint8. Mirrors
         torchvision.transforms.v2.functional.adjust_contrast.
 
         See also:

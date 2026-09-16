@@ -27,8 +27,10 @@
 // real per-operator content (the gold reference) explicit while removing copy-paste of the harness.
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
+#include <cuda_fp16.h>
 #include <nvcv/Exception.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
@@ -61,9 +63,16 @@ inline int BaseKind(nvcv::ImageFormat fmt)
 // The dtype maximum used as the "bound" by the photometric operators (255 / 65535 for unsigned
 // integers, 1.0 for float). Exposed so each operator's gold lambda can reuse the same convention.
 template<typename DT>
-constexpr DT Bound()
+DT Bound()
 {
-    return std::is_floating_point_v<DT> ? static_cast<DT>(1) : std::numeric_limits<DT>::max();
+    if constexpr (nvcv::cuda::detail::IsFloatingPointV<DT>)
+    {
+        return static_cast<DT>(1);
+    }
+    else
+    {
+        return std::numeric_limits<DT>::max();
+    }
 }
 
 // Stable, type-appropriate input data for exact-result tests. This deliberately uses an explicit
@@ -71,21 +80,30 @@ constexpr DT Bound()
 template<typename DT>
 void FillDeterministicValues(std::vector<DT> &values, size_t sequence = 0)
 {
-    const uint64_t range = static_cast<uint64_t>(Bound<DT>()) + 1;
-    size_t         i     = 0;
+    size_t i = 0;
     for (DT &value : values)
     {
         const auto sample = static_cast<uint32_t>((i + sequence * 131U) * 1664525U + 1013904223U);
-        if constexpr (std::is_floating_point_v<DT>)
+        if constexpr (nvcv::cuda::detail::IsHalfV<DT>)
+        {
+            value = __float2half(static_cast<float>(sample & 0xffffU) / static_cast<float>(0xffffU));
+        }
+        else if constexpr (std::is_floating_point_v<DT>)
         {
             value = static_cast<DT>(sample & 0xffffU) / static_cast<DT>(0xffffU);
         }
         else
         {
-            value = static_cast<DT>(static_cast<uint64_t>(sample) % range);
+            const uint64_t range = static_cast<uint64_t>(Bound<DT>()) + 1;
+            value                = static_cast<DT>(static_cast<uint64_t>(sample) % range);
         }
         ++i;
     }
+}
+
+inline void ExpectBuffer(const std::vector<float> &gold, const std::vector<__half> &got, double kUlps)
+{
+    ExpectNearHalfUlps(gold, got, static_cast<float>(kUlps));
 }
 
 template<typename DT>
@@ -232,7 +250,8 @@ void RunVarShapeCorrectBufferTyped(nvcv::ImageFormat fmt, GoldBufferFn goldBuffe
         dstImgs.emplace_back(nvcv::Size2D{ws[i], hs[i]}, fmt);
     }
 
-    std::vector<std::vector<DT>> golds(n);
+    using Gold = decltype(goldBuffer(std::vector<DT>{}, 0));
+    std::vector<Gold> golds(n);
     for (int i = 0; i < n; ++i)
     {
         const size_t    rowElements = static_cast<size_t>(ws[i]) * ch;
@@ -295,6 +314,69 @@ template<typename GoldFn, typename InvokeFn>
 void RunVarShapeCorrect(GoldFn gold, InvokeFn invoke)
 {
     RunVarShapeCorrectTyped<uint8_t>(nvcv::FMT_RGB8, gold, invoke);
+}
+
+// F16 correctness runners. The F16 kernels compute in native half while the reference is computed
+// in FP32 on the half-quantized input, so the comparison is within kUlps half-ULPs instead of
+// bit-exact (HalfTestUtils.hpp owns the tolerance policy; each caller states its kUlps rationale).
+// The typed runners now own the common allocation/upload/run/download lifecycle.
+template<typename GoldFn>
+std::vector<float> ApplyF16Gold(const std::vector<__half> &in, GoldFn goldF32)
+{
+    std::vector<float> gold(in.size());
+    for (size_t i = 0; i < in.size(); ++i)
+    {
+        gold[i] = goldF32(__half2float(in[i]));
+    }
+    return gold;
+}
+
+template<typename GoldBufferFn>
+auto ApplyF16BufferGold(const std::vector<__half> &in, int channels, GoldBufferFn goldBufferF32)
+{
+    std::vector<float> wide(in.size());
+    for (size_t i = 0; i < in.size(); ++i)
+    {
+        wide[i] = __half2float(in[i]);
+    }
+    return goldBufferF32(wide, channels);
+}
+
+template<typename GoldBufferFn, typename InvokeFn>
+void RunTensorCorrectBufferF16(int width, int height, int batch, nvcv::ImageFormat fmt, GoldBufferFn goldBufferF32,
+                               InvokeFn invoke, float kUlps)
+{
+    RunTensorCorrectBuffer<__half>(
+        width, height, batch, fmt,
+        [goldBufferF32](const std::vector<__half> &in, int channels)
+        { return ApplyF16BufferGold(in, channels, goldBufferF32); },
+        invoke, kUlps);
+}
+
+template<typename GoldBufferFn, typename InvokeFn>
+void RunVarShapeCorrectBufferF16(nvcv::ImageFormat fmt, GoldBufferFn goldBufferF32, InvokeFn invoke, float kUlps)
+{
+    RunVarShapeCorrectBufferTyped<__half>(
+        fmt,
+        [goldBufferF32](const std::vector<__half> &in, int channels)
+        { return ApplyF16BufferGold(in, channels, goldBufferF32); },
+        invoke, kUlps);
+}
+
+template<typename GoldFn, typename InvokeFn>
+void RunTensorCorrectF16(int width, int height, int batch, nvcv::ImageFormat fmt, GoldFn goldF32, InvokeFn invoke,
+                         float kUlps)
+{
+    RunTensorCorrectBuffer<__half>(
+        width, height, batch, fmt, [goldF32](const std::vector<__half> &in, int) { return ApplyF16Gold(in, goldF32); },
+        invoke, kUlps);
+}
+
+template<typename GoldFn, typename InvokeFn>
+void RunVarShapeCorrectF16(nvcv::ImageFormat fmt, GoldFn goldF32, InvokeFn invoke, float kUlps)
+{
+    RunVarShapeCorrectBufferTyped<__half>(
+        fmt, [goldF32](const std::vector<__half> &in, int) { return ApplyF16Gold(in, goldF32); }, invoke, kUlps);
 }
 
 // A single in/out tensor pair must be rejected with NVCV_ERROR_INVALID_ARGUMENT. `invoke` runs the

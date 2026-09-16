@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -374,6 +374,23 @@ __device__ __forceinline__ T medianFromSortedWindow(T (&arr)[LENGTH])
     return arr[LENGTH / 2];
 }
 
+template<typename T, int LENGTH>
+__device__ __forceinline__ bool isMedianRank(const T (&arr)[LENGTH], T candidate)
+{
+    constexpr int median = LENGTH / 2;
+
+    int numLess        = 0;
+    int numLessOrEqual = 0;
+#pragma unroll
+    for (int i = 0; i < LENGTH; ++i)
+    {
+        numLess += arr[i] < candidate;
+        numLessOrEqual += arr[i] <= candidate;
+    }
+
+    return numLess <= median && median < numLessOrEqual;
+}
+
 template<typename T, class SrcWrapper, class DstWrapper, int KWidth, int KHeight>
 __global__ void medianForFixedSmallKernel(const SrcWrapper src, DstWrapper dst, const int channels)
 {
@@ -402,6 +419,16 @@ __global__ void medianForFixedSmallKernel(const SrcWrapper src, DstWrapper dst, 
             gy = min(max(gy, 0), h - 1);
 
             arr[i] = *pixelPtr(src, batchIdx, channel, gy, gx);
+        }
+
+        if constexpr (std::is_same_v<T, uchar> && KWidth == 5 && KHeight == 5)
+        {
+            T candidate = arr[length / 2];
+            if (isMedianRank(arr, candidate))
+            {
+                *pixelPtr(dst, batchIdx, channel, y, x) = candidate;
+                return;
+            }
         }
 
         *pixelPtr(dst, batchIdx, channel, y, x) = medianFromSortedWindow(arr);
@@ -454,7 +481,8 @@ void medianImpl(const ImageBatchVarShapeDataStridedCuda &out, const TensorDataSt
         medianForFixedSmallKernel<T, SrcWrapper, DstWrapper, 3, 3><<<grid, block, 0, stream>>>(src, dst, channels);
         checkKernelErrors();
     }
-    else if constexpr (std::is_same_v<T, float> || std::is_same_v<T, uchar>)
+    // __half shares float's fixed-5x5 sorting-network envelope; see median_blur.cu.
+    else if constexpr (std::is_same_v<T, float> || std::is_same_v<T, uchar> || std::is_same_v<T, __half>)
     {
         if (hasUniformKernelSize && maxKWidth == 5 && maxKHeight == 5)
         {
@@ -581,7 +609,7 @@ ErrorCode MedianBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inD
 
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -644,14 +672,14 @@ ErrorCode MedianBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inD
                              const TensorDataStridedCuda &ksize, int maxKHeight, int maxKWidth,
                              bool hasUniformKernelSize, cudaStream_t stream);
 
-    static const median_t funcs[6] = {
-        median<uchar>, 0, median<ushort>, 0, 0, median<float>,
-
+    // Indices follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7). The
+    // median kernels only compare and select input values, so __half reuses them unchanged.
+    static const median_t funcs[8] = {
+        median<uchar>, 0, median<ushort>, 0, 0, median<float>, 0, median<__half>,
     };
 
-    static const median_t planarFuncs[6] = {
-        median_planar<uchar>, 0, median_planar<ushort>, 0, 0, median_planar<float>,
-
+    static const median_t planarFuncs[8] = {
+        median_planar<uchar>, 0, median_planar<ushort>, 0, 0, median_planar<float>, 0, median_planar<__half>,
     };
 
     if (isPlanar)

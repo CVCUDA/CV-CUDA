@@ -86,6 +86,7 @@ ln -sf "${PYTHON_BUILD_DIR}/setup.py" "${WHEEL_BUILD_DIR}/"
 ln -sf "${PYTHON_BUILD_DIR}/README.md" "${WHEEL_BUILD_DIR}/"
 ln -sf "${PYTHON_BUILD_DIR}/pyproject.toml" "${WHEEL_BUILD_DIR}/"
 ln -sf "${PYTHON_BUILD_DIR}/MANIFEST.in" "${WHEEL_BUILD_DIR}/"
+ln -sf "${PYTHON_BUILD_DIR}/LICENSE.md" "${WHEEL_BUILD_DIR}/"
 ln -sf "${PYTHON_BUILD_DIR}/cvcuda" "${WHEEL_BUILD_DIR}/"
 ln -sf "${LIB_DIR}" "${WHEEL_BUILD_DIR}/cvcuda_cu${CUDA_VERSION_MAJOR}.libs"
 

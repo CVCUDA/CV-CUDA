@@ -883,7 +883,7 @@ ErrorCode GaussianFilter2DTiledCaller(const TensorDataStridedCuda &inData, const
     using BaseT = cuda::BaseType<T>;
 
     constexpr bool kX4Always = std::is_same_v<BaseT, uchar> || std::is_same_v<T, float>;
-    // Scalar U16/S16/S32 share this instantiation: packed C1 selects x4, while planar selects x2.
+    // Scalar U16/S16/S32/F16 share this instantiation: packed C1 selects x4, while planar selects x2.
     constexpr bool kX4LayoutDependent = cuda::NumElements<T> == 1 && !kX4Always;
     constexpr bool kDynamicX4Possible = kX4Always || kX4LayoutDependent || std::is_same_v<T, float3>;
 
@@ -1063,6 +1063,7 @@ ErrorCode Filter2D(const TensorDataStridedCuda &inData, const TensorDataStridedC
 
 constexpr int kLaplacianPlanarU8NIX    = 4;
 constexpr int kLaplacianPlanarFloatNIX = 4;
+constexpr int kLaplacianPlanarHalfNIX  = 4;
 
 // clang-format off
 constexpr Size2D kLaplacianKernelSize{3, 3};
@@ -1128,7 +1129,7 @@ ErrorCode Laplacian::infer(const TensorDataStridedCuda &inData, const TensorData
     cuda_op::DataType  data_type   = GetLegacyDataType(inData.dtype());
     cuda_op::DataShape input_shape = GetLegacyDataShape(inAccess->infoShape());
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -1156,10 +1157,15 @@ ErrorCode Laplacian::infer(const TensorDataStridedCuda &inData, const TensorData
                                            int ksize, float scale, NVCVBorderType borderMode, float borderValue,
                                            cudaStream_t stream);
 
-    static const filter2D_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7); both stay null because F64
+    // is unsupported and F16 dispatches through the specialized halfFuncs/PlanarTiled paths below,
+    // mirroring F32.
+    static const filter2D_t funcs[8][4] = {
         {               0, 0,                 0,                 0},
         {               0, 0,                 0,                 0},
         {Filter2D<ushort>, 0, Filter2D<ushort3>, Filter2D<ushort4>},
+        {               0, 0,                 0,                 0},
+        {               0, 0,                 0,                 0},
         {               0, 0,                 0,                 0},
         {               0, 0,                 0,                 0},
         {               0, 0,                 0,                 0},
@@ -1168,6 +1174,10 @@ ErrorCode Laplacian::infer(const TensorDataStridedCuda &inData, const TensorData
     static const laplacian_u8_t    u8Funcs[4] = {LaplacianU8<uchar>, 0, LaplacianU8<uchar3>, LaplacianU8<uchar4>};
     static const laplacian_float_t floatFuncs[4]
         = {LaplacianFloat<float>, 0, LaplacianFloat<float3>, LaplacianFloat<float4>};
+    // F16 rides the F32-form kernels with __half storage: taps accumulate in a float work type
+    // either way, so half only changes the load width and the single SaturateCast at the store.
+    static const laplacian_float_t halfFuncs[4]
+        = {LaplacianFloat<__half>, 0, LaplacianFloat<half3>, LaplacianFloat<half4>};
 
     cuda::math::Vector<float, 9> kernel;
 
@@ -1221,6 +1231,11 @@ ErrorCode Laplacian::infer(const TensorDataStridedCuda &inData, const TensorData
             return LaplacianPlanarTiled<kLaplacianPlanarFloatNIX, float>(inView, outView, ksize, scale, borderMode,
                                                                          borderValue, stream);
         }
+        if (data_type == kCV_16F)
+        {
+            return LaplacianPlanarTiled<kLaplacianPlanarHalfNIX, __half>(inView, outView, ksize, scale, borderMode,
+                                                                         borderValue, stream);
+        }
         return funcs[data_type][0](inView, outView, kernel, kLaplacianKernelSize, kernelAnchor, borderMode, borderValue,
                                    stream);
     }
@@ -1236,6 +1251,12 @@ ErrorCode Laplacian::infer(const TensorDataStridedCuda &inData, const TensorData
         const laplacian_float_t floatFunc = floatFuncs[channels - 1];
         NVCV_ASSERT(floatFunc != 0);
         return floatFunc(inData, outData, ksize, scale, borderMode, borderValue, stream);
+    }
+    if (data_type == kCV_16F)
+    {
+        const laplacian_float_t halfFunc = halfFuncs[channels - 1];
+        NVCV_ASSERT(halfFunc != 0);
+        return halfFunc(inData, outData, ksize, scale, borderMode, borderValue, stream);
     }
 
     return funcs[data_type][channels - 1](inData, outData, kernel, kLaplacianKernelSize, kernelAnchor, borderMode,
@@ -1299,7 +1320,7 @@ ErrorCode Gaussian::infer(const TensorDataStridedCuda &inData, const TensorDataS
     cuda_op::DataShape input_shape = GetLegacyDataShape(inAccess->infoShape());
 
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
-          || data_type == kCV_32F))
+          || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -1353,13 +1374,19 @@ ErrorCode Gaussian::infer(const TensorDataStridedCuda &inData, const TensorDataS
                                     float *kernel, Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode,
                                     float borderValue, bool enableX4, cudaStream_t stream);
 
-    static const filter2D_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7). The F16
+    // row instantiates real __half/half3/half4 kernels: the filter accumulates in a float work
+    // type either way, so half only changes the load width (2 bytes, like the 16-bit integers)
+    // and the single SaturateCast at the store.
+    static const filter2D_t funcs[8][4] = {
         { GaussianFilter2DTiled<uchar>, 0,  GaussianFilter2DTiled<uchar3>,  GaussianFilter2DTiled<uchar4>},
         {                            0, 0,                              0,                              0},
         {GaussianFilter2DTiled<ushort>, 0, GaussianFilter2DTiled<ushort3>, GaussianFilter2DTiled<ushort4>},
         { GaussianFilter2DTiled<short>, 0,  GaussianFilter2DTiled<short3>,  GaussianFilter2DTiled<short4>},
         {   GaussianFilter2DTiled<int>, 0,    GaussianFilter2DTiled<int3>,    GaussianFilter2DTiled<int4>},
         { GaussianFilter2DTiled<float>, 0,  GaussianFilter2DTiled<float3>,  GaussianFilter2DTiled<float4>},
+        {                            0, 0,                              0,                              0},
+        {GaussianFilter2DTiled<__half>, 0,   GaussianFilter2DTiled<half3>,   GaussianFilter2DTiled<half4>},
     };
 
     if (isPlanar)
@@ -1629,7 +1656,7 @@ ErrorCode AverageBlur::infer(const TensorDataStridedCuda &inData, const TensorDa
     cuda_op::DataShape input_shape = GetLegacyDataShape(inAccess->infoShape());
 
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
-          || data_type == kCV_32F))
+          || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -1669,13 +1696,17 @@ ErrorCode AverageBlur::infer(const TensorDataStridedCuda &inData, const TensorDa
                                     Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode, float borderValue,
                                     cudaStream_t stream);
 
-    static const filter2D_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7); see the
+    // Gaussian funcs table above for the rationale.
+    static const filter2D_t funcs[8][4] = {
         { AverageBlur2D<uchar>, 0,  AverageBlur2D<uchar3>,  AverageBlur2D<uchar4>},
         {                    0, 0,                      0,                      0},
         {AverageBlur2D<ushort>, 0, AverageBlur2D<ushort3>, AverageBlur2D<ushort4>},
         { AverageBlur2D<short>, 0,  AverageBlur2D<short3>,  AverageBlur2D<short4>},
         {   AverageBlur2D<int>, 0,    AverageBlur2D<int3>,    AverageBlur2D<int4>},
         { AverageBlur2D<float>, 0,  AverageBlur2D<float3>,  AverageBlur2D<float4>},
+        {                    0, 0,                      0,                      0},
+        {AverageBlur2D<__half>, 0,   AverageBlur2D<half3>,   AverageBlur2D<half4>},
     };
 
     if (isPlanar)

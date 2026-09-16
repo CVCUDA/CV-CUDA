@@ -1699,6 +1699,9 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
             }
         }
     }
+
+    // cudaGetLastError() is sticky until read: one check here covers every launch above.
+    NVCV_CHECK_THROW(cudaGetLastError());
 }
 
 inline void RunLabel(cudaStream_t stream, const nvcv::TensorDataStridedCuda &srcData,

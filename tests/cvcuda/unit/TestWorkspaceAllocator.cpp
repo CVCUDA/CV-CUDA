@@ -24,6 +24,22 @@
 
 #define EXPECT_PTR_EQ(a, b) EXPECT_EQ((const void *)(a), (const void *)(b))
 
+TEST(AllocateWorkspaceTest, AllocationFailureUsesPublicException)
+{
+    cvcuda::WorkspaceRequirements req{};
+    req.cudaMem = {1, 256};
+
+    try
+    {
+        auto ws = cvcuda::AllocateWorkspace(req);
+        FAIL() << "Expected workspace allocation to fail";
+    }
+    catch (const nvcv::Exception &e)
+    {
+        EXPECT_EQ(nvcv::Status::ERROR_INVALID_ARGUMENT, e.code());
+    }
+}
+
 TEST(WorkspaceMemAllocatorTest, Get)
 {
     alignas(64) std::array<char, 64> base;

@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#include "HalfTestUtils.hpp"
+
 #include <common/InterpUtils.hpp>
 #include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
@@ -46,6 +48,32 @@ using uchar     = unsigned char;
 template<typename T>
 using uniform_distribution
     = std::conditional_t<std::is_integral_v<T>, std::uniform_int_distribution<T>, std::uniform_real_distribution<T>>;
+
+// Random input values for the tested input base type. F16 samples are drawn in float and
+// quantized to half so the operator and the FP32-computed reference consume identical
+// half-representable inputs (HalfTestUtils.hpp policy) -- uniform_real_distribution does not
+// admit __half and cuda::TypeTraits<__half> has no constexpr max.
+template<typename BT>
+struct RandomValues
+{
+    uniform_distribution<BT> dist{BT{0}, std::is_integral_v<BT> ? cuda::TypeTraits<BT>::max : BT{1}};
+
+    BT operator()(std::mt19937_64 &rng) // NOSONAR: deterministic test data, not security-sensitive.
+    {
+        return dist(rng);
+    }
+};
+
+template<>
+struct RandomValues<__half>
+{
+    std::uniform_real_distribution<float> dist{0.f, 1.f};
+
+    __half operator()(std::mt19937_64 &rng) // NOSONAR: deterministic test data, not security-sensitive.
+    {
+        return __float2half(dist(rng));
+    }
+};
 
 namespace baseline {
 
@@ -582,26 +610,62 @@ void CompareElementWise(CpuSample<BT, kSpatialNDim> &tensor, CpuSample<BT, kSpat
     }
 }
 
+// F16 outputs follow the HalfTestUtils.hpp tolerance policy: the reference computes every pass in
+// FP32 (float intermediates) and requantizes once on the final store, exactly like the kernel's
+// float accumulation with a single half store. Non-antialiased interpolation applies at most a few
+// taps per axis (2 linear, 4 cubic/gaussian, 6 lanczos), so the kernel-vs-gold error is that final
+// half rounding plus last-ulp float coefficient-table noise: 4 half-ULPs. Antialiasing stretches
+// the filter support with the contraction factor (dozens of taps per axis at the tested shapes),
+// so the longer float accumulation can straddle one extra half rounding boundary: 8 half-ULPs.
+// NEAREST rows are pure data movement and are compared bit-exactly by the callers instead (TST-8).
+template<int kSpatialNDim>
+void CompareHalfUlps(CpuSample<__half, kSpatialNDim> &tensor, CpuSample<__half, kSpatialNDim> &refTensor,
+                     bool antialias, std::optional<Roi<kSpatialNDim>> roi_arg = std::nullopt)
+{
+    const float kUlps = antialias ? 8.f : 4.f;
+    CompareElementWise(tensor, refTensor, roi_arg,
+                       [&tensor, &refTensor, kUlps](int sampleIdx, const cuda::MakeType<int, kSpatialNDim> idx, int c)
+                       {
+                           const float val    = __half2float(tensor.get(sampleIdx, idx, c));
+                           const float refVal = __half2float(refTensor.get(sampleIdx, idx, c));
+                           // tolerance: kUlps half-ULPs at the FP32 gold's magnitude, floored at
+                           // the [0, 1] data-range scale: cubic/lanczos negative lobes cancel, so
+                           // the float accumulation's error is absolute at the input scale, and a
+                           // purely relative bound at near-zero outputs would demand precision the
+                           // arithmetic never had (HalfTestUtils.hpp policy, rationale above)
+                           const float ulpAt = std::max(std::fabs(refVal), 1.f);
+                           EXPECT_NEAR(val, refVal, kUlps * nvcv::test::HalfUlp(ulpAt))
+                               << "sampleIdx=" << sampleIdx << ", channel=" << c;
+                       });
+}
+
 template<typename InBT, typename BT, int kSpatialNDim>
 void Compare(CpuSample<BT, kSpatialNDim> &tensor, CpuSample<BT, kSpatialNDim> &refTensor, bool antialias,
              std::optional<Roi<kSpatialNDim>> roi_arg = std::nullopt)
 {
-    double  err = 0;
-    int64_t vol = 0;
-    CompareElementWise(
-        tensor, refTensor, roi_arg,
-        [&tensor, &refTensor, &err, &vol](int sampleIdx, const cuda::MakeType<int, kSpatialNDim> idx, int c)
-        {
-            const BT val    = tensor.get(sampleIdx, idx, c);
-            const BT refVal = refTensor.get(sampleIdx, idx, c);
-            err += abs(val - refVal);
-            vol += 1;
+    if constexpr (std::is_same_v<BT, __half>)
+    {
+        CompareHalfUlps(tensor, refTensor, antialias, roi_arg);
+    }
+    else
+    {
+        double  err = 0;
+        int64_t vol = 0;
+        CompareElementWise(
+            tensor, refTensor, roi_arg,
+            [&tensor, &refTensor, &err, &vol](int sampleIdx, const cuda::MakeType<int, kSpatialNDim> idx, int c)
+            {
+                const BT val    = tensor.get(sampleIdx, idx, c);
+                const BT refVal = refTensor.get(sampleIdx, idx, c);
+                err += abs(val - refVal);
+                vol += 1;
 
-            const double tolerance = CompareTolerance<InBT, BT>();
-            ASSERT_NEAR(val, refVal, tolerance);
-        });
-    double mean_err = err / static_cast<double>(vol);
-    ASSERT_LE(mean_err, antialias ? 0.1 : 0.4);
+                const double tolerance = CompareTolerance<InBT, BT>();
+                ASSERT_NEAR(val, refVal, tolerance);
+            });
+        double mean_err = err / static_cast<double>(vol);
+        ASSERT_LE(mean_err, antialias ? 0.1 : 0.4);
+    }
 }
 
 template<typename BT, int kSpatialNDim>
@@ -669,6 +733,12 @@ struct TypeAsFormatImpl<float>
     static constexpr NVCVDataType value = NVCV_DATA_TYPE_F32;
 };
 
+template<>
+struct TypeAsFormatImpl<__half>
+{
+    static constexpr NVCVDataType value = NVCV_DATA_TYPE_F16;
+};
+
 template<typename BT>
 nvcv::DataType TypeAsFormat()
 {
@@ -731,6 +801,17 @@ NVCV_TYPED_TEST_SUITE(
         NVCV_TEST_ROW(4, NVCV_SHAPE2D(41, 41), NVCV_SHAPE2D(244, 244), 4, float, float, NVCV_INTERP_GAUSSIAN),
         NVCV_TEST_ROW(3, NVCV_SHAPE2D(769, 211), NVCV_SHAPE2D(40, 40), 7, float, float, NVCV_INTERP_LANCZOS),
         NVCV_TEST_ROW(1, NVCV_SHAPE2D(1 << 14, 1 << 13), NVCV_SHAPE2D(512, 256), 7, float, float, NVCV_INTERP_LINEAR),
+
+        // F16 mirrors the float coverage above: the kernels accumulate in float and store half
+        // once. C1/C2/C3/C4 exercise the __half/half2/half3/half4 vector paths, C7 the
+        // dynamic-channel dispatch, and the half->float row the mixed-output dispatch
+        // (output dtype may be the input dtype or float32).
+        NVCV_TEST_ROW(3, NVCV_SHAPE2D(769, 211), NVCV_SHAPE2D(40, 40), 1, __half, __half, NVCV_INTERP_NEAREST),
+        NVCV_TEST_ROW(4, NVCV_SHAPE2D(1024, 101), NVCV_SHAPE2D(105, 512), 2, __half, __half, NVCV_INTERP_LINEAR),
+        NVCV_TEST_ROW(3, NVCV_SHAPE2D(31, 244), NVCV_SHAPE2D(311, 122), 3, __half, __half, NVCV_INTERP_CUBIC),
+        NVCV_TEST_ROW(4, NVCV_SHAPE2D(41, 41), NVCV_SHAPE2D(244, 244), 4, __half, __half, NVCV_INTERP_GAUSSIAN),
+        NVCV_TEST_ROW(3, NVCV_SHAPE2D(769, 211), NVCV_SHAPE2D(40, 40), 7, __half, __half, NVCV_INTERP_LANCZOS),
+        NVCV_TEST_ROW(2, NVCV_SHAPE2D(1024, 101), NVCV_SHAPE2D(105, 512), 3, __half, float, NVCV_INTERP_LINEAR),
 
         NVCV_TEST_ROW(1, NVCV_SHAPE2D(8192, 8192), NVCV_SHAPE2D(32, 32), 1, uchar, uchar, NVCV_INTERP_LANCZOS)>);
 
@@ -808,8 +889,8 @@ void TestTensor(bool antialias, bool exactOutput = false)
     ASSERT_TRUE(inData && outData);
     auto samples = MakeTensor2DTestSamples<InBT, OutBT>(*inData, *outData, inShape, outShape, numSamples, numChannels);
 
-    uniform_distribution<InBT> rand(InBT{0}, std::is_integral_v<InBT> ? cuda::TypeTraits<InBT>::max : InBT{1});
-    std::mt19937_64            rng(12345);
+    RandomValues<InBT> rand;
+    std::mt19937_64    rng(12345);
 
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
@@ -848,7 +929,10 @@ void TestTensor(bool antialias, bool exactOutput = false)
                                            cudaMemcpyDeviceToHost, stream));
     baseline::Resize(samples.refCpu, samples.inCpu, interpolation, interpolation, antialias, {inRoi}, {outRoi});
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
-    if (exactOutput)
+    // F16 NEAREST is pure data movement: both the kernel and the reference route the stored half
+    // bits through an identity SaturateCast, so the comparison stays bit-exact (TST-8).
+    if (const bool halfNearest = std::is_same_v<OutBT, __half> && interpolation == NVCV_INTERP_NEAREST;
+        exactOutput || halfNearest)
     {
         baseline::CompareExact(samples.outCpu, samples.refCpu, {outRoi});
     }
@@ -907,6 +991,10 @@ void FillPattern(std::vector<T> &buf, uint64_t seed)
         h ^= h >> 29;
         if constexpr (std::is_integral_v<T>)
             v = static_cast<T>(h);
+        else if constexpr (std::is_same_v<T, __half>)
+            // 65535 is not representable in __half (it rounds to +inf), so the generic branch
+            // below would divide by infinity and yield all zeros; scale in float, quantize once.
+            v = __float2half(static_cast<float>((h >> 40) & 0xFFFF) / 65535.f);
         else
             v = static_cast<T>((h >> 40) & 0xFFFF) / static_cast<T>(65535);
     }
@@ -1049,7 +1137,8 @@ NVCV_TYPED_TEST_SUITE(
                  NVCV_TEST_ROW(2, NVCV_SHAPE2D(57, 43), NVCV_SHAPE2D(88, 119), 2, uchar, float, NVCV_INTERP_LINEAR),
                  NVCV_TEST_ROW(3, NVCV_SHAPE2D(65, 79), NVCV_SHAPE2D(23, 41), 4, ushort, ushort, NVCV_INTERP_GAUSSIAN),
                  NVCV_TEST_ROW(2, NVCV_SHAPE2D(59, 73), NVCV_SHAPE2D(101, 89), 5, short, float, NVCV_INTERP_LANCZOS),
-                 NVCV_TEST_ROW(3, NVCV_SHAPE2D(67, 37), NVCV_SHAPE2D(35, 83), 7, float, float, NVCV_INTERP_CUBIC)>);
+                 NVCV_TEST_ROW(3, NVCV_SHAPE2D(67, 37), NVCV_SHAPE2D(35, 83), 7, float, float, NVCV_INTERP_CUBIC),
+                 NVCV_TEST_ROW(3, NVCV_SHAPE2D(67, 37), NVCV_SHAPE2D(35, 83), 7, __half, __half, NVCV_INTERP_CUBIC)>);
 
 TYPED_TEST(OpHQResizeTensor2DPlanarParity, planar_matches_interleaved)
 {
@@ -1348,6 +1437,7 @@ NVCV_TYPED_TEST_SUITE(
         NVCV_TEST_ROW(3, NVCV_SHAPE3D(100, 100, 100), NVCV_SHAPE3D(50, 100, 100), 3, ushort, ushort, NVCV_INTERP_CUBIC),
         NVCV_TEST_ROW(4, NVCV_SHAPE3D(100, 100, 100), NVCV_SHAPE3D(100, 50, 100), 4, ushort, float, NVCV_INTERP_LINEAR),
         NVCV_TEST_ROW(3, NVCV_SHAPE3D(100, 100, 100), NVCV_SHAPE3D(100, 100, 50), 3, float, float, NVCV_INTERP_CUBIC),
+        NVCV_TEST_ROW(3, NVCV_SHAPE3D(100, 100, 100), NVCV_SHAPE3D(100, 100, 50), 3, __half, __half, NVCV_INTERP_CUBIC),
         NVCV_TEST_ROW(4, NVCV_SHAPE3D(40, 40, 40), NVCV_SHAPE3D(100, 40, 40), 5, uchar, float, NVCV_INTERP_LANCZOS),
         NVCV_TEST_ROW(7, NVCV_SHAPE3D(40, 40, 40), NVCV_SHAPE3D(50, 150, 100), 3, uchar, uchar, NVCV_INTERP_CUBIC),
         NVCV_TEST_ROW(3, NVCV_SHAPE3D(1 << 10, 1 << 9, 1 << 9), NVCV_SHAPE3D(100, 150, 100), 3, uchar, uchar,
@@ -1407,8 +1497,8 @@ TYPED_TEST(OpHQResizeTensor3D, correct_output_with_antialias)
     baseline::CpuSample<OutBT, 3> refTensorCpu(outStrides.w * numSamples, outStrides, numSamples, outShape,
                                                numChannels);
 
-    uniform_distribution<InBT> rand(InBT{0}, std::is_integral_v<InBT> ? cuda::TypeTraits<InBT>::max : InBT{1});
-    std::mt19937_64            rng(12345);
+    RandomValues<InBT> rand;
+    std::mt19937_64    rng(12345);
 
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
@@ -1466,7 +1556,12 @@ NVCV_TYPED_TEST_SUITE(
                  NVCV_TEST_ROW_TB(2, short, float, false, NVCV_INTERP_LANCZOS, NVCV_INTERP_LINEAR, false),
                  NVCV_TEST_ROW_TB(3, float, float, true, NVCV_INTERP_LINEAR, NVCV_INTERP_GAUSSIAN, false),
                  NVCV_TEST_ROW_TB(-1, float, float, true, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST, false),
-                 NVCV_TEST_ROW_TB(-1, float, float, true, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST, true)>);
+                 NVCV_TEST_ROW_TB(-1, float, float, true, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST, true),
+                 // F16 mirrors of the float batch rows: static-3 and dynamic channel counts plus
+                 // the mixed half->float output pair.
+                 NVCV_TEST_ROW_TB(3, __half, __half, true, NVCV_INTERP_LINEAR, NVCV_INTERP_GAUSSIAN, false),
+                 NVCV_TEST_ROW_TB(-1, __half, __half, true, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST, false),
+                 NVCV_TEST_ROW_TB(2, __half, float, false, NVCV_INTERP_LANCZOS, NVCV_INTERP_LINEAR, false)>);
 
 TYPED_TEST(OpHQResizeBatch, tensor_batch_2d_correct_output)
 {
@@ -1558,8 +1653,8 @@ TYPED_TEST(OpHQResizeBatch, tensor_batch_2d_correct_output)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    uniform_distribution<InBT> rand(InBT{0}, std::is_integral_v<InBT> ? cuda::TypeTraits<InBT>::max : InBT{1});
-    std::mt19937_64            rng(12345);
+    RandomValues<InBT> rand;
+    std::mt19937_64    rng(12345);
 
     std::vector<baseline::CpuSample<InBT, 2>>  inBatchCpu;
     std::vector<baseline::CpuSample<OutBT, 2>> outBatchCpu;
@@ -1698,8 +1793,8 @@ TYPED_TEST(OpHQResizeBatch, tensor_batch_3d_correct_output)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    uniform_distribution<InBT> rand(InBT{0}, std::is_integral_v<InBT> ? cuda::TypeTraits<InBT>::max : InBT{1});
-    std::mt19937_64            rng(12345);
+    RandomValues<InBT> rand;
+    std::mt19937_64    rng(12345);
 
     std::vector<baseline::CpuSample<InBT, 3>>  inBatchCpu;
     std::vector<baseline::CpuSample<OutBT, 3>> outBatchCpu;
@@ -1795,7 +1890,13 @@ NVCV_TYPED_TEST_SUITE(
                  NVCV_TEST_ROW_IB(4, uchar4, NVCV_IMAGE_FORMAT_RGBA8, uchar4, NVCV_IMAGE_FORMAT_RGBA8, true,
                                   NVCV_INTERP_LINEAR, NVCV_INTERP_GAUSSIAN),
                  NVCV_TEST_ROW_IB(4, float4, NVCV_IMAGE_FORMAT_RGBAf32, float4, NVCV_IMAGE_FORMAT_RGBAf32, false,
-                                  NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR)>);
+                                  NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR),
+                 // F16 mirrors of the float var-shape rows: same-dtype half4 and mixed
+                 // half3 -> float3 output.
+                 NVCV_TEST_ROW_IB(4, half4, NVCV_IMAGE_FORMAT_RGBAf16, half4, NVCV_IMAGE_FORMAT_RGBAf16, false,
+                                  NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR),
+                 NVCV_TEST_ROW_IB(3, half3, NVCV_IMAGE_FORMAT_RGBf16, float3, NVCV_IMAGE_FORMAT_RGBf32, true,
+                                  NVCV_INTERP_LANCZOS, NVCV_INTERP_LINEAR)>);
 
 template<typename TypeParam>
 void TestImageBatch(int numSamples, std::vector<HQResizeTensorShapeI> &inShapes,
@@ -1824,8 +1925,8 @@ void TestImageBatch(int numSamples, std::vector<HQResizeTensorShapeI> &inShapes,
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    uniform_distribution<InBT> rand(InBT{0}, std::is_integral_v<InBT> ? cuda::TypeTraits<InBT>::max : InBT{1});
-    std::mt19937_64            rng(12345);
+    RandomValues<InBT> rand;
+    std::mt19937_64    rng(12345);
 
     std::vector<nvcv::Image>                   imgSrc;
     std::vector<nvcv::Image>                   imgDst;
@@ -2069,6 +2170,7 @@ TEST(OpHQResizeImageBatch, planar_matches_interleaved)
         Check<uchar, uchar>(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 3, interp);
         Check<uchar, uchar>(nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p, 4, interp);
         Check<float, float>(nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p, 3, interp);
+        Check<__half, __half>(nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p, 3, interp);
     }
 }
 
@@ -2347,6 +2449,29 @@ TEST(OpHQResizeNegative, getWorkspaceRequirementsWithNullReqOut)
     EXPECT_NO_THROW(nvcvOperatorDestroy(op));
 }
 
+TEST(OpHQResizeNegative, getWorkspaceRequirementsRejectsUnsupportedDimensionCount)
+{
+    NVCVOperatorHandle op;
+    ASSERT_EQ(NVCV_SUCCESS, cvcudaHQResizeCreate(&op));
+
+    HQResizeTensorShapeI shapeIn{};
+    HQResizeTensorShapeI shapeOut{};
+    shapeIn.extent[0]    = 128;
+    shapeIn.ndim         = 1;
+    shapeIn.numChannels  = 1;
+    shapeOut.extent[0]   = 64;
+    shapeOut.ndim        = 1;
+    shapeOut.numChannels = 1;
+
+    NVCVWorkspaceRequirements req{};
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaHQResizeTensorGetWorkspaceRequirements(op, 1, shapeIn, shapeOut, NVCV_INTERP_LINEAR,
+                                                           NVCV_INTERP_LINEAR, false, nullptr, &req));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaHQResizeGetMaxWorkspaceRequirements(op, 1, shapeIn, &req));
+
+    EXPECT_NO_THROW(nvcvOperatorDestroy(op));
+}
+
 TEST(OpHQResizeNegative, submitWithNullWorkspace)
 {
     NVCVOperatorHandle op;
@@ -2365,22 +2490,21 @@ TEST(OpHQResizeNegative, submitWithNonFiniteRoi)
 {
     NVCVOperatorHandle op;
     ASSERT_EQ(NVCV_SUCCESS, cvcudaHQResizeCreate(&op));
+    NVCVWorkspace ws{};
 
     // NaN lo
     HQResizeRoiF roiNanLo{};
     roiNanLo.lo[0] = std::numeric_limits<float>::quiet_NaN();
     roiNanLo.hi[0] = 128.f;
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              cvcudaHQResizeSubmit(op, nullptr, nullptr, nullptr, nullptr, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR,
-                                   false, &roiNanLo));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaHQResizeSubmit(op, nullptr, &ws, nullptr, nullptr, NVCV_INTERP_LINEAR,
+                                                                NVCV_INTERP_LINEAR, false, &roiNanLo));
 
     // Inf hi
     HQResizeRoiF roiInfHi{};
     roiInfHi.lo[0] = 0.f;
     roiInfHi.hi[0] = std::numeric_limits<float>::infinity();
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              cvcudaHQResizeSubmit(op, nullptr, nullptr, nullptr, nullptr, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR,
-                                   false, &roiInfHi));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaHQResizeSubmit(op, nullptr, &ws, nullptr, nullptr, NVCV_INTERP_LINEAR,
+                                                                NVCV_INTERP_LINEAR, false, &roiInfHi));
 
     EXPECT_NO_THROW(nvcvOperatorDestroy(op));
 }
@@ -2389,6 +2513,7 @@ TEST(OpHQResizeNegative, submitWithNonFiniteRoiBatch)
 {
     NVCVOperatorHandle op;
     ASSERT_EQ(NVCV_SUCCESS, cvcudaHQResizeCreate(&op));
+    NVCVWorkspace ws{};
 
     std::array<HQResizeRoiF, 1> roiData{};
     roiData[0].lo[0] = std::numeric_limits<float>::quiet_NaN();
@@ -2400,11 +2525,48 @@ TEST(OpHQResizeNegative, submitWithNonFiniteRoiBatch)
     rois.ndim = 1;
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              cvcudaHQResizeImageBatchSubmit(op, nullptr, nullptr, nullptr, nullptr, NVCV_INTERP_LINEAR,
-                                             NVCV_INTERP_LINEAR, false, rois));
+              cvcudaHQResizeImageBatchSubmit(op, nullptr, &ws, nullptr, nullptr, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR,
+                                             false, rois));
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              cvcudaHQResizeTensorBatchSubmit(op, nullptr, nullptr, nullptr, nullptr, NVCV_INTERP_LINEAR,
+              cvcudaHQResizeTensorBatchSubmit(op, nullptr, &ws, nullptr, nullptr, NVCV_INTERP_LINEAR,
                                               NVCV_INTERP_LINEAR, false, rois));
+
+    EXPECT_NO_THROW(nvcvOperatorDestroy(op));
+}
+
+TEST(OpHQResizeNegative, getWorkspaceRequirementsWithNonFiniteRoi)
+{
+    NVCVOperatorHandle op;
+    ASSERT_EQ(NVCV_SUCCESS, cvcudaHQResizeCreate(&op));
+
+    HQResizeTensorShapeI shapeIn{};
+    HQResizeTensorShapeI shapeOut{};
+    shapeIn.extent[0]    = 128;
+    shapeIn.ndim         = 1;
+    shapeIn.numChannels  = 1;
+    shapeOut.extent[0]   = 64;
+    shapeOut.ndim        = 1;
+    shapeOut.numChannels = 1;
+
+    HQResizeRoiF roi{};
+    roi.lo[0] = std::numeric_limits<float>::quiet_NaN();
+    roi.hi[0] = 128.f;
+
+    NVCVWorkspaceRequirements req{};
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaHQResizeTensorGetWorkspaceRequirements(op, 1, shapeIn, shapeOut, NVCV_INTERP_LINEAR,
+                                                           NVCV_INTERP_LINEAR, false, &roi, &req));
+
+    std::array<HQResizeTensorShapeI, 1> shapeInData{shapeIn};
+    std::array<HQResizeTensorShapeI, 1> shapeOutData{shapeOut};
+    HQResizeTensorShapesI               shapeInBatch{shapeInData.data(), 1, 1, 1};
+    HQResizeTensorShapesI               shapeOutBatch{shapeOutData.data(), 1, 1, 1};
+    std::array<HQResizeRoiF, 1>         roiData{roi};
+    HQResizeRoisF                       rois{1, 1, roiData.data()};
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaHQResizeTensorBatchGetWorkspaceRequirements(op, 1, shapeInBatch, shapeOutBatch, NVCV_INTERP_LINEAR,
+                                                                NVCV_INTERP_LINEAR, false, rois, &req));
 
     EXPECT_NO_THROW(nvcvOperatorDestroy(op));
 }

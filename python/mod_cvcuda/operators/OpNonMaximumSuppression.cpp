@@ -78,6 +78,8 @@ void ExportOpNonMaximumSuppression(py::module &m)
 
         The Non-Maximum Suppression (NMS) operation reads a set of input bounding boxes (bboxes) proposals and
         their scores and writes an output boolean mask with suppressed bboxes as zeros and selected bboxes as ones.
+        For overlapping bboxes with equal scores, the larger-area bbox is selected. If their areas are also equal, the
+        bbox occurring first in the input is selected.
 
 
         Args:
@@ -105,6 +107,8 @@ void ExportOpNonMaximumSuppression(py::module &m)
 
         The Non-Maximum Suppression (NMS) operation reads a set of input bounding boxes (bboxes) proposals and
         their scores and writes an output boolean mask with suppressed bboxes as zeros and selected bboxes as ones.
+        For overlapping bboxes with equal scores, the larger-area bbox is selected. If their areas are also equal, the
+        bbox occurring first in the input is selected.
 
 
         Args:

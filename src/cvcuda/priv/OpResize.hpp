@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,19 +25,18 @@
 #define CVCUDA_PRIV_RESIZE_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <cvcuda/Types.h> // for NVCVInterpolationType
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
 class Resize final : public IOperator
 {
 public:
-    explicit Resize();
+    explicit Resize() = default;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVInterpolationType interpolation) const;
@@ -48,8 +47,6 @@ public:
 private:
     void RunResize(cudaStream_t stream, const nvcv::TensorDataStridedCuda &srcData,
                    const nvcv::TensorDataStridedCuda &dstData, const NVCVInterpolationType interpolation) const;
-
-    std::unique_ptr<nvcv::legacy::cuda_op::ResizeVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

@@ -41,6 +41,12 @@ from _internal.baselines import (
 )
 
 
+# Rows per section in the printed copy of the report. A bootstrap or SKU-rename
+# run puts every row in "New in current" or "Missing SKU" at once, which is
+# thousands of lines; the file written by --markdown keeps all of them.
+CONSOLE_SECTION_ROWS = 25
+
+
 @dataclass
 class Thresholds:
     regression: float = 0.10
@@ -300,6 +306,7 @@ def format_markdown(
     baseline_label: Path | str,
     current_path: Path,
     thresholds: Thresholds,
+    max_rows_per_section: Optional[int] = None,
 ) -> str:
     lines: List[str] = []
     lines.append(f"# Performance regression report -- {sku}")
@@ -321,23 +328,25 @@ def format_markdown(
     lines.extend(_summary_stats_lines(result))
     lines.append("")
 
-    def _row_section(title: str, rows: List[RowResult]) -> None:
+    def _section(title: str, rows: Sequence, fmt) -> None:
         lines.append(f"## {title} ({len(rows)})")
         if not rows:
             lines.append("_none_")
         else:
-            for row in rows:
-                lines.append(f"- {_fmt_row(row)}")
+            shown = (
+                rows if max_rows_per_section is None else rows[:max_rows_per_section]
+            )
+            for row in shown:
+                lines.append(f"- {fmt(row)}")
+            if len(shown) < len(rows):
+                lines.append(f"- ...and {len(rows) - len(shown)} more")
         lines.append("")
 
+    def _row_section(title: str, rows: List[RowResult]) -> None:
+        _section(title, rows, _fmt_row)
+
     def _missing_section(title: str, rows: List[MissingRow]) -> None:
-        lines.append(f"## {title} ({len(rows)})")
-        if not rows:
-            lines.append("_none_")
-        else:
-            for row in rows:
-                lines.append(f"- {_fmt_missing(row)}")
-        lines.append("")
+        _section(title, rows, _fmt_missing)
 
     _row_section("Regressions", result.regressions)
     _row_section("Unexpected improvements", result.improvements)
@@ -534,7 +543,11 @@ Exit status:
         metavar="MD",
         type=Path,
         default=None,
-        help="Write the Markdown report to MD instead of printing it.",
+        help=(
+            "Also write the Markdown report to MD. The report is printed "
+            "either way; the printed copy lists at most "
+            f"{CONSOLE_SECTION_ROWS} rows per section."
+        ),
     )
     return p.parse_args(argv)
 
@@ -584,8 +597,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     report = format_markdown(result, sku, operators_dir, args.current, thresholds)
     if args.markdown:
         args.markdown.write_text(report)
+
+    # Print the detail whether or not a file was requested. CI passes
+    # --markdown, and that file is archived with the build rather than shown in
+    # the job log, so the counts line above used to be the only on-screen
+    # evidence: "improvements=8" named none of the eight rows. Cap the printed
+    # copy per section when the full list is on disk anyway.
+    print()
+    if args.markdown:
+        print(
+            format_markdown(
+                result,
+                sku,
+                operators_dir,
+                args.current,
+                thresholds,
+                max_rows_per_section=CONSOLE_SECTION_ROWS,
+            )
+        )
+        print(f"Full report written to {args.markdown}")
     else:
-        print()
         print(report)
 
     if args.junit:

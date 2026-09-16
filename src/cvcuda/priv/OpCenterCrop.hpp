@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,24 +25,20 @@
 #define CVCUDA_PRIV_CENTER_CROP_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <nvcv/Size.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
 class CenterCrop final : public IOperator
 {
 public:
-    explicit CenterCrop();
+    explicit CenterCrop() = default;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const nvcv::Size2D &cropSize) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::CenterCrop> m_legacyOp;
 };
 
 } // namespace cvcuda::priv

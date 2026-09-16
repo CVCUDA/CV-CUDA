@@ -23,32 +23,33 @@ namespace nvcvpy::priv {
 
 void StreamStack::push(Stream &stream)
 {
-    std::unique_lock lk(m_mtx);
     m_stack.push(stream.sharedStream());
 }
 
 void StreamStack::pop()
 {
-    std::unique_lock lk(m_mtx);
-    m_stack.pop();
+    if (!m_stack.empty())
+    {
+        m_stack.pop();
+    }
 }
 
 std::shared_ptr<Stream> StreamStack::top()
 {
-    std::unique_lock lk(m_mtx);
-    if (!m_stack.empty())
+    while (!m_stack.empty())
     {
-        return m_stack.top().lock();
+        if (std::shared_ptr<Stream> stream = m_stack.top().lock())
+        {
+            return stream;
+        }
+        m_stack.pop();
     }
-    else
-    {
-        return nullptr;
-    }
+    return nullptr;
 }
 
 StreamStack &StreamStack::Instance()
 {
-    static StreamStack stack;
+    thread_local StreamStack stack;
     return stack;
 }
 
