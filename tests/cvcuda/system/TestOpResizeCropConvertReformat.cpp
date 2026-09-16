@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/InterpUtils.hpp>
@@ -36,6 +37,7 @@
 #include <array>
 #include <iostream>
 #include <random>
+#include <type_traits>
 #include <vector>
 
 namespace gt    = ::testing;
@@ -489,7 +491,18 @@ NVCV_TYPED_TEST_SUITE(
     _TEST_ROW(_SHAPE( 313,  212,  4), int2(412, 336), NVCV_INTERP_LINEAR,  int2( 412, 336), int2(  0,   0), 1, 0, NVCV_IMAGE_FORMAT_Y8, NVCV_IMAGE_FORMAT_Y8,   uchar1, uint8_t, false), // 64
     _TEST_ROW(_SHAPE( 313,  212,  4), int2(412, 336), NVCV_INTERP_NEAREST, int2( 412, 336), int2(  0,   0), 1, 0, NVCV_IMAGE_FORMAT_Y8, NVCV_IMAGE_FORMAT_Y8,   uchar1, uint8_t, false), // 65
     _TEST_ROW(_SHAPE( 313,  212,  4), int2(412, 336), NVCV_INTERP_LINEAR,  int2( 412, 336), int2(  0,   0), 1, 0, NVCV_IMAGE_FORMAT_Y8, NVCV_IMAGE_FORMAT_F32,  uchar1, float  , false), // 66
-    _TEST_ROW(_SHAPE( 313,  212,  4), int2(412, 336), NVCV_INTERP_NEAREST, int2( 412, 336), int2(  0,   0), 1, 0, NVCV_IMAGE_FORMAT_Y8, NVCV_IMAGE_FORMAT_F32,  uchar1, float  , false)  // 67
+    _TEST_ROW(_SHAPE( 313,  212,  4), int2(412, 336), NVCV_INTERP_NEAREST, int2( 412, 336), int2(  0,   0), 1, 0, NVCV_IMAGE_FORMAT_Y8, NVCV_IMAGE_FORMAT_F32,  uchar1, float  , false), // 67
+
+    // Test cases: F16 output (input stays u8-only); planar and interleaved, linear and nearest,
+    // channel reversal, rescaling, and 1-channel. Validated against the FP32 gold via
+    // ExpectNearHalfUlps in the test body.
+    //             source(w, h, n)  ,  resize(w, h) ,    interpolation   ,   dest.(w, h)  , crop(x, y), scale, offst,  source format         ,   destination format    , src type, dst type, src cast
+    _TEST_ROW(_SHAPE( 313,  212,  4), int2(412, 336), NVCV_INTERP_LINEAR,  int2( 412, 336), int2(  0,   0), 1, 0, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGRf16p, uchar3, __half , false), // 68
+    _TEST_ROW(_SHAPE(1280,  960,  3), int2(300, 225), NVCV_INTERP_LINEAR,  int2( 250, 200), int2( 15,  16), 1, 0, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_RGBf16p, uchar3, __half , false), // 69
+    _TEST_ROW(_SHAPE( 313,  212,  4), int2(412, 336), NVCV_INTERP_LINEAR,  int2( 412, 336), int2(  0,   0), 1, 0, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_RGBf16,  uchar3, half3  , false), // 70
+    _TEST_ROW(_SHAPE(1280,  960,  3), int2(300, 225), NVCV_INTERP_NEAREST, int2( 250, 200), int2( 15,  16), 1, 0, NVCV_IMAGE_FORMAT_BGR8, NVCV_IMAGE_FORMAT_RGBf16p, uchar3, __half , false), // 71
+    _TEST_ROW(_SHAPE( 313,  212,  4), int2(412, 336), NVCV_INTERP_LINEAR,  int2( 412, 336), int2(  0,   0), 1/127.5, 0, NVCV_IMAGE_FORMAT_BGR8, NVCV_IMAGE_FORMAT_RGBf16p, uchar3, __half, false), // 72
+    _TEST_ROW(_SHAPE( 313,  212,  4), int2(412, 336), NVCV_INTERP_LINEAR,  int2( 412, 336), int2(  0,   0), 1, 0, NVCV_IMAGE_FORMAT_Y8, NVCV_IMAGE_FORMAT_F16,  uchar1, __half , false)  // 73
 >);
 #undef _TEST_ROW
 
@@ -505,6 +518,8 @@ TYPED_TEST(OpResizeCropConvertReformat, tensor_correct_output)
     using DstVT = typename ttype::GetType<TypeParam, 10>;
     using SrcBT = typename cuda::BaseType<SrcVT>;
     using DstBT = typename cuda::BaseType<DstVT>;
+    // F16 outputs validate against an FP32-computed reference (HalfTestUtils.hpp policy).
+    using RefBT = std::conditional_t<std::is_same_v<DstBT, __half>, float, DstBT>;
 
     NVCVChannelManip manip = ChannelManip(params.srcFormat, params.dstFormat);
 
@@ -538,7 +553,7 @@ TYPED_TEST(OpResizeCropConvertReformat, tensor_correct_output)
     size_t dstPitch = geometry.dstW * sizeof(DstVT);
 
     std::vector<SrcBT> srcVec(srcElems);
-    std::vector<DstBT> refVec(dstElems);
+    std::vector<RefBT> refVec(dstElems);
 
     // Populate source tensor.
     for (int n = 0; n < geometry.numImages; n++)
@@ -575,7 +590,19 @@ TYPED_TEST(OpResizeCropConvertReformat, tensor_correct_output)
                            geometry.dstH * geometry.dstPlanes * geometry.numImages, cudaMemcpyDeviceToHost));
 
     // Compare "gold" reference to computed output.
-    VEC_EXPECT_NEAR(refVec, dstVec, 1);
+    if constexpr (std::is_same_v<DstBT, __half>)
+    {
+        // 4-tap bilinear (or nearest copy) accumulated in float plus one scale/offset mul-add,
+        // rounded once on the half store: 2 half-ULPs at the FP32 reference magnitude
+        // (HalfTestUtils.hpp policy).
+        test::ExpectNearHalfUlps(refVec, dstVec, 2.f);
+    }
+    else
+    {
+        // Historical tolerance: one output unit covers srcCast requantization and
+        // interpolation-order differences between the CPU gold and the kernel.
+        VEC_EXPECT_NEAR(refVec, dstVec, 1);
+    }
 }
 
 TYPED_TEST(OpResizeCropConvertReformat, varshape_correct_output)
@@ -588,6 +615,8 @@ TYPED_TEST(OpResizeCropConvertReformat, varshape_correct_output)
     using DstVT = typename ttype::GetType<TypeParam, 10>;
     using SrcBT = typename cuda::BaseType<SrcVT>;
     using DstBT = typename cuda::BaseType<DstVT>;
+    // F16 outputs validate against an FP32-computed reference (HalfTestUtils.hpp policy).
+    using RefBT = std::conditional_t<std::is_same_v<DstBT, __half>, float, DstBT>;
 
     NVCVChannelManip manip = ChannelManip(params.srcFormat, params.dstFormat);
 
@@ -604,7 +633,7 @@ TYPED_TEST(OpResizeCropConvertReformat, varshape_correct_output)
     size_t refIncr  = (size_t)dstRowElems * (size_t)geometry.dstH * (size_t)geometry.dstPlanes;
     size_t dstElems = refIncr * (size_t)geometry.numImages;
 
-    std::vector<DstBT> refVec(dstElems);
+    std::vector<RefBT> refVec(dstElems);
 
     size_t dstPitch = geometry.dstW * sizeof(DstVT);
 
@@ -631,7 +660,7 @@ TYPED_TEST(OpResizeCropConvertReformat, varshape_correct_output)
         fillVec(imgVec, imgSize, params.srcFormat);
 
         // Generate "gold" result for image and place in reference image plane.
-        DstBT *refPlane = refVec.data() + i * refIncr;
+        RefBT *refPlane = refVec.data() + i * refIncr;
 
         ResizeCropConvert(refPlane, geometry.dstSize, params.dstFormat, imgVec, imgSize, params.srcFormat, 1,
                           geometry.newSize, params.cropPos, params.interp, manip, params.scale, params.offset,
@@ -687,7 +716,19 @@ TYPED_TEST(OpResizeCropConvertReformat, varshape_correct_output)
                            geometry.dstH * geometry.dstPlanes * geometry.numImages, cudaMemcpyDeviceToHost));
 
     // Compare "gold" reference to computed output.
-    VEC_EXPECT_NEAR(refVec, dstVec, 1);
+    if constexpr (std::is_same_v<DstBT, __half>)
+    {
+        // 4-tap bilinear (or nearest copy) accumulated in float plus one scale/offset mul-add,
+        // rounded once on the half store: 2 half-ULPs at the FP32 reference magnitude
+        // (HalfTestUtils.hpp policy).
+        test::ExpectNearHalfUlps(refVec, dstVec, 2.f);
+    }
+    else
+    {
+        // Historical tolerance: one output unit covers srcCast requantization and
+        // interpolation-order differences between the CPU gold and the kernel.
+        VEC_EXPECT_NEAR(refVec, dstVec, 1);
+    }
 }
 
 namespace {
@@ -951,10 +992,11 @@ ttype::Types<
     // unsupported channel count (4)
     _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGBA8, NVCV_IMAGE_FORMAT_BGRA8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
     _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGBA8, NVCV_IMAGE_FORMAT_BGRA8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
-    // input is not uchar
+    // input is not uchar (F16 input stays rejected even though F16 output is now supported)
     _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGBf32, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
-    // output is not uchar/float
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGRf16, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGBf16, NVCV_IMAGE_FORMAT_BGRf16, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
+    // output is not uchar/float/half (16-bit signed; F16 is now a supported output)
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_Y8, NVCV_IMAGE_FORMAT_S16, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar1, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
     // invalid Crop Range
     _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(-1, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
     _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, -1), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),

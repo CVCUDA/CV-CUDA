@@ -1337,3 +1337,32 @@ TEST(OpAdvCvtColor_Negative, create_null_handle)
 {
     EXPECT_EQ(cvcudaAdvCvtColorCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
 }
+
+TEST(OpAdvCvtColor_Negative, rejects_layout_and_size_incompatibilities)
+{
+    cvcuda::AdvCvtColor op;
+
+    nvcv::Tensor interleaved = nvcv::util::CreateTensor(2, 32, 24, nvcv::FMT_RGB8);
+    nvcv::Tensor floatTensor = nvcv::util::CreateTensor(2, 32, 24, nvcv::FMT_RGBf32);
+    nvcv::Tensor planar      = nvcv::util::CreateTensor(2, 32, 24, nvcv::FMT_RGB8p);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&] {
+                                                   op(nullptr, floatTensor, interleaved, NVCV_COLOR_RGB2YUV,
+                                                      nvcv::ColorSpec{NVCV_COLOR_SPEC_BT601});
+                                               }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&] {
+                                                   op(nullptr, interleaved, floatTensor, NVCV_COLOR_RGB2YUV,
+                                                      nvcv::ColorSpec{NVCV_COLOR_SPEC_BT601});
+                                               }));
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall(
+            [&] { op(nullptr, interleaved, planar, NVCV_COLOR_RGB2YUV, nvcv::ColorSpec{NVCV_COLOR_SPEC_BT601}); }));
+
+    nvcv::Tensor wrongSize = nvcv::util::CreateTensor(2, 31, 24, nvcv::FMT_YUV8);
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall(
+            [&] { op(nullptr, interleaved, wrongSize, NVCV_COLOR_RGB2YUV, nvcv::ColorSpec{NVCV_COLOR_SPEC_BT601}); }));
+}

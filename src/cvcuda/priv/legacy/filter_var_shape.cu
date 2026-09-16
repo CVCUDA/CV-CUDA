@@ -1031,7 +1031,7 @@ ErrorCode Conv2DVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
-          || data_type == kCV_32F))
+          || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -1052,13 +1052,18 @@ ErrorCode Conv2DVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
         const ImageBatchVarShapeDataStridedCuda &kernelData, const TensorDataStridedCuda &kernelAnchorData,
         NVCVBorderType borderMode, float borderValue, cudaStream_t stream);
 
-    static const filter2D_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7); see the
+    // GaussianVarShape funcs table below for the rationale. The F32 kernel weights are unchanged:
+    // half only affects the pixel loads and the single SaturateCast at the store.
+    static const filter2D_t funcs[8][4] = {
         { Filter2D<uchar>, 0,  Filter2D<uchar3>,  Filter2D<uchar4>},
         {               0, 0,                 0,                 0},
         {Filter2D<ushort>, 0, Filter2D<ushort3>, Filter2D<ushort4>},
         { Filter2D<short>, 0,  Filter2D<short3>,  Filter2D<short4>},
         {   Filter2D<int>, 0,    Filter2D<int3>,    Filter2D<int4>},
         { Filter2D<float>, 0,  Filter2D<float3>,  Filter2D<float4>},
+        {               0, 0,                 0,                 0},
+        {Filter2D<__half>, 0,   Filter2D<half3>,   Filter2D<half4>},
     };
 
     if (isPlanar)
@@ -1074,9 +1079,18 @@ ErrorCode Conv2DVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
             const ImageBatchVarShapeDataStridedCuda &kernelData, const TensorDataStridedCuda &kernelAnchorData,
             NVCVBorderType borderMode, float borderValue, int channels, cudaStream_t stream);
 
-        static const filter2D_planar_t planarFuncs[6] = {
-            Filter2DPlanar<uchar>, 0, Filter2DPlanar<ushort>, Filter2DPlanar<short>, Filter2DPlanar<int>,
+        // Slots 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7);
+        // planar dispatch is per-dtype only, so F16 reuses the scalar __half kernel for every
+        // channel count.
+        static const filter2D_planar_t planarFuncs[8] = {
+            Filter2DPlanar<uchar>,
+            0,
+            Filter2DPlanar<ushort>,
+            Filter2DPlanar<short>,
+            Filter2DPlanar<int>,
             Filter2DPlanar<float>,
+            0 /*64F*/,
+            Filter2DPlanar<__half> /*16F*/,
         };
 
         const filter2D_planar_t func = planarFuncs[data_type];
@@ -1102,6 +1116,7 @@ ErrorCode Conv2DVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
 
 constexpr int kLaplacianPlanarU8NIX      = 4;
 constexpr int kLaplacianPlanarFloatNIX   = 4;
+constexpr int kLaplacianPlanarHalfNIX    = 4;
 constexpr int kLaplacianPlanarBlockWidth = 32;
 
 // clang-format off
@@ -1750,7 +1765,7 @@ ErrorCode LaplacianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDa
 
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -1779,10 +1794,15 @@ ErrorCode LaplacianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDa
                                       const TensorDataStridedCuda &ksize, const TensorDataStridedCuda &scale,
                                       NVCVBorderType borderMode, float borderValue, cudaStream_t stream);
 
-    static const filter2D_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7); both stay null because F64
+    // is unsupported and F16 dispatches through the specialized halfFuncs/PlanarTiled paths below,
+    // mirroring F32.
+    static const filter2D_t funcs[8][4] = {
         {                        0, 0,                          0,                          0},
         {                        0, 0,                          0,                          0},
         {LaplacianFilter2D<ushort>, 0, LaplacianFilter2D<ushort3>, LaplacianFilter2D<ushort4>},
+        {                        0, 0,                          0,                          0},
+        {                        0, 0,                          0,                          0},
         {                        0, 0,                          0,                          0},
         {                        0, 0,                          0,                          0},
         {                        0, 0,                          0,                          0},
@@ -1792,6 +1812,10 @@ ErrorCode LaplacianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDa
         = {LaplacianFilter2DU8<uchar>, 0, LaplacianFilter2DU8<uchar3>, LaplacianFilter2DU8<uchar4>};
     static const laplacian_float_t floatFuncs[4]
         = {LaplacianFilter2DFloat<float>, 0, LaplacianFilter2DFloat<float3>, LaplacianFilter2DFloat<float4>};
+    // F16 rides the F32-form kernels with __half storage: taps accumulate in a float work type
+    // either way, so half only changes the load width and the single SaturateCast at the store.
+    static const laplacian_float_t halfFuncs[4]
+        = {LaplacianFilter2DFloat<__half>, 0, LaplacianFilter2DFloat<half3>, LaplacianFilter2DFloat<half4>};
 
     if (isPlanar)
     {
@@ -1805,8 +1829,8 @@ ErrorCode LaplacianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDa
             const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
             const TensorDataStridedCuda &ksize, const TensorDataStridedCuda &scale, NVCVBorderType borderMode,
             float borderValue, int channels, cudaStream_t stream);
-        static const planar_filter2D_t planarFuncs[6] = {
-            0, 0, LaplacianFilter2DPlanar<ushort>, 0, 0, 0,
+        static const planar_filter2D_t planarFuncs[8] = {
+            0, 0, LaplacianFilter2DPlanar<ushort>, 0, 0, 0, 0, 0,
         };
 
         if (data_type == kCV_8U)
@@ -1818,6 +1842,12 @@ ErrorCode LaplacianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDa
         if (data_type == kCV_32F)
         {
             LaplacianFilter2DPlanarTiled<kLaplacianPlanarFloatNIX, float>(inData, outData, ksize, scale, borderMode,
+                                                                          borderValue, channels, stream);
+            return ErrorCode::SUCCESS;
+        }
+        if (data_type == kCV_16F)
+        {
+            LaplacianFilter2DPlanarTiled<kLaplacianPlanarHalfNIX, __half>(inData, outData, ksize, scale, borderMode,
                                                                           borderValue, channels, stream);
             return ErrorCode::SUCCESS;
         }
@@ -1843,6 +1873,13 @@ ErrorCode LaplacianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDa
         const laplacian_float_t floatFunc = floatFuncs[channels - 1];
         NVCV_ASSERT(floatFunc != 0);
         floatFunc(inData, outData, ksize, scale, borderMode, borderValue, stream);
+        return ErrorCode::SUCCESS;
+    }
+    if (data_type == kCV_16F)
+    {
+        const laplacian_float_t halfFunc = halfFuncs[channels - 1];
+        NVCV_ASSERT(halfFunc != 0);
+        halfFunc(inData, outData, ksize, scale, borderMode, borderValue, stream);
         return ErrorCode::SUCCESS;
     }
 
@@ -2639,7 +2676,7 @@ ErrorCode GaussianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDat
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
-          || data_type == kCV_32F))
+          || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -2680,13 +2717,18 @@ ErrorCode GaussianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDat
                                const cuda::Tensor1DWrap<double2, int32_t> &sigmaTensor, int dataKernelSize,
                                NVCVBorderType borderMode, float borderValue, bool enableX4, cudaStream_t stream);
 
-    static const filter2D_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7). The F16
+    // row instantiates real __half/half3/half4 kernels: accumulation stays in a float work type,
+    // so half only changes the 2-byte load width and the single SaturateCast at the store.
+    static const filter2D_t funcs[8][4] = {
         { GaussianFilter2D<uchar>, 0,  GaussianFilter2D<uchar3>,  GaussianFilter2D<uchar4>},
         {                       0, 0,                         0,                         0},
         {GaussianFilter2D<ushort>, 0, GaussianFilter2D<ushort3>, GaussianFilter2D<ushort4>},
         { GaussianFilter2D<short>, 0,  GaussianFilter2D<short3>,  GaussianFilter2D<short4>},
         {   GaussianFilter2D<int>, 0,    GaussianFilter2D<int3>,    GaussianFilter2D<int4>},
         { GaussianFilter2D<float>, 0,  GaussianFilter2D<float3>,  GaussianFilter2D<float4>},
+        {                       0, 0,                         0,                         0},
+        {GaussianFilter2D<__half>, 0,   GaussianFilter2D<half3>,   GaussianFilter2D<half4>},
     };
 
     const filter2D_t func = funcs[data_type][channels - 1];
@@ -2708,10 +2750,18 @@ ErrorCode GaussianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDat
             const cuda::Tensor1DWrap<double2, int32_t> &sigmaTensor, int dataKernelSize, NVCVBorderType borderMode,
             float borderValue, int channels, bool enableX4, cudaStream_t stream);
 
-        static const planar_filter2D_t planarFuncs[6] = {
-            GaussianFilter2DPlanar<uchar>,  0,
-            GaussianFilter2DPlanar<ushort>, GaussianFilter2DPlanar<short>,
-            GaussianFilter2DPlanar<int>,    GaussianFilter2DPlanar<float>,
+        // Slots 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7);
+        // planar dispatch is per-dtype only, so F16 reuses the scalar __half kernel (x2 tiling,
+        // like the other 2-byte dtypes) for every channel count.
+        static const planar_filter2D_t planarFuncs[8] = {
+            GaussianFilter2DPlanar<uchar>,
+            0,
+            GaussianFilter2DPlanar<ushort>,
+            GaussianFilter2DPlanar<short>,
+            GaussianFilter2DPlanar<int>,
+            GaussianFilter2DPlanar<float>,
+            0 /*64F*/,
+            GaussianFilter2DPlanar<__half> /*16F*/,
         };
 
         const planar_filter2D_t planarFunc = planarFuncs[data_type];
@@ -3076,7 +3126,7 @@ ErrorCode AverageBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &in
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
-          || data_type == kCV_32F))
+          || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -3105,13 +3155,17 @@ ErrorCode AverageBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &in
                                cudaStream_t stream);
     // clang-format on
 
-    static const filter2D_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7); see the
+    // GaussianVarShape funcs table above for the rationale.
+    static const filter2D_t funcs[8][4] = {
         { AverageBlurFilter2D<uchar>, 0,  AverageBlurFilter2D<uchar3>,  AverageBlurFilter2D<uchar4>},
         {                          0, 0,                            0,                            0},
         {AverageBlurFilter2D<ushort>, 0, AverageBlurFilter2D<ushort3>, AverageBlurFilter2D<ushort4>},
         { AverageBlurFilter2D<short>, 0,  AverageBlurFilter2D<short3>,  AverageBlurFilter2D<short4>},
         {   AverageBlurFilter2D<int>, 0,    AverageBlurFilter2D<int3>,    AverageBlurFilter2D<int4>},
         { AverageBlurFilter2D<float>, 0,  AverageBlurFilter2D<float3>,  AverageBlurFilter2D<float4>},
+        {                          0, 0,                            0,                            0},
+        {AverageBlurFilter2D<__half>, 0,   AverageBlurFilter2D<half3>,   AverageBlurFilter2D<half4>},
     };
 
     const filter2D_t func = funcs[data_type][channels - 1];
@@ -3132,10 +3186,18 @@ ErrorCode AverageBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &in
             const cuda::Tensor1DWrap<int2, int32_t> &kernelAnchorTensor, NVCVBorderType borderMode, float borderValue,
             int channels, cudaStream_t stream);
 
-        static const planar_filter2D_t planarFuncs[6] = {
-            AverageBlurFilter2DPlanar<uchar>,  0,
-            AverageBlurFilter2DPlanar<ushort>, AverageBlurFilter2DPlanar<short>,
-            AverageBlurFilter2DPlanar<int>,    AverageBlurFilter2DPlanar<float>,
+        // Slots 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7);
+        // planar dispatch is per-dtype only, so F16 reuses the scalar __half kernel for every
+        // channel count.
+        static const planar_filter2D_t planarFuncs[8] = {
+            AverageBlurFilter2DPlanar<uchar>,
+            0,
+            AverageBlurFilter2DPlanar<ushort>,
+            AverageBlurFilter2DPlanar<short>,
+            AverageBlurFilter2DPlanar<int>,
+            AverageBlurFilter2DPlanar<float>,
+            0 /*64F*/,
+            AverageBlurFilter2DPlanar<__half> /*16F*/,
         };
 
         const planar_filter2D_t planarFunc = planarFuncs[data_type];

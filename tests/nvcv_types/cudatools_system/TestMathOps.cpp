@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -489,6 +489,114 @@ TYPED_TEST(MathOpsDotProductTest, correct_output)
     auto test = cuda::dot(input1, input2);
 
     EXPECT_SAME_EQ(test, gold);
+}
+
+// ---------------------- Testing operators for __half -------------------------
+
+// __half and its vector types (half1/__half2/half3/half4) are not structural types, so they
+// cannot be used in ttype::Value<> non-type template parameters as in the typed suites above;
+// the fp16 coverage below uses plain host-side TESTs with values built at run time.  These
+// tests also prove the cuda_fp16.h host-side __half operators (CUDA >= 12.2) that the
+// MathOps compound operators rely on.
+
+TEST(MathOpsHalfTest, half3_arithmetic_operators)
+{
+    // all values and results below are exactly representable in half
+    half3 a{__float2half(1.f), __float2half(2.f), __float2half(3.f)};
+    half3 b{__float2half(0.5f), __float2half(0.25f), __float2half(2.f)};
+
+    auto add = a + b;
+    auto sub = a - b;
+    auto mul = a * b;
+    auto div = a / b;
+
+    static_assert(std::is_same_v<decltype(add), half3>);
+    static_assert(std::is_same_v<decltype(sub), half3>);
+    static_assert(std::is_same_v<decltype(mul), half3>);
+    static_assert(std::is_same_v<decltype(div), half3>);
+
+    EXPECT_SAME_EQ(add, (half3{__float2half(1.5f), __float2half(2.25f), __float2half(5.f)}));
+    EXPECT_SAME_EQ(sub, (half3{__float2half(0.5f), __float2half(1.75f), __float2half(1.f)}));
+    EXPECT_SAME_EQ(mul, (half3{__float2half(0.5f), __float2half(0.5f), __float2half(6.f)}));
+    EXPECT_SAME_EQ(div, (half3{__float2half(2.f), __float2half(8.f), __float2half(1.5f)}));
+
+    half3 c = a;
+    c += b;
+    EXPECT_SAME_EQ(c, add);
+    c = a;
+    c -= b;
+    EXPECT_SAME_EQ(c, sub);
+    c = a;
+    c *= b;
+    EXPECT_SAME_EQ(c, mul);
+    c = a;
+    c /= b;
+    EXPECT_SAME_EQ(c, div);
+
+    auto neg = -a;
+    static_assert(std::is_same_v<decltype(neg), half3>);
+    EXPECT_SAME_EQ(neg, (half3{__float2half(-1.f), __float2half(-2.f), __float2half(-3.f)}));
+}
+
+TEST(MathOpsHalfTest, half4_and_half2_arithmetic_operators)
+{
+    half4 a{__float2half(1.f), __float2half(2.f), __float2half(3.f), __float2half(4.f)};
+    half4 b{__float2half(0.5f), __float2half(0.5f), __float2half(0.5f), __float2half(0.5f)};
+
+    auto add = a + b;
+    static_assert(std::is_same_v<decltype(add), half4>);
+    EXPECT_SAME_EQ(add, (half4{__float2half(1.5f), __float2half(2.5f), __float2half(3.5f), __float2half(4.5f)}));
+
+    auto mul = a * b;
+    static_assert(std::is_same_v<decltype(mul), half4>);
+    EXPECT_SAME_EQ(mul, (half4{__float2half(0.5f), __float2half(1.f), __float2half(1.5f), __float2half(2.f)}));
+
+    // __half2 addition resolves to the cuda_fp16.h host operator (CUDA >= 12.2)
+    __half2 c{__float2half(1.f), __float2half(2.f)};
+    __half2 d{__float2half(0.25f), __float2half(0.5f)};
+
+    auto sum2 = c + d;
+    static_assert(std::is_same_v<decltype(sum2), __half2>);
+    EXPECT_EQ(__half2float(sum2.x), 1.25f);
+    EXPECT_EQ(__half2float(sum2.y), 2.5f);
+}
+
+TEST(MathOpsHalfTest, half3_equality_operators)
+{
+    half3 a{__float2half(1.f), __float2half(2.f), __float2half(3.f)};
+    half3 b{__float2half(1.f), __float2half(2.f), __float2half(-3.f)};
+
+    EXPECT_TRUE(a == a);
+    EXPECT_FALSE(a == b);
+    EXPECT_TRUE(a != b);
+    EXPECT_FALSE(a != a);
+}
+
+TEST(MathOpsHalfTest, half_mixed_operators_promote_through_float)
+{
+    half3 a{__float2half(1.f), __float2half(2.f), __float2half(3.f)};
+
+    // __half OP arithmetic-scalar promotes through float, so half3 * float yields float3
+    auto scaled = a * 0.5f;
+    static_assert(std::is_same_v<decltype(scaled), float3>);
+    EXPECT_SAME_EQ(scaled, (float3{0.5f, 1.f, 1.5f}));
+
+    auto doubled = 2 * a;
+    static_assert(std::is_same_v<decltype(doubled), float3>);
+    EXPECT_SAME_EQ(doubled, (float3{2.f, 4.f, 6.f}));
+
+    // compound assignment casts the float3 result back to half3
+    half3 c = a;
+    c *= 2.f;
+    EXPECT_SAME_EQ(c, (half3{__float2half(2.f), __float2half(4.f), __float2half(6.f)}));
+
+    // mixed scalar comparisons also promote through float
+    EXPECT_TRUE(__float2half(1.f) > 0.5f);
+    EXPECT_TRUE(0.5f < __float2half(1.f));
+    EXPECT_TRUE(__float2half(0.5f) == 0.5f);
+    EXPECT_TRUE(__float2half(0.5f) != 0.25f);
+    EXPECT_TRUE(__float2half(0.5f) <= 0.5);
+    EXPECT_TRUE(__float2half(0.5f) >= 0.25);
 }
 
 #undef EXPECT_SAME_EQ

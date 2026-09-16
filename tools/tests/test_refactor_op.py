@@ -369,3 +369,242 @@ def test_verify_api_marks_unparseable_binding_surface_manual(monkeypatch):
     finding = _mock_binding_only_diff(m, monkeypatch, baseline, candidate)
 
     assert finding.status == m.MANUAL
+
+
+# ------------------------------------------------------- RED-2 (cross-operator duplication)
+def test_red2_is_always_emitted_and_advisory():
+    """RED-2 reports on any operator with priv sources, and never fails the gate. Deliberately
+    does not assert a particular operator's clone list: those change as shared headers land, and
+    pinning them here would make every future hoist look like a test regression."""
+    r = run("Invert", "--domain", "impl", "--format", "json")
+    red2 = [f for f in json.loads(r.stdout)["findings"] if f["id"] == "RED-2"]
+    assert red2, "RED-2 must be reported for an operator with priv sources"
+    assert all(f["status"] in {"PASS", "RECOMMENDATION"} for f in red2)
+    assert all(f["domain"] == "impl" for f in red2)
+    assert r.returncode == 0
+
+
+def test_all_operators_rollup_matches_per_operator_runs():
+    """The roll-up must agree with the per-operator reports it replaces, or agents will keep
+    hand-rolling shell loops that disagree with the tool."""
+    data = json.loads(
+        run("--all-operators", "--domain", "impl", "--format", "json").stdout
+    )
+    rows = {r["Op"]: r for r in data["operators"]}
+    assert len(rows) > 40
+    for op in ("Invert", "Posterize"):
+        single = json.loads(run(op, "--domain", "impl", "--format", "json").stdout)
+        by_id = {}
+        for f in single["findings"]:
+            if f["status"] in {"RECOMMENDATION", "MANUAL"}:
+                by_id[f["id"]] = by_id.get(f["id"], 0) + 1
+        assert rows[op]["by_id"] == by_id
+        assert rows[op]["open"] == sum(by_id.values())
+
+
+def test_if_conditions_reads_a_wrapped_guard_whole():
+    """RED-3 reports what a guard *excludes*, so splitting a wrapped disjunction across lines
+    produces a false positive — the second width looks absent. Parse the balanced condition.
+    """
+    m = _module()
+    src = """
+void f() {
+    if constexpr (sizeof(BT) == 1 ||
+                  sizeof(BT) == 4)
+    { g(); }
+}
+"""
+    conds = m.if_conditions(m._strip_code(src))
+    assert conds, "the guard must be found"
+    joined = " ".join(conds[0][1].split())
+    assert joined == "sizeof(BT) == 1 || sizeof(BT) == 4"
+
+
+def test_red12_ignores_commented_out_code():
+    """A commented-out helper is not a live reimplementation."""
+    m = _module()
+    shape = m.REINVENTION_SHAPES[0]["rx"]
+    commented = "// struct FakeVec4Type { using type = uchar4; };\n"
+    assert shape.findall(commented), "sanity: the shape matches the raw text"
+    assert not shape.findall(m._strip_code(commented))
+
+
+def test_variants_and_hoist_reject_a_positional_operator():
+    """They scan the whole corpus, so a positional operator would read as scoping the run."""
+    assert run("Invert", "--variants", "Foo").returncode == 2
+    assert run("Invert", "--simulate-hoist", "Foo").returncode == 2
+
+
+def test_all_operators_rejects_incompatible_flags():
+    assert run("--all-operators", "Invert").returncode == 2
+    assert run("--all-operators", "--phase", "verify").returncode == 2
+
+
+def test_variants_groups_definitions_into_equivalence_classes():
+    """`--variants` answers 'how many genuinely different versions of this helper exist' — the
+    question that gates any hoist. Asserted structurally, not against a fixed count, so landing
+    a hoist does not fail the test."""
+    data = json.loads(
+        run("--variants", "ValidateSrcDstTensors", "--format", "json").stdout
+    )
+    assert data["block"] == "ValidateSrcDstTensors"
+    assert len(data["variants"]) >= 2, "this helper is known to have divergent versions"
+    members = [m for v in data["variants"] for m in v["members"]]
+    assert len(members) == len(
+        set(members)
+    ), "a definition may only belong to one class"
+    assert all(v["lines"] > 0 and v["members"] for v in data["variants"])
+
+    empty = json.loads(run("--variants", "NoSuchBlockName", "--format", "json").stdout)
+    assert empty["variants"] == []
+
+
+def test_simulate_hoist_predicts_the_red2_delta():
+    """Hoisting a name must never increase any operator's RED-2 count, and must strictly reduce
+    it for at least one — otherwise the simulation is not modelling the change at all.
+    """
+    data = json.loads(
+        run(
+            "--simulate-hoist",
+            "ValidateSrcDstTensors,ValidateSrcDstVarBatch",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert data["hoisted"] == ["ValidateSrcDstTensors", "ValidateSrcDstVarBatch"]
+    rows = data["operators"]
+    assert rows, "these helpers are duplicated, so some operator must be affected"
+    assert all(r["after"] <= r["before"] for r in rows)
+    assert any(r["after"] < r["before"] for r in rows)
+    assert all(len(r["residual"]) == r["after"] for r in rows)
+
+    none = json.loads(
+        run("--simulate-hoist", "NoSuchBlockName", "--format", "json").stdout
+    )
+    assert all(r["after"] == r["before"] for r in none["operators"])
+
+
+def test_min_block_lines_sweep_is_monotonic_and_bounded():
+    """The floor is swept downwards while planning a refactor, so a smaller floor must only ever
+    add leads. It must also stay opt-in: the default run is unchanged."""
+
+    # Key on the *local* block (the `path:line` before " vs "), not the whole evidence string.
+    # The rest of that string names the chosen partner and a `(+N more)` count, and both may
+    # legitimately move as a lower floor adds blocks to the comparison pool — while the same
+    # local block stays exactly as valid a lead, which is what this test is about.
+    def leads(data):
+        return {
+            f["evidence"].split(" vs ", 1)[0]
+            for f in data["findings"]
+            if f["id"] == "RED-2" and f["status"] == "RECOMMENDATION"
+        }
+
+    counts = {}
+    for n in (6, 4, 2):
+        counts[n] = leads(
+            json.loads(
+                run(
+                    "Invert",
+                    "--domain",
+                    "impl",
+                    "--min-block-lines",
+                    str(n),
+                    "--format",
+                    "json",
+                ).stdout
+            )
+        )
+    assert counts[6] <= counts[4] <= counts[2]
+    assert len(counts[2]) > len(
+        counts[6]
+    ), "floor 2 must surface small helpers floor 6 hides"
+
+    default = json.loads(run("Invert", "--domain", "impl", "--format", "json").stdout)
+    assert counts[6] == leads(default)
+
+
+def test_min_block_lines_below_the_shingle_window_still_fingerprints():
+    """Sweeping under SHINGLE_K must keep short bodies matchable — shingle_hashes falls back to
+    hashing the body whole. Deleting that branch as 'dead code' would silently make every
+    sub-window block unmatchable, defeating the sweep."""
+    m = _module()
+    short = [m.normalize_line(x) for x in ["return a + b;", "// noop"]]
+    assert len(short) < m.SHINGLE_K
+    assert m.shingle_hashes(short), "a sub-window body must still produce a fingerprint"
+    assert m.jaccard(m.shingle_hashes(short), m.shingle_hashes(list(short))) == 1.0
+    other = [m.normalize_line("return a - b;")]
+    assert m.jaccard(m.shingle_hashes(short), m.shingle_hashes(other)) == 0.0
+
+
+def test_invalid_min_block_lines_is_a_usage_error():
+    assert run("Invert", "--min-block-lines", "0").returncode == 2
+
+
+def test_cross_op_blocks_excludes_the_operators_own_files():
+    """The invariant that keeps RED-2 from matching an operator against itself. Without it a
+    shared header registered in SHARED_KERNEL_SOURCES would pair with its own consumers and the
+    finding could never be resolved."""
+    m = _module()
+    P = m.resolve_op("Invert")
+    mine = {p.resolve() for p in P.priv}
+    assert mine, "Invert must resolve to at least one priv file"
+    assert not [p for p, _ in m.cross_op_blocks(P, m.read) if p.resolve() in mine]
+
+
+def test_cross_op_duplicates_finds_only_cross_file_twins():
+    m = _module()
+
+    def blk(name, body):
+        norm = [m.normalize_line(x) for x in body]
+        return m.Block(name, 1, len(body), norm, m.shingle_hashes(norm))
+
+    body = [f"step{i}();" for i in range(10)]
+    mine = [blk("Helper", body)]
+    twin = [(Path("src/cvcuda/priv/OpOther.cu"), blk("Helper", list(body)))]
+    other = [
+        (
+            Path("src/cvcuda/priv/OpOther.cu"),
+            blk("Other", [f"x{i}();" for i in range(10)]),
+        )
+    ]
+
+    assert "Helper" in m.cross_op_duplicates(mine, twin, 0.80)
+    assert not m.cross_op_duplicates(mine, other, 0.80)
+    # allowlisted names are filtered by the caller, exactly as RED-1 does
+    assert not m.cross_op_duplicates(
+        [b for b in mine if b.name not in {"Helper"}], twin, 0.80
+    )
+
+
+def test_cross_op_scan_honours_the_injected_reader():
+    """RED-2 must read the corpus through the reader it is given, not the working tree.
+
+    refactor_summary's base pass supplies a git_show reader. If the corpus were read directly
+    instead, a refactor that hoists several operators at once would see the siblings already
+    deduplicated while assessing <base>, report nothing there, and so have nothing to resolve —
+    a silent failure visible only in the verify summary.
+    """
+    m = _module()
+    P = m.resolve_op("Invert")
+    assert m.cross_op_blocks(P, m.read), "sanity: the real reader finds blocks"
+    assert m.cross_op_blocks(P, lambda _p: None) == []
+
+
+def test_open_red_counts_tracks_partial_resolution(monkeypatch):
+    """An id can be legitimately partially resolved, which a set difference over ids cannot
+    express. This is what `redundancy_reduced` reports."""
+    m = _module()
+    P = m.resolve_op("Invert")
+
+    def counted(n):
+        return [m.Finding("RED-2", "impl", m.REC, f"dup {i}") for i in range(n)]
+
+    monkeypatch.setattr(m, "run_assess", lambda P, d, c, r=None: counted(3))
+    base = m._open_red_counts(P, {}, m.read)
+    monkeypatch.setattr(m, "run_assess", lambda P, d, c, r=None: counted(1))
+    now = m._open_red_counts(P, {}, m.read)
+
+    assert base == {"RED-2": 3} and now == {"RED-2": 1}
+    # still open, so `redundancy_resolved` (a set difference) would report nothing
+    assert set(base) - set(now) == set()
+    assert now["RED-2"] < base["RED-2"]

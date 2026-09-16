@@ -43,7 +43,7 @@ long_desc = readme.read_text(encoding='utf-8') if readme.exists() else '${CMAKE_
 # Minimal metadata - detailed classifiers and project URLs are in pyproject.toml only
 setup(
     name='cvcuda-cu${CUDA_VERSION_MAJOR}',
-    version='${CMAKE_PROJECT_VERSION}${PROJECT_VERSION_SUFFIX}',
+    version='${CMAKE_PROJECT_VERSION}${PYTHON_WHEEL_VERSION_SUFFIX}',
     description='${CMAKE_PROJECT_DESCRIPTION}',
     long_description=long_desc,
     long_description_content_type='text/markdown',

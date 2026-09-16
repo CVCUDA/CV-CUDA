@@ -117,6 +117,7 @@ def _write_tree(tmp_path, payload):
                     "gpu_name": "NVIDIA Test GPU",
                     "power_cap_w": 350,
                     "locked_sm_clock_mhz": 1095,
+                    "cuda_major": 13,
                     "stem": "TESTSKU",
                 }
             ]
@@ -139,6 +140,7 @@ def _write_config_dir(tmp_path, payload):
                     "gpu_name": "NVIDIA Test GPU",
                     "power_cap_w": 350,
                     "locked_sm_clock_mhz": 1095,
+                    "cuda_major": 13,
                     "stem": "TESTSKU",
                 }
             ]
@@ -459,6 +461,39 @@ def test_main_accepts_same_key_baseline_change_within_ref_threshold(
             ]
         )
         == 0
+    )
+
+
+@pytest.mark.parametrize(
+    ("cpp_time_us", "python_time_us", "expected"),
+    [
+        (101.0, 111.1, 0),
+        (101.01, 111.111, 1),
+        (80.0, 88.0, 0),
+    ],
+)
+def test_one_percent_checkin_threshold(
+    tmp_path, monkeypatch, cpp_time_us, python_time_us, expected
+):
+    config_dir = _config_dir_with_ref_baseline(
+        tmp_path,
+        monkeypatch,
+        cpp_time_us=cpp_time_us,
+        python_time_us=python_time_us,
+    )
+
+    assert (
+        validate_baselines.main(
+            [
+                "--config-dir",
+                str(config_dir),
+                "--reject-regressions-from",
+                "origin/main",
+                "--max-regression-pct",
+                "1",
+            ]
+        )
+        == expected
     )
 
 

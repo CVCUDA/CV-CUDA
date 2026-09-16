@@ -35,11 +35,10 @@ deterministic checker `tools/make_op.py`. Keep this skill thin; do not duplicate
    author work.
 5. **Calibrate + seed baselines** — calibrate each bench config to **1–2 ms nvbench GPU time**
    (per-dtype; measure with `bench_<op>` and adjust the batch), exercise with
-   `bench/run_bench.py --operator <op> --lang both` (noise < 5% + C++/Python parity), then trigger
-   the named CI `baseline-regen` workflow to seed baselines on the reference SKUs and import its
-   artifacts with `bench/_internal/update_baseline.py --from <artifact-dir> --operator <op>`. This closes
-   `BEN-7`/`RDY-1` (never fabricate baselines; absolute timings are SKU-specific, so baselines come
-   from CI). Follow `bench/README.md` for the workflow and `ci/README.md` for CI selection.
+   `bench/run_bench.py --operator <op> --lang both` (noise < 5% + C++/Python parity), then seed
+   baselines from reference-SKU runs and import their artifacts with
+   `bench/_internal/update_baseline.py --from <artifact-dir> --operator <op>`. This closes
+   `BEN-7`/`RDY-1`; never fabricate baselines because absolute timings are SKU-specific.
 6. **Hand off** to `/optimize-op <Name>` for the performance campaign.
 
 For a wired skeleton with the implementation delegated to a human/other AI, use `make-op-scaffold`

@@ -24,18 +24,53 @@
 
 #include <nvbench/nvbench.cuh>
 
+// The operator converts on output (u8 input to u8/f32/f16), which the shared InOutDataType type
+// axis cannot express; "same" keeps the historical in==out behavior.
+inline nvcv::DataType GetResizeCropConvertOutDataType(const std::string &outDataType, nvcv::DataType same)
+{
+    if (outDataType == "same")
+    {
+        return same;
+    }
+    else if (outDataType == "uint8")
+    {
+        return nvcv::TYPE_U8;
+    }
+    else if (outDataType == "float16")
+    {
+        return nvcv::TYPE_F16;
+    }
+    else if (outDataType == "float32")
+    {
+        return nvcv::TYPE_F32;
+    }
+
+    throw std::invalid_argument("Invalid outDataType = " + outDataType);
+}
+
 template<typename T>
 inline void resizecropconvertreformat(nvbench::state &state, nvbench::type_list<T>)
 try
 {
-    long3                       srcShape  = benchutils::GetShape<3>(state.get_string("shape"));
-    const benchutils::InputKind inputKind = benchutils::GetInputKind(state.get_string("inputKind"));
-    const std::string           layout    = state.get_string("layout");
+    long3                       srcShape    = benchutils::GetShape<3>(state.get_string("shape"));
+    const benchutils::InputKind inputKind   = benchutils::GetInputKind(state.get_string("inputKind"));
+    const std::string           layout      = state.get_string("layout");
+    const std::string           outDataType = state.get_string("outDataType");
 
     NVCVInterpolationType interpType = benchutils::GetInterpolationType(state.get_string("interpolation"));
 
     using BT = nvcv::cuda::BaseType<T>;
     long nc  = nvcv::cuda::NumElements<T>;
+
+    // The operator only converts away from u8 sources.
+    if (outDataType != "same" && !std::is_same_v<BT, uint8_t>)
+    {
+        state.skip("outDataType conversion requires a uint8 source dtype");
+        return;
+    }
+
+    const nvcv::DataType dstDataType = GetResizeCropConvertOutDataType(outDataType, benchutils::GetDataType<BT>());
+    const long           dstElemSize = dstDataType.strideBytes();
 
     const bool isPlanar     = layout == "NCHW";
     const bool isFakePlanar = layout == "NCHW_FAKE";
@@ -84,7 +119,7 @@ try
                                   static_cast<int>(srcShape.y));
 
     const long srcBytes = srcShape.x * srcShape.y * srcShape.z * sizeof(BT) * nc;
-    const long dstBytes = dstShape.x * dstShape.y * dstShape.z * sizeof(BT) * nc;
+    const long dstBytes = dstShape.x * dstShape.y * dstShape.z * dstElemSize * nc;
 
     // Memory: read source region, write destination crop. Fake planar also reformats the full source.
     state.add_global_memory_reads(srcShape.x * src_region_h * src_region_w * sizeof(BT) * nc
@@ -100,7 +135,7 @@ try
         if (isPlanar || isFakePlanar)
         {
             nvcv::Tensor src({{srcShape.x, nc, srcShape.y, srcShape.z}, "NCHW"}, benchutils::GetDataType<BT>());
-            nvcv::Tensor dst({{dstShape.x, nc, dstShape.y, dstShape.z}, "NCHW"}, benchutils::GetDataType<BT>());
+            nvcv::Tensor dst({{dstShape.x, nc, dstShape.y, dstShape.z}, "NCHW"}, dstDataType);
 
             benchutils::FillTensor<BT>(src, benchutils::CheckerboardValues<BT>());
 
@@ -126,7 +161,7 @@ try
         else
         {
             nvcv::Tensor src({{srcShape.x, srcShape.y, srcShape.z, nc}, "NHWC"}, benchutils::GetDataType<BT>());
-            nvcv::Tensor dst({{dstShape.x, dstShape.y, dstShape.z, nc}, "NHWC"}, benchutils::GetDataType<BT>());
+            nvcv::Tensor dst({{dstShape.x, dstShape.y, dstShape.z, nc}, "NHWC"}, dstDataType);
 
             benchutils::FillTensor<BT>(src, benchutils::CheckerboardValues<BT>());
 
@@ -140,8 +175,8 @@ try
     {
         nvcv::ImageBatchVarShape src(static_cast<int32_t>(srcShape.x));
         nvcv::Tensor dst = isPlanar
-            ? nvcv::Tensor({{dstShape.x, nc, dstShape.y, dstShape.z}, "NCHW"}, benchutils::GetDataType<BT>())
-            : nvcv::Tensor({{dstShape.x, dstShape.y, dstShape.z, nc}, "NHWC"}, benchutils::GetDataType<BT>());
+            ? nvcv::Tensor({{dstShape.x, nc, dstShape.y, dstShape.z}, "NCHW"}, dstDataType)
+            : nvcv::Tensor({{dstShape.x, dstShape.y, dstShape.z, nc}, "NHWC"}, dstDataType);
 
         if (isPlanar)
         {

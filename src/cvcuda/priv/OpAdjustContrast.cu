@@ -423,7 +423,7 @@ inline __device__ T AdjustContrastPixel(T pixel, float factor, float mean)
 {
     using BT                         = cuda::BaseType<T>;
     static constexpr int numChannels = cuda::NumElements<T>;
-    const float          bound       = adjust::Bound<BT>();
+    const float          bound       = cvcuda::priv::PhotometricUpperBound<BT, float>();
 
     T out{};
 #pragma unroll
@@ -565,14 +565,19 @@ inline size_t CheckedWorkspaceAdd(size_t a, size_t b)
     return a + b;
 }
 
-inline ReductionGrid GetReductionGrid(int64_t pixels, int numSamples, bool isU8)
+inline ReductionGrid GetReductionGrid(int64_t pixels, int numSamples, bool isU8, bool isF32)
 {
     const dim3        fallback{1, 1, static_cast<unsigned int>(numSamples)};
     constexpr int64_t chunkPixels = static_cast<int64_t>(kMeanBlock) * kMeanValuesPerThread;
 
     const size_t meansBytes = CheckedWorkspaceMul(static_cast<size_t>(numSamples), sizeof(float));
 
-    if (!isU8)
+    if (!isU8 && !isF32)
+    {
+        return {fallback, false};
+    }
+
+    if (isF32)
     {
         const size_t partialBytes = CheckedWorkspaceMul(
             CheckedWorkspaceMul(static_cast<size_t>(numSamples), static_cast<size_t>(kMeanBlock)), sizeof(float));
@@ -723,8 +728,9 @@ inline void RunTensor(cudaStream_t stream, Workspace &ws, const nvcv::TensorData
 
     using BT                                    = cuda::BaseType<ValueT>;
     constexpr bool                   isU8       = std::is_same_v<BT, unsigned char>;
+    constexpr bool                   isF32      = std::is_same_v<BT, float>;
     const int64_t                    pixels     = static_cast<int64_t>(size.x) * size.y;
-    auto                             reduceGrid = GetReductionGrid(pixels, numSamples, isU8);
+    auto                             reduceGrid = GetReductionGrid(pixels, numSamples, isU8, isF32);
     auto                             reduction  = GetReductionWorkspace(ws, stream, numSamples, reduceGrid, isU8);
     WorkspaceReleaseGuard<Workspace> releaseGuard(ws, stream);
 
@@ -753,13 +759,23 @@ inline void RunTensor(cudaStream_t stream, Workspace &ws, const nvcv::TensorData
         }
         else
         {
-            if (reduceGrid.parallel)
+            // The parallel lane kernel is F32-only (cf. its static_assert); __half reduces
+            // through the generic mean kernel, which accumulates in float.
+            if constexpr (std::is_same_v<BT, float>)
             {
-                auto *laneSums = reinterpret_cast<float *>(reduction.partials);
-                ContrastMeanF32Tensor<kMeanBlock, IsPlanar>
-                    <<<reduceGrid.launch, kF32MeanThreads, 0, stream>>>(src, size, 1, rgbIndices, laneSums);
-                FinalizeMeanF32Tensor<kMeanBlock>
-                    <<<meanGrid, kMeanBlock, 0, stream>>>(laneSums, pixels, reduction.means);
+                if (reduceGrid.parallel)
+                {
+                    auto *laneSums = reinterpret_cast<float *>(reduction.partials);
+                    ContrastMeanF32Tensor<kMeanBlock, IsPlanar>
+                        <<<reduceGrid.launch, kF32MeanThreads, 0, stream>>>(src, size, 1, rgbIndices, laneSums);
+                    FinalizeMeanF32Tensor<kMeanBlock>
+                        <<<meanGrid, kMeanBlock, 0, stream>>>(laneSums, pixels, reduction.means);
+                }
+                else
+                {
+                    ContrastMeanTensor<kMeanBlock, IsPlanar>
+                        <<<meanGrid, kMeanBlock, 0, stream>>>(src, size, 1, rgbIndices, reduction.means);
+                }
             }
             else
             {
@@ -794,13 +810,23 @@ inline void RunTensor(cudaStream_t stream, Workspace &ws, const nvcv::TensorData
         }
         else
         {
-            if (reduceGrid.parallel)
+            // The parallel lane kernel is F32-only (cf. its static_assert); __half reduces
+            // through the generic mean kernel, which accumulates in float.
+            if constexpr (std::is_same_v<BT, float>)
             {
-                auto *laneSums = reinterpret_cast<float *>(reduction.partials);
-                ContrastMeanF32Tensor<kMeanBlock, IsPlanar>
-                    <<<reduceGrid.launch, kF32MeanThreads, 0, stream>>>(src, size, numPlanes, rgbIndices, laneSums);
-                FinalizeMeanF32Tensor<kMeanBlock>
-                    <<<meanGrid, kMeanBlock, 0, stream>>>(laneSums, pixels, reduction.means);
+                if (reduceGrid.parallel)
+                {
+                    auto *laneSums = reinterpret_cast<float *>(reduction.partials);
+                    ContrastMeanF32Tensor<kMeanBlock, IsPlanar>
+                        <<<reduceGrid.launch, kF32MeanThreads, 0, stream>>>(src, size, numPlanes, rgbIndices, laneSums);
+                    FinalizeMeanF32Tensor<kMeanBlock>
+                        <<<meanGrid, kMeanBlock, 0, stream>>>(laneSums, pixels, reduction.means);
+                }
+                else
+                {
+                    ContrastMeanTensor<kMeanBlock, IsPlanar>
+                        <<<meanGrid, kMeanBlock, 0, stream>>>(src, size, numPlanes, rgbIndices, reduction.means);
+                }
             }
             else
             {
@@ -826,10 +852,11 @@ inline void RunVarShapeBatch(cudaStream_t stream, Workspace &ws, const nvcv::Ima
                               "Batch size exceeds the CUDA grid.z limit of 65535");
     }
 
-    using BT                              = cuda::BaseType<ValueT>;
-    constexpr bool                   isU8 = std::is_same_v<BT, unsigned char>;
+    using BT                               = cuda::BaseType<ValueT>;
+    constexpr bool                   isU8  = std::is_same_v<BT, unsigned char>;
+    constexpr bool                   isF32 = std::is_same_v<BT, float>;
     int3                             maxSize{dstData.maxSize().w, dstData.maxSize().h, numImages};
-    auto                             reduceGrid = GetReductionGrid(maxPixels, numImages, isU8);
+    auto                             reduceGrid = GetReductionGrid(maxPixels, numImages, isU8, isF32);
     auto                             reduction  = GetReductionWorkspace(ws, stream, numImages, reduceGrid, isU8);
     WorkspaceReleaseGuard<Workspace> releaseGuard(ws, stream);
 
@@ -857,12 +884,23 @@ inline void RunVarShapeBatch(cudaStream_t stream, Workspace &ws, const nvcv::Ima
     }
     else
     {
-        if (reduceGrid.parallel)
+        // The parallel lane kernel is F32-only (cf. its static_assert); __half reduces
+        // through the generic mean kernel, which accumulates in float.
+        if constexpr (std::is_same_v<BT, float>)
         {
-            auto *laneSums = reinterpret_cast<float *>(reduction.partials);
-            ContrastMeanF32VarShape<kMeanBlock, IsPlanar>
-                <<<reduceGrid.launch, kF32MeanThreads, 0, stream>>>(src, numPlanes, rgbIndices, laneSums);
-            FinalizeMeanF32VarShape<kMeanBlock><<<meanGrid, kMeanBlock, 0, stream>>>(src, laneSums, reduction.means);
+            if (reduceGrid.parallel)
+            {
+                auto *laneSums = reinterpret_cast<float *>(reduction.partials);
+                ContrastMeanF32VarShape<kMeanBlock, IsPlanar>
+                    <<<reduceGrid.launch, kF32MeanThreads, 0, stream>>>(src, numPlanes, rgbIndices, laneSums);
+                FinalizeMeanF32VarShape<kMeanBlock>
+                    <<<meanGrid, kMeanBlock, 0, stream>>>(src, laneSums, reduction.means);
+            }
+            else
+            {
+                ContrastMeanVarShape<kMeanBlock, IsPlanar>
+                    <<<meanGrid, kMeanBlock, 0, stream>>>(src, numPlanes, rgbIndices, reduction.means);
+            }
         }
         else
         {
@@ -875,7 +913,7 @@ inline void RunVarShapeBatch(cudaStream_t stream, Workspace &ws, const nvcv::Ima
     releaseGuard.finish();
 }
 
-// Dispatch over base data type (u8 / f32) and channel count (1 / 3) ----------------------
+// Dispatch over base data type (u8 / f16 / f32) and channel count (1 / 3) ----------------
 
 template<typename Cb>
 inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
@@ -887,11 +925,12 @@ inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
 
     // clang-format off
     if NVCV_ADJUST_CONTRAST_RUN_TYPED(U8, uchar)
+    else if NVCV_ADJUST_CONTRAST_RUN_TYPED(F16, __half)
     else if NVCV_ADJUST_CONTRAST_RUN_TYPED(F32, float)
     else
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid data type: AdjustContrast supports 8-bit unsigned and 32-bit float");
+                              "Invalid data type: AdjustContrast supports 8-bit unsigned, 16-bit float and 32-bit float");
     }
         // clang-format on
 

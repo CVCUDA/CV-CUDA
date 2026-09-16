@@ -253,6 +253,8 @@ void RunCropFlipNormalizeReformatS(cudaStream_t stream, const nvcv::ImageBatchVa
                 srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap, cropRectWrap, global_scale, shift, epsilon,
                 flags, channel, base_channels, scale_channels, out_size, dst_planar);
         }
+        // cudaGetLastError() is sticky until read: one check here covers every launch above.
+        NVCV_CHECK_THROW(cudaGetLastError());
     };
 
     if (src_planar && dst_planar)
@@ -376,12 +378,15 @@ void RunCropFlipNormalizeReformat(cudaStream_t stream, const nvcv::ImageBatchVar
                            const nvcv::TensorDataStridedCuda &cropRect, float global_scale, float shift, float epsilon,
                            uint32_t flags, int channel);
 
+    // Rows are DataKind (UNSIGNED/SIGNED/FLOAT), columns are (bitsPerChannel >> 3) - 1; the
+    // FLOAT row's 16-bit column is __half (the kernel computes in float and rounds once on the
+    // half store through SaturateCast).
     static const func_t funcs[3][4] = {
-        {RunCropFlipNormalizeReformat<T_Src, unsigned char>, RunCropFlipNormalizeReformat<T_Src,                    unsigned short>,      0,
+        {RunCropFlipNormalizeReformat<T_Src,                     unsigned char>, RunCropFlipNormalizeReformat<T_Src, unsigned short>,                                  0,
          RunCropFlipNormalizeReformat<T_Src, unsigned int>},
-        {RunCropFlipNormalizeReformat<T_Src,          char>, RunCropFlipNormalizeReformat<T_Src,                             short>,      0,
-         RunCropFlipNormalizeReformat<T_Src, int>},
-        {                                 0,              0,                                  0, RunCropFlipNormalizeReformat<T_Src, float> }
+        {RunCropFlipNormalizeReformat<T_Src,                              char>, RunCropFlipNormalizeReformat<T_Src,          short>,                                  0,
+         RunCropFlipNormalizeReformat<T_Src,          int>},
+        {                                 0, RunCropFlipNormalizeReformat<T_Src,                            __half>,               0, RunCropFlipNormalizeReformat<T_Src, float>              }
     };
     nvcv::DataType datatype = dstData.dtype();
 
@@ -503,11 +508,13 @@ void CropFlipNormalizeReformat::operator()(cudaStream_t stream, const nvcv::Imag
                            const nvcv::TensorDataStridedCuda &cropRect, float global_scale, float shift, float epsilon,
                            uint32_t flags, int channel);
 
+    // Same kind x size table as the per-source dispatch above; F16 inputs read as __half and
+    // widen to float inside the kernel, so base/scale stay float tensors.
     static const func_t funcs[3][4] = {
         {RunCropFlipNormalizeReformat<unsigned char>, RunCropFlipNormalizeReformat<unsigned short>, 0,
          RunCropFlipNormalizeReformat<unsigned int>                                                                                       },
         {         RunCropFlipNormalizeReformat<char>,          RunCropFlipNormalizeReformat<short>, 0,   RunCropFlipNormalizeReformat<int>},
-        {                                          0,                                            0, 0, RunCropFlipNormalizeReformat<float>}
+        {                                          0,         RunCropFlipNormalizeReformat<__half>, 0, RunCropFlipNormalizeReformat<float>}
     };
 
     // Validate array indices to prevent buffer overrun

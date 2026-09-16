@@ -29,6 +29,7 @@ RNG = np.random.default_rng(0)
         (((5, 16, 23, 4), cvcuda.Type.U8, "NHWC")),
         (((2, 33, 21, 3), cvcuda.Type.U16, "NHWC")),
         (((16, 23, 3), cvcuda.Type.F32, "HWC")),
+        (((2, 16, 23, 3), cvcuda.Type.F16, "NHWC")),
         (((3, 4, 12, 10), cvcuda.Type.U8, "NCHW")),
         (((1, 460, 640, 1), cvcuda.Type.U8, "NHWC")),
     ],
@@ -68,6 +69,7 @@ def test_op_autocontrast(input_spec):
         (1, cvcuda.Format.RGB8, (480, 720)),
         (5, cvcuda.Format.RGBA8, (720, 480)),
         (4, cvcuda.Format.RGBf32, (200, 200)),
+        (3, cvcuda.Format.RGBf16, (100, 100)),
         (2, cvcuda.Format.F32, (100, 100)),
     ],
 )
@@ -110,7 +112,12 @@ globals().update(
             ("image_batch", cvcuda.autocontrast, None),
         ],
         keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
-        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.U16, cvcuda.Type.F32},
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.F16,
+            cvcuda.Type.F32,
+        },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
         supported_channels={1, 3, 4},
     )

@@ -17,8 +17,8 @@
 """Pre-flight benchmark-SKU eligibility check for CI.
 
 The benchmark regression check (``compare_to_baseline.py``) routes a run to a
-per-SKU JSON baseline by the ``(Device Name, Power Cap (W), Locked SM Clock (MHz))``
-triple via ``bench/config/sku_map.json``. Only SKUs present in that map have
+per-SKU JSON baseline by device name, power cap, locked SM clock, and CUDA major
+via ``bench/config/sku_map.json``. Only profiles present in that map have
 a baseline, so a benchmark leg that lands on a GPU outside the map (e.g. an H100
 PCIe at a non-canonical 310 W TDP, or silicon that clamps ``-lgc 1095`` to
 1005 MHz) cannot be compared and should be retried on a different node.
@@ -34,7 +34,7 @@ it is safe to run in the lightweight pre-bench environment stage:
   supported list lacks 1095 is exactly the one that would clamp to 1005.
 
 Exit codes:
-  0  eligible (triple is in sku_map.json), or fail-open: the GPU model is not
+  0  eligible (profile is in sku_map.json), or fail-open: the GPU model is not
      covered by the map, or nvidia-smi is *absent* (FileNotFoundError). These
      are genuinely "cannot/should not gate" cases — do not block scheduling.
   3  ineligible: the GPU model IS in the map but its predicted (power, clock)
@@ -44,6 +44,7 @@ Exit codes:
      failure is not a bad node, and retrying elsewhere would not fix it.
 """
 
+import argparse
 import json
 import os
 import subprocess
@@ -148,7 +149,7 @@ def predict_locked_clock(supported, preferred=None):
     return None
 
 
-def decide(name, power, clock, entries):
+def decide(name, power, clock, cuda_major, entries):
     """Pure eligibility decision. Returns (exit_code, message)."""
     if name is None:
         return EXIT_ELIGIBLE, "nvidia-smi unavailable; skipping SKU eligibility check."
@@ -161,22 +162,25 @@ def decide(name, power, clock, entries):
     allowed = [
         (e["power_cap_w"], e["locked_sm_clock_mhz"])
         for e in entries
-        if e["gpu_name"] == name
+        if e["gpu_name"] == name and e["cuda_major"] == cuda_major
     ]
     if (power, clock) in allowed:
         return (
             EXIT_ELIGIBLE,
-            f"OK: {name} @ {power}W / {clock}MHz is a baseline-backed SKU.",
+            f"OK: {name} @ {power}W / {clock}MHz / CUDA {cuda_major} is a baseline-backed SKU.",
         )
 
     return EXIT_INELIGIBLE, (
-        f"INELIGIBLE: {name} @ {power}W / predicted {clock}MHz has no baseline "
+        f"INELIGIBLE: {name} @ {power}W / predicted {clock}MHz / CUDA {cuda_major} has no baseline "
         f"(allowed for this model: {allowed}). Node should be excluded and the "
         f"leg retried elsewhere."
     )
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cuda-major", type=int, choices=[12, 13], required=True)
+    args = parser.parse_args()
     sku_map_path = Path(__file__).resolve().parent.parent / "config" / "sku_map.json"
     entries = json.loads(sku_map_path.read_text()).get("entries", [])
 
@@ -190,7 +194,7 @@ def main():
         print(f"[bench-sku] ERROR: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
-    code, msg = decide(name, power, clock, entries)
+    code, msg = decide(name, power, clock, args.cuda_major, entries)
     print(
         f"[bench-sku] {msg}", file=sys.stderr if code != EXIT_ELIGIBLE else sys.stdout
     )

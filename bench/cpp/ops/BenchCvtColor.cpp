@@ -86,12 +86,105 @@ nvcv::ImageFormat PlanarVarShapeFormat(nvcv::ImageFormat format)
     {
         return nvcv::FMT_RGB8p;
     }
+    if (format == NVCV_IMAGE_FORMAT_BGR8)
+    {
+        return nvcv::FMT_BGR8p;
+    }
     if (format == NVCV_IMAGE_FORMAT_RGBA8)
     {
         return nvcv::FMT_RGBA8p;
     }
+    if (format == NVCV_IMAGE_FORMAT_RGBf16)
+    {
+        return nvcv::FMT_RGBf16p;
+    }
+    if (format == NVCV_IMAGE_FORMAT_BGRf16)
+    {
+        return nvcv::FMT_BGRf16p;
+    }
+    if (format == NVCV_IMAGE_FORMAT_RGBAf16)
+    {
+        return nvcv::FMT_RGBAf16p;
+    }
+    if (format == NVCV_IMAGE_FORMAT_LAB8)
+    {
+        return nvcv::FMT_LAB8p;
+    }
+    if (format == NVCV_IMAGE_FORMAT_LABf16)
+    {
+        return nvcv::FMT_LABf16p;
+    }
+    if (format == NVCV_IMAGE_FORMAT_RGBf32)
+    {
+        return nvcv::FMT_RGBf32p;
+    }
+    if (format == NVCV_IMAGE_FORMAT_BGRf32)
+    {
+        return nvcv::FMT_BGRf32p;
+    }
+    if (format == NVCV_IMAGE_FORMAT_RGBAf32)
+    {
+        return nvcv::FMT_RGBAf32p;
+    }
+    if (format == NVCV_IMAGE_FORMAT_LABf32)
+    {
+        return nvcv::FMT_LABf32p;
+    }
 
-    throw std::invalid_argument("Planar CvtColor var-shape benchmark supports only RGB8p/RGBA8p formats");
+    throw std::invalid_argument("Planar CvtColor var-shape benchmark supports only RGB/BGR/RGBA/Lab formats");
+}
+
+// HSV/YUV/Y f16 formats are not predefined by NVCV; build them like the operator tests do.
+#define BENCH_CVTCOLOR_FORMAT_HSVf16 \
+    NVCV_DETAIL_MAKE_COLOR_FMT1(HSV, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X16_Y16_Z16)
+#define BENCH_CVTCOLOR_FORMAT_YUVf16 NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, XYZ1, ASSOCIATED, X16_Y16_Z16)
+#define BENCH_CVTCOLOR_FORMAT_Yf16   NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, X000, ASSOCIATED, X16)
+
+// Map the 8-bit formats keyed by the code map to the equivalent format for the benched base
+// type. The floating-point configs bench the same conversion codes on dtype-matched images.
+// The subsampled NV12 formats stay 8-bit only (no floating-point equivalent).
+template<typename BaseT>
+NVCVImageFormat FormatForBaseType(NVCVImageFormat format)
+{
+    if constexpr (std::is_same_v<BaseT, __half>)
+    {
+        switch (format)
+        {
+        case NVCV_IMAGE_FORMAT_RGB8:
+            return NVCV_IMAGE_FORMAT_RGBf16;
+        case NVCV_IMAGE_FORMAT_BGR8:
+            return NVCV_IMAGE_FORMAT_BGRf16;
+        case NVCV_IMAGE_FORMAT_RGBA8:
+            return NVCV_IMAGE_FORMAT_RGBAf16;
+        case NVCV_IMAGE_FORMAT_HSV8:
+            return BENCH_CVTCOLOR_FORMAT_HSVf16;
+        case NVCV_IMAGE_FORMAT_LAB8:
+            return NVCV_IMAGE_FORMAT_LABf16;
+        case NVCV_IMAGE_FORMAT_YUV8:
+            return BENCH_CVTCOLOR_FORMAT_YUVf16;
+        case NVCV_IMAGE_FORMAT_Y8:
+            return BENCH_CVTCOLOR_FORMAT_Yf16;
+        default:
+            throw std::invalid_argument("No F16 equivalent format (subsampled YUV formats are 8-bit only)");
+        }
+    }
+    else if constexpr (std::is_same_v<BaseT, float>)
+    {
+        switch (format)
+        {
+        case NVCV_IMAGE_FORMAT_RGB8:
+            return NVCV_IMAGE_FORMAT_RGBf32;
+        case NVCV_IMAGE_FORMAT_BGR8:
+            return NVCV_IMAGE_FORMAT_BGRf32;
+        case NVCV_IMAGE_FORMAT_RGBA8:
+            return NVCV_IMAGE_FORMAT_RGBAf32;
+        case NVCV_IMAGE_FORMAT_LAB8:
+            return NVCV_IMAGE_FORMAT_LABf32;
+        default:
+            throw std::invalid_argument("No F32 equivalent format (this conversion remains 8-bit/F16 only)");
+        }
+    }
+    return format;
 }
 
 template<typename BT>
@@ -124,43 +217,37 @@ nvcv::Tensor CreatePlanarTensor(int numImages, int imgWidth, int imgHeight, nvcv
         benchutils::GetDataType<BT>());
 }
 
-void FillPlanarPlaneData(std::vector<uint8_t> &planeData, int imageIndex, int planeIndex, bool checker)
+template<typename BaseT, int Channels>
+void FillCvtColorImageBatch(nvcv::ImageBatchVarShape &batch, int3 shape, nvcv::ImageFormat format, bool planar,
+                            bool checker)
 {
-    if (!checker)
+    using PixelT = std::conditional_t<Channels == 1, BaseT, nvcv::cuda::MakeType<BaseT, Channels>>;
+
+    if (planar)
     {
+        benchutils::FillPlanarImageBatch<PixelT>(batch, long2{shape.z, shape.y}, long2{0, 0}, checker);
         return;
     }
 
-    for (size_t idx = 0; idx < planeData.size(); ++idx)
-    {
-        planeData[idx] = static_cast<uint8_t>(((imageIndex + planeIndex + idx) & 1) ? 255 : 0);
-    }
+    const BaseT hi = checker ? benchutils::DefaultRangeMax<BaseT>() : static_cast<BaseT>(0);
+    benchutils::FillImageBatch<PixelT>(batch, long2{shape.z, shape.y}, long2{0, 0},
+                                       benchutils::CheckerboardValues<PixelT>(hi), format);
 }
 
-void FillPlanarImage(nvcv::Image &image, int imageIndex, int channels, bool checker)
+template<typename BaseT>
+void FillCvtColorImageBatch(nvcv::ImageBatchVarShape &batch, int3 shape, nvcv::ImageFormat format, bool planar,
+                            bool checker)
 {
-    auto data = image.exportData<nvcv::ImageDataStridedCuda>();
-    CVCUDA_CHECK_DATA(data);
-
-    for (int p = 0; p < channels; ++p)
+    switch (NumFormatChannels(format))
     {
-        const auto          &plane = data->plane(p);
-        std::vector<uint8_t> planeData(static_cast<size_t>(plane.rowStride) * plane.height);
-        FillPlanarPlaneData(planeData, imageIndex, p, checker);
-        CUDA_CHECK_ERROR(cudaMemcpy2D(plane.basePtr, plane.rowStride, planeData.data(), plane.rowStride,
-                                      plane.rowStride, plane.height, cudaMemcpyHostToDevice));
-    }
-}
-
-void FillPlanarImageBatch(nvcv::ImageBatchVarShape &batch, int3 shape, nvcv::ImageFormat format, bool checker)
-{
-    const int channels = NumFormatChannels(format);
-    for (int i = 0; i < shape.x; ++i)
-    {
-        nvcv::Image image(nvcv::Size2D{shape.z, shape.y}, format);
-        FillPlanarImage(image, i, channels, checker);
-
-        batch.pushBack(image);
+    case 1:
+        return FillCvtColorImageBatch<BaseT, 1>(batch, shape, format, planar, checker);
+    case 3:
+        return FillCvtColorImageBatch<BaseT, 3>(batch, shape, format, planar, checker);
+    case 4:
+        return FillCvtColorImageBatch<BaseT, 4>(batch, shape, format, planar, checker);
+    default:
+        throw std::invalid_argument("Unsupported CvtColor image channel count");
     }
 }
 
@@ -177,6 +264,14 @@ inline static ConvCodeToFormat str2Frmt(const std::string &str)
         {    "GRAY2RGB", {NVCV_COLOR_GRAY2RGB,     NVCV_IMAGE_FORMAT_Y8,    NVCV_IMAGE_FORMAT_RGB8 }},
         {     "RGB2HSV", {NVCV_COLOR_RGB2HSV,      NVCV_IMAGE_FORMAT_RGB8,  NVCV_IMAGE_FORMAT_HSV8 }},
         {     "HSV2RGB", {NVCV_COLOR_HSV2RGB,      NVCV_IMAGE_FORMAT_HSV8,  NVCV_IMAGE_FORMAT_RGB8 }},
+        {     "BGR2Lab", {NVCV_COLOR_BGR2Lab,      NVCV_IMAGE_FORMAT_BGR8,  NVCV_IMAGE_FORMAT_LAB8 }},
+        {     "RGB2Lab", {NVCV_COLOR_RGB2Lab,      NVCV_IMAGE_FORMAT_RGB8,  NVCV_IMAGE_FORMAT_LAB8 }},
+        {     "Lab2BGR", {NVCV_COLOR_Lab2BGR,      NVCV_IMAGE_FORMAT_LAB8,  NVCV_IMAGE_FORMAT_BGR8 }},
+        {     "Lab2RGB", {NVCV_COLOR_Lab2RGB,      NVCV_IMAGE_FORMAT_LAB8,  NVCV_IMAGE_FORMAT_RGB8 }},
+        {    "LBGR2Lab", {NVCV_COLOR_LBGR2Lab,     NVCV_IMAGE_FORMAT_BGR8,  NVCV_IMAGE_FORMAT_LAB8 }},
+        {    "LRGB2Lab", {NVCV_COLOR_LRGB2Lab,     NVCV_IMAGE_FORMAT_RGB8,  NVCV_IMAGE_FORMAT_LAB8 }},
+        {    "Lab2LBGR", {NVCV_COLOR_Lab2LBGR,     NVCV_IMAGE_FORMAT_LAB8,  NVCV_IMAGE_FORMAT_BGR8 }},
+        {    "Lab2LRGB", {NVCV_COLOR_Lab2LRGB,     NVCV_IMAGE_FORMAT_LAB8,  NVCV_IMAGE_FORMAT_RGB8 }},
         {     "RGB2YUV", {NVCV_COLOR_RGB2YUV,      NVCV_IMAGE_FORMAT_RGB8,  NVCV_IMAGE_FORMAT_YUV8 }},
         {     "YUV2RGB", {NVCV_COLOR_YUV2RGB,      NVCV_IMAGE_FORMAT_YUV8,  NVCV_IMAGE_FORMAT_RGB8 }},
         {"RGB2YUV_NV12", {NVCV_COLOR_RGB2YUV_NV12, NVCV_IMAGE_FORMAT_RGB8,  NVCV_IMAGE_FORMAT_NV12 }},
@@ -206,6 +301,7 @@ inline float bytesPerPixel(NVCVImageFormat imgFormat)
         BPP_CASE(NVCV_IMAGE_FORMAT_RGB8, 3);
         BPP_CASE(NVCV_IMAGE_FORMAT_BGR8, 3);
         BPP_CASE(NVCV_IMAGE_FORMAT_HSV8, 3);
+        BPP_CASE(NVCV_IMAGE_FORMAT_LAB8, 3);
         BPP_CASE(NVCV_IMAGE_FORMAT_RGBA8, 4);
         BPP_CASE(NVCV_IMAGE_FORMAT_YUV8, 3);
         BPP_CASE(NVCV_IMAGE_FORMAT_NV12, 1.5f);
@@ -285,64 +381,21 @@ void RunTensorBenchmark(nvbench::state &state, cvcuda::CvtColor &op, int3 shape,
                                 [&op, &src, &dst, &code](cudaStream_t s) { op(s, src, dst, code); });
 }
 
-inline static void FillInterleavedImageBatch(nvcv::ImageBatchVarShape &src, nvcv::ImageBatchVarShape &dst,
-                                             std::vector<nvcv::Image> &imgSrc, std::vector<nvcv::Image> &imgDst,
-                                             std::vector<std::vector<uint8_t>> &srcVec, int3 shape,
-                                             nvcv::ImageFormat inFormat, nvcv::ImageFormat outFormat)
-{
-    for (int i = 0; i < shape.x; i++)
-    {
-        imgSrc.emplace_back(nvcv::Size2D{shape.z, shape.y}, inFormat);
-        imgDst.emplace_back(nvcv::Size2D{shape.z, shape.y}, outFormat);
-
-        int srcRowStride = imgSrc[i].size().w * inFormat.planePixelStrideBytes(0);
-        int srcBufSize   = imgSrc[i].size().h * srcRowStride;
-        srcVec[i].resize(srcBufSize);
-        for (int idx = 0; idx < srcBufSize; idx++)
-        {
-            srcVec[i][idx] = static_cast<uint8_t>(((i + idx) & 1) ? 255 : 0);
-        }
-
-        auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
-        CUDA_CHECK_ERROR(cudaMemcpy2D(imgData->plane(0).basePtr, imgData->plane(0).rowStride, srcVec[i].data(),
-                                      srcRowStride, srcRowStride, imgSrc[i].size().h, cudaMemcpyHostToDevice));
-    }
-    src.pushBack(imgSrc.begin(), imgSrc.end());
-    dst.pushBack(imgDst.begin(), imgDst.end());
-}
-
+template<typename BaseT>
 inline static void RunVarShapeBenchmark(nvbench::state &state, cvcuda::CvtColor &op, int3 shape,
                                         nvcv::ImageFormat inFormat, nvcv::ImageFormat outFormat, CvtColorLayout layout,
                                         NVCVColorConversionCode code)
 {
-    if (HasSubsampledFormat(inFormat, outFormat))
-    {
-        state.skip("Skipping formats that have subsampled planes for the varshape benchmark");
-        return;
-    }
-    // Also skip YUV8 (planar in Python as YUV8p, not supported with ImageBatchVarShape)
-    if (inFormat == NVCV_IMAGE_FORMAT_YUV8 || outFormat == NVCV_IMAGE_FORMAT_YUV8)
-    {
-        state.skip("Skipping YUV8 format for varshape benchmark (planar format limitation)");
-        return;
-    }
+    nvcv::ImageBatchVarShape src(shape.x);
+    nvcv::ImageBatchVarShape dst(shape.x);
 
-    std::vector<nvcv::Image>          imgSrc;
-    std::vector<nvcv::Image>          imgDst;
-    nvcv::ImageBatchVarShape          src(shape.x);
-    nvcv::ImageBatchVarShape          dst(shape.x);
-    std::vector<std::vector<uint8_t>> srcVec(shape.x);
-
-    // Per-byte checkerboard fill (varied without paying random-distribution cost).
     if (IsPlanar(layout))
     {
-        FillPlanarImageBatch(src, shape, PlanarVarShapeFormat(inFormat), true);
-        FillPlanarImageBatch(dst, shape, PlanarVarShapeFormat(outFormat), false);
+        inFormat  = PlanarVarShapeFormat(inFormat);
+        outFormat = PlanarVarShapeFormat(outFormat);
     }
-    else
-    {
-        FillInterleavedImageBatch(src, dst, imgSrc, imgDst, srcVec, shape, inFormat, outFormat);
-    }
+    FillCvtColorImageBatch<BaseT>(src, shape, inFormat, IsPlanar(layout), true);
+    FillCvtColorImageBatch<BaseT>(dst, shape, outFormat, IsPlanar(layout), false);
 
     benchutils::warmup_and_exec(state, BENCH_CVTCOLOR_WARMUP_ITERATIONS,
                                 [&op, &src, &dst, &code](cudaStream_t s) { op(s, src, dst, code); });
@@ -361,9 +414,25 @@ try
 
     auto [code, inFormatValue, outFormatValue] = str2Frmt(state.get_string("code"));
 
-    nvcv::ImageFormat inFormat{inFormatValue};
-    nvcv::ImageFormat outFormat{outFormatValue};
-    CvtColorLayout    layout = GetCvtColorLayout(layoutStr, inputKind);
+    CvtColorLayout layout = GetCvtColorLayout(layoutStr, inputKind);
+    if (inputKind == benchutils::InputKind::VarShape)
+    {
+        if (HasSubsampledFormat(nvcv::ImageFormat{inFormatValue}, nvcv::ImageFormat{outFormatValue}))
+        {
+            state.skip("Skipping formats that have subsampled planes for the varshape benchmark");
+            return;
+        }
+        if (inFormatValue == NVCV_IMAGE_FORMAT_YUV8 || outFormatValue == NVCV_IMAGE_FORMAT_YUV8)
+        {
+            state.skip("Skipping YUV8 format for varshape benchmark (planar format limitation)");
+            return;
+        }
+    }
+
+    // Tensors and images use the dtype-matched formats; the memory-traffic accounting below
+    // keeps the 8-bit map keys (it scales channel counts by sizeof(BaseT) itself).
+    nvcv::ImageFormat inFormat{FormatForBaseType<BaseT>(inFormatValue)};
+    nvcv::ImageFormat outFormat{FormatForBaseType<BaseT>(outFormatValue)};
 
     if ((IsPlanar(layout) || IsFakePlanar(layout)) && HasSubsampledFormat(inFormat, outFormat))
     {
@@ -387,7 +456,7 @@ try
     }
     else // zero and positive var shape means use ImageBatchVarShape
     {
-        RunVarShapeBenchmark(state, op, shape, inFormat, outFormat, layout, code);
+        RunVarShapeBenchmark<BaseT>(state, op, shape, inFormat, outFormat, layout, code);
     }
 }
 

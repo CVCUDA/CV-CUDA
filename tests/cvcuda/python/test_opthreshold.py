@@ -298,6 +298,7 @@ globals().update(
             cvcuda.Type.U8,
             cvcuda.Type.U16,
             cvcuda.Type.S16,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
             cvcuda.Type.F64,
         },

@@ -21,6 +21,10 @@
 // Internal implementation of math wrapppers functionalities.
 // Not to be used directly.
 
+#include "Metaprogramming.hpp" // for IsHalfV, etc.
+
+#include <cuda_fp16.h> // for __half, etc.
+
 #include <cassert>
 #include <cfenv> // for FE_TONEAREST, etc.
 #include <cmath> // for std::round, etc.
@@ -415,78 +419,156 @@ inline __host__ U RoundEvenImpl(U u)
 template<typename T, typename U, int RM = FE_TONEAREST>
 inline __host__ __device__ T RoundImpl(U u)
 {
+    if constexpr (IsHalfV<U>)
+    {
 #ifdef __CUDA_ARCH__
-    return DeviceRoundImpl<T, U, RM>(u);
+        if constexpr (IsHalfV<T>)
+        {
+            if constexpr (RM == FE_TONEAREST)
+                return hrint(u);
+            else if constexpr (RM == FE_DOWNWARD)
+                return hfloor(u);
+            else if constexpr (RM == FE_UPWARD)
+                return hceil(u);
+            else if constexpr (RM == FE_TOWARDZERO)
+                return htrunc(u);
+        }
+        else
+        {
+            // __half -> float is lossless, so rounding in float equals rounding in half
+            return DeviceRoundImpl<T, float, RM>(__half2float(u));
+        }
 #else
-    // In host we use C++ to do round depending on round mode by selecting at compile time the correct function:
-    // round is to nearest; floor is downward; ceil is upward; and trunc is towards zero.
-    if constexpr (RM == FE_TONEAREST)
-    {
-        return static_cast<T>(RoundEvenImpl(u));
-    }
-    else if constexpr (RM == FE_DOWNWARD)
-    {
-        return static_cast<T>(std::floor(u));
-    }
-    else if constexpr (RM == FE_UPWARD)
-    {
-        return static_cast<T>(std::ceil(u));
-    }
-    else if constexpr (RM == FE_TOWARDZERO)
-    {
-        return static_cast<T>(std::trunc(u));
-    }
+        // Rounding a half in float is exact: integral results up to 2048 are exactly
+        // representable in half and larger finite halves are already integral
+        return RoundImpl<T, float, RM>(__half2float(u));
 #endif
+    }
+    else
+    {
+#ifdef __CUDA_ARCH__
+        return DeviceRoundImpl<T, U, RM>(u);
+#else
+        // In host we use C++ to do round depending on round mode by selecting at compile time the correct function:
+        // round is to nearest; floor is downward; ceil is upward; and trunc is towards zero.
+        if constexpr (RM == FE_TONEAREST)
+        {
+            return static_cast<T>(RoundEvenImpl(u));
+        }
+        else if constexpr (RM == FE_DOWNWARD)
+        {
+            return static_cast<T>(std::floor(u));
+        }
+        else if constexpr (RM == FE_UPWARD)
+        {
+            return static_cast<T>(std::ceil(u));
+        }
+        else if constexpr (RM == FE_TOWARDZERO)
+        {
+            return static_cast<T>(std::trunc(u));
+        }
+#endif
+    }
 }
 
 template<typename U>
 inline __host__ __device__ U MinImpl(U a, U b)
 {
+    if constexpr (IsHalfV<U>)
+    {
+        // __hmin requires SM 8.0+ while SM 7.5 is supported; the compare form lowers to
+        // native half compare-select on all supported architectures, host included
+        return (b < a) ? b : a;
+    }
+    else
+    {
 #ifdef __CUDA_ARCH__
-    return DeviceMinImpl(a, b);
+        return DeviceMinImpl(a, b);
 #else
-    return std::min(a, b);
+        return std::min(a, b);
 #endif
+    }
 }
 
 template<typename U>
 inline __host__ __device__ U MaxImpl(U a, U b)
 {
+    if constexpr (IsHalfV<U>)
+    {
+        // __hmax requires SM 8.0+ while SM 7.5 is supported; the compare form lowers to
+        // native half compare-select on all supported architectures, host included
+        return (a < b) ? b : a;
+    }
+    else
+    {
 #ifdef __CUDA_ARCH__
-    return DeviceMaxImpl(a, b);
+        return DeviceMaxImpl(a, b);
 #else
-    return std::max(a, b);
+        return std::max(a, b);
 #endif
+    }
 }
 
 template<typename U, typename S>
 inline __host__ __device__ U PowImpl(U x, S y)
 {
+    if constexpr (IsHalfV<U>)
+    {
+        // no half pow intrinsic exists; compute in float and round once back to half
+        return __float2half(PowImpl<float, float>(__half2float(x), static_cast<float>(y)));
+    }
+    else
+    {
 #ifdef __CUDA_ARCH__
-    return DevicePowImpl(x, y);
+        return DevicePowImpl(x, y);
 #else
-    return static_cast<U>(std::pow(x, y));
+        return static_cast<U>(std::pow(x, y));
 #endif
+    }
 }
 
 template<typename U>
 inline __host__ __device__ U ExpImpl(U u)
 {
+    if constexpr (IsHalfV<U>)
+    {
 #ifdef __CUDA_ARCH__
-    return DeviceExpImpl(u);
+        return hexp(u);
 #else
-    return static_cast<U>(std::exp(u));
+        return __float2half(std::exp(__half2float(u)));
 #endif
+    }
+    else
+    {
+#ifdef __CUDA_ARCH__
+        return DeviceExpImpl(u);
+#else
+        return static_cast<U>(std::exp(u));
+#endif
+    }
 }
 
 template<typename U>
 inline __host__ __device__ U SqrtImpl(U u)
 {
+    if constexpr (IsHalfV<U>)
+    {
 #ifdef __CUDA_ARCH__
-    return DeviceSqrtImpl(u);
+        return hsqrt(u);
 #else
-    return static_cast<U>(std::sqrt(u));
+        // float sqrt then half rounding is exact for every half input (sqrt needs
+        // 2p+2 = 24 bits, which binary32 provides), so this matches device hsqrt
+        return __float2half(std::sqrt(__half2float(u)));
 #endif
+    }
+    else
+    {
+#ifdef __CUDA_ARCH__
+        return DeviceSqrtImpl(u);
+#else
+        return static_cast<U>(std::sqrt(u));
+#endif
+    }
 }
 
 template<typename U>
@@ -495,6 +577,10 @@ inline __host__ __device__ U AbsImpl(U u)
     if constexpr (std::is_integral_v<U> && std::is_unsigned_v<U>)
     {
         return u;
+    }
+    else if constexpr (IsHalfV<U>)
+    {
+        return __habs(u);
     }
     else
     {

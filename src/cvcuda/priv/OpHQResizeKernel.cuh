@@ -401,7 +401,17 @@ std::enable_if_t<NumChannelsT::kHasStaticChannels, typename Wrap::ValueType> __f
 
     if constexpr (kSupportsLdg)
     {
-        return __ldg(GetWrapPtr(wrap, idxs...));
+        if constexpr (std::is_same_v<T, half4>)
+        {
+            // cuda_fp16.h provides __ldg for __half/__half2 but not for the cuda_tools half4;
+            // half4 is alignas(8), so pull it through the read-only cache as one 64-bit word.
+            const float2 raw = __ldg(reinterpret_cast<const float2 *>(GetWrapPtr(wrap, idxs...)));
+            return *reinterpret_cast<const T *>(&raw);
+        }
+        else
+        {
+            return __ldg(GetWrapPtr(wrap, idxs...));
+        }
     }
     else if constexpr (!kSupportsLdg)
     {
@@ -3061,11 +3071,25 @@ inline void RunTypedSwitch(nvcv::DataType srcDtype, nvcv::DataType dstDtype, int
     else if NVCV_RUN_MULTI_STATIC_CHANNEL_HQ_RESIZE(3, F32, F32, float, float);
     else if NVCV_RUN_MULTI_STATIC_CHANNEL_HQ_RESIZE(4, F32, F32, float, float);
     else if NVCV_RUN_DYNAMIC_CHANNELS_HQ_RESIZE(F32, F32, float, float);
+
+    // `half` is the cuda_fp16.h alias of __half, chosen so the token pasting above yields the
+    // CUDA __half2 typedef (half2) and the cuda_tools compound types half3/half4.
+    else if NVCV_RUN_SINGLE_CHANNEL_HQ_RESIZE(1, F16, F16, half, half);
+    else if NVCV_RUN_MULTI_STATIC_CHANNEL_HQ_RESIZE(2, F16, F16, half, half);
+    else if NVCV_RUN_MULTI_STATIC_CHANNEL_HQ_RESIZE(3, F16, F16, half, half);
+    else if NVCV_RUN_MULTI_STATIC_CHANNEL_HQ_RESIZE(4, F16, F16, half, half);
+    else if NVCV_RUN_DYNAMIC_CHANNELS_HQ_RESIZE(F16, F16, half, half);
+
+    else if NVCV_RUN_SINGLE_CHANNEL_HQ_RESIZE(1, F16, F32, half, float);
+    else if NVCV_RUN_MULTI_STATIC_CHANNEL_HQ_RESIZE(2, F16, F32, half, float);
+    else if NVCV_RUN_MULTI_STATIC_CHANNEL_HQ_RESIZE(3, F16, F32, half, float);
+    else if NVCV_RUN_MULTI_STATIC_CHANNEL_HQ_RESIZE(4, F16, F32, half, float);
+    else if NVCV_RUN_DYNAMIC_CHANNELS_HQ_RESIZE(F16, F32, half, float);
     else
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
             "Unsupported input/output types. The resize operator supports the "
-            "following types: uint8, int16, uint16, and float32. "
+            "following types: uint8, int16, uint16, float16, and float32. "
             "The output type must be same as the input type or float.");
     }
 // clang-format on

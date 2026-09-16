@@ -61,9 +61,11 @@ CALC_REF = {
     "flipB": lambda a: a[:, ::-1, ::-1, :] if len(a.shape) == 4 else a[::-1, ::-1, :],
 }
 REF_SHAPE = {
-    "absolute": lambda s, m: s.shape[0:1] + m.shape[1:3] + s.shape[3:]
-    if len(s.shape) == 4
-    else m.shape[0:2] + s.shape[2:],
+    "absolute": lambda s, m: (
+        s.shape[0:1] + m.shape[1:3] + s.shape[3:]
+        if len(s.shape) == 4
+        else m.shape[0:2] + s.shape[2:]
+    ),
     "relative": lambda s, m: s.shape,
 }
 REF_SHAPE["default"] = REF_SHAPE["absolute"]
@@ -207,6 +209,7 @@ def test_op_remap_content(map_type, map_kind, num_maps, num_imgs, img_size, img_
         (11, cvcuda.Format.RGB8, (33, 32)),
         (8, cvcuda.Format.RGBA8, (13, 42)),
         (3, cvcuda.Format.F32, (53, 68)),
+        (3, cvcuda.Format.F16, (53, 68)),
     ],
 )
 def test_op_remapvarshape_api(num_images, img_format, max_size):
@@ -294,13 +297,15 @@ globals().update(
             ("image_batch", cvcuda.remap, _remap_varshape_params),
         ],
         keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
-        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.F32},
+        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.F16, cvcuda.Type.F32},
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
         supported_channels={1, 3, 4},
-        # F32 only supports channel 1
+        # F32 and F16 only support channel 1
         exclude_dlc=[
             (cvcuda.Type.F32, None, 3),
             (cvcuda.Type.F32, None, 4),
+            (cvcuda.Type.F16, None, 3),
+            (cvcuda.Type.F16, None, 4),
         ],
     )
 )

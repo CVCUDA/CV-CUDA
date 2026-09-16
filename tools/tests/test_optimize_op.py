@@ -398,9 +398,9 @@ def test_binding_only_change_triggers_implementation_evidence_gates(monkeypatch)
     monkeypatch.setattr(
         m,
         "git",
-        lambda *args: '+                "gpu_gap_stddev_us": 4.25'
-        if args[0] == "diff"
-        else "",
+        lambda *args: (
+            '+                "gpu_gap_stddev_us": 4.25' if args[0] == "diff" else ""
+        ),
     )
     monkeypatch.setattr(
         m,
@@ -1480,3 +1480,108 @@ def test_baseline_regression_gate_blocks_validator_failure(monkeypatch):
     assert result.status == "GAP"
     assert "same-key baseline regressed" in result.evidence
     assert "revert the regressed baseline" in result.fix
+
+
+# ---- PRE-6: baseline freshness ----------------------------------------------------------
+def _freshness(monkeypatch, m, *, last_refresh, is_ancestor, changed, git_ok=True):
+    """Drive _baseline_freshness_gate over a synthetic git history."""
+
+    def returncode(*args):
+        if not git_ok:
+            return 128
+        if args[0] == "merge-base":
+            return 0 if is_ancestor else 1
+        return 0
+
+    monkeypatch.setattr(m, "_last_baseline_refresh", lambda *_a, **_k: last_refresh)
+    monkeypatch.setattr(m, "_git_returncode", returncode)
+    monkeypatch.setattr(m, "resolve_commit", lambda _ref: "b" * 40)
+    monkeypatch.setattr(m, "changed_paths", lambda *_a, **_k: changed)
+    monkeypatch.setattr(m, "git", lambda *_a, **_k: "")
+    return m._baseline_freshness_gate(
+        m.resolve_op("Gaussian"), "origin/main", "guide.md"
+    )
+
+
+def test_pre6_flags_baselines_that_predate_an_operator_code_change(monkeypatch):
+    """Gaussian's kernel lives in the shared legacy/filter.cu; a change there staleness it."""
+    m = _module()
+    finding = _freshness(
+        monkeypatch,
+        m,
+        last_refresh="a" * 40,
+        is_ancestor=True,
+        changed=["src/cvcuda/priv/legacy/filter.cu", "docs/sphinx/index.rst"],
+    )
+
+    assert finding.id == "PRE-6"
+    assert finding.status == m.GAP
+    assert "src/cvcuda/priv/legacy/filter.cu" in finding.evidence
+    # The remediation must be the exact block a campaign can paste.
+    assert '"config": "baseline-regen"' in finding.fix
+    assert '"benchmark_operators": "gaussian"' in finding.fix
+
+
+def test_pre6_ignores_changes_that_cannot_move_this_operator(monkeypatch):
+    m = _module()
+    finding = _freshness(
+        monkeypatch,
+        m,
+        last_refresh="a" * 40,
+        is_ancestor=True,
+        changed=[
+            "src/cvcuda/priv/legacy/median_blur.cu",
+            "tests/cvcuda/system/TestOpGaussian.cpp",
+            "ci/generate_pipeline.py",
+        ],
+    )
+
+    assert finding.status == m.PASS
+
+
+def test_pre6_accepts_baselines_refreshed_at_or_after_the_campaign_base(monkeypatch):
+    """Rows written on the campaign branch postdate the base by construction."""
+    m = _module()
+    finding = _freshness(
+        monkeypatch,
+        m,
+        last_refresh="c" * 40,
+        is_ancestor=False,
+        changed=["src/cvcuda/priv/legacy/filter.cu"],
+    )
+
+    assert finding.status == m.PASS
+    assert "at or after the campaign base" in finding.summary
+
+
+def test_pre6_is_manual_when_history_is_unavailable(monkeypatch):
+    """A shallow clone hides the refresh commit; do not report a false PASS or GAP."""
+    m = _module()
+    finding = _freshness(monkeypatch, m, last_refresh="", is_ancestor=True, changed=[])
+
+    assert finding.status == m.MANUAL
+    assert '"config": "baseline-regen"' in finding.fix
+
+
+def test_preflight_includes_the_freshness_gate():
+    m = _module()
+    ids = [
+        item.id for item in m.check_preflight(m.resolve_op("Gaussian"), "origin/main")
+    ]
+    assert "PRE-6" in ids
+    assert ids == sorted(ids, key=lambda name: int(name.split("-")[1]))
+
+
+def test_pre6_reports_manual_when_git_cannot_compare_the_commits(monkeypatch):
+    """A shallow clone must not read as 'refreshed at or after the base' and pass silently."""
+    m = _module()
+    finding = _freshness(
+        monkeypatch,
+        m,
+        last_refresh="a" * 40,
+        is_ancestor=True,
+        changed=["src/cvcuda/priv/legacy/filter.cu"],
+        git_ok=False,
+    )
+    assert finding.status == m.MANUAL
+    assert "could not be determined" in finding.summary

@@ -108,13 +108,19 @@ for ver in $python_versions; do
 
     # Run python tests. The marker test is excluded here and run separately below with the probe
     # injected, so the probe is never installed for this (much larger) uninjected pass.
-    CVCUDA_VERSION="@CVCUDA_VERSION_FULL@" python$ver -m pytest -v --tb=short -o cache_dir="$tmpdir" \
-        --ignore="$nvtx_marker_test" "$@" "$tests_dir"
+    # -q, not -v: the dtype conversion matrix alone emits over ten thousand
+    # per-test lines, and with one pass per installed Python version the run
+    # exceeds GitLab's 4MB job-log cap partway through. Everything past that
+    # point is dropped, including the failure summary -- a crash late in the
+    # suite then shows up as a bare non-zero exit with no diagnosis. -rf keeps
+    # the failure list, and faulthandler turns a native crash into a stack.
+    CVCUDA_VERSION="@CVCUDA_VERSION_FULL@" python$ver -X faulthandler -m pytest -q -rf --tb=short \
+        -o cache_dir="$tmpdir" --ignore="$nvtx_marker_test" "$@" "$tests_dir"
 
     # Run the NVTX marker test in its own process, with the probe injected only for that process.
     if [ -f "$nvtx_probe" ]; then
         CVCUDA_VERSION="@CVCUDA_VERSION_FULL@" NVTX_INJECTION64_PATH="$nvtx_probe" \
-            python$ver -m pytest -v --tb=short -o cache_dir="$tmpdir" "$nvtx_marker_test"
+            python$ver -X faulthandler -m pytest -q -rf --tb=short -o cache_dir="$tmpdir" "$nvtx_marker_test"
     else
         echo "Skipping NVTX marker test for python-$ver: probe not found at $nvtx_probe"
     fi

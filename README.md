@@ -15,7 +15,7 @@
 
 # CV-CUDA
 
-![Version](https://img.shields.io/badge/Version-v0.17.0-blue)
+![Version](https://img.shields.io/badge/Version-v0.18.0-blue)
 [![PyPI](https://img.shields.io/badge/PyPI-available-blue?logo=pypi&logoColor=white)](https://pypi.org/search/?q=cvcuda)
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
@@ -64,12 +64,12 @@ We provide pre-built Python wheels on pypi.org for a variety of Python versions 
 
 See [Installation](https://cvcuda.github.io/CV-CUDA/installation.html) for complete installation instructions including building from source, installing Debian packages, and tar archives.
 
-> **Building from source:** CV-CUDA no longer uses git submodules. Build dependencies
-> (googletest, nvbench, dlpack, pybind11) are pre-installed in the Docker devel images
-> (see [`docker/README.md`](docker/README.md)) and resolved via CMake's `find_package` — running
-> `git submodule update --init` is not required and will find nothing.
-> To build outside Docker, install these packages through your system package manager or
-> CMake's `FetchContent` before running CMake.
+> **Building from source:** CV-CUDA no longer uses git submodules — running
+> `git submodule update --init` is not required and will find nothing. Build dependencies
+> are pre-installed in the Docker devel images (see [`docker/README.md`](docker/README.md))
+> and resolved via CMake's `find_package`, with a documented `FetchContent` fallback for
+> DLPack when it is not already installed. To build outside Docker, see the build
+> dependencies in the [Installation guide](https://cvcuda.github.io/CV-CUDA/installation.html).
 
 ### Compatibility
 

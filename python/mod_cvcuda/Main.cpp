@@ -124,6 +124,7 @@ PYBIND11_MODULE(_cvcuda, m)
 
                      PyErr_SetString(PyExc_RuntimeError, "injected ResourceGuard commit failure");
                  });
+        Cache::ExportTestHooks(test);
         ExportCAPITestHooks(test);
     }
 

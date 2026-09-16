@@ -90,9 +90,8 @@ __global__ void gamma_contrast_tensor_float_kernel(SrcWrapper src, DstWrapper ds
 
     gamma_type gamma = gamma_[z];
 
-    D out = nvcv::cuda::SaturateCast<D>(cuda::pow(cuda::StaticCast<float>(src[int3{x, y, z}]), gamma));
-
-    dst[int3{x, y, z}] = cuda::clamp(cuda::StaticCast<float>(out), 0.f, 1.f);
+    dst[int3{x, y, z}] = nvcv::cuda::SaturateCast<D>(
+        cuda::clamp(cuda::pow(cuda::StaticCast<float>(src[int3{x, y, z}]), gamma), 0.f, 1.f));
 }
 
 // Planar (NCHW/CHW) tensor gamma contrast: one thread per output pixel, looping the channel planes and
@@ -182,9 +181,8 @@ __global__ void gamma_contrast_tensor_planar_float_kernel(SrcWrapper src, DstWra
     {
         const float gamma = gamma_[z * channels + plane];
 
-        D out = nvcv::cuda::SaturateCast<D>(cuda::pow(cuda::StaticCast<float>(src[int4{x, y, plane, z}]), gamma));
-
-        dst[int4{x, y, plane, z}] = cuda::clamp(cuda::StaticCast<float>(out), 0.f, 1.f);
+        dst[int4{x, y, plane, z}] = nvcv::cuda::SaturateCast<D>(
+            cuda::clamp(cuda::pow(cuda::StaticCast<float>(src[int4{x, y, plane, z}]), gamma), 0.f, 1.f));
     }
 }
 
@@ -230,9 +228,8 @@ __global__ void gamma_contrast_tensor_scalar_float_kernel(SrcWrapper src, DstWra
 
     gamma_type g = nvcv::cuda::SetAll<gamma_type>(gamma);
 
-    D out = nvcv::cuda::SaturateCast<D>(cuda::pow(cuda::StaticCast<float>(src[int3{x, y, z}]), g) * gain);
-
-    dst[int3{x, y, z}] = cuda::clamp(cuda::StaticCast<float>(out), 0.f, 1.f);
+    dst[int3{x, y, z}] = nvcv::cuda::SaturateCast<D>(
+        cuda::clamp(cuda::pow(cuda::StaticCast<float>(src[int3{x, y, z}]), g) * gain, 0.f, 1.f));
 }
 
 template<bool kTruncate, typename D, class SrcWrapper, class DstWrapper>
@@ -265,10 +262,8 @@ __global__ void gamma_contrast_tensor_planar_scalar_float_kernel(SrcWrapper src,
 
     for (int plane = 0; plane < channels; ++plane)
     {
-        D out
-            = nvcv::cuda::SaturateCast<D>(cuda::pow(cuda::StaticCast<float>(src[int4{x, y, plane, z}]), gamma) * gain);
-
-        dst[int4{x, y, plane, z}] = cuda::clamp(cuda::StaticCast<float>(out), 0.f, 1.f);
+        dst[int4{x, y, plane, z}] = nvcv::cuda::SaturateCast<D>(
+            cuda::clamp(cuda::pow(cuda::StaticCast<float>(src[int4{x, y, plane, z}]), gamma) * gain, 0.f, 1.f));
     }
 }
 
@@ -566,8 +561,8 @@ static ErrorCode validateTensorPair(const TensorDataStridedCuda &inData, const T
         LOG_ERROR("Input DataType " << dataType << " must match output DataType " << outDataType);
         return ErrorCode::INVALID_DATA_TYPE;
     }
-    if (!(dataType == kCV_8U || dataType == kCV_16U || dataType == kCV_16S || dataType == kCV_32S
-          || dataType == kCV_32F))
+    if (!(dataType == kCV_8U || dataType == kCV_16U || dataType == kCV_16S || dataType == kCV_32S || dataType == kCV_32F
+          || dataType == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << dataType);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -673,6 +668,12 @@ ErrorCode GammaContrast::infer(const TensorDataStridedCuda &inData, const Tensor
         {
             gamma_contrast_tensor_planar_float<float>(inData, outData, m_gammaArray, channels, stream);
         }
+        // F16 follows the float path (pow with no /255 normalization, clamp to [0, 1]) with real
+        // __half kernels; the gamma values remain float.
+        else if (data_type == kCV_16F)
+        {
+            gamma_contrast_tensor_planar_float<__half>(inData, outData, m_gammaArray, channels, stream);
+        }
         else
         {
             NVCV_ASSERT(planar_funcs[data_type] != nullptr);
@@ -696,10 +697,18 @@ ErrorCode GammaContrast::infer(const TensorDataStridedCuda &inData, const Tensor
     };
     static const func_t funcs_float[4] = {gamma_contrast_tensor_float<float>, gamma_contrast_tensor_float<float2>,
                                           gamma_contrast_tensor_float<float3>, gamma_contrast_tensor_float<float4>};
+    // F16 instantiates the float-path kernels (pow with no /255 normalization, clamp to [0, 1])
+    // with real __half image types; the gamma values remain float.
+    static const func_t funcs_half[4] = {gamma_contrast_tensor_float<__half>, gamma_contrast_tensor_float<__half2>,
+                                         gamma_contrast_tensor_float<half3>, gamma_contrast_tensor_float<half4>};
 
     if (data_type == kCV_32F)
     {
         funcs_float[channels - 1](inData, outData, m_gammaArray, stream);
+    }
+    else if (data_type == kCV_16F)
+    {
+        funcs_half[channels - 1](inData, outData, m_gammaArray, stream);
     }
     else
     {
@@ -751,6 +760,11 @@ ErrorCode GammaContrast::infer(const TensorDataStridedCuda &inData, const Tensor
         {
             gamma_contrast_tensor_planar_scalar_float<float>(inData, outData, gamma, gain, channels, stream);
         }
+        // F16 follows the float path (no /255 normalization, no round mode, clamp to [0, 1]).
+        else if (data_type == kCV_16F)
+        {
+            gamma_contrast_tensor_planar_scalar_float<__half>(inData, outData, gamma, gain, channels, stream);
+        }
         else
         {
             NVCV_ASSERT(planar_funcs[data_type] != nullptr);
@@ -778,10 +792,18 @@ ErrorCode GammaContrast::infer(const TensorDataStridedCuda &inData, const Tensor
     static const float_func_t funcs_float[4]
         = {gamma_contrast_tensor_scalar_float<float>, gamma_contrast_tensor_scalar_float<float2>,
            gamma_contrast_tensor_scalar_float<float3>, gamma_contrast_tensor_scalar_float<float4>};
+    // F16 instantiates the float-path scalar kernels with real __half image types.
+    static const float_func_t funcs_half[4]
+        = {gamma_contrast_tensor_scalar_float<__half>, gamma_contrast_tensor_scalar_float<__half2>,
+           gamma_contrast_tensor_scalar_float<half3>, gamma_contrast_tensor_scalar_float<half4>};
 
     if (data_type == kCV_32F)
     {
         funcs_float[channels - 1](inData, outData, gamma, gain, stream);
+    }
+    else if (data_type == kCV_16F)
+    {
+        funcs_half[channels - 1](inData, outData, gamma, gain, stream);
     }
     else
     {

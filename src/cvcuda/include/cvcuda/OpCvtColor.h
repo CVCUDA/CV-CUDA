@@ -57,18 +57,22 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCvtColorCreate(NVCVOperatorHandle *handle);
  *
  *  Input:
  *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
- *       Channels:       [1, 3, 4] for kNCHW/kCHW planar tensors; var-shape planar images require RGB8p or RGBA8p
- *                       compatible conversion codes.
+ *       Channels:       [1, 3, 4] for kNCHW/kCHW planar tensors; var-shape planar images require a matching planar
+ *                       image format compatible with the conversion code.
  *       Data Type:      [U8, S8, U16, S16, S32, F16, F32, F64] depending on conversion code.
  *
  *  Output:
  *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
- *       Channels:       [1, 3, 4] for kNCHW/kCHW planar tensors; var-shape planar images require RGB8p or RGBA8p
- *                       compatible conversion codes.
+ *       Channels:       [1, 3, 4] for kNCHW/kCHW planar tensors; var-shape planar images require a matching planar
+ *                       image format compatible with the conversion code.
  *       Data Type:      Same base type as input, depending on conversion code.
  *
  *  Notes:
  *       Planar kNCHW/kCHW support excludes subsampled YUV420 and packed YUV422 conversion codes.
+ *       The BGR/RGB-to-Lab and Lab-to-BGR/RGB families accept three-channel U8, F16, or F32 data. The LBGR/LRGB
+ *       variants treat RGB components as linear, while the other variants apply the sRGB transfer function. U8 Lab
+ *       encodes L as L*255/100 and offsets a and b by 128. Floating-point Lab uses L in [0, 100] and unshifted a and
+ *       b; floating-point RGB uses [0, 1].
  *
  *  Supported backends:
  *

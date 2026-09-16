@@ -162,7 +162,10 @@ private:
     // or std::nullopt if it's not.
     std::optional<py::dict> cudaArrayInterface() const;
 
-    bool loadCudaArrayInterface(const py::object &object);
+    // `interface` is the already-fetched `__cuda_array_interface__` object: the
+    // caller reads that property exactly once. `producer` is the object owning
+    // the memory, retained to keep the buffer alive.
+    bool loadCudaArrayInterface(const py::object &producer, const py::object &interface);
     bool loadDLPack(const py::object &object);
     void loadDLPackCapsule(py::capsule &cap);
 

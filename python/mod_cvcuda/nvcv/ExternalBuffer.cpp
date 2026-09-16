@@ -522,11 +522,24 @@ bool ExternalBuffer::load(PyObject *o)
     }
 
     py::object tmp = py::reinterpret_borrow<py::object>(o);
-    if (hasattr(tmp, "__cuda_array_interface__"))
-    {
-        return loadCudaArrayInterface(tmp);
-    }
 
+    // Fetch the interface once and pass it down. `__cuda_array_interface__` is
+    // a property, so probing it with hasattr() runs the producer's getter and
+    // builds the whole interface dict just to answer "does this exist?"; the
+    // read that followed then built it a second time. A failed lookup is
+    // cleared exactly as hasattr() did, while a present None reaches
+    // loadCudaArrayInterface() and is rejected as a non-dict value.
+    PyObject *rawIface = PyObject_GetAttrString(tmp.ptr(), "__cuda_array_interface__");
+    if (rawIface != nullptr)
+    {
+        py::object iface = py::reinterpret_steal<py::object>(rawIface);
+        return loadCudaArrayInterface(tmp, iface);
+    }
+    PyErr_Clear();
+
+    // No equivalent double-fetch below: `__dlpack__` is a method, so looking it
+    // up binds it without producing anything. The cost there is in calling it,
+    // which happens once.
     if (hasattr(tmp, "__dlpack__"))
     {
         return loadDLPack(tmp);
@@ -535,9 +548,14 @@ bool ExternalBuffer::load(PyObject *o)
     return false;
 }
 
-bool ExternalBuffer::loadCudaArrayInterface(const py::object &object)
+bool ExternalBuffer::loadCudaArrayInterface(const py::object &producer, const py::object &interface)
 {
-    py::dict iface = object.attr("__cuda_array_interface__").cast<py::dict>();
+    if (!py::isinstance<py::dict>(interface))
+    {
+        return false;
+    }
+
+    py::dict iface = interface.cast<py::dict>();
 
     if (!HasRequiredCAIFields(iface))
     {
@@ -589,7 +607,7 @@ bool ExternalBuffer::loadCudaArrayInterface(const py::object &object)
         dlTensor->device.device_id = m_producerDevice;
     }
 
-    m_wrappedObj              = object;
+    m_wrappedObj              = producer;
     m_cacheCudaArrayInterface = std::move(iface);
     m_dlTensor                = std::move(dlTensor);
     return true;

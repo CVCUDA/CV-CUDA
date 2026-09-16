@@ -190,11 +190,13 @@ void ImageBatchVarShape::pushBackMany(const std::vector<std::shared_ptr<Image>> 
         {
             handlelist.push_back(nullptr);
         }
-        m_list.push_back(img);
     }
+
+    m_list.reserve(m_list.size() + imgList.size());
 
     nvcv::detail::CheckThrow(
         nvcvImageBatchVarShapePushImages(m_impl.handle(), handlelist.data(), static_cast<int32_t>(handlelist.size())));
+    m_list.insert(m_list.end(), imgList.begin(), imgList.end());
 }
 
 void ImageBatchVarShape::popBack(int imgCount)

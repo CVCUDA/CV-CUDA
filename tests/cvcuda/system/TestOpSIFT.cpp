@@ -1393,6 +1393,143 @@ TEST(OpSIFT, no_linear_system_solution)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpSIFT, reports_features_beyond_output_capacity)
+{
+    constexpr int width    = 64;
+    constexpr int height   = 64;
+    constexpr int capacity = 1;
+
+    nvcv::Tensor src     = nvcv::util::CreateTensor(1, width, height, kInFormat);
+    auto         srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData);
+
+    std::vector<uint8_t> input(width * height);
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            input[y * width + x] = ((x / 8 + y / 8) % 2 == 0) ? 0 : 255;
+        }
+    }
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), input.data(), input.size(), cudaMemcpyHostToDevice));
+
+    nvcv::Tensor featCoords(
+        {
+            {1, capacity},
+            "NM"
+    },
+        nvcv::TYPE_4F32);
+    nvcv::Tensor featMetadata(
+        {
+            {1, capacity},
+            "NM"
+    },
+        nvcv::TYPE_3F32);
+    nvcv::Tensor featDescriptors(
+        {
+            {1, capacity, 128},
+            "NMD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor numFeatures({{1}, "N"}, nvcv::TYPE_S32);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::SIFT op({width, height, 1}, 3);
+    ASSERT_NO_THROW(op(stream, src, featCoords, featMetadata, featDescriptors, numFeatures, 3, 0.001f, 20.f, 0.5f,
+                       NVCV_SIFT_USE_ORIGINAL_INPUT));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    int  featureCount = 0;
+    auto countData    = numFeatures.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(countData);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(&featureCount, countData->basePtr(), sizeof(featureCount), cudaMemcpyDeviceToHost));
+    EXPECT_GT(featureCount, capacity);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpSIFT, accepts_scalar_component_output_layouts)
+{
+    constexpr int width    = 64;
+    constexpr int height   = 64;
+    constexpr int capacity = 64;
+
+    nvcv::Tensor src     = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_U8);
+    auto         srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData);
+
+    std::vector<uint8_t> input(width * height);
+    for (int i = 0; i < width * height; ++i) input[i] = static_cast<uint8_t>((i * 37 + i / width * 13) & 0xff);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), input.data(), input.size(), cudaMemcpyHostToDevice));
+
+    auto makePackedScalarOutput = [=](int components)
+    {
+        const int64_t tupleBytes = components * static_cast<int64_t>(sizeof(float));
+        NVCVByte     *allocation{};
+        EXPECT_EQ(cudaSuccess,
+                  cudaMalloc(reinterpret_cast<void **>(&allocation), static_cast<size_t>(capacity * tupleBytes)));
+
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = allocation;
+        buffer.strides[0] = capacity * tupleBytes;
+        buffer.strides[1] = tupleBytes;
+        buffer.strides[2] = sizeof(float);
+        return nvcv::TensorWrapData(
+            nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{1, capacity, components}, "NMC"},
+                nvcv::TYPE_F32, buffer
+        },
+            nvcv::TensorDataCleanupCallback{[allocation](const nvcv::TensorData &)
+                                            {
+                                                EXPECT_EQ(cudaSuccess, cudaFree(allocation));
+                                            }});
+    };
+    nvcv::Tensor featCoords   = makePackedScalarOutput(4);
+    nvcv::Tensor featMetadata = makePackedScalarOutput(3);
+    nvcv::Tensor featDescriptors(
+        {
+            {1, capacity, 128},
+            "NMD"
+    },
+        nvcv::TYPE_U8);
+
+    NVCVByte *countAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&countAllocation), sizeof(int)));
+    nvcv::TensorDataStridedCuda::Buffer countBuffer{};
+    countBuffer.basePtr      = countAllocation;
+    countBuffer.strides[0]   = sizeof(int);
+    countBuffer.strides[1]   = sizeof(int);
+    nvcv::Tensor numFeatures = nvcv::TensorWrapData(
+        nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{1, 1}, "NM"},
+            nvcv::TYPE_S32, countBuffer
+    },
+        nvcv::TensorDataCleanupCallback{[countAllocation](const nvcv::TensorData &)
+                                        {
+                                            EXPECT_EQ(cudaSuccess, cudaFree(countAllocation));
+                                        }});
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::SIFT op({width, height, 1}, 3);
+    ASSERT_NO_THROW(op(stream, src, featCoords, featMetadata, featDescriptors, numFeatures, 3, 0.01f, 10.f, 1.6f,
+                       NVCV_SIFT_USE_ORIGINAL_INPUT));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    int  featureCount = -1;
+    auto countData    = numFeatures.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(countData);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(&featureCount, countData->basePtr(), sizeof(featureCount), cudaMemcpyDeviceToHost));
+    EXPECT_GE(featureCount, 0);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpSIFT_Negative, test::ValueList<nvcv::ImageFormat, int, int, int, float, float, float, int, int, int, nvcv::DataType, int, int, nvcv::DataType, int, int, int, nvcv::DataType, int, nvcv::DataType>{
     // Negative cases vary image format, shape, SIFT thresholds, output tensors, and feature counts.
@@ -1501,4 +1638,41 @@ TEST(OpSIFT_Negative, create_invalid_shape)
     EXPECT_EQ(cvcudaSIFTCreate(&handle, int3{8, 8, 65536}, 2), NVCV_ERROR_INVALID_ARGUMENT);
     EXPECT_EQ(cvcudaSIFTCreate(&handle, int3{8, 8, 8}, 0), NVCV_ERROR_INVALID_ARGUMENT);
     EXPECT_EQ(cvcudaSIFTCreate(&handle, int3{8, 8, 8}, 17), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+TEST(OpSIFT_Negative, rejects_hw_input_layout)
+{
+    nvcv::Tensor src(
+        {
+            {32, 32},
+            "HW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor featCoords(
+        {
+            {1, 16},
+            "NM"
+    },
+        nvcv::TYPE_4F32);
+    nvcv::Tensor featMetadata(
+        {
+            {1, 16},
+            "NM"
+    },
+        nvcv::TYPE_3F32);
+    nvcv::Tensor featDescriptors(
+        {
+            {1, 16, 128},
+            "NMD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor numFeatures({{1}, "N"}, nvcv::TYPE_S32);
+
+    cvcuda::SIFT op({32, 32, 1}, 3);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&]
+                                               {
+                                                   op(nullptr, src, featCoords, featMetadata, featDescriptors,
+                                                      numFeatures, 2, 0.04f, 10.f, 1.6f, NVCV_SIFT_USE_ORIGINAL_INPUT);
+                                               }));
 }

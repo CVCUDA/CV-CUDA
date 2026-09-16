@@ -60,6 +60,10 @@ Tensor MinAreaRect(Tensor &input, Tensor &numPointsInContour, const int totalCon
 {
     const auto &srcShape                = input.shape();
     const auto &numPointsInContourShape = numPointsInContour.shape();
+    if (numPointsInContourShape.rank() < 2)
+    {
+        throw MinAreaRectError("Input numPointsInContour tensor must have rank at least 2");
+    }
     if ((srcShape.rank() - 1) != numPointsInContourShape.rank())
     {
         throw MinAreaRectError("Input src rank must 1 greater than numPointsInContourShape tensors rank");

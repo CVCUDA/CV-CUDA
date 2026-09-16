@@ -22,9 +22,10 @@
 -r requirements.samples.common.txt
 
 # PyTorch + torchvision (paired versions) for CUDA 12.x (${torch_cu12_index} wheel index, compatible with CUDA 12.5+)
+# cvcuda-driver-cuda-min: ${torch_cu12_driver_min}
 --extra-index-url https://download.pytorch.org/whl/${torch_cu12_index}
-torch==${torch_cu12}
-torchvision==${torchvision_cu12}
+torch==${torch_cu12}+${torch_cu12_index}
+torchvision==${torchvision_cu12}+${torch_cu12_index}
 
 # CUDA 12-specific packages
 --extra-index-url https://pypi.nvidia.com/

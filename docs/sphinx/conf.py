@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 project = "CV-CUDA"
 copyright = "2022-2026, NVIDIA."
 author = "NVIDIA"
-version = "0.17.0"
+version = "0.18.0"
 release = version
 
 # cvcuda module imported from virtual environment

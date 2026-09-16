@@ -57,6 +57,18 @@ def get_shape(in_shape, layout, out_size):
             (50, 10, 230, 220),
         ),
         (
+            ((2, 244, 244, 3), cvcuda.Type.F16, "NHWC"),
+            ((122, 244), cvcuda.Type.F16),
+            (cvcuda.Interp.LINEAR, cvcuda.Interp.LINEAR, False),
+            None,
+        ),
+        (
+            ((1, 244, 244, 2), cvcuda.Type.F16, "NHWC"),
+            ((122, 122), cvcuda.Type.F32),
+            (cvcuda.Interp.LINEAR, cvcuda.Interp.CUBIC, True),
+            (50, 10, 230, 220),
+        ),
+        (
             ((3, 101, 244, 301, 3), cvcuda.Type.U16, "NDHWC"),
             ((122, 54, 101), cvcuda.Type.U16),
             (cvcuda.Interp.GAUSSIAN, cvcuda.Interp.CUBIC, True),
@@ -133,6 +145,13 @@ def test_op_hq_resize_api(src_args, dst_args, interpolation_args, roi):
             5,
             ((122, 244, 4), np.float32, "HWC"),
             np.float32,
+            (cvcuda.Interp.CUBIC, cvcuda.Interp.CUBIC, False),
+            [(100, 200, 10, 10)],
+        ),
+        (
+            5,
+            ((122, 244, 4), np.float16, "HWC"),
+            np.float16,
             (cvcuda.Interp.CUBIC, cvcuda.Interp.CUBIC, False),
             [(100, 200, 10, 10)],
         ),
@@ -230,6 +249,13 @@ def test_op_hq_resize_var_shape_api(
             ((101, 244, 301, 3), cvcuda.Type.U16, "DHWC"),
             cvcuda.Type.U16,
             (cvcuda.Interp.GAUSSIAN, cvcuda.Interp.CUBIC, True),
+            True,
+        ),
+        (
+            5,
+            ((244, 244), cvcuda.Type.F16, "HW"),
+            cvcuda.Type.F32,
+            (cvcuda.Interp.LINEAR, cvcuda.Interp.CUBIC, True),
             True,
         ),
         (
@@ -352,6 +378,7 @@ globals().update(
             cvcuda.Type.U8,
             cvcuda.Type.U16,
             cvcuda.Type.S16,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts=_interleaved_layouts | _planar_layouts,
@@ -378,6 +405,7 @@ globals().update(
             cvcuda.Type.U8,
             cvcuda.Type.U16,
             cvcuda.Type.S16,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         # NCHW/CHW (channel-first 2D) planar tensor batches are expanded plane-by-plane and accept

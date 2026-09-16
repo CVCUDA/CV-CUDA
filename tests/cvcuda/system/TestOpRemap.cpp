@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#include "HalfTestUtils.hpp"
+
 #include <common/InterpUtils.hpp>
 #include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
@@ -28,6 +30,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <cstring>
 #include <iostream>
 #include <random>
 #include <vector>
@@ -53,6 +56,27 @@ static int ScaledSize(int size, double scale)
 template<typename T>
 using uniform_distribution
     = std::conditional_t<std::is_integral_v<T>, std::uniform_int_distribution<T>, std::uniform_real_distribution<T>>;
+
+// Build the input-fill distribution. __half cannot parameterize std distributions and its
+// TypeTraits has no constexpr max member, so F16 draws floats in [0, 1] and narrows to half on
+// assignment — the buffer stores halves either way, so the operator and the gold consume
+// identical half-quantized inputs.
+template<typename BT>
+static auto MakeInputDistribution()
+{
+    if constexpr (std::is_integral_v<BT>)
+    {
+        return uniform_distribution<BT>(BT{0}, cuda::TypeTraits<BT>::max);
+    }
+    else if constexpr (std::is_same_v<BT, __half>)
+    {
+        return std::uniform_real_distribution<float>(0.f, 1.f);
+    }
+    else
+    {
+        return uniform_distribution<BT>(BT{0}, BT{1});
+    }
+}
 
 template<typename ValueType, typename Strides, typename Coord, typename Distribution>
 static void FillRandomValue(std::vector<uint8_t> &vec, const Strides &strides, Coord coord, Distribution &rand)
@@ -149,6 +173,63 @@ void Remap(const std::vector<uint8_t> &src, std::vector<uint8_t> &dst, const std
     }
 }
 
+// Check the operator output against the CPU gold. F16 runs the FP32 gold on the widened
+// (already half-quantized) input and compares within half ULPs; everything else runs the
+// same-type gold with the historical byte-wise NEAR(1) check.
+template<NVCVInterpolationType SI, NVCVInterpolationType MI, NVCVBorderType SB, typename ValueType>
+void CheckAgainstGold(const std::vector<uint8_t> &dstVec, const std::vector<uint8_t> &srcVec,
+                      const std::vector<uint8_t> &mapVec, const long3 &srcStrides, const long3 &dstStrides,
+                      const long3 &mapStrides, const int3 &srcShape, const int3 &dstShape, const int3 &mapShape,
+                      NVCVRemapMapValueType mapValueType, bool alignCorners, const float4 &borderValue)
+{
+    if constexpr (std::is_same_v<cuda::BaseType<ValueType>, __half>)
+    {
+        static_assert(cuda::NumElements<ValueType> == 1, "F16 remap is single-channel only, like F32");
+
+        // Widen the half input into a float buffer with doubled strides (__half is 2 bytes,
+        // float is 4); padding bytes widen to garbage floats, but the gold never reads them.
+        std::vector<float>   srcFloat = test::HalfBytesToFloat(srcVec);
+        std::vector<uint8_t> srcVecF(srcFloat.size() * sizeof(float));
+        std::memcpy(srcVecF.data(), srcFloat.data(), srcVecF.size());
+
+        std::vector<uint8_t> refVecF(dstVec.size() * 2, uint8_t{0});
+
+        Remap<SI, MI, SB, float1>(srcVecF, refVecF, mapVec, srcStrides * 2, dstStrides * 2, mapStrides, srcShape,
+                                  dstShape, mapShape, mapValueType, alignCorners, borderValue);
+
+        // Gather the valid elements through the strides (skipping padding bytes) and compare
+        // within kUlps = 4 (HalfTestUtils.hpp policy): the FP32 reference is intentionally
+        // higher precision, and remap does one n-tap source interpolation (4-tap LINEAR /
+        // 16-tap CUBIC) accumulated in float with a single final rounding to half.
+        const long3         dstStridesF = dstStrides * 2;
+        std::vector<float>  gold;
+        std::vector<__half> out;
+        gold.reserve(static_cast<size_t>(dstShape.x) * dstShape.y * dstShape.z);
+        out.reserve(gold.capacity());
+        const int elemsPerImage = dstShape.x * dstShape.y;
+        for (int i = 0; i < elemsPerImage * dstShape.z; ++i)
+        {
+            const int z = i / elemsPerImage;
+            const int y = i % elemsPerImage / dstShape.x;
+            const int x = i % dstShape.x;
+            gold.push_back(
+                *reinterpret_cast<const float *>(&refVecF[z * dstStridesF.x + y * dstStridesF.y + x * dstStridesF.z]));
+            out.push_back(
+                *reinterpret_cast<const __half *>(&dstVec[z * dstStrides.x + y * dstStrides.y + x * dstStrides.z]));
+        }
+        test::ExpectNearHalfUlps(gold, out, 4.f);
+    }
+    else
+    {
+        std::vector<uint8_t> refVec(dstVec.size(), uint8_t{0});
+
+        Remap<SI, MI, SB, ValueType>(srcVec, refVec, mapVec, srcStrides, dstStrides, mapStrides, srcShape, dstShape,
+                                     mapShape, mapValueType, alignCorners, borderValue);
+
+        VEC_EXPECT_NEAR(dstVec, refVec, 1);
+    }
+}
+
 // clang-format off
 
 #define NVCV_SHAPE(w, h, n) (int3{w, h, n})
@@ -185,7 +266,17 @@ NVCV_TYPED_TEST_SUITE(
     NVCV_TEST_ROW(NVCV_SHAPE(16, 17, 3), NVCV_SHAPE(18, 12, 3), NVCV_SHAPE(18, 12, 3), uchar1, NVCV_IMAGE_FORMAT_Y8,
                   false, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_REFLECT101, 0.f),
     NVCV_TEST_ROW(NVCV_SHAPE(16, 17, 3), NVCV_SHAPE(18, 12, 3), NVCV_SHAPE(36, 24, 3), uchar1, NVCV_IMAGE_FORMAT_Y8,
-                  true, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, NVCV_REMAP_RELATIVE_NORMALIZED, NVCV_BORDER_REFLECT101, 0.f)
+                  true, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, NVCV_REMAP_RELATIVE_NORMALIZED, NVCV_BORDER_REFLECT101, 0.f),
+    // F16 mirrors F32 support (single-channel only). Rows are appended so the fixed-seed random
+    // draw sequences of the pre-existing rows stay unchanged.
+    NVCV_TEST_ROW(NVCV_SHAPE(42, 42, 1), NVCV_SHAPE(42, 42, 1), NVCV_SHAPE(2, 2, 1), half1, NVCV_IMAGE_FORMAT_F16,
+                  false, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_REMAP_RELATIVE_NORMALIZED, NVCV_BORDER_CONSTANT, 123.f),
+    NVCV_TEST_ROW(NVCV_SHAPE(42, 42, 1), NVCV_SHAPE(42, 42, 1), NVCV_SHAPE(42, 42, 1), half1, NVCV_IMAGE_FORMAT_F16,
+                  true, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_CONSTANT, 72.f),
+    NVCV_TEST_ROW(NVCV_SHAPE(51, 62, 2), NVCV_SHAPE(12, 38, 2), NVCV_SHAPE(24, 76, 2), half1, NVCV_IMAGE_FORMAT_F16,
+                  false, NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_WRAP, 0.f),
+    NVCV_TEST_ROW(NVCV_SHAPE(16, 17, 3), NVCV_SHAPE(18, 12, 3), NVCV_SHAPE(18, 12, 3), half1, NVCV_IMAGE_FORMAT_F16,
+                  false, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_REFLECT101, 0.f)
 >);
 
 // clang-format on
@@ -241,9 +332,8 @@ TYPED_TEST(OpRemap, correct_output)
     std::vector<uint8_t> srcVec(srcBufSize, uint8_t{0});
     std::vector<uint8_t> dstVec(dstBufSize, uint8_t{0});
     std::vector<uint8_t> mapVec(mapBufSize, uint8_t{0});
-    std::vector<uint8_t> refVec(dstBufSize, uint8_t{0});
 
-    uniform_distribution<BT> rand(BT{0}, std::is_integral_v<BT> ? cuda::TypeTraits<BT>::max : BT{1});
+    auto rand = MakeInputDistribution<BT>();
 
     for (int z = 0; z < srcShape.z; ++z)
         for (int y = 0; y < srcShape.y; ++y)
@@ -269,11 +359,9 @@ TYPED_TEST(OpRemap, correct_output)
 
     ASSERT_EQ(cudaSuccess, cudaMemcpy(dstVec.data(), dstData->basePtr(), dstBufSize, cudaMemcpyDeviceToHost));
 
-    Remap<kSrcInterp, kMapInterp, kBorderType, ValueType>(srcVec, refVec, mapVec, srcStrides, dstStrides, mapStrides,
-                                                          srcShape, dstShape, mapShape, kMapValueType, kAlignCorners,
-                                                          borderValue);
-
-    VEC_EXPECT_NEAR(dstVec, refVec, 1);
+    CheckAgainstGold<kSrcInterp, kMapInterp, kBorderType, ValueType>(dstVec, srcVec, mapVec, srcStrides, dstStrides,
+                                                                     mapStrides, srcShape, dstShape, mapShape,
+                                                                     kMapValueType, kAlignCorners, borderValue);
 }
 
 TYPED_TEST(OpRemap, varshape_correct_output)
@@ -308,7 +396,7 @@ TYPED_TEST(OpRemap, varshape_correct_output)
     std::uniform_int_distribution srcRandW(ScaledSize(srcShape.x, 0.8), ScaledSize(srcShape.x, 1.2));
     std::uniform_int_distribution srcRandH(ScaledSize(srcShape.y, 0.8), ScaledSize(srcShape.y, 1.2));
 
-    uniform_distribution<BT> rand(BT{0}, std::is_integral_v<BT> ? cuda::TypeTraits<BT>::max : BT{1});
+    auto rand = MakeInputDistribution<BT>();
 
     ASSERT_EQ(sizeof(ValueType), imgFormat.planePixelStrideBytes(0));
 
@@ -394,7 +482,6 @@ TYPED_TEST(OpRemap, varshape_correct_output)
         int3 mapShape2{mapShape.x, mapShape.y, 1};
 
         std::vector<uint8_t> dstVec(dstShape2.y * dstStrides.y);
-        std::vector<uint8_t> refVec(dstShape2.y * dstStrides.y);
 
         ASSERT_EQ(cudaSuccess, cudaMemcpy2D(dstVec.data(), dstStrides.y, dstData->plane(0).basePtr, dstStrides.y,
                                             dstStrides.y, dstShape2.y, cudaMemcpyDeviceToHost));
@@ -405,11 +492,9 @@ TYPED_TEST(OpRemap, varshape_correct_output)
 
         std::vector<uint8_t> mapVec2(mapZbeg, mapZend);
 
-        Remap<kSrcInterp, kMapInterp, kBorderType, ValueType>(srcVec[z], refVec, mapVec2, srcStrides, dstStrides,
-                                                              mapStrides, srcShape2, dstShape2, mapShape2,
-                                                              kMapValueType, kAlignCorners, borderValue);
-
-        VEC_EXPECT_NEAR(dstVec, refVec, 1);
+        CheckAgainstGold<kSrcInterp, kMapInterp, kBorderType, ValueType>(
+            dstVec, srcVec[z], mapVec2, srcStrides, dstStrides, mapStrides, srcShape2, dstShape2, mapShape2,
+            kMapValueType, kAlignCorners, borderValue);
     }
 }
 
@@ -678,7 +763,11 @@ static auto OpRemapNegativeParams()
              NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
             {42, 42, 1, 42, 42, 1, 2, 2, 1,   nvcv::FMT_RGB8,   nvcv::FMT_RGB8, nvcv::FMT_RGBf32, NVCV_INTERP_NEAREST,
              NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+ // multi-channel F16 is unsupported (F16 is single-channel only, like F32)
             {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGBf16, nvcv::FMT_RGBf16,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
+             NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+ // F64 is an unsupported data type even single-channel
+            {42, 42, 1, 42, 42, 1, 2, 2, 1,    nvcv::FMT_F64,    nvcv::FMT_F64,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
              NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
     };
 #ifndef ENABLE_SANITIZER
@@ -697,10 +786,12 @@ NVCV_TEST_SUITE_P(OpRemap_Negative, OpRemapNegativeParams());
 NVCV_TEST_SUITE_P(OpRemapVarshape_Negative,
                   test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat>{
   // inputNumImages, outputNumImages, mapNumSamples, inputFormat, outputFormat, mapFormat
-                      {2, 1, 1,  nvcv::FMT_RGB8, nvcv::FMT_RGB8,   nvcv::FMT_2F32},
-                      {1, 1, 2,  nvcv::FMT_RGB8, nvcv::FMT_RGB8,   nvcv::FMT_2F32},
-                      {1, 1, 1,  nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_RGBf32},
-                      {1, 1, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8,   nvcv::FMT_2F32},
+                      {2, 1, 1,   nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_2F32},
+                      {1, 1, 2,   nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_2F32},
+                      {1, 1, 1,   nvcv::FMT_RGB8,   nvcv::FMT_RGB8, nvcv::FMT_RGBf32},
+                      {1, 1, 1,  nvcv::FMT_RGB8p,   nvcv::FMT_RGB8,   nvcv::FMT_2F32},
+ // multi-channel F16 is unsupported (F16 is single-channel only, like F32)
+                      {1, 1, 1, nvcv::FMT_RGBf16, nvcv::FMT_RGBf16,   nvcv::FMT_2F32},
 });
 
 TEST_P(OpRemap_Negative, op)

@@ -228,6 +228,24 @@ def test_tensorbatch_errors():
         batch.pushback(random_tensors(3, np.int16, 4, "FHWC"))
 
 
+def test_tensorbatch_bulk_pushback_failure_preserves_batch():
+    batch = cvcuda.TensorBatch(2)
+    tensors = random_tensors(3, np.int16, 3, "")
+    batch.pushback(tensors[:1])
+
+    with t.raises(RuntimeError, match="NVCV_ERROR_OVERFLOW"):
+        batch.pushback(tensors[1:])
+
+    iterator = iter(batch)
+    assert next(iterator) is tensors[0]
+    with t.raises(StopIteration):
+        next(iterator)
+    assert len(batch) == 1
+
+    batch.pushback(tensors[1:2])
+    assert list(batch) == tensors[:2]
+
+
 def test_tensorbatch_size_in_bytes():
     """
     Checks if the computation of the TensorBatch size in bytes is correct

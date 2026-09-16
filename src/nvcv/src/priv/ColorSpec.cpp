@@ -242,6 +242,7 @@ bool NeedsColorspec(NVCVColorModel cmodel)
     case NVCV_COLOR_MODEL_HSV:
     case NVCV_COLOR_MODEL_CMYK:
     case NVCV_COLOR_MODEL_YCCK:
+    case NVCV_COLOR_MODEL_LAB:
         return false;
     }
 
@@ -322,6 +323,7 @@ const char *GetName(NVCVColorModel colorModel)
         ENUM_CASE(NVCV_COLOR_MODEL_HSV);
         ENUM_CASE(NVCV_COLOR_MODEL_CMYK);
         ENUM_CASE(NVCV_COLOR_MODEL_YCCK);
+        ENUM_CASE(NVCV_COLOR_MODEL_LAB);
 #undef ENUM_CASE
     }
 

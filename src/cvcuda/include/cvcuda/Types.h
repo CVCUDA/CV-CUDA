@@ -138,8 +138,8 @@ typedef enum
         = 40, //!< convert RGB/BGR to HSV (hue saturation value), @ref color_convert_rgb_hsv "color conversions"
     NVCV_COLOR_RGB2HSV = 41,
 
-    NVCV_COLOR_BGR2Lab = 44, //!< convert RGB/BGR to CIE Lab, @ref color_convert_rgb_lab "color conversions"
-    NVCV_COLOR_RGB2Lab = 45,
+    NVCV_COLOR_BGR2Lab = 44, //!< convert sRGB BGR to CIE L*a*b*; supported by CvtColor for U8, F16, and F32
+    NVCV_COLOR_RGB2Lab = 45, //!< convert sRGB to CIE L*a*b*; supported by CvtColor for U8, F16, and F32
 
     NVCV_COLOR_BGR2Luv = 50, //!< convert RGB/BGR to CIE Luv, @ref color_convert_rgb_luv "color conversions"
     NVCV_COLOR_RGB2Luv = 51,
@@ -150,8 +150,8 @@ typedef enum
     NVCV_COLOR_HSV2BGR = 54, //!< backward conversions to RGB/BGR
     NVCV_COLOR_HSV2RGB = 55,
 
-    NVCV_COLOR_Lab2BGR = 56,
-    NVCV_COLOR_Lab2RGB = 57,
+    NVCV_COLOR_Lab2BGR = 56, //!< convert CIE L*a*b* to sRGB BGR; supported by CvtColor for U8, F16, and F32
+    NVCV_COLOR_Lab2RGB = 57, //!< convert CIE L*a*b* to sRGB; supported by CvtColor for U8, F16, and F32
     NVCV_COLOR_Luv2BGR = 58,
     NVCV_COLOR_Luv2RGB = 59,
     NVCV_COLOR_HLS2BGR = 60,
@@ -167,13 +167,13 @@ typedef enum
     NVCV_COLOR_HLS2BGR_FULL = 72,
     NVCV_COLOR_HLS2RGB_FULL = 73,
 
-    NVCV_COLOR_LBGR2Lab = 74,
-    NVCV_COLOR_LRGB2Lab = 75,
+    NVCV_COLOR_LBGR2Lab = 74, //!< convert linear BGR to CIE L*a*b*; supported by CvtColor for U8, F16, and F32
+    NVCV_COLOR_LRGB2Lab = 75, //!< convert linear RGB to CIE L*a*b*; supported by CvtColor for U8, F16, and F32
     NVCV_COLOR_LBGR2Luv = 76,
     NVCV_COLOR_LRGB2Luv = 77,
 
-    NVCV_COLOR_Lab2LBGR = 78,
-    NVCV_COLOR_Lab2LRGB = 79,
+    NVCV_COLOR_Lab2LBGR = 78, //!< convert CIE L*a*b* to linear BGR; supported by CvtColor for U8, F16, and F32
+    NVCV_COLOR_Lab2LRGB = 79, //!< convert CIE L*a*b* to linear RGB; supported by CvtColor for U8, F16, and F32
     NVCV_COLOR_Luv2LBGR = 80,
     NVCV_COLOR_Luv2LRGB = 81,
 

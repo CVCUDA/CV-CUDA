@@ -1965,6 +1965,26 @@ TEST(OpInpaint_Negative, create_rejects_non_positive_limits)
     }
 }
 
+TEST(OpInpaint_Negative, rejects_non_image_tensor)
+{
+    nvcv::Tensor inTensor{
+        {{16}, "N"},
+        nvcv::TYPE_U8
+    };
+    nvcv::Tensor maskTensor{
+        {{16}, "N"},
+        nvcv::TYPE_U8
+    };
+    nvcv::Tensor outTensor{
+        {{16}, "N"},
+        nvcv::TYPE_U8
+    };
+
+    cvcuda::Inpaint op(1, nvcv::Size2D{4, 4});
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, inTensor, maskTensor, outTensor, 1.0); }));
+}
+
 TEST(OpInpaint_Negative, tensor_batch_exceeds_maxBatch)
 {
     cudaStream_t stream;

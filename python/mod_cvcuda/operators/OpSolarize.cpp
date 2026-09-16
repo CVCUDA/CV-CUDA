@@ -58,8 +58,8 @@ void ExportOpSolarize(py::module &m)
         Executes the Solarize operation on the given cuda stream.
 
         Inverts every pixel at or above ``threshold``: ``out = (in >= threshold) ? (bound - in) : in``,
-        where ``bound`` is the data type maximum (255 for uint8, 65535 for uint16, 1.0 for float32).
-        Mirrors torchvision.transforms.v2.functional.solarize.
+        where ``bound`` is the data type maximum (255 for uint8, 65535 for uint16, 1.0 for
+        float16/float32). Mirrors torchvision.transforms.v2.functional.solarize.
 
         See also:
             Refer to the CV-CUDA C API reference for the Solarize operator for more details and usage

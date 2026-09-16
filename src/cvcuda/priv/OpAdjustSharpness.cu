@@ -17,6 +17,10 @@
 
 #include "OpAdjustSharpness.hpp"
 
+#include "AdjustColorCommon.cuh"
+#include "PhotometricBound.cuh"
+#include "SameShapeCommon.cuh"
+
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
@@ -32,25 +36,12 @@
 
 #include <type_traits>
 
-namespace cuda = nvcv::cuda;
-namespace util = nvcv::util;
+namespace cuda       = nvcv::cuda;
+namespace util       = nvcv::util;
+namespace same_shape = cvcuda::priv::same_shape;
+namespace adjust     = cvcuda::priv::adjust;
 
 namespace {
-
-// Blend clamp bound per base type: dtype max for unsigned integers, 1.0 for float (mirrors the
-// torchvision `_max_value`).
-template<typename BT>
-inline __device__ float SharpnessBound()
-{
-    if constexpr (std::is_floating_point_v<BT>)
-    {
-        return 1.0f;
-    }
-    else
-    {
-        return static_cast<float>(cuda::TypeTraits<BT>::max);
-    }
-}
 
 // Per-channel interior compute, shared bit-exactly with the CPU gold reference (see
 // TestOpAdjustSharpness.cpp). Every multiply-add is an explicit `fmaf` and the accumulation order is
@@ -76,15 +67,19 @@ inline __device__ BT AdjustSharpnessScalar(float c00, float c01, float c02, floa
     blur       = fmaf(c21, kEdge, blur);
     blur       = fmaf(c22, kEdge, blur);
 
-    if constexpr (!std::is_floating_point_v<BT>)
+    // Round-to-nearest-even matches torch.round on the smoothed image for integer dtypes; __half
+    // keeps the unrounded float value like the other float types (std::is_floating_point excludes
+    // it), deferring precision loss to the final round-to-nearest-half store.
+    if constexpr (!cuda::detail::IsFloatingPointV<BT>)
     {
-        blur = rintf(blur); // round-to-nearest-even, matching torch.round on the smoothed image
+        blur = rintf(blur);
     }
 
     // out = in + (1 - factor) * (blur - in) = factor*in + (1-factor)*blur
     const float out     = fmaf(oneMinusFactor, blur - c11, c11);
     const float clamped = fminf(fmaxf(out, 0.0f), bound);
-    return static_cast<BT>(clamped); // truncates toward zero for integer BT; identity for float
+    return static_cast<BT>(clamped); // truncates toward zero for integer BT; identity for float,
+                                     // round-to-nearest for __half
 }
 
 template<bool IsPlanar>
@@ -127,7 +122,7 @@ inline __device__ void DoAdjustSharpness(SrcWrapper src, DstWrapper dst, int2 si
         return;
     }
 
-    const float bound = SharpnessBound<BT>();
+    const float bound = cvcuda::priv::PhotometricUpperBound<BT, float>();
 
     const SrcT n00 = src[CoordFor<IsPlanar>(col - 1, row - 1, plane, sample)];
     const SrcT n01 = src[CoordFor<IsPlanar>(col, row - 1, plane, sample)];
@@ -263,7 +258,7 @@ inline void RunAdjustSharpness(cudaStream_t stream, const SrcData &srcData, cons
     }
 }
 
-// Dispatch over base data type (u8 / u16 / f32) and channel count (1 / 3 / 4) -------------
+// Dispatch over base data type (u8 / u16 / f16 / f32) and channel count (1 / 3 / 4) -------
 
 template<typename Cb>
 inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
@@ -278,11 +273,12 @@ inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
     // clang-format off
     if NVCV_ADJUST_SHARPNESS_RUN_TYPED(U8, uchar)
     else if NVCV_ADJUST_SHARPNESS_RUN_TYPED(U16, ushort)
+    else if NVCV_ADJUST_SHARPNESS_RUN_TYPED(F16, __half)
     else if NVCV_ADJUST_SHARPNESS_RUN_TYPED(F32, float)
     else
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid data type: AdjustSharpness supports 8-bit unsigned, 16-bit unsigned and 32-bit float");
+                              "Invalid data type: AdjustSharpness supports 8-bit unsigned, 16-bit unsigned, 16-bit float and 32-bit float");
     }
         // clang-format on
 
@@ -292,173 +288,11 @@ inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
 template<typename Cb>
 inline void RunChannelSwitch(int numChannels, int numPlanes, nvcv::DataType dType, const Cb &cb)
 {
-    RunTypeSwitch(dType,
-                  [&numChannels, &numPlanes, &cb](auto dummyVal)
-                  {
-                      using ValBase = decltype(dummyVal);
-                      // clang-format off
-            if (numChannels == 1)
-            {
-                using Val = cuda::MakeType<ValBase, 1>;
-                if (numPlanes == 1)
-                {
-                    cb(Val{}, std::integral_constant<bool, false>{});
-                }
-                else
-                {
-                    cb(Val{}, std::integral_constant<bool, true>{});
-                }
-            }
-            else if (numChannels == 3)
-            {
-                cb(cuda::MakeType<ValBase, 3>{}, std::integral_constant<bool, false>{});
-            }
-            else if (numChannels == 4)
-            {
-                cb(cuda::MakeType<ValBase, 4>{}, std::integral_constant<bool, false>{});
-            }
-            else
-            {
-                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                      "Invalid number of channels: AdjustSharpness supports 1, 3 or 4 channels");
-            }
-                      // clang-format on
-                  });
+    RunTypeSwitch(dType, [&](auto dummyVal)
+                  { same_shape::DispatchChannels<decltype(dummyVal)>(numChannels, numPlanes, "AdjustSharpness", cb); });
 }
 
 // Validation ------------------------------------------------------------------------------
-
-inline void ValidateSrcDstTensors(int &numInterleavedChannels, int &numPlanes, nvcv::DataType &dtype,
-                                  const nvcv::Optional<nvcv::TensorDataStridedCuda> &srcData,
-                                  const nvcv::Optional<nvcv::TensorDataStridedCuda> &dstData)
-{
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-    if (srcData->layout() != dstData->layout())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
-    }
-    if (!(srcData->layout() == nvcv::TENSOR_HWC || srcData->layout() == nvcv::TENSOR_NHWC
-          || srcData->layout() == nvcv::TENSOR_CHW || srcData->layout() == nvcv::TENSOR_NCHW))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have (N)HWC or (N)CHW layout");
-    }
-    if (srcData->dtype() != dstData->dtype())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same data type");
-    }
-
-    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
-    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
-    NVCV_ASSERT(srcAccess && dstAccess);
-
-    if (srcAccess->numSamples() != dstAccess->numSamples())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-
-    int numChannels = srcAccess->numChannels();
-    if (numChannels != dstAccess->numChannels())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of channels");
-    }
-
-    numPlanes = srcAccess->numPlanes();
-    if (numPlanes != dstAccess->numPlanes())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of planes");
-    }
-    if (numPlanes > 1 && numChannels == 2)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel planar images are not supported");
-    }
-
-    if (srcAccess->numCols() != dstAccess->numCols() || srcAccess->numRows() != dstAccess->numRows())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input and output must have matching width and height");
-    }
-
-    dtype                  = srcData->dtype();
-    numInterleavedChannels = srcAccess->infoLayout().isChannelLast() ? numChannels : 1;
-}
-
-inline auto ValidateSrcDstVarBatch(int &numInterleavedChannels, int &numPlanes, nvcv::DataType &dtype,
-                                   cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
-                                   const nvcv::ImageBatchVarShape &dst)
-{
-    using maybeVarShape = nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda>;
-    std::tuple<maybeVarShape, maybeVarShape> srcDstData{
-        src.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream),
-        dst.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream)};
-    auto &[srcData, dstData] = srcDstData;
-
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, varshape pitch-linear image batch");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    int numSamples = srcData->numImages();
-    if (numSamples != dstData->numImages())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-
-    const auto &srcFormat = srcData->uniqueFormat();
-    const auto &dstFormat = dstData->uniqueFormat();
-    if (!srcFormat || !dstFormat)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All images in a batch must have the same format");
-    }
-    if (srcFormat != dstFormat)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same format");
-    }
-
-    int numChannels = srcFormat.numChannels();
-    numPlanes       = srcFormat.numPlanes();
-    if (numPlanes > 1 && numChannels == 2)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel planar images are not supported");
-    }
-
-    dtype = srcFormat.planeDataType(0);
-    for (int i = 1; i < numPlanes; ++i)
-    {
-        if (dtype != srcFormat.planeDataType(i))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "All planes in the input image must have the same data type");
-        }
-    }
-
-    numInterleavedChannels = dtype.numChannels();
-
-    for (int i = 0; i < numSamples; i++)
-    {
-        if (src[i].size() != dst[i].size())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Input and output must have matching width and height");
-        }
-    }
-
-    return srcDstData;
-}
 
 inline void ValidateSharpnessFactor(float sharpnessFactor)
 {
@@ -485,7 +319,7 @@ void AdjustSharpness::operator()(cudaStream_t stream, const nvcv::Tensor &src, c
     nvcv::DataType dtype;
     auto           srcData = src.exportData<nvcv::TensorDataStridedCuda>();
     auto           dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
-    ValidateSrcDstTensors(numInterleavedChannels, numPlanes, dtype, srcData, dstData);
+    same_shape::ValidateSrcDstTensors(numInterleavedChannels, numPlanes, dtype, srcData, dstData);
 
     RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
                      [&stream, &srcData, &dstData, sharpnessFactor](auto dummyVal, auto isPlanar)
@@ -505,7 +339,7 @@ void AdjustSharpness::operator()(cudaStream_t stream, const nvcv::ImageBatchVarS
     int            numInterleavedChannels;
     int            numPlanes;
     nvcv::DataType dtype;
-    auto           srcDstData = ValidateSrcDstVarBatch(numInterleavedChannels, numPlanes, dtype, stream, src, dst);
+    auto srcDstData = same_shape::ValidateSrcDstVarBatch(numInterleavedChannels, numPlanes, dtype, stream, src, dst);
 
     RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
                      [&stream, &srcDstData, sharpnessFactor](auto dummyVal, auto isPlanar)

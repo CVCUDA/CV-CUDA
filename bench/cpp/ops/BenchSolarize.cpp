@@ -53,8 +53,17 @@ try
     // Keep the threshold at mid-range for each base type so both the pass-through and the invert
     // branch are exercised. Float inputs are checkerboard {0,1}, so a fixed 128.0 would never
     // invert them and would bias the float baselines.
-    const double threshold
-        = std::is_floating_point_v<BT> ? 0.5 : static_cast<double>(nvcv::cuda::TypeTraits<BT>::max) / 2.0;
+    const double threshold = []
+    {
+        if constexpr (nvcv::cuda::detail::IsFloatingPointV<BT>)
+        {
+            return 0.5;
+        }
+        else
+        {
+            return static_cast<double>(nvcv::cuda::TypeTraits<BT>::max) / 2.0;
+        }
+    }();
 
     int ch = nvcv::cuda::NumElements<T>;
 

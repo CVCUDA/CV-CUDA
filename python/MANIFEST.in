@@ -3,6 +3,7 @@
 
 # Include README and license files in source distributions
 include README.md
+include LICENSE.md
 include pyproject.toml
 
 # Include all .so files (binary extensions)

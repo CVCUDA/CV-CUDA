@@ -175,6 +175,7 @@ globals().update(
             cvcuda.Type.S16,
             cvcuda.Type.U32,
             cvcuda.Type.S32,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},

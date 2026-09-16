@@ -98,7 +98,32 @@ inline __host__ __device__ T RangeCastImpl(U u)
         = std::is_integral_v<U> && std::is_unsigned_v<U> && std::is_floating_point_v<T>;
     constexpr bool kIntegralToIntegral = std::is_integral_v<U> && std::is_integral_v<T>;
 
-    if constexpr (kFloatingToFloatingNarrow)
+    if constexpr (IsHalfV<U> && IsHalfV<T>)
+    {
+        // __half -> __half, range cast reduces to none
+        return u;
+    }
+    else if constexpr (IsHalfV<U>)
+    {
+        // __half -> any: hop through float (lossless) to reuse the rules below;
+        // std::is_floating_point does not classify __half, so it needs explicit routing
+        return RangeCastImpl<T, float>(__half2float(u));
+    }
+    else if constexpr (IsHalfV<T>)
+    {
+        if constexpr (std::is_floating_point_v<U>)
+        {
+            // any-float -> __half, big -> small: clamp to the finite half range and
+            // convert directly so double inputs do not round through float first
+            return BoundedCast<T>(u, U{-65504}, U{65504});
+        }
+        else
+        {
+            // any-integral -> __half: normalize in float then round once to half
+            return __float2half(RangeCastImpl<float, U>(u));
+        }
+    }
+    else if constexpr (kFloatingToFloatingNarrow)
     {
         // any-float -> any-float, big -> small
         return RangeCastFloatingNarrow<T>(u);

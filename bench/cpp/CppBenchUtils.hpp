@@ -51,6 +51,10 @@
 #include <utility>
 #include <vector>
 
+// nvbench only declares type strings for the standard arithmetic types; without this the F16
+// axis key would fall back to the demangled "__half".
+NVBENCH_DECLARE_TYPE_STRINGS(__half, "F16", "__half");
+
 namespace benchutils {
 
 class InvalidBenchmarkDataError : public std::runtime_error
@@ -219,6 +223,11 @@ inline nvcv::DataType GetDataType()
     CVCUDA_BENCH_GET_DATA_TYPE(float3, nvcv::TYPE_3F32);
     CVCUDA_BENCH_GET_DATA_TYPE(float4, nvcv::TYPE_4F32);
 
+    CVCUDA_BENCH_GET_DATA_TYPE(__half, nvcv::TYPE_F16);
+    CVCUDA_BENCH_GET_DATA_TYPE(__half2, nvcv::TYPE_2F16);
+    CVCUDA_BENCH_GET_DATA_TYPE(half3, nvcv::TYPE_3F16);
+    CVCUDA_BENCH_GET_DATA_TYPE(half4, nvcv::TYPE_4F16);
+
     CVCUDA_BENCH_GET_DATA_TYPE(int, nvcv::TYPE_S32);
 
     CVCUDA_BENCH_GET_DATA_TYPE(short, nvcv::TYPE_S16);
@@ -271,6 +280,10 @@ inline nvcv::ImageFormat GetRGBFormat()
     else if constexpr (std::is_same_v<BT, float>)
     {
         return nvcv::FMT_RGBf32;
+    }
+    else if constexpr (std::is_same_v<BT, __half>)
+    {
+        return nvcv::FMT_RGBf16;
     }
     else
     {
@@ -355,16 +368,19 @@ template<typename VT>
 struct LcgGenerator
 {
     using BT = nvcv::cuda::BaseType<VT>;
+    // Distribution type: std distributions do not accept __half, so half draws in float and
+    // narrows on assignment.
+    using DT = std::conditional_t<nvcv::cuda::detail::IsHalfV<BT>, float, BT>;
     using RE = std::default_random_engine;
-    using UD = std::conditional_t<std::is_floating_point_v<BT>, std::uniform_real_distribution<BT>,
-                                  std::uniform_int_distribution<BT>>;
+    using UD = std::conditional_t<std::is_floating_point_v<DT>, std::uniform_real_distribution<DT>,
+                                  std::uniform_int_distribution<DT>>;
 
     VT operator()()
     {
         VT ret;
         for (int i = 0; i < nvcv::cuda::NumElements<VT>; ++i)
         {
-            nvcv::cuda::GetElement(ret, i) = uniformDistribution(randomGenerator);
+            nvcv::cuda::GetElement(ret, i) = static_cast<BT>(uniformDistribution(randomGenerator));
         }
         return ret;
     }
@@ -378,11 +394,46 @@ struct LcgGenerator
     RE randomGenerator;
 };
 
+// Default full-range bounds: integers use the full type range, floats use [-1, +1]. A plain
+// ternary cannot express this for __half, whose TypeTraits has no min/max members.
+template<typename BT>
+inline BT DefaultRangeMin()
+{
+    if constexpr (std::is_integral_v<BT>)
+    {
+        return nvcv::cuda::TypeTraits<BT>::min;
+    }
+    else
+    {
+        return static_cast<BT>(-1);
+    }
+}
+
+template<typename BT>
+inline BT DefaultRangeMax()
+{
+    if constexpr (std::is_integral_v<BT>)
+    {
+        return nvcv::cuda::TypeTraits<BT>::max;
+    }
+    else
+    {
+        return static_cast<BT>(+1);
+    }
+}
+
+template<typename VT>
+inline bool IsDefaultRange(const LcgGenerator<VT> &generator)
+{
+    using BT = typename LcgGenerator<VT>::BT;
+    using DT = typename LcgGenerator<VT>::DT;
+    return generator.uniformDistribution.min() == static_cast<DT>(DefaultRangeMin<BT>())
+        && generator.uniformDistribution.max() == static_cast<DT>(DefaultRangeMax<BT>());
+}
+
 template<typename VT, typename R = LcgGenerator<VT>, typename BT = typename R::BT, typename RE = typename R::RE,
          typename UD = typename R::UD>
-inline auto LcgValues(BT min = std::is_integral_v<BT> ? nvcv::cuda::TypeTraits<BT>::min : -1,
-                      BT max = std::is_integral_v<BT> ? nvcv::cuda::TypeTraits<BT>::max : +1,
-                      RE rng = DefaultGenerator())
+inline auto LcgValues(BT min = DefaultRangeMin<BT>(), BT max = DefaultRangeMax<BT>(), RE rng = DefaultGenerator())
 {
     return R{UD(min, max), rng};
 }
@@ -430,8 +481,7 @@ struct Checkerboard
 };
 
 template<typename VT, typename BT = nvcv::cuda::BaseType<VT>>
-inline auto CheckerboardValues(BT hi = std::is_integral_v<BT> ? nvcv::cuda::TypeTraits<BT>::max : static_cast<BT>(1),
-                               BT lo = static_cast<BT>(0))
+inline auto CheckerboardValues(BT hi = DefaultRangeMax<BT>(), BT lo = static_cast<BT>(0))
 {
     return Checkerboard<VT>{hi, lo};
 }
@@ -498,16 +548,7 @@ inline void FillTensor(const nvcv::Tensor &tensor, VG valuesGenerator)
         // Anything narrower (e.g. LcgValues<float>(0.f, 1.f) for the
         // small parameter tensors) falls through to the host implementation
         // so the value distribution stays identical.
-        // Range-match check: the GPU LCG kernel produces full type range for
-        // ints (matching LcgValues<T>()'s integer default), and [-1, +1]
-        // for floats (matching LcgValues<T>()'s float default — note that
-        // TypeTraits<float>::min is FLT_MIN, not -1, so we can't use it here).
-        const bool defaultRange = std::is_floating_point_v<BT>
-                                    ? (valuesGenerator.uniformDistribution.min() == static_cast<BT>(-1)
-                                       && valuesGenerator.uniformDistribution.max() == static_cast<BT>(1))
-                                    : (valuesGenerator.uniformDistribution.min() == nvcv::cuda::TypeTraits<BT>::min
-                                       && valuesGenerator.uniformDistribution.max() == nvcv::cuda::TypeTraits<BT>::max);
-        if (defaultRange)
+        if (IsDefaultRange(valuesGenerator))
         {
             const size_t n_elements = static_cast<size_t>(bufSize) / sizeof(BT);
             launchRandomFillTyped<BT>(reinterpret_cast<BT *>(tensorData->basePtr()), n_elements,
@@ -588,13 +629,7 @@ inline void FillImageBatch(nvcv::ImageBatchVarShape &imageBatch, long2 size, lon
         {
             using BT = typename LcgGenerator<VT>::BT;
             // See FillTensor's matching range check for the float vs. int rationale.
-            const bool defaultRange
-                = std::is_floating_point_v<BT>
-                    ? (valuesGenerator.uniformDistribution.min() == static_cast<BT>(-1)
-                       && valuesGenerator.uniformDistribution.max() == static_cast<BT>(1))
-                    : (valuesGenerator.uniformDistribution.min() == nvcv::cuda::TypeTraits<BT>::min
-                       && valuesGenerator.uniformDistribution.max() == nvcv::cuda::TypeTraits<BT>::max);
-            if (defaultRange)
+            if (IsDefaultRange(valuesGenerator))
             {
                 const size_t n_elements = static_cast<size_t>(bufSize) / sizeof(BT);
                 launchRandomFillTyped<BT>(reinterpret_cast<BT *>(data->plane(0).basePtr), n_elements,
@@ -711,6 +746,14 @@ inline nvcv::ImageFormat GetPlanarFormat()
     {
         return nvcv::FMT_RGBAf32p;
     }
+    else if constexpr (std::is_same_v<BT, __half> && C == 3)
+    {
+        return nvcv::FMT_RGBf16p;
+    }
+    else if constexpr (std::is_same_v<BT, __half> && C == 4)
+    {
+        return nvcv::FMT_RGBAf16p;
+    }
     else
     {
         throw std::invalid_argument("Unsupported planar benchmark data type");
@@ -730,7 +773,7 @@ inline void FillPlanarImageBatch(nvcv::ImageBatchVarShape &imageBatch, long2 siz
     auto              randomWidth  = LcgValues<int>(static_cast<int>(size.x - varSize.x), static_cast<int>(size.x));
     auto              randomHeight = LcgValues<int>(static_cast<int>(size.y - varSize.y), static_cast<int>(size.y));
 
-    const BT   hi = std::is_integral_v<BT> ? nvcv::cuda::TypeTraits<BT>::max : static_cast<BT>(1);
+    const BT   hi = DefaultRangeMax<BT>();
     const auto lo = static_cast<BT>(0);
 
     for (int i = 0; i < imageBatch.capacity(); ++i)

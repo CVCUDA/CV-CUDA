@@ -109,7 +109,7 @@ void PillowResize::operator()(cudaStream_t stream, const Workspace &ws, const nv
                                   "Input and output tensors must have the same number of channels");
         }
         // 2-channel planar is unsupported (matches Normalize and the var-shape planar path); 1, 3 and
-        // 4 channel planes are valid. See .agents/guidance/PLANAR_GUIDELINES.md.
+        // 4 channel planes are valid.
         if (inAccess->numChannels() < 1 || inAccess->numChannels() > 4 || inAccess->numChannels() == 2)
         {
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid number of channels");

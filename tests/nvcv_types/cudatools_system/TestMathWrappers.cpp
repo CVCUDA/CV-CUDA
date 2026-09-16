@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,10 @@
 #include <cvcuda/cuda_tools/Compat.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>      // for operator == to allow EXPECT_EQ
 #include <cvcuda/cuda_tools/MathWrappers.hpp> // the object of this test
+
+#include <array>
+#include <cmath>   // for std::sqrt, etc.
+#include <utility> // for std::pair, etc.
 
 namespace cuda  = nvcv::cuda;
 namespace ttype = nvcv::test::type;
@@ -478,4 +482,223 @@ TYPED_TEST(MathWrappersClampTest, correct_output_in_device)
 
     EXPECT_TRUE((std::is_same_v<decltype(test), decltype(gold)>));
     EXPECT_EQ(test, gold);
+}
+
+// -------------------- Testing math wrappers for __half -----------------------
+
+// __half and its vector types (half1/__half2/half3/half4) are not structural types, so they
+// cannot be used in ttype::Value<> non-type template parameters as in the typed suites above;
+// the fp16 coverage below uses plain TESTs with values built at run time.
+
+// One ULP of half at the magnitude of the reference value (10 mantissa bits).
+static float HalfUlpAt(float ref)
+{
+    return std::exp2(std::floor(std::log2(std::abs(ref))) - 10.f);
+}
+
+TEST(MathWrappersRoundHalfTest, correct_output_in_host)
+{
+    // NEAREST is round to nearest even; host computes in float, which is exact because
+    // __half -> float is lossless and rounding a half in float equals rounding it in half
+    EXPECT_EQ(2.f, __half2float(cuda::round(__float2half(2.5f))));
+    EXPECT_EQ(2.f, __half2float(cuda::round<cuda::RoundMode::NEAREST>(__float2half(1.5f))));
+    EXPECT_EQ(-2.f, __half2float(cuda::round<cuda::RoundMode::NEAREST>(__float2half(-1.5f))));
+    EXPECT_EQ(1.f, __half2float(cuda::round<cuda::RoundMode::DOWN>(__float2half(1.5f))));
+    EXPECT_EQ(-2.f, __half2float(cuda::round<cuda::RoundMode::DOWN>(__float2half(-1.5f))));
+    EXPECT_EQ(2.f, __half2float(cuda::round<cuda::RoundMode::UP>(__float2half(1.5f))));
+    EXPECT_EQ(-1.f, __half2float(cuda::round<cuda::RoundMode::UP>(__float2half(-1.5f))));
+    EXPECT_EQ(1.f, __half2float(cuda::round<cuda::RoundMode::ZERO>(__float2half(1.5f))));
+    EXPECT_EQ(-1.f, __half2float(cuda::round<cuda::RoundMode::ZERO>(__float2half(-1.5f))));
+
+    half3 input{__float2half(2.5f), __float2half(1.5f), __float2half(-1.5f)};
+    half3 gold{__float2half(2.f), __float2half(2.f), __float2half(-2.f)};
+
+    auto test = cuda::round(input);
+
+    EXPECT_TRUE((std::is_same_v<decltype(test), half3>));
+    EXPECT_EQ(test, gold);
+}
+
+TEST(MathWrappersRoundHalfTest, correct_output_in_device)
+{
+    // Device uses hrint/hfloor/hceil/htrunc; results must be bit-identical to the host golds
+    EXPECT_EQ(2.f, __half2float(DeviceRunRoundSameType<cuda::RoundMode::NEAREST>(__float2half(2.5f))));
+    EXPECT_EQ(2.f, __half2float(DeviceRunRoundSameType<cuda::RoundMode::NEAREST>(__float2half(1.5f))));
+    EXPECT_EQ(-2.f, __half2float(DeviceRunRoundSameType<cuda::RoundMode::NEAREST>(__float2half(-1.5f))));
+    EXPECT_EQ(1.f, __half2float(DeviceRunRoundSameType<cuda::RoundMode::DOWN>(__float2half(1.5f))));
+    EXPECT_EQ(-2.f, __half2float(DeviceRunRoundSameType<cuda::RoundMode::DOWN>(__float2half(-1.5f))));
+    EXPECT_EQ(2.f, __half2float(DeviceRunRoundSameType<cuda::RoundMode::UP>(__float2half(1.5f))));
+    EXPECT_EQ(-1.f, __half2float(DeviceRunRoundSameType<cuda::RoundMode::UP>(__float2half(-1.5f))));
+    EXPECT_EQ(1.f, __half2float(DeviceRunRoundSameType<cuda::RoundMode::ZERO>(__float2half(1.5f))));
+    EXPECT_EQ(-1.f, __half2float(DeviceRunRoundSameType<cuda::RoundMode::ZERO>(__float2half(-1.5f))));
+
+    half3 input{__float2half(2.5f), __float2half(1.5f), __float2half(-1.5f)};
+    half3 gold{__float2half(2.f), __float2half(2.f), __float2half(-2.f)};
+
+    auto test = DeviceRunRoundSameType<cuda::RoundMode::NEAREST>(input);
+
+    EXPECT_TRUE((std::is_same_v<decltype(test), half3>));
+    EXPECT_EQ(test, gold);
+}
+
+TEST(MathWrappersMinMaxHalfTest, correct_output_in_host)
+{
+    __half a = __float2half(-1.5f);
+    __half b = __float2half(0.25f);
+
+    EXPECT_EQ(-1.5f, __half2float(cuda::min(a, b)));
+    EXPECT_EQ(0.25f, __half2float(cuda::max(a, b)));
+
+    half3 va{__float2half(1.5f), __float2half(-2.f), __float2half(0.f)};
+    half3 vb{__float2half(-1.5f), __float2half(2.f), __float2half(0.f)};
+    half3 goldMin{__float2half(-1.5f), __float2half(-2.f), __float2half(0.f)};
+    half3 goldMax{__float2half(1.5f), __float2half(2.f), __float2half(0.f)};
+
+    EXPECT_EQ(cuda::min(va, vb), goldMin);
+    EXPECT_EQ(cuda::max(va, vb), goldMax);
+}
+
+TEST(MathWrappersMinMaxHalfTest, correct_output_in_device)
+{
+    __half a = __float2half(-1.5f);
+    __half b = __float2half(0.25f);
+
+    EXPECT_EQ(-1.5f, __half2float(DeviceRunMin(a, b)));
+    EXPECT_EQ(0.25f, __half2float(DeviceRunMax(a, b)));
+
+    half3 va{__float2half(1.5f), __float2half(-2.f), __float2half(0.f)};
+    half3 vb{__float2half(-1.5f), __float2half(2.f), __float2half(0.f)};
+    half3 goldMin{__float2half(-1.5f), __float2half(-2.f), __float2half(0.f)};
+    half3 goldMax{__float2half(1.5f), __float2half(2.f), __float2half(0.f)};
+
+    EXPECT_EQ(DeviceRunMin(va, vb), goldMin);
+    EXPECT_EQ(DeviceRunMax(va, vb), goldMax);
+}
+
+TEST(MathWrappersClampHalfTest, correct_output_in_host)
+{
+    half3  input{__float2half(-2.f), __float2half(0.5f), __float2half(3.f)};
+    __half lo = __float2half(0.f);
+    __half hi = __float2half(1.f);
+    half3  gold{__float2half(0.f), __float2half(0.5f), __float2half(1.f)};
+
+    auto test = cuda::clamp(input, lo, hi);
+
+    EXPECT_TRUE((std::is_same_v<decltype(test), half3>));
+    EXPECT_EQ(test, gold);
+}
+
+TEST(MathWrappersClampHalfTest, correct_output_in_device)
+{
+    half3  input{__float2half(-2.f), __float2half(0.5f), __float2half(3.f)};
+    __half lo = __float2half(0.f);
+    __half hi = __float2half(1.f);
+    half3  gold{__float2half(0.f), __float2half(0.5f), __float2half(1.f)};
+
+    auto test = DeviceRunClamp(input, lo, hi);
+
+    EXPECT_TRUE((std::is_same_v<decltype(test), half3>));
+    EXPECT_EQ(test, gold);
+}
+
+TEST(MathWrappersAbsHalfTest, correct_output_in_host)
+{
+    EXPECT_EQ(1.5f, __half2float(cuda::abs(__float2half(-1.5f))));
+    EXPECT_EQ(0.f, __half2float(cuda::abs(__float2half(0.f))));
+
+    half3 input{__float2half(-1.5f), __float2half(0.f), __float2half(2.5f)};
+    half3 gold{__float2half(1.5f), __float2half(0.f), __float2half(2.5f)};
+
+    EXPECT_EQ(cuda::abs(input), gold);
+}
+
+TEST(MathWrappersAbsHalfTest, correct_output_in_device)
+{
+    EXPECT_EQ(1.5f, __half2float(DeviceRunAbs(__float2half(-1.5f))));
+
+    half3 input{__float2half(-1.5f), __float2half(0.f), __float2half(2.5f)};
+    half3 gold{__float2half(1.5f), __float2half(0.f), __float2half(2.5f)};
+
+    EXPECT_EQ(DeviceRunAbs(input), gold);
+}
+
+TEST(MathWrappersSqrtHalfTest, correct_output_in_host)
+{
+    // float sqrt followed by half rounding is exact for every half input (sqrt needs
+    // 2p+2 = 24 bits of precision, which binary32 provides), so the host result is the
+    // correctly rounded half square root
+    for (float f : {0.5f, 2.f, 5.f, 6.25f, 65504.f})
+    {
+        __half x = __float2half(f);
+        EXPECT_EQ(__half2float(__float2half(std::sqrt(__half2float(x)))), __half2float(cuda::sqrt(x)));
+    }
+}
+
+TEST(MathWrappersSqrtHalfTest, correct_output_in_device)
+{
+    // Device hsqrt is round-to-nearest-even, so it must match the float-then-round host
+    // reference bit-exactly (see the host test above for why that reference is exact)
+    for (float f : {0.5f, 2.f, 5.f, 6.25f, 65504.f})
+    {
+        __half x = __float2half(f);
+        EXPECT_EQ(__half2float(__float2half(std::sqrt(__half2float(x)))), __half2float(DeviceRunSqrt(x)));
+    }
+
+    half3 input{__float2half(4.f), __float2half(2.f), __float2half(6.25f)};
+    half3 gold{__float2half(2.f), __float2half(std::sqrt(2.f)), __float2half(2.5f)};
+
+    EXPECT_EQ(DeviceRunSqrt(input), gold);
+}
+
+TEST(MathWrappersExpHalfTest, correct_output_in_host)
+{
+    // Host exp computes in float and rounds once to half, i.e. it is exactly this expression
+    for (float f : {-1.f, 0.f, 0.5f, 1.f, 2.f})
+    {
+        EXPECT_EQ(__half2float(__float2half(std::exp(f))), __half2float(cuda::exp(__float2half(f))));
+    }
+}
+
+TEST(MathWrappersExpHalfTest, correct_output_in_device)
+{
+    for (float f : {-1.f, 0.f, 0.5f, 1.f, 2.f})
+    {
+        auto  ref  = static_cast<float>(std::exp(static_cast<double>(f)));
+        float test = __half2float(DeviceRunExp(__float2half(f)));
+
+        // hexp is a device approximation; bound is 2 ULPs of half at the result magnitude
+        // (precision statement about the __half intrinsic, not a loosened test)
+        EXPECT_NEAR(test, ref, 2.f * HalfUlpAt(ref));
+    }
+}
+
+TEST(MathWrappersPowHalfTest, correct_output_in_host)
+{
+    // Host pow computes in float and rounds once to half, i.e. it is exactly this expression
+    EXPECT_EQ(__half2float(__float2half(std::pow(1.5f, 2.f))),
+              __half2float(cuda::pow(__float2half(1.5f), __float2half(2.f))));
+    EXPECT_EQ(__half2float(__float2half(std::pow(-2.f, 2.f))),
+              __half2float(cuda::pow(__float2half(-2.f), __float2half(2.f))));
+
+    half3 input{__float2half(1.f), __float2half(2.f), __float2half(4.f)};
+    half3 gold{__float2half(1.f), __float2half(4.f), __float2half(16.f)};
+
+    EXPECT_EQ(cuda::pow(input, __float2half(2.f)), gold);
+}
+
+TEST(MathWrappersPowHalfTest, correct_output_in_device)
+{
+    const std::array<std::pair<float, float>, 4> xys{
+        {{1.5f, 2.f}, {2.f, 3.f}, {4.f, 0.5f}, {-2.f, 2.f}}
+    };
+
+    for (auto [x, y] : xys)
+    {
+        float ref  = std::pow(x, y);
+        float test = __half2float(DeviceRunPow(__float2half(x), __float2half(y)));
+
+        // Device pow for half uses __powf/powf in float; bound is 2 ULPs of half at the
+        // result magnitude (precision statement about the intrinsic, not a loosened test)
+        EXPECT_NEAR(test, ref, 2.f * HalfUlpAt(ref));
+    }
 }

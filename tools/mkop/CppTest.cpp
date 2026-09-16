@@ -19,8 +19,8 @@
 // (like Invert / Solarize / Posterize), build the bit-exact test on the shared harness in
 // "ElementwiseOpHarness.hpp" instead of the hand-rolled scaffold below — it centralizes the
 // tensor/varshape/negative structure so each operator only supplies its gold + invoke callables
-// (removing the copy-paste that otherwise trips SonarQube's duplication gate per op). See
-// TestOpInvert.cpp for the pattern. Keep the generic scaffold below for non-element-wise operators.
+// and avoids per-operator copy-paste. See TestOpInvert.cpp for the pattern. Keep the generic
+// scaffold below for non-element-wise operators.
 #include "Definitions.hpp"
 
 #include <common/TensorDataUtils.hpp>

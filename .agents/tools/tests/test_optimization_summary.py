@@ -32,12 +32,14 @@ from optimization_summary import (  # noqa: E402
     CHECKLIST_LABELS,
     SummaryError,
     SummaryMetadata,
+    _config_surface,
+    _logical_type,
+    _sku_label,
     generate_summary,
     parse_summary,
     refresh_summary,
     validate_summary,
 )
-from optimization_summary import _config_surface, _logical_type  # noqa: E402
 
 
 A100 = "A100_PCIE_40GB_250W_1095MHz"
@@ -127,6 +129,12 @@ def _metadata(candidate):
 
 def _sku_map():
     return {"entries": [{"stem": H100}, {"stem": A100}]}
+
+
+def test_sku_label_distinguishes_cuda_major():
+    assert _sku_label(A100) == "A100"
+    assert _sku_label(f"{A100}_CUDA12") == "A100 CUDA 12"
+    assert _sku_label("L40S_CUDA12") == "L40S CUDA 12"
 
 
 def _checklist():

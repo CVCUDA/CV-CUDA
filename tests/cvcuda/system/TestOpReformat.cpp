@@ -104,7 +104,11 @@ NVCV_TYPED_TEST_SUITE(
                              NVCV_TEST_ROW(56, 49, 2, NVCV_IMAGE_FORMAT_RGBA8p, NVCV_IMAGE_FORMAT_RGBA8, uchar),
                              NVCV_TEST_ROW(56, 49, 3, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_RGB8p, uchar),
                              NVCV_TEST_ROW(31, 30, 3, NVCV_IMAGE_FORMAT_RGBAf32, NVCV_IMAGE_FORMAT_RGBAf32p, float),
-                             NVCV_TEST_ROW(30, 31, 3, NVCV_IMAGE_FORMAT_RGBf32p, NVCV_IMAGE_FORMAT_RGBf32, float)>);
+                             NVCV_TEST_ROW(30, 31, 3, NVCV_IMAGE_FORMAT_RGBf32p, NVCV_IMAGE_FORMAT_RGBf32, float),
+                             // Reformat moves values without arithmetic, so F16 verifies as
+                             // opaque 16-bit patterns through the ushort reference.
+                             NVCV_TEST_ROW(31, 30, 3, NVCV_IMAGE_FORMAT_RGBAf16, NVCV_IMAGE_FORMAT_RGBAf16p, ushort),
+                             NVCV_TEST_ROW(30, 31, 3, NVCV_IMAGE_FORMAT_RGBf16p, NVCV_IMAGE_FORMAT_RGBf16, ushort)>);
 
 #undef NVCV_TEST_ROW
 
@@ -422,7 +426,7 @@ static void SetU8ReformatPixel(std::vector<uint8_t> &src, std::vector<uint8_t> &
 }
 
 static void RunU8BitExactCase(nvcv::TensorLayout srcLayout, nvcv::TensorLayout dstLayout, int batches, int channels,
-                              int height, int width)
+                              int height, int width, int rowPadding = 0, int samplePadding = 0)
 {
     ASSERT_EQ(HasBatch(srcLayout), HasBatch(dstLayout));
     if (!HasBatch(srcLayout))
@@ -430,8 +434,10 @@ static void RunU8BitExactCase(nvcv::TensorLayout srcLayout, nvcv::TensorLayout d
         ASSERT_EQ(batches, 1);
     }
 
-    const U8ReformatSpec srcSpec = MakeU8ReformatSpec(srcLayout, batches, channels, height, width);
-    const U8ReformatSpec dstSpec = MakeU8ReformatSpec(dstLayout, batches, channels, height, width);
+    const U8ReformatSpec srcSpec
+        = MakeU8ReformatSpec(srcLayout, batches, channels, height, width, rowPadding, samplePadding);
+    const U8ReformatSpec dstSpec
+        = MakeU8ReformatSpec(dstLayout, batches, channels, height, width, rowPadding, samplePadding);
 
     std::vector<uint8_t> src(U8StorageSize(srcSpec), 0xA5);
     std::vector<uint8_t> dst(U8StorageSize(dstSpec), 0xD7);
@@ -476,6 +482,17 @@ TEST(OpReformat, u8_c2_odd_tail_bit_exact)
 {
     RunU8BitExactCase(nvcv::TENSOR_NCHW, nvcv::TENSOR_NHWC, 3, 2, 19, 131);
     RunU8BitExactCase(nvcv::TENSOR_NHWC, nvcv::TENSOR_NCHW, 3, 2, 19, 131);
+}
+
+TEST(OpReformat, u8_c3_vector_body_and_tail_bit_exact)
+{
+    RunU8BitExactCase(nvcv::TENSOR_NCHW, nvcv::TENSOR_NHWC, 3, 3, 5, 24);
+    RunU8BitExactCase(nvcv::TENSOR_NCHW, nvcv::TENSOR_NHWC, 3, 3, 5, 20, 4);
+}
+
+TEST(OpReformat, u8_c3_unaligned_stride_falls_back_bit_exact)
+{
+    RunU8BitExactCase(nvcv::TENSOR_NCHW, nvcv::TENSOR_NHWC, 3, 3, 5, 19, 5);
 }
 
 TEST(OpReformat, u8_c1_contiguous_rank4_copy)
@@ -547,6 +564,30 @@ TEST(OpReformat_Negative, mismatched_extents)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpReformat_Negative, rejects_non_inverse_image_layouts)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor inTensor(
+        {
+            {1, 5, 37, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor outTensor(
+        {
+            {5, 37, 1},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::Reformat op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, inTensor, outTensor); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpReformat_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, int, int>{
     // inFmt, outFmt, inputBatches, outputBatches
@@ -555,7 +596,7 @@ NVCV_TEST_SUITE_P(OpReformat_Negative, test::ValueList<nvcv::ImageFormat, nvcv::
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 6, 3},
     {nvcv::FMT_RGB8p, nvcv::FMT_RGBf32, 1, 1},
     {nvcv::FMT_RGBf32, nvcv::FMT_RGB8p, 1, 1},
-    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p, 1, 1}
+    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf32p, 1, 1} // in/out dtype mismatch (F16 itself is valid)
 });
 
 // clang-format on

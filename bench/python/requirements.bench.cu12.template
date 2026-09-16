@@ -23,7 +23,7 @@
 
 # PyTorch for CUDA 12.x (${torch_cu12_index} wheel index, compatible with CUDA 12.5+)
 --extra-index-url https://download.pytorch.org/whl/${torch_cu12_index}
-torch==${torch_cu12}
+torch==${torch_cu12}+${torch_cu12_index}
 
 cupy-cuda12x==${cupy_cu12}
 

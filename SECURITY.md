@@ -1,5 +1,5 @@
 
-[//]: # "SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+[//]: # "SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
 [//]: # "SPDX-License-Identifier: Apache-2.0"
 [//]: # ""
 [//]: # "Licensed under the Apache License, Version 2.0 (the 'License');"
@@ -38,10 +38,9 @@ To report a potential security vulnerability in any NVIDIA product:
 
 In our commitment to maintaining the highest standards of code quality and security, we have enabled GitHub's Code Static Analysis scanning on our repositories. Static Analysis is a powerful tool for analyzing the codebase for potential vulnerabilities.
 
-- Scope: CodeQL scanning is activated across all branches of this repository.
 - Frequency: Scans are conducted regularly on new commits to ensure continuous integration and delivery are secure.
 - Results Handling: Any identified vulnerabilities or code issues are reviewed and addressed promptly by our development team.
-- Community Contribution: We welcome contributions to enhance our CodeQL queries. If you have suggestions or improvements, please submit a pull request or contact us via the outlined channels.
+- Community Contribution: If you have suggestions or improvements related to repository security, please submit a pull request or contact us via the outlined channels.
 
 ## Secrets Scanning
 

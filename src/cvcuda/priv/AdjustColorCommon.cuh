@@ -24,6 +24,8 @@
 #ifndef CVCUDA_PRIV_ADJUST_COLOR_COMMON_CUH
 #define CVCUDA_PRIV_ADJUST_COLOR_COMMON_CUH
 
+#include "PhotometricBound.cuh"
+
 #include <cuda_runtime.h>
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
@@ -33,22 +35,6 @@
 namespace cvcuda::priv::adjust {
 
 namespace cuda = nvcv::cuda;
-
-// torchvision's per-dtype clamp bound (``_max_value``): 1.0 for floating-point images and the
-// dtype maximum for integer images. AdjustContrast uses this bound to match torchvision's
-// image-domain ``_blend`` behavior.
-template<typename BT>
-inline __host__ __device__ float Bound()
-{
-    if constexpr (std::is_floating_point_v<BT>)
-    {
-        return 1.0f;
-    }
-    else
-    {
-        return static_cast<float>(cuda::TypeTraits<BT>::max);
-    }
-}
 
 // torchvision BT.601 luma weights used by adjust_contrast's grayscale conversion. These differ
 // from cvtcolor's RGB2GRAY red weight (0.299) so the mean matches torchvision exactly.

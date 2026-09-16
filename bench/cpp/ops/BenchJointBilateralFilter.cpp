@@ -52,8 +52,8 @@ try
 
     NVCVBorderType borderType = benchutils::GetBorderType(state.get_string("border"));
 
-    state.add_global_memory_reads(shape.x * shape.y * shape.z * sizeof(T));
-    state.add_global_memory_writes(shape.x * shape.y * shape.z * sizeof(T));
+    state.add_global_memory_reads((isFakePlanar ? 4 : 2) * shape.x * shape.y * shape.z * sizeof(T));
+    state.add_global_memory_writes((isFakePlanar ? 3 : 1) * shape.x * shape.y * shape.z * sizeof(T));
 
     cvcuda::JointBilateralFilter op;
 

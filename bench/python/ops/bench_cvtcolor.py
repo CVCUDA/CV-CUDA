@@ -25,6 +25,9 @@ import cvcuda  # noqa: E402
 from python_bench_utils import (  # noqa: E402
     get_input_kind,
     parse_shape,
+    get_dtype,
+    get_dtype_size,
+    get_format_from_dtype,
     create_tensor,
     create_image_batch_varshape,
     create_stream_cache,
@@ -46,15 +49,42 @@ def _get_layout(state):
 def _planar_format(img_format):
     if img_format == cvcuda.Format.RGB8:
         return cvcuda.Format.RGB8p
+    if img_format == cvcuda.Format.BGR8:
+        return cvcuda.Format.BGR8p
     if img_format == cvcuda.Format.RGBA8:
         return cvcuda.Format.RGBA8p
-    raise ValueError("Planar CvtColor var-shape benchmark supports only RGB8p/RGBA8p")
+    if img_format == cvcuda.Format.LAB8:
+        return cvcuda.Format.LAB8p
+    raise ValueError(
+        "Planar CvtColor var-shape benchmark supports only RGB/BGR/RGBA/Lab formats"
+    )
+
+
+def _format_for_dtype(img_format, dtype_str, channels, planar):
+    dtype = get_dtype(dtype_str)
+    if img_format == cvcuda.Format.BGR8:
+        if dtype == cvcuda.Type.U8:
+            return cvcuda.Format.BGR8p if planar else cvcuda.Format.BGR8
+        if dtype == cvcuda.Type.F16:
+            return cvcuda.Format.BGRf16p if planar else cvcuda.Format.BGRf16
+        if dtype == cvcuda.Type.F32:
+            return cvcuda.Format.BGRf32p if planar else cvcuda.Format.BGRf32
+    if img_format == cvcuda.Format.LAB8:
+        if dtype == cvcuda.Type.U8:
+            return cvcuda.Format.LAB8p if planar else cvcuda.Format.LAB8
+        if dtype == cvcuda.Type.F16:
+            return cvcuda.Format.LABf16p if planar else cvcuda.Format.LABf16
+        if dtype == cvcuda.Type.F32:
+            return cvcuda.Format.LABf32p if planar else cvcuda.Format.LABf32
+    return get_format_from_dtype(dtype_str, channels, planar=planar)
 
 
 def cvtcolor(state):
     """CvtColor operator benchmark matching C++ BenchCvtColor.cpp"""
 
     N, H, W = parse_shape(state.get_string("shape"))
+    dtype_str = state.get_string("InOutDataType")
+    dtype = get_dtype(dtype_str)
     code_str = state.get_string("code")
     input_kind = get_input_kind(state.get_string("inputKind"))
     layout = _get_layout(state)
@@ -112,6 +142,62 @@ def cvtcolor(state):
             3,
             3,
         ),
+        "BGR2Lab": (
+            cvcuda.ColorConversion.BGR2Lab,
+            cvcuda.Format.BGR8,
+            cvcuda.Format.LAB8,
+            3,
+            3,
+        ),
+        "RGB2Lab": (
+            cvcuda.ColorConversion.RGB2Lab,
+            cvcuda.Format.RGB8,
+            cvcuda.Format.LAB8,
+            3,
+            3,
+        ),
+        "Lab2BGR": (
+            cvcuda.ColorConversion.Lab2BGR,
+            cvcuda.Format.LAB8,
+            cvcuda.Format.BGR8,
+            3,
+            3,
+        ),
+        "Lab2RGB": (
+            cvcuda.ColorConversion.Lab2RGB,
+            cvcuda.Format.LAB8,
+            cvcuda.Format.RGB8,
+            3,
+            3,
+        ),
+        "LBGR2Lab": (
+            cvcuda.ColorConversion.LBGR2Lab,
+            cvcuda.Format.BGR8,
+            cvcuda.Format.LAB8,
+            3,
+            3,
+        ),
+        "LRGB2Lab": (
+            cvcuda.ColorConversion.LRGB2Lab,
+            cvcuda.Format.RGB8,
+            cvcuda.Format.LAB8,
+            3,
+            3,
+        ),
+        "Lab2LBGR": (
+            cvcuda.ColorConversion.Lab2LBGR,
+            cvcuda.Format.LAB8,
+            cvcuda.Format.BGR8,
+            3,
+            3,
+        ),
+        "Lab2LRGB": (
+            cvcuda.ColorConversion.Lab2LRGB,
+            cvcuda.Format.LAB8,
+            cvcuda.Format.RGB8,
+            3,
+            3,
+        ),
         "RGB2YUV": (
             cvcuda.ColorConversion.RGB2YUV,
             cvcuda.Format.RGB8,
@@ -144,6 +230,12 @@ def cvtcolor(state):
 
     code, in_format, out_format, in_bpp, out_bpp = code_map[code_str]
 
+    if (
+        in_format == cvcuda.Format.NV12 or out_format == cvcuda.Format.NV12
+    ) and dtype != cvcuda.Type.U8:
+        state.skip("NV12 CvtColor benchmarks support only U8")
+        return None
+
     is_planar = layout == "NCHW"
     is_fake_planar = layout == "NCHW_FAKE"
     if is_fake_planar and input_kind == "VarShape":
@@ -155,8 +247,9 @@ def cvtcolor(state):
         state.skip("Skipping subsampled YUV CvtColor formats for planar benchmarks")
         return None
 
-    src_bytes = int(N * H * W * in_bpp)
-    dst_bytes = int(N * H * W * out_bpp)
+    dtype_size = get_dtype_size(dtype)
+    src_bytes = int(N * H * W * in_bpp * dtype_size)
+    dst_bytes = int(N * H * W * out_bpp * dtype_size)
     if is_fake_planar:
         state.add_global_memory_reads(2 * src_bytes + dst_bytes)
         state.add_global_memory_writes(src_bytes + 2 * dst_bytes)
@@ -170,28 +263,28 @@ def cvtcolor(state):
             out_ch = int(out_bpp)
             src = create_tensor(
                 (N, in_ch, H, W),
-                cvcuda.Type.U8,
+                dtype,
                 device_id,
                 layout="NCHW",
                 fill_mode="checkerboard",
             )
             inter_src = create_tensor(
                 (N, H, W, in_ch),
-                cvcuda.Type.U8,
+                dtype,
                 device_id,
                 layout="NHWC",
                 fill_mode=0,
             )
             inter_dst = create_tensor(
                 (N, H, W, out_ch),
-                cvcuda.Type.U8,
+                dtype,
                 device_id,
                 layout="NHWC",
                 fill_mode=0,
             )
             dst = create_tensor(
                 (N, out_ch, H, W),
-                cvcuda.Type.U8,
+                dtype,
                 device_id,
                 layout="NCHW",
                 fill_mode=0,
@@ -201,19 +294,19 @@ def cvtcolor(state):
             out_ch = int(out_bpp)
             src = create_tensor(
                 (N, in_ch, H, W),
-                cvcuda.Type.U8,
+                dtype,
                 device_id,
                 layout="NCHW",
                 fill_mode="checkerboard",
             )
             dst = create_tensor(
-                (N, out_ch, H, W), cvcuda.Type.U8, device_id, layout="NCHW", fill_mode=0
+                (N, out_ch, H, W), dtype, device_id, layout="NCHW", fill_mode=0
             )
         elif in_format == cvcuda.Format.NV12:
             height420 = (H * 3) // 2
             src = create_tensor(
                 (N, height420, W, 1),
-                cvcuda.Type.U8,
+                dtype,
                 device_id,
                 layout="NHWC",
                 fill_mode="checkerboard",
@@ -222,7 +315,7 @@ def cvtcolor(state):
             in_ch = int(in_bpp)
             src = create_tensor(
                 (N, H, W, in_ch),
-                cvcuda.Type.U8,
+                dtype,
                 device_id,
                 layout="NHWC",
                 fill_mode="checkerboard",
@@ -233,7 +326,7 @@ def cvtcolor(state):
                 height420 = (H * 3) // 2
                 dst = create_tensor(
                     (N, height420, W, 1),
-                    cvcuda.Type.U8,
+                    dtype,
                     device_id,
                     layout="NHWC",
                     fill_mode=0,
@@ -242,7 +335,7 @@ def cvtcolor(state):
                 out_ch = int(out_bpp)
                 dst = create_tensor(
                     (N, H, W, out_ch),
-                    cvcuda.Type.U8,
+                    dtype,
                     device_id,
                     layout="NHWC",
                     fill_mode=0,
@@ -261,7 +354,18 @@ def cvtcolor(state):
 
         in_ch = int(in_bpp)
         out_ch = int(out_bpp)
-        if is_planar:
+        if dtype != cvcuda.Type.U8:
+            try:
+                in_format = _format_for_dtype(
+                    in_format, dtype_str, in_ch, planar=is_planar
+                )
+                out_format = _format_for_dtype(
+                    out_format, dtype_str, out_ch, planar=is_planar
+                )
+            except ValueError as exc:
+                state.skip(str(exc))
+                return None
+        elif is_planar:
             try:
                 in_format = _planar_format(in_format)
                 out_format = _planar_format(out_format)
@@ -273,7 +377,7 @@ def cvtcolor(state):
             (N, H, W, in_ch),
             0,
             in_format,
-            cvcuda.Type.U8,
+            dtype,
             device_id,
             fill_mode="checkerboard",
         )
@@ -281,7 +385,7 @@ def cvtcolor(state):
             (N, H, W, out_ch),
             0,
             out_format,
-            cvcuda.Type.U8,
+            dtype,
             device_id,
             fill_mode=0,
         )

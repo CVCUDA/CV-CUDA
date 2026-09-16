@@ -17,8 +17,8 @@
 
 // NOTE (make-op): if __OPNAME__ is a unary element-wise operator that preserves shape/dtype/layout
 // (like Invert / Solarize / Posterize), prefer the shared binding helpers in
-// "operators/UnaryElementwiseOp.hpp" over the hand-rolled wrappers below — they remove the
-// create/ResourceGuard/submit copy-paste that otherwise trips SonarQube's duplication gate per op:
+// "operators/UnaryElementwiseOp.hpp" over the hand-rolled wrappers below to remove repeated
+// create/ResourceGuard/submit boilerplate:
 //     #include "UnaryElementwiseOp.hpp"
 //     Tensor __OPNAME__Into(Tensor &o, Tensor &i, std::optional<Stream> s)
 //     { return UnaryElementwiseInto<cvcuda::__OPNAME__>(o, i, s /*, extra submit params */); }

@@ -73,6 +73,6 @@ If you use CV-CUDA in your research, please cite:
 
 ---
 
-**Note**: This is version ${CMAKE_PROJECT_VERSION}${PROJECT_VERSION_SUFFIX} for CUDA ${CUDA_VERSION_MAJOR}.
+**Note**: This is version ${CMAKE_PROJECT_VERSION}${PYTHON_WHEEL_VERSION_SUFFIX} for CUDA ${CUDA_VERSION_MAJOR}.
 
 [CV-CUDA Documentation]: https://cvcuda.github.io

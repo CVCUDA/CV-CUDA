@@ -84,12 +84,6 @@ _PLACEHOLDER_RE = re.compile(
 # Keep them readable without double-weighting summaries, but reject every new
 # alias pair. Remove entries as the owning operator configs are migrated.
 _LEGACY_DUPLICATE_CONFIG_ALIASES = {
-    "bilateralfilter": {
-        (
-            "bilateralfilter_rgb_auto_fakeplanar_nchw_advanced",
-            "bilateralfilter_uchar3_fakeplanar_nchw_advanced",
-        ),
-    },
     "brightnesscontrast": {
         (
             "brightnesscontrast_fakeplanar_nchw_float3_advanced",
@@ -1466,9 +1460,11 @@ def _python_overhead_values(
         baseline_case = baseline.cases.get(candidate_case.key)
         timings = (
             _timing(baseline_case, stem, "gpu_time_us_cpp") if baseline_case else None,
-            _timing(baseline_case, stem, "gpu_time_us_python")
-            if baseline_case
-            else None,
+            (
+                _timing(baseline_case, stem, "gpu_time_us_python")
+                if baseline_case
+                else None
+            ),
             _timing(candidate_case, stem, "gpu_time_us_cpp"),
             _timing(candidate_case, stem, "gpu_time_us_python"),
         )
@@ -1592,8 +1588,11 @@ def _round(value: Decimal) -> Decimal:
 
 
 def _sku_label(stem: str) -> str:
-    match = re.match(r"^((?:A|H)\d+)(?:_|$)", stem, re.IGNORECASE)
-    return match.group(1).upper() if match else stem.replace("_", " ")
+    has_cuda12_suffix = stem.upper().endswith("_CUDA12")
+    base_stem = stem[:-7] if has_cuda12_suffix else stem
+    match = re.match(r"^((?:A|H)\d+)(?:_|$)", base_stem, re.IGNORECASE)
+    label = match.group(1).upper() if match else base_stem.replace("_", " ")
+    return f"{label} CUDA 12" if has_cuda12_suffix else label
 
 
 def _ordered_skus(skus: Sequence[str], references: Sequence[str]) -> tuple[str, ...]:

@@ -62,7 +62,14 @@ NVCV_TEST_SUITE_P(OpFlip, test::ValueList<int, int, int, NVCVImageFormat, int>
     {    256,     64,       2,    NVCV_IMAGE_FORMAT_U8, -1}, // wide both (lane reversal)
     {    256,     48,       3,    NVCV_IMAGE_FORMAT_U8,  0}, // wide vertical (direct copy)
     {    128,     40,       2,   NVCV_IMAGE_FORMAT_U16, -1}, // wide both, 16-bit lanes
-    {    255,     40,       2,    NVCV_IMAGE_FORMAT_U8, -1}  // scalar tail (width % 4 != 0)
+    {    255,     40,       2,    NVCV_IMAGE_FORMAT_U8, -1}, // scalar tail (width % 4 != 0)
+    // F16 routes through the 16-bit integer kernels (pure data movement, bit-exact); cover C1
+    // wide + scalar-tail paths and the C3/C4 interleaved kernels for each flip direction.
+    {    128,     40,       2,    NVCV_IMAGE_FORMAT_F16, -1}, // wide both, 16-bit lanes
+    {    255,     40,       2,    NVCV_IMAGE_FORMAT_F16,  0}, // scalar tail (width % 4 != 0)
+    {     67,     45,       2, NVCV_IMAGE_FORMAT_RGBf16,  1},
+    {     70,     43,       3, NVCV_IMAGE_FORMAT_RGBf16,  0},
+    {     62,    111,       4, NVCV_IMAGE_FORMAT_RGBAf16, -1}
 });
 
 // clang-format on
@@ -304,6 +311,9 @@ NVCV_TEST_SUITE_P(OpFlipPlanar,
     { 67,  45,  1, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32}, // RGB float3, horizontal
     { 70,  43,  0, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32}, // RGB float3, vertical
     { 65,  41, -1, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32}, // RGB float3, both
+    { 67,  45,  1, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16}, // RGB f16, horizontal
+    { 70,  43,  0, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16}, // RGB f16, vertical
+    { 50,  40, -1, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16}, // RGBA f16, both
 });
 
 // clang-format on
@@ -325,7 +335,7 @@ NVCV_TEST_SUITE_P(OpFlip_Negative, nvcv::test::ValueList<nvcv::ImageFormat, nvcv
     {nvcv::FMT_RGB8, nvcv::FMT_RGBf32},  // data type is different
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8p},  // data format is different (interleaved in, planar out)
     {nvcv::FMT_2S16, nvcv::FMT_2S16},  // unsupported two-channel format
-    {nvcv::FMT_F16, nvcv::FMT_F16},  // invalid data type,
+    {nvcv::FMT_F64, nvcv::FMT_F64},  // unsupported data type (64-bit float)
 });
 
 // clang-format on
@@ -465,7 +475,175 @@ TEST(OpFlip_Negative, varshape_hasDifferentFormat)
     }
 }
 
+// Flip's public contract (OpFlip.h, "Input/Output dependency") requires the output to agree with
+// the input on Number, Channels, Width and Height, but nothing enforced it: not the legacy
+// implementation and not its first non-legacy port. Both derived the launch geometry and the pixel
+// type from a single side and then addressed the other with it, so a disagreement addressed outside
+// an allocation instead of being rejected:
+//   * the kernels compute the *source* coordinate from the *destination* geometry,
+//     src(H-1-y, W-1-x) with H, W and the sample count taken from the output, and bounds-check
+//     against the output only -- a larger output reads past the end of the input;
+//   * the pixel type comes from the *input* channel count -- a narrower output is written with the
+//     input's wider pixel type over the output's narrower column stride, past the end of the output.
+// Either way the caller saw NVCV_SUCCESS and a silently corrupt result.
+TEST(OpFlip_Negative, tensor_output_shape_must_match_input)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat fmt      = nvcv::FMT_RGB8;
+    int               flipCode = -1;
+
+    // inBatches, inW, inH, inFmt, outBatches, outW, outH, outFmt
+    std::vector<std::tuple<int, int, int, nvcv::ImageFormat, int, int, int, nvcv::ImageFormat>> testSet{
+        {2, 24, 24, fmt, 2, 32, 24,          fmt}, // wider output: reads past the input rows
+        {2, 24, 24, fmt, 2, 24, 32,          fmt}, // taller output: reads past the input image
+        {2, 24, 24, fmt, 3, 24, 24,          fmt}, // extra sample: reads past the input batch
+        {2, 24, 24, fmt, 2, 24, 24, nvcv::FMT_U8}  // narrower output: writes past the output rows
+    };
+
+    int caseIdx = 0;
+    for (const auto &[inN, inW, inH, inFmt, outN, outW, outH, outFmt] : testSet)
+    {
+        SCOPED_TRACE(caseIdx++);
+
+        nvcv::Tensor inTensor  = nvcv::util::CreateTensor(inN, inW, inH, inFmt);
+        nvcv::Tensor outTensor = nvcv::util::CreateTensor(outN, outW, outH, outFmt);
+
+        cvcuda::Flip flipOp;
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&flipOp, &stream, &inTensor, &outTensor, &flipCode]
+                                                                 { flipOp(stream, inTensor, outTensor, flipCode); }));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Var-shape counterpart of tensor_output_shape_must_match_input. Here the geometry is per image, so
+// a batch whose formats and image count agree can still pair a small input image with a larger
+// output one; the kernel reads src(dstH-1-y, dstW-1-x) and runs off the end of that one input
+// image. The batch below is uniform except for its last pair, so the mismatch is genuinely
+// per-image and cannot be caught by the existing unique-format check.
+TEST(OpFlip_Negative, varshape_output_size_must_match_input)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat fmt      = nvcv::FMT_RGB8;
+    int               flipCode = -1;
+    int               batches  = 3;
+
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < batches - 1; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{24, 24}, fmt);
+        imgDst.emplace_back(imgSrc[i].size(), fmt);
+    }
+    imgSrc.emplace_back(nvcv::Size2D{24, 24}, fmt);
+    imgDst.emplace_back(nvcv::Size2D{32, 32}, fmt);
+
+    nvcv::ImageBatchVarShape batchSrc(batches);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    nvcv::ImageBatchVarShape batchDst(batches);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    nvcv::Tensor flip_code = test::planar::MakePerImageTensor<int>(batches, nvcv::TYPE_S32, flipCode);
+
+    cvcuda::Flip flipOp(batches);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&flipOp, &stream, &batchSrc, &batchDst, &flip_code]
+                                                             { flipOp(stream, batchSrc, batchDst, flip_code); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpFlip_Negative, create_null_handle)
 {
     EXPECT_EQ(cvcudaFlipCreate(nullptr, 2), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+// The interleaved tensor kernel puts numSamples in grid.z. A batch above the CUDA limit must
+// fail with INVALID_ARGUMENT rather than a device-side CUDA configuration error.
+TEST(OpFlip_Negative, tensor_numSamples_exceeds_grid_z_limit)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    // 65536 samples of 1×1 U8 — minimal allocation, purely exercises the host-side guard.
+    constexpr int kLimit    = 65536;
+    nvcv::Tensor  inTensor  = nvcv::util::CreateTensor(kLimit, 1, 1, nvcv::FMT_U8);
+    nvcv::Tensor  outTensor = nvcv::util::CreateTensor(kLimit, 1, 1, nvcv::FMT_U8);
+    int           flipCode  = 0;
+
+    cvcuda::Flip flipOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&flipOp, &stream, &inTensor, &outTensor, &flipCode]
+                                                             { flipOp(stream, inTensor, outTensor, flipCode); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// flipCode must be an int32 tensor; other element types must be rejected before the
+// Tensor1DWrap<int> cast misreads device memory.
+TEST(OpFlip_Negative, varshape_flipcode_dtype_must_be_s32)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int batches = 2;
+
+    std::vector<nvcv::Image> imgSrc, imgDst;
+    for (int i = 0; i < batches; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{8, 8}, nvcv::FMT_U8);
+        imgDst.emplace_back(nvcv::Size2D{8, 8}, nvcv::FMT_U8);
+    }
+    nvcv::ImageBatchVarShape batchSrc(batches);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    nvcv::ImageBatchVarShape batchDst(batches);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    // Use F32 instead of S32 — should be rejected.
+    nvcv::Tensor flip_code({{batches}, "N"}, nvcv::TYPE_F32);
+
+    cvcuda::Flip flipOp(batches);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&flipOp, &stream, &batchSrc, &batchDst, &flip_code]
+                                                             { flipOp(stream, batchSrc, batchDst, flip_code); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// flipCode must have at least numImages elements; a shorter tensor must be rejected before
+// the Tensor1DWrap<int> reads out of bounds on the device.
+TEST(OpFlip_Negative, varshape_flipcode_too_short)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int batches  = 3;
+    constexpr int flipCode = 0;
+
+    std::vector<nvcv::Image> imgSrc, imgDst;
+    for (int i = 0; i < batches; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{8, 8}, nvcv::FMT_U8);
+        imgDst.emplace_back(nvcv::Size2D{8, 8}, nvcv::FMT_U8);
+    }
+    nvcv::ImageBatchVarShape batchSrc(batches);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    nvcv::ImageBatchVarShape batchDst(batches);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    // Provide only 1 element for a batch of 3 images.
+    nvcv::Tensor flip_code = test::planar::MakePerImageTensor<int>(1, nvcv::TYPE_S32, flipCode);
+
+    cvcuda::Flip flipOp(batches);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&flipOp, &stream, &batchSrc, &batchDst, &flip_code]
+                                                             { flipOp(stream, batchSrc, batchDst, flip_code); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

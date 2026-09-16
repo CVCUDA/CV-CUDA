@@ -31,6 +31,8 @@ RNG = np.random.default_rng(0)
         (((4, 9, 3), np.uint8, "HWC"), -0.3),
         (((3, 3, 88, 13), np.uint8, "NCHW"), 0.5),
         (((2, 3, 16, 23), np.float32, "NCHW"), 0.1),
+        (((2, 16, 23, 3), np.float16, "NHWC"), 0.25),
+        (((2, 3, 16, 23), np.float16, "NCHW"), -0.3),
         (((8, 8, 1), np.float32, "HWC"), 0.25),
         (((3, 12, 12, 1), np.uint8, "NHWC"), -0.5),
     ],
@@ -57,6 +59,7 @@ def test_op_adjusthue(tensor_params, hue):
     [
         (10, cvcuda.Format.RGB8, (123, 321), 256, 0.25),
         (7, cvcuda.Format.RGBf32, (62, 35), 1.0, -0.4),
+        (3, cvcuda.Format.RGBf16, (50, 40), 1.0, 0.25),
         (4, cvcuda.Format.U8, (26, 52), 256, 0.25),
     ],
 )
@@ -80,7 +83,7 @@ def test_op_adjusthue_varshape(num_images, img_format, img_size, max_pixel, hue)
 
 
 def test_op_adjusthue_negative_dtype():
-    # uint16 is outside the supported dtype set (u8/f32) and must be rejected.
+    # uint16 is outside the supported dtype set (u8/f16/f32) and must be rejected.
     src = cvcuda.Tensor((1, 16, 16, 3), np.uint16, "NHWC")
     with pytest.raises(RuntimeError):
         cvcuda.adjust_hue(src, 0.25)
@@ -113,7 +116,7 @@ globals().update(
             ("image_batch", cvcuda.adjust_hue, _adjust_hue_params),
         ],
         keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
-        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.F32},
+        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.F16, cvcuda.Type.F32},
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
         supported_channels={1, 3},
     )

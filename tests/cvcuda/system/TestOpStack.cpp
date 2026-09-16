@@ -249,6 +249,103 @@ TEST(OpStack_Negative, invalid_parameters)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpStack_Negative, tensor_batch_rejects_input_rank_and_layout)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Stack op;
+    nvcv::Tensor  out(1, {7, 5}, nvcv::FMT_U8);
+
+    auto              reqs = nvcv::TensorBatch::CalcRequirements(1);
+    nvcv::TensorBatch rankBatch(reqs);
+    nvcv::Tensor      rankTwo(
+             {
+                 {5, 7},
+                 "HW"
+    },
+             nvcv::TYPE_U8);
+    rankBatch.pushBack(rankTwo);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, rankBatch, out); }));
+
+    nvcv::TensorBatch layoutBatch(reqs);
+    nvcv::Tensor      invalidLayout(
+             {
+                 {7, 5, 1},
+                 "WHC"
+    },
+             nvcv::TYPE_U8);
+    layoutBatch.pushBack(invalidLayout);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, layoutBatch, out); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpStack_Negative, tensor_batch_rejects_output_layout)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    auto              reqs = nvcv::TensorBatch::CalcRequirements(1);
+    nvcv::TensorBatch in(reqs);
+    in.pushBack(nvcv::Tensor(
+        {
+            {5, 7, 1},
+            "HWC"
+    },
+        nvcv::TYPE_U8));
+    nvcv::Tensor out(
+        {
+            {1, 5, 7, 1},
+            "WHCN"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::Stack op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, in, out); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpStack, tensor_batch_large_height_fallback_correct_output)
+{
+    constexpr int width  = 1;
+    constexpr int height = 65536;
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor input(
+        {
+            {height, width, 1},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+    std::vector<uint8_t> inputValues(height);
+    for (int i = 0; i < height; ++i)
+    {
+        inputValues[i] = static_cast<uint8_t>(i);
+    }
+    ASSERT_NO_THROW(util::SetImageTensorFromVector<uint8_t>(input.exportData(), inputValues, 0));
+
+    auto              reqs = nvcv::TensorBatch::CalcRequirements(1);
+    nvcv::TensorBatch in(reqs);
+    in.pushBack(input);
+    nvcv::Tensor out(1, {width, height}, nvcv::FMT_U8);
+
+    cvcuda::Stack op;
+    ASSERT_NO_THROW(op(stream, in, out));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint8_t> outputValues;
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(out.exportData(), 0, outputValues));
+    EXPECT_EQ(inputValues, outputValues);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST_P(OpStack, varshape_correct_output)
 {
     cudaStream_t stream;
@@ -392,4 +489,34 @@ TEST(OpStack_Negative, varshape_plane_mismatch_does_not_access_missing_planes)
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpStack_Negative, varshape_rejects_non_image_output_layout)
+{
+    nvcv::ImageBatchVarShape inBatch(1);
+    inBatch.pushBack(nvcv::Image({24, 16}, nvcv::FMT_U8));
+    nvcv::Tensor outTensor(
+        {
+            {1, 16, 24, 1},
+            "NHCW"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::Stack op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, inBatch, outTensor); }));
+}
+
+TEST(OpStack_Negative, varshape_rejects_planar_plane_channel_mismatch)
+{
+    nvcv::ImageBatchVarShape inBatch(1);
+    inBatch.pushBack(nvcv::Image({24, 16}, nvcv::FMT_RGB8p));
+    nvcv::Tensor outTensor(
+        {
+            {1, 4, 16, 24},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::Stack op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, inBatch, outTensor); }));
 }

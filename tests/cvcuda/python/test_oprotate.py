@@ -62,6 +62,12 @@ RNG = np.random.default_rng(0)
             [2, 3],
             cvcuda.Interp.CUBIC,
         ),
+        (
+            ((5, 16, 23, 3), np.float16, "NHWC"),
+            60,
+            [3, 4],
+            cvcuda.Interp.LINEAR,
+        ),
     ],
 )
 def test_op_rotate(input_args, angle_deg, shift, interpolation):
@@ -117,6 +123,15 @@ def test_op_rotate(input_args, angle_deg, shift, interpolation):
             180,
             [5, 5],
             cvcuda.Interp.CUBIC,
+        ),
+        (
+            5,
+            cvcuda.Format.RGBf16,
+            (16, 23),
+            128.0,
+            180,
+            [5, 5],
+            cvcuda.Interp.LINEAR,
         ),
     ],
 )
@@ -199,6 +214,7 @@ globals().update(
             cvcuda.Type.U8,
             cvcuda.Type.U16,
             cvcuda.Type.S16,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},

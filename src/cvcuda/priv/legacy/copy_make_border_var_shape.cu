@@ -569,7 +569,8 @@ ErrorCode CopyMakeBorderVarShape::inferWarp(const ImageBatchVarShapeDataStridedC
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F
+          || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -612,14 +613,19 @@ ErrorCode CopyMakeBorderVarShape::inferWarp(const ImageBatchVarShapeDataStridedC
                            const TensorDataStridedCuda &top, const TensorDataStridedCuda &left,
                            const NVCVBorderType borderType, const float4 value, cudaStream_t stream);
 
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). The constant border
+    // value is converted to the element type, so the F16 row instantiates the real half kernels
+    // instead of aliasing the 16-bit integer ones.
     // clang-format off
-    static const func_t funcs[6][4] = {
+    static const func_t funcs[8][4] = {
         {copyMakeBorder<uchar, 1>,        copyMakeBorder<uchar, 2>,        copyMakeBorder<uchar, 3>,        copyMakeBorder<uchar, 4>       },
         {0 /*copyMakeBorder<schar , 1>*/, 0 /*copyMakeBorder<schar , 2>*/, 0 /*copyMakeBorder<schar , 3>*/, 0 /*copyMakeBorder<schar , 4>*/},
         {copyMakeBorder<ushort, 1>,       0 /*copyMakeBorder<ushort, 2>*/, copyMakeBorder<ushort, 3>,       copyMakeBorder<ushort, 4>      },
         {copyMakeBorder<short, 1>,        0 /*copyMakeBorder<short , 2>*/, copyMakeBorder<short, 3>,        copyMakeBorder<short, 4>       },
         {0 /*copyMakeBorder<int   , 1>*/, 0 /*copyMakeBorder<int   , 2>*/, 0 /*copyMakeBorder<int   , 3>*/, 0 /*copyMakeBorder<int   , 4>*/},
-        {copyMakeBorder<float, 1>,        0 /*copyMakeBorder<float , 2>*/, copyMakeBorder<float, 3>,        copyMakeBorder<float, 4>       }
+        {copyMakeBorder<float, 1>,        0 /*copyMakeBorder<float , 2>*/, copyMakeBorder<float, 3>,        copyMakeBorder<float, 4>       },
+        {0 /*copyMakeBorder<double, 1>*/, 0 /*copyMakeBorder<double, 2>*/, 0 /*copyMakeBorder<double, 3>*/, 0 /*copyMakeBorder<double, 4>*/},
+        {copyMakeBorder<__half, 1>,       0 /*copyMakeBorder<__half, 2>*/, copyMakeBorder<__half, 3>,       copyMakeBorder<__half, 4>      }
     };
     // clang-format on
 
@@ -632,9 +638,18 @@ ErrorCode CopyMakeBorderVarShape::inferWarp(const ImageBatchVarShapeDataStridedC
                                       const NVCVBorderType borderType, const float4 value, cudaStream_t stream,
                                       int channels);
 
-        static const planar_func_t planarFuncs[6] = {
-            copyMakeBorderPlanar<uchar>, 0 /*schar*/, copyMakeBorderPlanar<ushort>,
-            copyMakeBorderPlanar<short>, 0 /*int*/,   copyMakeBorderPlanar<float>,
+        // Slots 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). The per-channel
+        // constant border value is converted to the element type, so the F16 slot instantiates
+        // the real half kernel instead of aliasing the 16-bit integer one.
+        static const planar_func_t planarFuncs[8] = {
+            copyMakeBorderPlanar<uchar>,
+            0 /*schar*/,
+            copyMakeBorderPlanar<ushort>,
+            copyMakeBorderPlanar<short>,
+            0 /*int*/,
+            copyMakeBorderPlanar<float>,
+            0 /*64F*/,
+            copyMakeBorderPlanar<__half> /*16F*/,
         };
 
         const planar_func_t planarFunc = planarFuncs[data_type];

@@ -107,6 +107,31 @@ def test_op_stack(input, dtype, number):
         assert output_tensor.shape[3] == input_tensors[0].shape[3]
 
 
+@pytest.mark.parametrize("input_kind", ["list", "tensor_batch"])
+@pytest.mark.parametrize(
+    "dst_args",
+    [
+        ((1, 4, 4, 4), cvcuda.Type.U8, "NCHW"),
+        ((1, 4, 4, 4), cvcuda.Type.F32, "NHWC"),
+    ],
+    ids=["layout", "dtype"],
+)
+def test_op_stack_into_rejects_mismatched_output_metadata(input_kind, dst_args):
+    src = cvcuda.Tensor((1, 4, 4, 4), cvcuda.Type.U8, "NHWC")
+    if input_kind == "list":
+        input_tensors = [src]
+    else:
+        input_tensors = cvcuda.TensorBatch(1)
+        input_tensors.pushback(src)
+
+    dst = cvcuda.Tensor(*dst_args)
+    with pytest.raises(
+        RuntimeError,
+        match="Output tensor layout and data type must match the input tensors",
+    ):
+        cvcuda.stack_into(dst, input_tensors)
+
+
 globals().update(
     cv_tools.make_op_tests(
         name="stack",

@@ -398,34 +398,6 @@ EOF2
     smoke_rc=$?
     if [ $smoke_rc -ne 0 ]; then
         echo "$smoke_out"
-        # Last-resort retry: try the libcuda-ordering self-heal script and
-        # re-run the smoke test once. The script only acts when the host
-        # libcuda matches the kernel NVRM (i.e. the broken-node ld.so.conf.d
-        # ordering pattern); legitimate forward-compat use cases on older
-        # host drivers leave it untouched. If the script applies a fix, it
-        # exits 0 and we retry; otherwise we go straight to emitting the
-        # incident ticket.
-        SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-        FIX_SCRIPT="${SCRIPT_DIR}/ci/fix_libcuda_ldconfig.sh"
-        if [ -x "$FIX_SCRIPT" ]; then
-            echo
-            echo "*** Smoke test failed — attempting self-heal via ${FIX_SCRIPT##*/} ***"
-            if "$FIX_SCRIPT"; then
-                echo "*** Self-heal applied, retrying smoke test ***"
-                smoke_out=$("$CUDA_BIN" 2>&1)
-                smoke_rc=$?
-                if [ $smoke_rc -eq 0 ]; then
-                    echo "$smoke_out"
-                    echo "*** Smoke test PASSED after libcuda ldconfig self-heal ***"
-                    rm -f "$CUDA_TEST" "$CUDA_BIN"
-                    return 0 2>/dev/null || exit 0
-                fi
-                echo "$smoke_out"
-                echo "*** Smoke test still failing after self-heal — giving up ***"
-            else
-                echo "*** Self-heal not applicable on this node — giving up ***"
-            fi
-        fi
         print_smoke_diagnostics "cuda runtime call failed (driver/userspace mismatch likely)" "$smoke_out"
         echo "ERROR: CUDA compute smoke test failed on this node. Check GPU/driver compatibility."
         rm -f "$CUDA_TEST" "$CUDA_BIN"

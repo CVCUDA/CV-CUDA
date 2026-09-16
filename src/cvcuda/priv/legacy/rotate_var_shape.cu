@@ -423,7 +423,8 @@ ErrorCode RotateVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
     DataType angleDec_data_type = helpers::GetLegacyDataType(angleDeg.dtype());
     DataType shift_data_type    = helpers::GetLegacyDataType(shift.dtype());
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F
+          || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -462,9 +463,13 @@ ErrorCode RotateVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
             const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out, float *d_aCoeffs,
             const int channels, const NVCVInterpolationType interpolation, cudaStream_t stream);
 
-        static const planar_func_t planar_funcs[6] = {
-            rotate_planar<uchar>, 0 /*schar*/, rotate_planar<ushort>,
-            rotate_planar<short>, 0 /*int*/,   rotate_planar<float>,
+        // Slots 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). LINEAR/CUBIC sample
+        // through InterpolationVarShapeWrap, which accumulates in float and rounds back to the
+        // element type, so the F16 slot instantiates the real half kernel instead of aliasing the
+        // 16-bit integer one.
+        static const planar_func_t planar_funcs[8] = {
+            rotate_planar<uchar>, 0 /*schar*/, rotate_planar<ushort>,         rotate_planar<short>, 0 /*int*/,
+            rotate_planar<float>, 0 /*64F*/,   rotate_planar<__half> /*16F*/,
         };
 
         const planar_func_t planar_func = planar_funcs[data_type];
@@ -477,13 +482,18 @@ ErrorCode RotateVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
     typedef void (*func_t)(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
                            float *d_aCoeffs, const NVCVInterpolationType interpolation, cudaStream_t stream);
 
-    static const func_t funcs[6][4] = {
-        {      rotate<uchar>,  0 /*rotate<uchar2>*/,      rotate<uchar3>,      rotate<uchar4>},
-        {0 /*rotate<schar>*/,   0 /*rotate<char2>*/, 0 /*rotate<char3>*/, 0 /*rotate<char4>*/},
-        {     rotate<ushort>, 0 /*rotate<ushort2>*/,     rotate<ushort3>,     rotate<ushort4>},
-        {      rotate<short>,  0 /*rotate<short2>*/,      rotate<short3>,      rotate<short4>},
-        {  0 /*rotate<int>*/,    0 /*rotate<int2>*/,  0 /*rotate<int3>*/,  0 /*rotate<int4>*/},
-        {      rotate<float>,  0 /*rotate<float2>*/,      rotate<float3>,      rotate<float4>}
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). LINEAR/CUBIC sample through
+    // InterpolationVarShapeWrap, which accumulates in float and rounds back to the element type, so
+    // the F16 row instantiates real half kernels instead of aliasing the 16-bit integer ones.
+    static const func_t funcs[8][4] = {
+        {       rotate<uchar>,  0 /*rotate<uchar2>*/,        rotate<uchar3>,        rotate<uchar4>},
+        { 0 /*rotate<schar>*/,   0 /*rotate<char2>*/,   0 /*rotate<char3>*/,   0 /*rotate<char4>*/},
+        {      rotate<ushort>, 0 /*rotate<ushort2>*/,       rotate<ushort3>,       rotate<ushort4>},
+        {       rotate<short>,  0 /*rotate<short2>*/,        rotate<short3>,        rotate<short4>},
+        {   0 /*rotate<int>*/,    0 /*rotate<int2>*/,    0 /*rotate<int3>*/,    0 /*rotate<int4>*/},
+        {       rotate<float>,  0 /*rotate<float2>*/,        rotate<float3>,        rotate<float4>},
+        {0 /*rotate<double>*/, 0 /*rotate<double2>*/, 0 /*rotate<double3>*/, 0 /*rotate<double4>*/},
+        {      rotate<__half>, 0 /*rotate<__half2>*/,         rotate<half3>,         rotate<half4>}
     };
 
     const func_t func = funcs[data_type][channels - 1];

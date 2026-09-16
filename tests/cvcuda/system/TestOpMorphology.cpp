@@ -17,24 +17,25 @@
 
 #include "ConvUtils.hpp"
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpMorphology.hpp>
-#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <algorithm>
 #include <array>
-#include <functional>
+#include <memory>
 #include <random>
 #include <stdexcept>
+#include <type_traits>
 
 namespace test = nvcv::test;
-namespace cuda = nvcv::cuda;
 
 using uchar = unsigned char;
 
@@ -43,6 +44,22 @@ namespace {
 bool NeedsWorkspace(NVCVMorphologyType morphType, int iteration)
 {
     return morphType == NVCVMorphologyType::NVCV_OPEN || morphType == NVCVMorphologyType::NVCV_CLOSE || iteration > 1;
+}
+
+// Reinterpreting random bytes as halves yields NaNs on ~3% of draws, and NaN min/max ordering is
+// operand-order dependent; F16 inputs are therefore generated as finite quantized half values.
+void FillRandomInput(std::vector<uint8_t> &vec, const nvcv::ImageFormat &format,
+                     std::default_random_engine &rng) // NOSONAR: deterministic test data, not security-sensitive.
+{
+    if (test::IsF16Format(format))
+    {
+        test::FillRandomHalfBytes(vec, rng);
+    }
+    else
+    {
+        std::uniform_int_distribution<uint32_t> rand(0u, 255u);
+        std::ranges::generate(vec, [&rand, &rng]() { return static_cast<uint8_t>(rand(rng)); });
+    }
 }
 
 } // namespace
@@ -540,7 +557,11 @@ NVCV_TEST_SUITE_P(OpMorphology, test::ValueList<int, int, int, NVCVImageFormat, 
     {      5,      5,       1, NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_REFLECT101, NVCV_ERODE,          3},
     {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_DILATE,         2},
     {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_OPEN,           3},
-    {     25,     44,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_CLOSE,          2}
+    {     25,     44,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_CLOSE,          2},
+    {      5,      5,       1, NVCV_IMAGE_FORMAT_RGBAf16,     3,          3,   NVCV_BORDER_CONSTANT, NVCV_DILATE,           1},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_RGBf16,      3,          3,   NVCV_BORDER_REPLICATE, NVCV_ERODE,           1},
+    {    345,      5,       1, NVCV_IMAGE_FORMAT_RGBAf16,     3,          3,   NVCV_BORDER_CONSTANT, NVCV_CLOSE,            1},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_F16,         3,          3,   NVCV_BORDER_REFLECT, NVCV_OPEN,              2}
 });
 
 // clang-format on
@@ -639,10 +660,9 @@ TEST_P(OpMorphology, morph_random)
 
     std::vector<uint8_t> inVec(inBufSize);
 
-    std::default_random_engine    randEng(0);
-    std::uniform_int_distribution rand(0u, 255u);
+    std::default_random_engine randEng(0); // NOSONAR: deterministic test data, not security-sensitive.
 
-    std::ranges::generate(inVec, [&rand, &randEng]() { return rand(randEng); });
+    FillRandomInput(inVec, format, randEng);
 
     // copy random input to device
     ASSERT_EQ(cudaSuccess, cudaMemcpy(inData->basePtr(), inVec.data(), inBufSize, cudaMemcpyHostToDevice));
@@ -693,6 +713,9 @@ NVCV_TEST_SUITE_P(OpMorphologyPlanar,
     {36, 32, 5, 3,         NVCV_BORDER_REFLECT, NVCV_DILATE, 2, 1, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32},
     {38, 34, 5, 3,      NVCV_BORDER_REPLICATE, NVCV_ERODE,  2, 1, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32},
     {32, 28, 3, 5, NVCV_BORDER_REFLECT101, NVCV_CLOSE,  1, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    {36, 32, 5, 3,         NVCV_BORDER_REFLECT, NVCV_DILATE, 2, 1, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16},
+    {38, 34, 5, 3,      NVCV_BORDER_REPLICATE, NVCV_ERODE,  2, 1, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16},
+    {32, 28, 3, 5, NVCV_BORDER_REFLECT101, NVCV_CLOSE,  1, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 // clang-format on
@@ -769,6 +792,122 @@ TEST_P(OpMorphologyPlanar, varshape_matches_interleaved)
         });
 }
 
+TEST(OpMorphologyPlanar, varshape_rgb8p_dilate_fast_path_matches_cpu_gold)
+{
+    constexpr int              width     = 35;
+    constexpr int              height    = 9;
+    constexpr int              channels  = 3;
+    constexpr int              numImages = 2;
+    constexpr nvcv::Size2D     maskSize{3, 3};
+    constexpr NVCVBorderType   borderMode = NVCV_BORDER_REPLICATE;
+    std::array<int, numImages> rowStrides{36, 37};
+
+    cudaStream_t rawStream{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&rawStream));
+    std::unique_ptr<std::remove_pointer_t<cudaStream_t>, cudaError_t (*)(cudaStream_t)> stream(rawStream,
+                                                                                               &cudaStreamDestroy);
+
+    using DeviceBuffer = std::unique_ptr<NVCVByte, cudaError_t (*)(void *)>;
+    std::vector<DeviceBuffer>                   srcAllocations;
+    std::vector<DeviceBuffer>                   dstAllocations;
+    std::array<size_t, numImages>               allocationSizes{};
+    std::array<std::vector<uint8_t>, numImages> expected;
+    {
+        std::vector<nvcv::Image> srcImages;
+        std::vector<nvcv::Image> dstImages;
+        srcImages.reserve(numImages);
+        dstImages.reserve(numImages);
+
+        for (int b = 0; b < numImages; ++b)
+        {
+            const int    rowStride = rowStrides[b];
+            const size_t planeSize = static_cast<size_t>(rowStride) * height;
+            const size_t bytes     = planeSize * channels;
+            allocationSizes[b]     = bytes;
+
+            NVCVByte *srcAllocation{};
+            ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), bytes));
+            srcAllocations.emplace_back(srcAllocation, &cudaFree);
+            NVCVByte *dstAllocation{};
+            ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstAllocation), bytes));
+            dstAllocations.emplace_back(dstAllocation, &cudaFree);
+
+            nvcv::ImageDataStridedCuda::Buffer srcBuffer{};
+            srcBuffer.numPlanes = channels;
+            for (int c = 0; c < channels; ++c)
+            {
+                srcBuffer.planes[c].width     = width;
+                srcBuffer.planes[c].height    = height;
+                srcBuffer.planes[c].rowStride = rowStride;
+                srcBuffer.planes[c].basePtr   = srcAllocations[b].get() + c * planeSize;
+            }
+            auto dstBuffer = srcBuffer;
+            for (int c = 0; c < channels; ++c)
+            {
+                dstBuffer.planes[c].basePtr = dstAllocations[b].get() + c * planeSize;
+            }
+
+            if (b == 0)
+            {
+                EXPECT_EQ(0, rowStride % alignof(uchar4));
+                for (int c = 0; c < channels; ++c)
+                {
+                    EXPECT_EQ(0u, reinterpret_cast<uintptr_t>(srcBuffer.planes[c].basePtr) % alignof(uchar4));
+                    EXPECT_EQ(0u, reinterpret_cast<uintptr_t>(dstBuffer.planes[c].basePtr) % alignof(uchar4));
+                }
+            }
+            else
+            {
+                EXPECT_NE(0, rowStride % alignof(uchar4));
+            }
+
+            srcImages.emplace_back(nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_RGB8p, srcBuffer}));
+            dstImages.emplace_back(nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_RGB8p, dstBuffer}));
+
+            std::vector<uint8_t> src(bytes, 0xA5);
+            for (int c = 0; c < channels; ++c)
+            {
+                for (int i = 0; i < width * height; ++i)
+                {
+                    const int y = i / width;
+                    const int x = i % width;
+                    src[c * planeSize + y * rowStride + x]
+                        = static_cast<uint8_t>(b * 43 + c * 67 + y * 29 + x * 17 + 11);
+                }
+            }
+
+            expected[b].assign(bytes, 0xD7);
+            long3 strides{static_cast<long>(planeSize), rowStride, 1};
+            int2  anchor{1, 1};
+            test::Morph(expected[b], strides, src, strides, int3{width, height, channels}, nvcv::FMT_U8, maskSize,
+                        anchor, borderMode, NVCV_DILATE);
+
+            ASSERT_EQ(cudaSuccess, cudaMemcpy(srcAllocations[b].get(), src.data(), bytes, cudaMemcpyHostToDevice));
+            ASSERT_EQ(cudaSuccess, cudaMemset(dstAllocations[b].get(), 0xD7, bytes));
+        }
+
+        nvcv::ImageBatchVarShape srcBatch(numImages);
+        nvcv::ImageBatchVarShape dstBatch(numImages);
+        srcBatch.pushBack(srcImages.begin(), srcImages.end());
+        dstBatch.pushBack(dstImages.begin(), dstImages.end());
+
+        auto masks   = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2S32, int2{3, 3});
+        auto anchors = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2S32, int2{1, 1});
+
+        cvcuda::Morphology op;
+        ASSERT_NO_THROW(op(stream.get(), srcBatch, dstBatch, nvcv::OptionalImageBatchVarShapeConstRef{nvcv::NullOpt},
+                           NVCV_DILATE, masks, anchors, 1, borderMode));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream.get()));
+
+        for (int b = 0; b < numImages; ++b)
+        {
+            std::vector<uint8_t> got(allocationSizes[b]);
+            ASSERT_EQ(cudaSuccess, cudaMemcpy(got.data(), dstAllocations[b].get(), got.size(), cudaMemcpyDeviceToHost));
+            EXPECT_EQ(expected[b], got);
+        }
+    }
+}
+
 TEST(OpMorphologyPlanar, tensor_rejects_two_channel)
 {
     const nvcv::Size2D       maskSize{3, 3};
@@ -822,7 +961,11 @@ NVCV_TEST_SUITE_P(OpMorphologyVarShape, test::ValueList<int, int, int, NVCVImage
     {      5,      5,       4,      NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_REFLECT101, NVCV_ERODE,        3},
     {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_DILATE,       2},
     {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_OPEN,         3},
-    {     25,     44,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_CLOSE,        2}
+    {     25,     44,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_CLOSE,        2},
+    {      5,      5,       1,      NVCV_IMAGE_FORMAT_RGBAf16,     3,          3,   NVCV_BORDER_CONSTANT, NVCV_DILATE,         3},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_RGBf16,      3,          3,   NVCV_BORDER_REPLICATE, NVCV_ERODE,         1},
+    {      5,      5,       1,      NVCV_IMAGE_FORMAT_RGBAf16,     3,          3,   NVCV_BORDER_CONSTANT, NVCV_CLOSE,          3},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_F16,         3,          3,   NVCV_BORDER_REFLECT, NVCV_OPEN,            2}
 });
 
 // clang-format on
@@ -866,10 +1009,8 @@ TEST_P(OpMorphologyVarShape, varshape_correct_output)
         int srcRowStride   = imgSrc[i].size().w * format.planePixelStrideBytes(0);
         srcVecRowStride[i] = srcRowStride;
 
-        std::uniform_int_distribution<uint8_t> udist(0, 255);
-
         srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
-        std::ranges::generate(srcVec[i], [&udist, &rng]() { return udist(rng); });
+        FillRandomInput(srcVec[i], format, rng);
 
         auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
@@ -1146,17 +1287,6 @@ TEST(OpMorphology_Negative, operator_negative)
                      nvcv::Exception);
     }
 
-    // testSet3: invalid data type
-    {
-        nvcv::Tensor inTensorInvalid
-            = nvcv::util::CreateTensor(1, 24, 24, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBAf16});
-        nvcv::Tensor outTensorInvalid
-            = nvcv::util::CreateTensor(1, 24, 24, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBAf16});
-        EXPECT_THROW(morphOp(nullptr, inTensorInvalid, outTensorInvalid, nvcv::OptionalTensorConstRef{nvcv::NullOpt},
-                             NVCV_ERODE, maskSize, anchor, 0, borderMode),
-                     nvcv::Exception);
-    }
-
     // testSet4: input format is not equal to output format
     {
         nvcv::Tensor outTensorInvalid = nvcv::util::CreateTensor(2, 24, 24, format);
@@ -1260,35 +1390,6 @@ TEST(OpMorphology_Negative, operator_varshape_negative)
     {
         EXPECT_THROW(morphOp(nullptr, batchSrc, batchDst, nvcv::OptionalImageBatchVarShapeConstRef{nvcv::NullOpt},
                              morphType, maskTensor, anchorTensor, 1, borderMode),
-                     nvcv::Exception);
-    }
-
-    // testSet3: invalid data type
-    {
-        nvcv::ImageFormat        formatInvalid{NVCV_IMAGE_FORMAT_RGBAf16};
-        std::vector<nvcv::Image> imgSrcInvalid;
-        nvcv::ImageBatchVarShape batchSrcInvalid(batches);
-        for (int i = 0; i < batches; ++i)
-        {
-            imgSrcInvalid.emplace_back(nvcv::Size2D{24, 24}, formatInvalid);
-        }
-        batchSrcInvalid.pushBack(imgSrcInvalid.begin(), imgSrcInvalid.end());
-
-        std::vector<nvcv::Image> imgDstInvalid;
-        std::vector<nvcv::Image> imgWorkspaceInvalid;
-        nvcv::ImageBatchVarShape batchDstInvalid(batches);
-        nvcv::ImageBatchVarShape batchWorkspaceInvalid(batches);
-        for (int i = 0; i < batches; ++i)
-        {
-            imgDstInvalid.emplace_back(imgSrcInvalid[i].size(), imgSrcInvalid[i].format());
-            imgWorkspaceInvalid.emplace_back(imgSrcInvalid[i].size(), imgSrcInvalid[i].format());
-        }
-        batchDstInvalid.pushBack(imgDstInvalid.begin(), imgDstInvalid.end());
-        batchWorkspaceInvalid.pushBack(imgWorkspaceInvalid.begin(), imgWorkspaceInvalid.end());
-
-        EXPECT_THROW(morphOp(nullptr, batchSrcInvalid, batchDstInvalid,
-                             nvcv::OptionalImageBatchVarShapeConstRef{batchWorkspaceInvalid}, NVCV_ERODE, maskTensor,
-                             anchorTensor, 1, borderMode),
                      nvcv::Exception);
     }
 

@@ -28,6 +28,7 @@ import math  # noqa: E402
 
 import cvcuda  # noqa: E402
 from python_bench_utils import (  # noqa: E402
+    get_dtype,
     get_input_kind,
     parse_shape,
     get_num_channels,
@@ -49,12 +50,20 @@ def resizecropconvertreformat(state):
     input_kind = get_input_kind(state.get_string("inputKind"))
     interp = get_interpolation_type(state.get_string("interpolation"))
     layout = state.get_string("layout")
+    out_data_type = state.get_string("outDataType")
     device_id = state.get_device()
 
     N, H, W = shape
     nc = get_num_channels(dtype_str)
     is_planar = layout == "NCHW"
     is_fake_planar = layout == "NCHW_FAKE"
+
+    # The operator converts on output only (u8 input to u8/f32/f16); "same" keeps the
+    # historical in==out behavior of the shared InOutDataType axis.
+    if out_data_type != "same" and get_dtype(dtype_str) != cvcuda.Type.U8:
+        state.skip("outDataType conversion requires a uint8 source dtype")
+        return None
+    out_dtype_str = dtype_str if out_data_type == "same" else out_data_type
 
     if layout not in ("NHWC", "NCHW", "NCHW_FAKE"):
         state.skip(
@@ -89,10 +98,14 @@ def resizecropconvertreformat(state):
     src_region_h = min(math.ceil((crop_y + crop_h) * scale_y) + 2, H)
 
     dtype_size = get_dtype_size(dtype_str)
-    src_bytes = N * H * W * nc * dtype_size
-    dst_bytes = N * crop_h * crop_w * nc * dtype_size
+    # Mirror the source accounting convention for converted outputs (base size x channels).
+    out_dtype_size = (
+        dtype_size if out_data_type == "same" else get_dtype_size(out_data_type) * nc
+    )
+    src_bytes = N * H * W * dtype_size
+    dst_bytes = N * crop_h * crop_w * out_dtype_size
     state.add_global_memory_reads(
-        N * src_region_h * src_region_w * nc * dtype_size
+        N * src_region_h * src_region_w * dtype_size
         + (src_bytes if is_fake_planar else 0)
     )
     state.add_global_memory_writes(dst_bytes + (src_bytes if is_fake_planar else 0))
@@ -109,7 +122,7 @@ def resizecropconvertreformat(state):
                 fill_mode="checkerboard",
             )
             dst = create_tensor(
-                dst_shape, dtype_str, device_id, layout="NCHW", fill_mode=0
+                dst_shape, out_dtype_str, device_id, layout="NCHW", fill_mode=0
             )
         else:
             src = create_tensor(
@@ -120,7 +133,7 @@ def resizecropconvertreformat(state):
                 fill_mode="checkerboard",
             )
             dst = create_tensor(
-                dst_shape, dtype_str, device_id, layout="NHWC", fill_mode=0
+                dst_shape, out_dtype_str, device_id, layout="NHWC", fill_mode=0
             )
 
         if is_fake_planar:
@@ -167,7 +180,9 @@ def resizecropconvertreformat(state):
             device=device_id,
             fill_mode="checkerboard",
         )
-        dst = create_tensor(dst_shape, dtype_str, device_id, layout=layout, fill_mode=0)
+        dst = create_tensor(
+            dst_shape, out_dtype_str, device_id, layout=layout, fill_mode=0
+        )
 
         def run(launch):
             stream = get_stream(launch)

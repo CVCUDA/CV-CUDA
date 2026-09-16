@@ -70,7 +70,7 @@ The default result is `bench_output.csv`. Use JSON when the result will be
 compared with or imported into committed baselines:
 
 ```bash
-python3 run_bench.py --operator resize --output bench_output.json
+python3 run_bench.py --operator resize --cuda-major 13 --output bench_output.json
 ```
 
 The runner fails noisy results. When both languages run, it also checks that C++
@@ -198,12 +198,14 @@ reference GPU identities:
 
 - `A100_PCIE_40GB_250W_1095MHz`
 - `H100_PCIe_350W_1095MHz`
+- `A100_PCIE_40GB_250W_1095MHz_CUDA12`
+- `H100_PCIe_350W_1095MHz_CUDA12`
 
 First create a JSON result, then compare it from the repository root:
 
 ```bash
 cd build-rel/bin
-python3 run_bench.py --output bench_output.json
+python3 run_bench.py --cuda-major 13 --output bench_output.json
 cd ../..
 
 python3 bench/compare_to_baseline.py \
@@ -235,8 +237,10 @@ _none_
 
 ```
 
-The report prints to the console by default. It can also be written as Markdown
-or JUnit:
+The report always prints to the console, so a CI job log names the rows it
+failed on rather than only counting them. It can also be written as Markdown or
+JUnit; the printed copy then caps each section at 25 rows, while the file keeps
+every row:
 
 ```bash
 python3 bench/compare_to_baseline.py \
@@ -397,15 +401,53 @@ branch base:
 
 ```bash
 python3 bench/_internal/validate_baselines.py \
-  --operator resize --reject-regressions-from origin/main
+  --operator resize --reject-regressions-from origin/main \
+  --max-regression-pct 1
 ```
 
 Finally, create a fresh JSON run and compare it with the updated baselines, then
 run the full MR matrix.
 
+The local `benchmark-baseline-regression` pre-commit hook and GitLab `lint` job
+run this one-percent, slowdown-only check for changed operator JSON files.
+Improvements and rows without a matching config key, case key, SKU, and language
+remain subject to the existing validation but are not timing regressions.
+
 `--allow-regressions` waives only the same-key slowdown check and is reserved
 for intentional, reviewed baseline resets. Schema, SKU, noise, C++/Python
 parity, and fresh-run comparison checks remain enforced.
+
+## Benchmark Drift Reporting
+
+The committed-baseline gate compares a run against a fixed +/-10% band. Measured
+spread on the reference SKUs is far tighter than that -- around 0.6% across a day
+and 1.5% within a stable stretch -- so a row can slide several percent and still
+pass. A config that moves from sitting at +/-1% to hovering at -5% is invisible
+today.
+
+`bench/_internal/bench_drift.py` reads a window of nightly artifacts and reports
+rows whose recent level sits outside their own historical spread:
+
+```bash
+python3 bench/_internal/bench_drift.py --from nightly_wave --markdown drift.md
+```
+
+A row is reported when the recent stretch differs from the earlier one by more
+than `--min-shift-pct` *and* by more than `--sigma` multiples of the earlier
+stretch's own robust spread. Rows are split into quiet drift and large shifts,
+because a large shift is almost always a landed change while a quiet one is the
+case this exists to surface.
+
+It is deliberately read-only: it writes no baseline and fails no gate. A shift is
+a prompt to look, not a verdict, so a false positive costs a glance rather than a
+red pipeline, and the tool cannot alter the reference it measures.
+
+Only nightly runs of the default branch are analysed. A merge request run
+measures its own branch, so it says nothing about where the default branch sits.
+Rows the current config no longer declares are skipped and counted -- declared
+axis values change over time, so any window longer than the last config edit
+contains some.
+
 
 ## Resources
 

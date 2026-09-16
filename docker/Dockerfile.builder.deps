@@ -31,6 +31,7 @@ ARG CMAKE_VERSION=3.24.3
 ARG CCACHE_VERSION=4.13.6
 ARG CCACHE_SHA256_X86_64=09e0547a0c3b250a76675c33130366f1399f3580842fb360c052520d56214ead
 ARG CCACHE_SHA256_AARCH64=bff0e0c19165db8627c85c36b0885b3b180659eda67a028298d26565aad52f56
+ARG DLPACK_COMMIT=84d107bf416c6bab9ae68ad285876600d230490d
 ARG CC=gcc
 ARG CXX=g++
 
@@ -99,8 +100,11 @@ RUN curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
     && rm -rf /tmp/zlib-1.3.1* \
     && ldconfig
 
-# Install dlpack headers and CMake config from source (header-only library)
-RUN git clone --depth 1 --branch v1.3 https://github.com/dmlc/dlpack.git /tmp/dlpack \
+# Install dlpack headers and CMake config from its immutable v1.3 commit.
+RUN git init /tmp/dlpack \
+    && git -C /tmp/dlpack remote add origin https://github.com/dmlc/dlpack.git \
+    && git -C /tmp/dlpack fetch --depth 1 origin "${DLPACK_COMMIT}" \
+    && git -C /tmp/dlpack checkout --detach FETCH_HEAD \
     && cmake -S /tmp/dlpack -B /tmp/dlpack/build -DBUILD_MOCK=OFF -DBUILD_DOCS=OFF \
     && cmake --install /tmp/dlpack/build --prefix /usr/local \
     && rm -rf /tmp/dlpack

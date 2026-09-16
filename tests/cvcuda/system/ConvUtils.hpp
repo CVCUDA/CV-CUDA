@@ -40,30 +40,23 @@ void Morph(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vecto
            const long3 &srcStrides, const int3 &shape, const ImageFormat &format, const Size2D &kernelSize,
            int2 &kernelAnchor, const NVCVBorderType &borderMode, NVCVMorphologyType type);
 
+ImageFormat EquivalentFloatFormat(const ImageFormat &format);
+
 std::vector<float> ComputeMeanKernel(nvcv::Size2D kernelSize);
 
 std::vector<float> ComputeGaussianKernel(nvcv::Size2D kernelSize, double2 sigma);
 
-inline auto ConvolutionNegativeParams()
-{
-    ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType> params{
-        {  nvcv::FMT_RGB8,  nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT},
-        { nvcv::FMT_RGB8p,  nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT},
-        {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, NVCV_BORDER_CONSTANT},
-    };
-#ifndef ENABLE_SANITIZER
-    params.emplace_back(nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVBorderType>(255));
-#endif
-    return params;
-}
-
+// Negative cases for convolution-style ops that DO support planar layout: an
+// interleaved<->planar layout MISMATCH is rejected (planar<->planar is valid), plus an
+// unsupported data type (64-bit float; F16 is valid) and an unsupported channel count.
+// Shared so the planar-capable filter ops do not each re-declare this matrix.
 inline auto PlanarConvolutionNegativeParams()
 {
     ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType> params{
-        {  nvcv::FMT_RGB8,  nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT},
-        { nvcv::FMT_RGB8p,   nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT},
-        {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, NVCV_BORDER_CONSTANT},
-        {  nvcv::FMT_2F32,   nvcv::FMT_2F32, NVCV_BORDER_CONSTANT},
+        { nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT},
+        {nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT},
+        {  nvcv::FMT_F64,   nvcv::FMT_F64, NVCV_BORDER_CONSTANT},
+        { nvcv::FMT_2F32,  nvcv::FMT_2F32, NVCV_BORDER_CONSTANT},
     };
 #ifndef ENABLE_SANITIZER
     params.emplace_back(nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVBorderType>(255));
@@ -71,33 +64,15 @@ inline auto PlanarConvolutionNegativeParams()
     return params;
 }
 
-inline auto ConvolutionVarShapeNegativeParams()
-{
-    ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType, int, int> params{
-        {  nvcv::FMT_RGB8,  nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, 3,  3},
-        { nvcv::FMT_RGB8p,  nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, 3,  3},
-        {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, NVCV_BORDER_CONSTANT, 3,  3},
-        {  nvcv::FMT_RGB8,   nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 3, -1},
-        {  nvcv::FMT_RGB8,   nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 5,  3},
-    };
-#ifndef ENABLE_SANITIZER
-    params.emplace_back(nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVBorderType>(255), 3, 3);
-#endif
-    return params;
-}
-
-// Var-shape negative cases for filter ops that DO support planar layout (AverageBlur/Gaussian/
-// Laplacian/MedianBlur/...). Same as ConvolutionVarShapeNegativeParams except a planar<->interleaved
-// layout MISMATCH (RGB8p in / RGB8 out) is rejected, while planar<->planar is now valid and so is not
-// a negative case. Shared so the planar-capable filter ops do not each re-declare this matrix.
+// Var-shape twin of PlanarConvolutionNegativeParams, with invalid kernel-size/anchor rows.
 inline auto PlanarFilterVarShapeNegativeParams()
 {
     ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType, int, int> params{
-        {  nvcv::FMT_RGB8,  nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, 3,  3},
-        { nvcv::FMT_RGB8p,   nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 3,  3},
-        {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, NVCV_BORDER_CONSTANT, 3,  3},
-        {  nvcv::FMT_RGB8,   nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 3, -1},
-        {  nvcv::FMT_RGB8,   nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 5,  3},
+        { nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, 3,  3},
+        {nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 3,  3},
+        {  nvcv::FMT_F64,   nvcv::FMT_F64, NVCV_BORDER_CONSTANT, 3,  3},
+        { nvcv::FMT_RGB8,  nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 3, -1},
+        { nvcv::FMT_RGB8,  nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 5,  3},
     };
 #ifndef ENABLE_SANITIZER
     params.emplace_back(nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVBorderType>(255), 3, 3);

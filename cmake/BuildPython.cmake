@@ -152,16 +152,35 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 # Explicitly export private attributes not included in 'import *'.
 from ._cvcuda import _C_API, _test  # noqa: F401")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/__init__.py.in" "${CMAKE_BINARY_DIR}/python3/cvcuda/__init__.py")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/py.typed" "${CMAKE_BINARY_DIR}/python3/cvcuda/py.typed" COPYONLY)
 
     # Install __init__.py files for package structure in Debian packages
     # Install in lib component since they're shared across all Python versions
-    install(FILES "${CMAKE_BINARY_DIR}/python3/cvcuda/__init__.py"
+    install(FILES
+            "${CMAKE_BINARY_DIR}/python3/cvcuda/__init__.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/python/py.typed"
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/cvcuda
             COMPONENT lib)
 
+    # BUILD_PYTHON must leave an importable build-tree package even when wheel
+    # packaging is disabled. Benchmarks deliberately prefer this package over
+    # ambient installations so they exercise the bindings from the current build.
+    add_custom_target(stage_python_build_tree ALL
+        COMMAND sh -c "cp \"${CMAKE_BINARY_DIR}\"/lib/python/_cvcuda*.so \"${CMAKE_BINARY_DIR}\"/python3/cvcuda/"
+        COMMENT "Staging Python package for build-tree use"
+        VERBATIM
+    )
+
+    foreach(VER ${PYTHON_VERSIONS})
+        add_dependencies(stage_python_build_tree cvcuda_python${VER})
+    endforeach()
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release" AND BUILD_PYTHON_WHEEL)
+    if(NOT DEFINED PYTHON_WHEEL_VERSION_SUFFIX)
+        set(PYTHON_WHEEL_VERSION_SUFFIX "${PROJECT_VERSION_SUFFIX}")
+    endif()
+
     set(PACKAGE_LIB_DIR ${CMAKE_BINARY_DIR}/python3/lib)
 
     file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3/lib)
@@ -171,19 +190,15 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release" AND BUILD_PYTHON_WHEEL)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/pyproject.toml.in" "${CMAKE_BINARY_DIR}/python3/pyproject.toml")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/README.md.in" "${CMAKE_BINARY_DIR}/python3/README.md")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/MANIFEST.in" "${CMAKE_BINARY_DIR}/python3/MANIFEST.in")
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/py.typed" "${CMAKE_BINARY_DIR}/python3/cvcuda/py.typed" COPYONLY)
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md" "${CMAKE_BINARY_DIR}/python3/LICENSE.md" COPYONLY)
 
     add_custom_target(wheel ALL)
-
-    foreach(VER ${PYTHON_VERSIONS})
-        add_dependencies(wheel cvcuda_python${VER})
-    endforeach()
+    add_dependencies(wheel stage_python_build_tree)
 
     add_custom_command(
         TARGET wheel
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:cvcuda> ${CMAKE_BINARY_DIR}/python3/lib
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nvcv_types> ${CMAKE_BINARY_DIR}/python3/lib
-        COMMAND sh -c "cp ${CMAKE_BINARY_DIR}/lib/python/_cvcuda*.so ${CMAKE_BINARY_DIR}/python3/cvcuda/"
     )
 
     # Ensure numpy is importable by the stubgen Python before pybind11_stubgen

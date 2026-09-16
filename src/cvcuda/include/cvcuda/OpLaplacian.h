@@ -69,7 +69,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLaplacianCreate(NVCVOperatorHandle *handle);
  *      16bit Signed   | No
  *      32bit Unsigned | No
  *      32bit Signed   | No
- *      16bit Float    | No
+ *      16bit Float    | Yes
  *      32bit Float    | Yes
  *      64bit Float    | No
  *
@@ -86,7 +86,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLaplacianCreate(NVCVOperatorHandle *handle);
  *      16bit Signed   | No
  *      32bit Unsigned | No
  *      32bit Signed   | No
- *      16bit Float    | No
+ *      16bit Float    | Yes
  *      32bit Float    | Yes
  *      64bit Float    | No
  *

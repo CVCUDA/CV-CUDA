@@ -47,6 +47,10 @@ RNG = np.random.default_rng(0)
             ((1, 2, 3, 4), np.uint16, "NHWC"),
             0,
         ),
+        (
+            ((2, 15, 21, 3), np.float16, "NHWC"),
+            -1,
+        ),
     ],
 )
 def test_op_flip(tensor_params, flip_code):
@@ -109,6 +113,13 @@ def test_op_flip(tensor_params, flip_code):
             123456,
             1,
         ),
+        (
+            5,
+            cvcuda.Format.RGBf16,
+            (41, 27),
+            1.0,
+            1,
+        ),
     ],
 )
 def test_op_flipvarshape(num_images, img_format, img_size, max_pixel, flip_code):
@@ -162,6 +173,7 @@ globals().update(
         supported_dtypes={
             cvcuda.Type.U8,
             cvcuda.Type.U16,
+            cvcuda.Type.F16,
             cvcuda.Type.S32,
             cvcuda.Type.F32,
         },
@@ -181,6 +193,7 @@ globals().update(
             cvcuda.Type.U8,
             cvcuda.Type.U16,
             cvcuda.Type.S16,
+            cvcuda.Type.F16,
             cvcuda.Type.S32,
             cvcuda.Type.F32,
         },

@@ -94,7 +94,11 @@ def gold_nms(in_bboxes, in_scores, score_threshold, iou_threshold):
                     continue
                 if gold_iou(bbox1, bbox2) > iou_threshold:
                     if (score1 < score2) or (
-                        score1 == score2 and gold_area(bbox1) < gold_area(bbox2)
+                        score1 == score2
+                        and (
+                            gold_area(bbox1) < gold_area(bbox2)
+                            or (gold_area(bbox1) == gold_area(bbox2) and j > k)
+                        )
                     ):
                         discard = True
                         break

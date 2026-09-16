@@ -25,25 +25,20 @@
 #define CVCUDA_PRIV_CONVERT_TO_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/RoundMode.h>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
 class ConvertTo final : public IOperator
 {
 public:
-    explicit ConvertTo();
+    explicit ConvertTo() = default;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const double alpha,
                     const double beta, NVCVRoundMode roundMode) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::ConvertTo> m_legacyOp;
 };
 
 } // namespace cvcuda::priv

@@ -37,7 +37,14 @@ if(NOT pybind11_cmakedir_result EQUAL 0)
     message(FATAL_ERROR "Failed to find pybind11 cmake dir for python${CVCUDA_PYTHON_VERSION}. "
                         "Is pybind11 installed? Try: python${CVCUDA_PYTHON_VERSION} -m pip install pybind11")
 endif()
-find_package(pybind11 REQUIRED CONFIG)
+find_package(pybind11 3.0.3 REQUIRED CONFIG)
+
+if(pybind11_VERSION VERSION_GREATER_EQUAL 3.1)
+    message(FATAL_ERROR "pybind11 ${pybind11_VERSION} found at ${pybind11_DIR}, but this "
+                        "source tree supports >= 3.0.3 and < 3.1 (see versions.env). "
+                        "Install the pinned version: "
+                        "python${CVCUDA_PYTHON_VERSION} -m pip install 'pybind11==3.0.3'")
+endif()
 
 find_package(nvcv_types REQUIRED)
 
@@ -142,6 +149,7 @@ set(DST_PYTHON_MODULE_PATH /usr/lib/python3/dist-packages)
 
 # Add package files to the list before converting to string.
 set(PYTHON_MODULE_FILENAME_LIST "${PYTHON_MODULE_FILENAME_LIST};cvcuda/__init__.py" CACHE INTERNAL "")
+set(PYTHON_MODULE_FILENAME_LIST "${PYTHON_MODULE_FILENAME_LIST};cvcuda/py.typed" CACHE INTERNAL "")
 # Now convert to space-separated string for the postinst script
 string(JOIN " " PYTHON_MODULE_FILENAME_LIST ${PYTHON_MODULE_FILENAME_LIST})
 

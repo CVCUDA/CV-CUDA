@@ -271,3 +271,51 @@ TEST(BorderWrapNonConstValueTypeTest, it_can_be_written)
 
     EXPECT_EQ(borderWrap[0], -1);
 }
+
+// ---------------------- Testing BorderWrap for __half ------------------------
+
+// Host-side smoke test: __half and half3 are not structural types, so they cannot go through
+// the ttype::Value<>-driven typed suites above; this proves the wrap layer works with the
+// fp16 value types added in HalfTypes.hpp.
+
+TEST(BorderWrapHalfValueTypeTest, it_can_be_read_with_constant_border)
+{
+    using TensorWrap = cuda::TensorWrap<__half, -1>;
+    using BorderWrap = cuda::BorderWrap<TensorWrap, NVCV_BORDER_CONSTANT, true>;
+
+    std::array<__half, 4> input;
+    for (std::size_t i = 0; i < input.size(); ++i)
+    {
+        input[i] = __float2half(static_cast<float>(i));
+    }
+
+    TensorWrap tensorWrap(input.data(), (int)sizeof(__half));
+    BorderWrap borderWrap(tensorWrap, __float2half(-1.5f), 4);
+
+    for (int i = 0; i < 4; ++i)
+    {
+        EXPECT_EQ(__half2float(borderWrap[int1{i}]), static_cast<float>(i));
+    }
+
+    EXPECT_EQ(__half2float(borderWrap[int1{-1}]), -1.5f);
+    EXPECT_EQ(__half2float(borderWrap[int1{4}]), -1.5f);
+}
+
+TEST(BorderWrapHalfValueTypeTest, it_can_be_read_with_replicate_border)
+{
+    using TensorWrap = cuda::TensorWrap<half3, -1>;
+    using BorderWrap = cuda::BorderWrap<TensorWrap, NVCV_BORDER_REPLICATE, true>;
+
+    std::array<half3, 3> input;
+    for (std::size_t i = 0; i < input.size(); ++i)
+    {
+        input[i] = cuda::SetAll<half3>(__float2half(static_cast<float>(i)));
+    }
+
+    TensorWrap tensorWrap(input.data(), (int)sizeof(half3));
+    BorderWrap borderWrap(tensorWrap, half3{}, 3);
+
+    EXPECT_EQ(borderWrap[int1{1}], input[1]);
+    EXPECT_EQ(borderWrap[int1{-2}], input[0]);
+    EXPECT_EQ(borderWrap[int1{5}], input[2]);
+}

@@ -35,6 +35,7 @@ IMG_FORMAT_TO_TYPE = {
     cvcuda.Format.S8: cvcuda.Type.S8,
     cvcuda.Format.S16: cvcuda.Type.S16,
     cvcuda.Format.S32: cvcuda.Type.S32,
+    cvcuda.Format.F16: cvcuda.Type.F16,
     cvcuda.Format.F32: cvcuda.Type.F32,
     cvcuda.Format.F64: cvcuda.Type.F64,
 }
@@ -47,10 +48,21 @@ IMG_FORMAT_TO_NUMPY_DTYPE = {
     cvcuda.Format.RGB8: np.uint8,
     cvcuda.Format.RGB8p: np.uint8,
     cvcuda.Format.RGBA8p: np.uint8,
+    cvcuda.Format.LAB8: np.uint8,
+    cvcuda.Format.LAB8p: np.uint8,
+    cvcuda.Format.RGBf16: np.float16,
+    cvcuda.Format.RGBAf16: np.float16,
+    cvcuda.Format.RGBf16p: np.float16,
+    cvcuda.Format.RGBAf16p: np.float16,
+    cvcuda.Format.LABf16: np.float16,
+    cvcuda.Format.LABf16p: np.float16,
+    cvcuda.Format.F16: np.float16,
     cvcuda.Format.RGBf32: np.float32,
     cvcuda.Format.RGBAf32: np.float32,
     cvcuda.Format.RGBf32p: np.float32,
     cvcuda.Format.RGBAf32p: np.float32,
+    cvcuda.Format.LABf32: np.float32,
+    cvcuda.Format.LABf32p: np.float32,
     cvcuda.Format.F32: np.float32,
     cvcuda.Format.F64: np.float64,
     cvcuda.Format.U8: np.uint8,
@@ -110,11 +122,13 @@ def generate_data(shape, dtype, max_random=None, rng=None):
         elif issubclass(dtype, numbers.Real):
             if max_random is None:
                 max_random = [1.0 for _ in range(shape[-1])]
-            data = rng.random(size=shape, dtype=dtype) * np.array(max_random)
-            data = data.astype(dtype)
-        else:
-            raise ValueError(
-                f"Unsupported dtype: {dtype}. Expected an integral or real type."
+            # rng.random only supports float32/float64; draw narrower floats
+            # (e.g. float16) in float32 and cast.
+            gen_dtype = dtype if dtype in (np.float32, np.float64) else np.float32
+            data = np.multiply(
+                rng.random(size=shape, dtype=gen_dtype),
+                np.array(max_random),
+                out=np.empty(shape, dtype=dtype),
             )
     return data
 
@@ -251,7 +265,7 @@ def create_image(size, img_format, max_random=None, rng=None):
 
     shape = (size[1], size[0], img_format.channels)
     h_data = generate_data(shape, dtype, max_random, rng)
-    return to_cvcuda_image(h_data)
+    return cvcuda.as_image(to_cuda_buffer(h_data), img_format)
 
 
 def create_image_pattern(

@@ -179,13 +179,16 @@ void TensorBatch::pushBackMany(std::vector<std::shared_ptr<Tensor>> &tensorList)
     nvcvTensors.reserve(tensorList.size());
     for (const auto &tensor : tensorList)
     {
-        m_list.push_back(tensor);
         if (tensor)
             nvcvTensors.push_back(tensor->impl());
         else
             nvcvTensors.push_back(nvcv::Tensor());
     }
+
+    m_list.reserve(m_list.size() + tensorList.size());
+
     m_impl.pushBack(nvcvTensors.begin(), nvcvTensors.end());
+    m_list.insert(m_list.end(), tensorList.begin(), tensorList.end());
 }
 
 void TensorBatch::popBack(int tensorCount)

@@ -57,8 +57,8 @@ void ExportOpInvert(py::module &m)
         Executes the Invert operation on the given cuda stream.
 
         Computes the per-element photometric negative ``out = bound - in``, where ``bound`` is the
-        maximum value of the data type (255 for uint8, 65535 for uint16, 1.0 for float32). Mirrors
-        torchvision.transforms.v2.functional.invert / OpenCV cv::bitwise_not (unsigned).
+        maximum value of the data type (255 for uint8, 65535 for uint16, 1.0 for float16/float32).
+        Mirrors torchvision.transforms.v2.functional.invert / OpenCV cv::bitwise_not (unsigned).
 
         See also:
             Refer to the CV-CUDA C API reference for the Invert operator for more details and usage

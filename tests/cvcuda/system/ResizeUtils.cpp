@@ -17,6 +17,8 @@
 
 #include "ResizeUtils.hpp"
 
+#include "HalfTestUtils.hpp" // for HalfBytesToFloat, etc.
+
 #include <cvcuda/cuda_tools/DropCast.hpp>     // for SaturateCast, etc.
 #include <cvcuda/cuda_tools/MathOps.hpp>      // for operator *, etc.
 #include <cvcuda/cuda_tools/MathWrappers.hpp> // for ROUND, etc
@@ -27,6 +29,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
+#include <type_traits>
 
 namespace nvcv::test {
 
@@ -310,10 +314,18 @@ static void StoreLinearCropPixel(T *dstPtr, int dstStep, const T *srcPtr, int sr
 
     for (int c = 0; c < channels; c++)
     {
-        double res = std::rint(std::abs(srcPtr[(sy + 0) * srcStep + (sx + 0) * channels + c] * wghtY[0] * wghtX[0]
-                                        + srcPtr[(sy + 1) * srcStep + (sx + 0) * channels + c] * wghtY[1] * wghtX[0]
-                                        + srcPtr[(sy + 0) * srcStep + (sx + 1) * channels + c] * wghtY[0] * wghtX[1]
-                                        + srcPtr[(sy + 1) * srcStep + (sx + 1) * channels + c] * wghtY[1] * wghtX[1]));
+        double res = srcPtr[(sy + 0) * srcStep + (sx + 0) * channels + c] * wghtY[0] * wghtX[0]
+                   + srcPtr[(sy + 1) * srcStep + (sx + 0) * channels + c] * wghtY[1] * wghtX[0]
+                   + srcPtr[(sy + 0) * srcStep + (sx + 1) * channels + c] * wghtY[0] * wghtX[1]
+                   + srcPtr[(sy + 1) * srcStep + (sx + 1) * channels + c] * wghtY[1] * wghtX[1];
+
+        // Integer golds keep the historical rint(abs(.)) rounding step; floating-point outputs
+        // stay fractional -- the kernels do not round float results, and the F16 gold is derived
+        // from this float path.
+        if constexpr (std::is_integral_v<T>)
+        {
+            res = std::rint(std::abs(res));
+        }
 
         dstPtr[dstOffset + c] = ClampResizeValue<T>(res, minVal, maxVal);
     }
@@ -414,12 +426,12 @@ void _Resize(T *dstPtr, int dstStride, nvcv::Size2D dstSize, const T *srcPtr, in
     if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
     {
         resizedCrop<T>(dstPtr, dstStep, dstSize, srcPtr, srcStep, srcSize, 0, 0, srcSize.h, srcSize.w, frmt, interp,
-                       std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+                       std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());
     }
     else if (interp == NVCV_INTERP_AREA)
     {
-        resize<T>(dstPtr, dstStep, dstSize, srcPtr, srcStep, srcSize, frmt, isVarShape, std::numeric_limits<T>::min(),
-                  std::numeric_limits<T>::max());
+        resize<T>(dstPtr, dstStep, dstSize, srcPtr, srcStep, srcSize, frmt, isVarShape,
+                  std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());
     }
 }
 
@@ -444,6 +456,20 @@ void Resize(std::vector<uint8_t> &dst, int dstStride, nvcv::Size2D dstSize, cons
         _Resize(reinterpret_cast<float *>(dst.data()), dstStride, dstSize, reinterpret_cast<const float *>(src.data()),
                 srcStride, srcSize, frmt, interp, isVarShape);
     }
+    else if (frmt.planeDataType(0) == nvcv::TYPE_F16 || frmt.planeDataType(0) == nvcv::TYPE_2F16
+             || frmt.planeDataType(0) == nvcv::TYPE_3F16 || frmt.planeDataType(0) == nvcv::TYPE_4F16)
+    {
+        // The F16 gold is the FP32 gold requantized once: widen the half input to float, run the
+        // float reference, then narrow the result back to half bytes. _Resize<__half> is not
+        // instantiated (std::numeric_limits<__half> is not specialized); this also matches the
+        // kernels, which accumulate in FP32 and round to half once on store. Byte strides double
+        // so the float call keeps the same per-row element count.
+        std::vector<float> srcF = HalfBytesToFloat(src);
+        std::vector<float> dstF(dst.size() / sizeof(__half));
+        _Resize(dstF.data(), dstStride * 2, dstSize, srcF.data(), srcStride * 2, srcSize, frmt, interp, isVarShape);
+        std::vector<uint8_t> dstBytes = FloatToHalfBytes(dstF);
+        std::memcpy(dst.data(), dstBytes.data(), dstBytes.size());
+    }
     else
     {
         _Resize(dst.data(), dstStride, dstSize, src.data(), srcStride, srcSize, frmt, interp, isVarShape);
@@ -466,7 +492,7 @@ void _ResizedCrop(T *dstPtr, int dstStride, nvcv::Size2D dstSize, const T *srcPt
     if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
     {
         resizedCrop<T>(dstPtr, dstStep, dstSize, srcPtr, srcStep, srcSize, top, left, crop_rows, crop_cols, frmt,
-                       interp, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+                       interp, std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());
     }
 }
 
@@ -480,6 +506,17 @@ void ResizedCrop(std::vector<uint8_t> &dst, int dstStride, nvcv::Size2D dstSize,
         _ResizedCrop(reinterpret_cast<uint16_t *>(dst.data()), dstStride, dstSize,
                      reinterpret_cast<const uint16_t *>(src.data()), srcStride, srcSize, top, left, crop_rows,
                      crop_cols, frmt, interp);
+    }
+    else if (frmt.planeDataType(0) == nvcv::TYPE_F16 || frmt.planeDataType(0) == nvcv::TYPE_2F16
+             || frmt.planeDataType(0) == nvcv::TYPE_3F16 || frmt.planeDataType(0) == nvcv::TYPE_4F16)
+    {
+        // Same F16-via-float flow as Resize above: FP32 gold requantized once to half bytes.
+        std::vector<float> srcF = HalfBytesToFloat(src);
+        std::vector<float> dstF(dst.size() / sizeof(__half));
+        _ResizedCrop(dstF.data(), dstStride * 2, dstSize, srcF.data(), srcStride * 2, srcSize, top, left, crop_rows,
+                     crop_cols, frmt, interp);
+        std::vector<uint8_t> dstBytes = FloatToHalfBytes(dstF);
+        std::memcpy(dst.data(), dstBytes.data(), dstBytes.size());
     }
     else
     {

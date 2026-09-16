@@ -19,6 +19,9 @@
 #include "Nvtx.hpp"
 #include "OpInvert.hpp"
 
+#include "PhotometricBound.cuh"
+#include "SameShapeCommon.cuh"
+
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
@@ -35,10 +38,13 @@
 
 #include <type_traits>
 
-namespace cuda = nvcv::cuda;
-namespace util = nvcv::util;
+namespace cuda       = nvcv::cuda;
+namespace util       = nvcv::util;
+namespace same_shape = cvcuda::priv::same_shape;
 
 namespace {
+
+using cvcuda::priv::PhotometricUpperBound;
 
 inline bool UsePackedU8C3VarShapeKernelOnCurrentDevice()
 {
@@ -60,34 +66,6 @@ inline bool UsePackedU8C3VarShapeKernelOnCurrentDevice()
     return cachedUsePacked;
 }
 
-// Photometric-negative bound per base type: dtype max for unsigned integers, 1.0 for float.
-// Matches torchvision.transforms.v2.functional.invert / OpenCV cv::bitwise_not (unsigned).
-template<typename BT>
-inline __host__ __device__ BT InvertBound()
-{
-    if constexpr (std::is_floating_point_v<BT>)
-    {
-        return BT(1);
-    }
-    else
-    {
-        return cuda::TypeTraits<BT>::max;
-    }
-}
-
-template<bool IsPlanar>
-inline __device__ std::conditional_t<IsPlanar, int4, int3> GetCoordForLayout(int3 nhwCoord, int p)
-{
-    if constexpr (!IsPlanar)
-    {
-        return nhwCoord;
-    }
-    else
-    {
-        return {nhwCoord.x, nhwCoord.y, p, nhwCoord.z};
-    }
-}
-
 template<bool IsPlanar, class SrcWrapper, class DstWrapper>
 inline __device__ void DoInvert(SrcWrapper src, DstWrapper dst, const int2 size, const int p)
 {
@@ -104,11 +82,11 @@ inline __device__ void DoInvert(SrcWrapper src, DstWrapper dst, const int2 size,
     {
         return;
     }
-    auto coord = GetCoordForLayout<IsPlanar>(nhwCoord, p);
+    auto coord = same_shape::GetCoordForLayout<IsPlanar>(nhwCoord, p);
 
     // out = bound - in, per element. The subtraction is exact for the supported types, so the
     // result is bit-exact with the equivalent interleaved computation (Golden rule / COV-BITEXACT).
-    dst[coord] = cuda::SaturateCast<DstT>(InvertBound<BT>() - src[coord]);
+    dst[coord] = cuda::SaturateCast<DstT>(PhotometricUpperBound<BT>() - src[coord]);
 }
 
 // Invert kernel --------------------------------------------------------------------------
@@ -160,29 +138,8 @@ __global__ void Invert(SrcWrapper src, DstWrapper dst, int numPlanes)
 // has each thread own NGROUP independent 4-column groups, issuing all NGROUP wide vector loads
 // (uchar4 / float4) before any compute so many memory requests are outstanding at once. Output is
 // bit-identical to DoInvert per element (same SaturateCast(bound - in)). Modeled on
-// legacy/normalize_planar.cuh. Caller guards sizeof(Vec4)-aligned strides and falls back to the
+// OpNormalize.cu's planar vector body. Caller guards sizeof(Vec4)-aligned strides and falls back to the
 // scalar kernel otherwise; a width not a multiple of 4 is handled by the per-thread scalar tail.
-template<typename T, int Size = sizeof(T)>
-struct InvertVec4Type;
-
-template<typename T>
-struct InvertVec4Type<T, 1>
-{
-    using type = uchar4;
-};
-
-template<typename T>
-struct InvertVec4Type<T, 2>
-{
-    using type = ushort4;
-};
-
-template<typename T>
-struct InvertVec4Type<T, 4>
-{
-    using type = float4;
-};
-
 template<int NGROUP, typename BT>
 __global__ void InvertPlanarVec4Kernel(cuda::Tensor4DWrap<const BT, int32_t> src, cuda::Tensor4DWrap<BT, int32_t> dst,
                                        int4 inout_size)
@@ -199,8 +156,8 @@ __global__ void InvertPlanarVec4Kernel(cuda::Tensor4DWrap<const BT, int32_t> src
         return;
     }
 
-    using Vec4     = typename InvertVec4Type<BT>::type;
-    const BT bound = InvertBound<BT>();
+    using Vec4     = cuda::MakeType<BT, 4>;
+    const BT bound = PhotometricUpperBound<BT>();
 
     // Loads first: issue all NGROUP wide loads before any compute (raises outstanding requests).
     int  cx[NGROUP];
@@ -258,7 +215,7 @@ __global__ void InvertPlanarVarShapeVec4Kernel(cuda::ImageBatchVarShapeWrap<cons
     }
 
     using Vec4     = uchar4; // 1-byte planes only (caller guards sizeof(BT) == 1)
-    const BT bound = InvertBound<BT>();
+    const BT bound = PhotometricUpperBound<BT>();
 
     int  cx[NGROUP];
     bool full[NGROUP];
@@ -314,8 +271,8 @@ __global__ void InvertU16VarShapeVec4Kernel(cuda::ImageBatchVarShapeWrap<const B
         return;
     }
 
-    using Vec4       = typename InvertVec4Type<BT>::type;
-    const BT   bound = InvertBound<BT>();
+    using Vec4       = cuda::MakeType<BT, 4>;
+    const BT   bound = PhotometricUpperBound<BT>();
     const BT  *srow  = src.ptr(batch, channel, dst_y, 0);
     BT        *drow  = dst.ptr(batch, channel, dst_y, 0);
     const bool wide  = reinterpret_cast<uintptr_t>(srow) % alignof(Vec4) == 0
@@ -549,9 +506,12 @@ inline void RunInvert(cudaStream_t stream, const SrcData &srcData, const DstData
             // like the planar paths. Reuse the vectorized planar kernel (C == 1). The multi-channel
             // interleaved cases (uchar3/uchar4/float3/float4) already move 3-4 bytes/thread and sit at
             // the bandwidth ridge, so they keep the scalar kernel untouched.
-            if constexpr (cuda::NumElements<ValueT> == 1)
+            // F16 is excluded: InvertVec4Type maps 2-byte types to ushort4, whose lanes would feed
+            // raw half bit patterns into `bound - in` as integers. Falling back to the scalar kernel
+            // keeps real half arithmetic; a dedicated half wide-load path is a future optimization.
+            if constexpr (cuda::NumElements<ValueT> == 1 && !cuda::detail::IsHalfV<BT>)
             {
-                using Vec4            = typename InvertVec4Type<BT>::type;
+                using Vec4            = cuda::MakeType<BT, 4>;
                 constexpr int NGROUP  = 4;
                 const int64_t sStride = srcAccess->sampleStride(), rStride = srcAccess->rowStride();
                 const int64_t dsStride = dstAccess->sampleStride(), drStride = dstAccess->rowStride();
@@ -597,7 +557,7 @@ inline void RunInvert(cudaStream_t stream, const SrcData &srcData, const DstData
             // kernel's per-thread tail handles a width that is not a multiple of 4).
             if constexpr (sizeof(BT) == 1 || sizeof(BT) == 4)
             {
-                using Vec4            = typename InvertVec4Type<BT>::type;
+                using Vec4            = cuda::MakeType<BT, 4>;
                 constexpr int NGROUP  = sizeof(BT) == 1 ? 4 : 2;
                 const int64_t planes  = static_cast<int64_t>(numSamples) * numPlanes;
                 const int64_t sStride = srcAccess->sampleStride(), pStride = srcAccess->planeStride(),
@@ -686,7 +646,9 @@ inline void RunInvert(cudaStream_t stream, const SrcData &srcData, const DstData
         }
 
         // The U16 interleaved path keeps one vector group live at a time to cap register residency.
-        if constexpr (!isPlanar && cuda::NumElements<ValueT> == 1 && sizeof(BT) == 2)
+        // F16 is excluded like in the tensor path: the ushort4 lanes would treat half bit patterns
+        // as integers, so it falls back to the scalar kernel's real half arithmetic.
+        if constexpr (!isPlanar && cuda::NumElements<ValueT> == 1 && sizeof(BT) == 2 && !cuda::detail::IsHalfV<BT>)
         {
             constexpr int                          NGROUP = 4;
             cuda::ImageBatchVarShapeWrap<const BT> srcV(srcData);
@@ -705,7 +667,7 @@ inline void RunInvert(cudaStream_t stream, const SrcData &srcData, const DstData
     }
 }
 
-// Dispatch over base data type (u8 / u16 / f32) and channel count (1 / 3 / 4) -------------
+// Dispatch over base data type (u8 / u16 / f16 / f32) and channel count (1 / 3 / 4) -------
 
 template<typename Cb>
 inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
@@ -720,11 +682,13 @@ inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
     // clang-format off
     if NVCV_INVERT_RUN_TYPED(U8, uchar)
     else if NVCV_INVERT_RUN_TYPED(U16, ushort)
+    else if NVCV_INVERT_RUN_TYPED(F16, __half)
     else if NVCV_INVERT_RUN_TYPED(F32, float)
     else
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid data type: Invert supports 8-bit unsigned, 16-bit unsigned and 32-bit float");
+                              "Invalid data type: Invert supports 8-bit unsigned, 16-bit unsigned, 16-bit float and "
+                              "32-bit float");
     }
         // clang-format on
 
@@ -734,172 +698,8 @@ inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
 template<typename Cb>
 inline void RunChannelSwitch(int numChannels, int numPlanes, nvcv::DataType dType, const Cb &cb)
 {
-    RunTypeSwitch(dType,
-                  [&numChannels, &numPlanes, &cb](auto dummyVal)
-                  {
-                      using ValBase = decltype(dummyVal);
-                      // clang-format off
-            if (numChannels == 1)
-            {
-                using Val = cuda::MakeType<ValBase, 1>;
-                if (numPlanes == 1)
-                {
-                    cb(Val{}, std::integral_constant<bool, false>{});
-                }
-                else
-                {
-                    cb(Val{}, std::integral_constant<bool, true>{});
-                }
-            }
-            else if (numChannels == 3)
-            {
-                cb(cuda::MakeType<ValBase, 3>{}, std::integral_constant<bool, false>{});
-            }
-            else if (numChannels == 4)
-            {
-                cb(cuda::MakeType<ValBase, 4>{}, std::integral_constant<bool, false>{});
-            }
-            else
-            {
-                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                      "Invalid number of channels: Invert supports 1, 3 or 4 channels");
-            }
-                      // clang-format on
-                  });
-}
-
-// Validation ------------------------------------------------------------------------------
-
-inline void ValidateSrcDstTensors(int &numInterleavedChannels, int &numPlanes, nvcv::DataType &dtype,
-                                  const nvcv::Optional<nvcv::TensorDataStridedCuda> &srcData,
-                                  const nvcv::Optional<nvcv::TensorDataStridedCuda> &dstData)
-{
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-    if (srcData->layout() != dstData->layout())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
-    }
-    if (!(srcData->layout() == nvcv::TENSOR_HWC || srcData->layout() == nvcv::TENSOR_NHWC
-          || srcData->layout() == nvcv::TENSOR_CHW || srcData->layout() == nvcv::TENSOR_NCHW))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have (N)HWC or (N)CHW layout");
-    }
-    if (srcData->dtype() != dstData->dtype())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same data type");
-    }
-
-    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
-    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
-    NVCV_ASSERT(srcAccess && dstAccess);
-
-    if (srcAccess->numSamples() != dstAccess->numSamples())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-
-    int numChannels = srcAccess->numChannels();
-    if (numChannels != dstAccess->numChannels())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of channels");
-    }
-
-    numPlanes = srcAccess->numPlanes();
-    if (numPlanes != dstAccess->numPlanes())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of planes");
-    }
-    if (numPlanes > 1 && numChannels == 2)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel planar images are not supported");
-    }
-
-    if (srcAccess->numCols() != dstAccess->numCols() || srcAccess->numRows() != dstAccess->numRows())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input and output must have matching width and height");
-    }
-
-    dtype                  = srcData->dtype();
-    numInterleavedChannels = srcAccess->infoLayout().isChannelLast() ? numChannels : 1;
-}
-
-inline auto ValidateSrcDstVarBatch(int &numInterleavedChannels, int &numPlanes, nvcv::DataType &dtype,
-                                   cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
-                                   const nvcv::ImageBatchVarShape &dst)
-{
-    using maybeVarShape = nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda>;
-    std::tuple<maybeVarShape, maybeVarShape> srcDstData{
-        src.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream),
-        dst.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream)};
-    auto &[srcData, dstData] = srcDstData;
-
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, varshape pitch-linear image batch");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    int numSamples = srcData->numImages();
-    if (numSamples != dstData->numImages())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-
-    const auto &srcFormat = srcData->uniqueFormat();
-    const auto &dstFormat = dstData->uniqueFormat();
-    if (!srcFormat || !dstFormat)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All images in a batch must have the same format");
-    }
-    if (srcFormat != dstFormat)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same format");
-    }
-
-    int numChannels = srcFormat.numChannels();
-    numPlanes       = srcFormat.numPlanes();
-    if (numPlanes > 1 && numChannels == 2)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel planar images are not supported");
-    }
-
-    dtype = srcFormat.planeDataType(0);
-    for (int i = 1; i < numPlanes; ++i)
-    {
-        if (dtype != srcFormat.planeDataType(i))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "All planes in the input image must have the same data type");
-        }
-    }
-
-    numInterleavedChannels = dtype.numChannels();
-
-    for (int i = 0; i < numSamples; i++)
-    {
-        if (src[i].size() != dst[i].size())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Input and output must have matching width and height");
-        }
-    }
-
-    return srcDstData;
+    RunTypeSwitch(dType, [&](auto dummyVal)
+                  { same_shape::DispatchChannels<decltype(dummyVal)>(numChannels, numPlanes, "Invert", cb); });
 }
 
 } // anonymous namespace
@@ -917,7 +717,7 @@ void Invert::operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv
     nvcv::DataType dtype;
     auto           srcData = src.exportData<nvcv::TensorDataStridedCuda>();
     auto           dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
-    ValidateSrcDstTensors(numInterleavedChannels, numPlanes, dtype, srcData, dstData);
+    same_shape::ValidateSrcDstTensors(numInterleavedChannels, numPlanes, dtype, srcData, dstData);
 
     RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
                      [&stream, &srcData, &dstData](auto dummyVal, auto isPlanar)
@@ -936,7 +736,7 @@ void Invert::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src
     int            numInterleavedChannels;
     int            numPlanes;
     nvcv::DataType dtype;
-    auto           srcDstData = ValidateSrcDstVarBatch(numInterleavedChannels, numPlanes, dtype, stream, src, dst);
+    auto srcDstData = same_shape::ValidateSrcDstVarBatch(numInterleavedChannels, numPlanes, dtype, stream, src, dst);
 
     RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
                      [&stream, &srcDstData](auto dummyVal, auto isPlanar)

@@ -34,6 +34,11 @@ void ExportDataType(py::module &m);
 std::optional<nvcv::DataType> ToNVCVDataType(const py::dtype &dt);
 py::dtype                     ToDType(nvcv::DataType dtype);
 
+// Normalize `dtype` to its canonical supported representation. Equivalent to
+// ToNVCVDataType(ToDType(dtype)) without materializing a numpy dtype; returns
+// nullopt when the type has no supported representation.
+std::optional<nvcv::DataType> NormalizeDataType(const nvcv::DataType &dtype);
+
 } // namespace nvcvpy::priv
 
 namespace pybind11::detail {

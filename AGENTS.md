@@ -129,7 +129,10 @@ plainly and identify the missing prerequisite.
   (or the `/optimize-op` skill); close every `GAP` before the campaign is done.
 - Per-operator refactoring: follow `.agents/guidance/REFACTOR_OP_GUIDELINES.md`;
   use `tools/refactor_op.py <Operator>` to assess redundancy opportunities and
-  `tools/refactor_op.py <Operator> --phase verify` to gate parity before review.
+  `tools/refactor_op.py <Operator> --phase verify` to gate parity before review. When that gate
+  reports `NEEDS-LOCAL-PROOF` and no build is available, `tools/device_code_proof.py <Operator>
+  --base <ref>` (the `/device-code-proof` skill) supplies per-arch device-code evidence for VER-6
+  without a build tree or GPU — evidence for the leg, never a replacement for the frozen tests.
 - New operators: follow `.agents/guidance/MAKE_OP_GUIDELINES.md` (narrative how-to in
   `docs/sphinx/advanced/make_operator.rst`). Propose + get user approval of the spec (semantics +
   cited reference oracle + support matrix), scaffold with `tools/mkop/mkop.sh`, then gate with

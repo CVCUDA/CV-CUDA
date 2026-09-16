@@ -2,15 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cvcuda-cu${CUDA_VERSION_MAJOR}"
-version = "${CMAKE_PROJECT_VERSION}${PROJECT_VERSION_SUFFIX}"
+version = "${CMAKE_PROJECT_VERSION}${PYTHON_WHEEL_VERSION_SUFFIX}"
 description = "${CMAKE_PROJECT_DESCRIPTION}"
 readme = {file = "README.md", content-type = "text/markdown"}
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
+license-files = ["LICENSE.md"]
 authors = [
     {name = "NVIDIA Corporation", email = "support@nvidia.com"}
 ]
@@ -24,7 +25,6 @@ classifiers = [
     "Environment :: GPU :: NVIDIA CUDA :: ${CUDA_VERSION_MAJOR}",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",

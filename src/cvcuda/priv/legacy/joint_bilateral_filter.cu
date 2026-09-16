@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -382,6 +382,7 @@ ErrorCode JointBilateralFilterCaller(const TensorDataStridedCuda &inData, const 
 
         JointBilateralFilterKernel<<<grid, block, 0, stream>>>(src, srcColor, dst, radius, sigmaColor, sigmaSpace, rows,
                                                                columns);
+        NVCV_CHECK_THROW(cudaGetLastError());
     }
     else
     {
@@ -449,6 +450,9 @@ ErrorCode JointBilateralFilterPlanarCaller(const TensorDataStridedCuda          
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
+    // cudaGetLastError() is sticky until read: one check here covers every launch above.
+    NVCV_CHECK_THROW(cudaGetLastError());
+
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
@@ -509,7 +513,7 @@ ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const
 
     DataType data_type = GetLegacyDataType(outData.dtype());
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
-          || data_type == kCV_32F))
+          || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("[Error] Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -577,8 +581,9 @@ ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const
         float sigmaSpace, float borderValue, cudaStream_t stream);
 
     // All templated functions instantiated here to remove one level of indirection that just hides the same lookup
-    // table in 5 parts. The kCV_8S row is null because validation above rejects signed 8-bit input.
-    static const joint_bilateral_filter_t funcs[5][6][4] = {
+    // table in 5 parts. Rows follow the legacy DataType enum: kCV_8S (1) and kCV_64F (6) are null because
+    // validation above rejects them; kCV_16F (7) holds the __half instantiations.
+    static const joint_bilateral_filter_t funcs[5][8][4] = {
         {
          {JointBilateralFilterCaller<uchar, NVCV_BORDER_CONSTANT>,
          JointBilateralFilterCaller<uchar2, NVCV_BORDER_CONSTANT>,
@@ -601,6 +606,11 @@ ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const
          JointBilateralFilterCaller<float2, NVCV_BORDER_CONSTANT>,
          JointBilateralFilterCaller<float3, NVCV_BORDER_CONSTANT>,
          JointBilateralFilterCaller<float4, NVCV_BORDER_CONSTANT>},
+         {nullptr, nullptr, nullptr, nullptr},
+         {JointBilateralFilterCaller<__half, NVCV_BORDER_CONSTANT>,
+         JointBilateralFilterCaller<__half2, NVCV_BORDER_CONSTANT>,
+         JointBilateralFilterCaller<half3, NVCV_BORDER_CONSTANT>,
+         JointBilateralFilterCaller<half4, NVCV_BORDER_CONSTANT>},
          },
         {
          {JointBilateralFilterCaller<uchar, NVCV_BORDER_REPLICATE>,
@@ -624,6 +634,11 @@ ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const
          JointBilateralFilterCaller<float2, NVCV_BORDER_REPLICATE>,
          JointBilateralFilterCaller<float3, NVCV_BORDER_REPLICATE>,
          JointBilateralFilterCaller<float4, NVCV_BORDER_REPLICATE>},
+         {nullptr, nullptr, nullptr, nullptr},
+         {JointBilateralFilterCaller<__half, NVCV_BORDER_REPLICATE>,
+         JointBilateralFilterCaller<__half2, NVCV_BORDER_REPLICATE>,
+         JointBilateralFilterCaller<half3, NVCV_BORDER_REPLICATE>,
+         JointBilateralFilterCaller<half4, NVCV_BORDER_REPLICATE>},
          },
         {
          {JointBilateralFilterCaller<uchar, NVCV_BORDER_REFLECT>,
@@ -647,6 +662,11 @@ ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const
          JointBilateralFilterCaller<float2, NVCV_BORDER_REFLECT>,
          JointBilateralFilterCaller<float3, NVCV_BORDER_REFLECT>,
          JointBilateralFilterCaller<float4, NVCV_BORDER_REFLECT>},
+         {nullptr, nullptr, nullptr, nullptr},
+         {JointBilateralFilterCaller<__half, NVCV_BORDER_REFLECT>,
+         JointBilateralFilterCaller<__half2, NVCV_BORDER_REFLECT>,
+         JointBilateralFilterCaller<half3, NVCV_BORDER_REFLECT>,
+         JointBilateralFilterCaller<half4, NVCV_BORDER_REFLECT>},
          },
         {
          {JointBilateralFilterCaller<uchar, NVCV_BORDER_WRAP>, JointBilateralFilterCaller<uchar2, NVCV_BORDER_WRAP>,
@@ -665,6 +685,10 @@ ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const
          {JointBilateralFilterCaller<float, NVCV_BORDER_WRAP>, JointBilateralFilterCaller<float2, NVCV_BORDER_WRAP>,
          JointBilateralFilterCaller<float3, NVCV_BORDER_WRAP>,
          JointBilateralFilterCaller<float4, NVCV_BORDER_WRAP>},
+         {nullptr, nullptr, nullptr, nullptr},
+         {JointBilateralFilterCaller<__half, NVCV_BORDER_WRAP>,
+         JointBilateralFilterCaller<__half2, NVCV_BORDER_WRAP>, JointBilateralFilterCaller<half3, NVCV_BORDER_WRAP>,
+         JointBilateralFilterCaller<half4, NVCV_BORDER_WRAP>},
          },
         {
          {JointBilateralFilterCaller<uchar, NVCV_BORDER_REFLECT101>,
@@ -688,6 +712,11 @@ ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const
          JointBilateralFilterCaller<float2, NVCV_BORDER_REFLECT101>,
          JointBilateralFilterCaller<float3, NVCV_BORDER_REFLECT101>,
          JointBilateralFilterCaller<float4, NVCV_BORDER_REFLECT101>},
+         {nullptr, nullptr, nullptr, nullptr},
+         {JointBilateralFilterCaller<__half, NVCV_BORDER_REFLECT101>,
+         JointBilateralFilterCaller<__half2, NVCV_BORDER_REFLECT101>,
+         JointBilateralFilterCaller<half3, NVCV_BORDER_REFLECT101>,
+         JointBilateralFilterCaller<half4, NVCV_BORDER_REFLECT101>},
          },
     };
     typedef ErrorCode (*joint_bilateral_filter_planar_t)(
@@ -697,32 +726,37 @@ ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const
         const nvcv::TensorDataAccessStridedImagePlanar &outAccess, int batch, int rows, int columns, int channels,
         int radius, float sigmaColor, float sigmaSpace, cudaStream_t stream);
 
-    static const joint_bilateral_filter_planar_t planarFuncs[5][6] = {
+    static const joint_bilateral_filter_planar_t planarFuncs[5][8] = {
         {JointBilateralFilterPlanarCaller<uchar,   NVCV_BORDER_CONSTANT>, nullptr,
          JointBilateralFilterPlanarCaller<ushort,   NVCV_BORDER_CONSTANT>,
          JointBilateralFilterPlanarCaller<short,   NVCV_BORDER_CONSTANT>,
          JointBilateralFilterPlanarCaller<int,   NVCV_BORDER_CONSTANT>,
-         JointBilateralFilterPlanarCaller<float,   NVCV_BORDER_CONSTANT>},
+         JointBilateralFilterPlanarCaller<float,   NVCV_BORDER_CONSTANT>, nullptr,
+         JointBilateralFilterPlanarCaller<__half,   NVCV_BORDER_CONSTANT>},
         {JointBilateralFilterPlanarCaller<uchar,  NVCV_BORDER_REPLICATE>, nullptr,
          JointBilateralFilterPlanarCaller<ushort,  NVCV_BORDER_REPLICATE>,
          JointBilateralFilterPlanarCaller<short,  NVCV_BORDER_REPLICATE>,
          JointBilateralFilterPlanarCaller<int,  NVCV_BORDER_REPLICATE>,
-         JointBilateralFilterPlanarCaller<float,  NVCV_BORDER_REPLICATE>},
+         JointBilateralFilterPlanarCaller<float,  NVCV_BORDER_REPLICATE>, nullptr,
+         JointBilateralFilterPlanarCaller<__half,  NVCV_BORDER_REPLICATE>},
         {JointBilateralFilterPlanarCaller<uchar,    NVCV_BORDER_REFLECT>, nullptr,
          JointBilateralFilterPlanarCaller<ushort,    NVCV_BORDER_REFLECT>,
          JointBilateralFilterPlanarCaller<short,    NVCV_BORDER_REFLECT>,
          JointBilateralFilterPlanarCaller<int,    NVCV_BORDER_REFLECT>,
-         JointBilateralFilterPlanarCaller<float,    NVCV_BORDER_REFLECT>},
+         JointBilateralFilterPlanarCaller<float,    NVCV_BORDER_REFLECT>, nullptr,
+         JointBilateralFilterPlanarCaller<__half,    NVCV_BORDER_REFLECT>},
         {JointBilateralFilterPlanarCaller<uchar,       NVCV_BORDER_WRAP>, nullptr,
          JointBilateralFilterPlanarCaller<ushort,       NVCV_BORDER_WRAP>,
          JointBilateralFilterPlanarCaller<short,       NVCV_BORDER_WRAP>,
          JointBilateralFilterPlanarCaller<int,       NVCV_BORDER_WRAP>,
-         JointBilateralFilterPlanarCaller<float,       NVCV_BORDER_WRAP>},
+         JointBilateralFilterPlanarCaller<float,       NVCV_BORDER_WRAP>, nullptr,
+         JointBilateralFilterPlanarCaller<__half,       NVCV_BORDER_WRAP>},
         {JointBilateralFilterPlanarCaller<uchar, NVCV_BORDER_REFLECT101>, nullptr,
          JointBilateralFilterPlanarCaller<ushort, NVCV_BORDER_REFLECT101>,
          JointBilateralFilterPlanarCaller<short, NVCV_BORDER_REFLECT101>,
          JointBilateralFilterPlanarCaller<int, NVCV_BORDER_REFLECT101>,
-         JointBilateralFilterPlanarCaller<float, NVCV_BORDER_REFLECT101>},
+         JointBilateralFilterPlanarCaller<float, NVCV_BORDER_REFLECT101>, nullptr,
+         JointBilateralFilterPlanarCaller<__half, NVCV_BORDER_REFLECT101>},
     };
 
     if (isPlanar)

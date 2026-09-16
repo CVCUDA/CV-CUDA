@@ -93,7 +93,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeCreate(NVCVOperatorHandle *handle);
  *      16bit Signed   | Yes
  *      32bit Unsigned | No
  *      32bit Signed   | Yes
- *      16bit Float    | No
+ *      16bit Float    | Yes
  *      32bit Float    | Yes
  *      64bit Float    | No
  *
@@ -109,7 +109,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeCreate(NVCVOperatorHandle *handle);
  *      16bit Signed   | Yes
  *      32bit Unsigned | No
  *      32bit Signed   | Yes
- *      16bit Float    | No
+ *      16bit Float    | Yes
  *      32bit Float    | Yes
  *      64bit Float    | No
  *
@@ -125,6 +125,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeCreate(NVCVOperatorHandle *handle);
  *      Height        | Yes
  *
  * Scale/Base Tensor:
+ *
+ *      Scale and Base are always 32-bit float tensors, regardless of the input/output data type.
  *
  *      Scale and Base may be a tensor the same shape as the input/output tensors, or it can be a scalar each dimension.
  *      Dimensions with extent 1 are broadcast over the corresponding input axis.
@@ -222,7 +224,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeVarShapeSubmit(NVCVOperatorHandle handle
  *      16bit Signed   | Yes
  *      32bit Unsigned | No
  *      32bit Signed   | Yes
- *      16bit Float    | No
+ *      16bit Float    | Yes
  *      32bit Float    | Yes
  *      64bit Float    | No
  *
@@ -238,7 +240,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeVarShapeSubmit(NVCVOperatorHandle handle
  *      16bit Signed   | Yes
  *      32bit Unsigned | No
  *      32bit Signed   | Yes
- *      16bit Float    | No
+ *      16bit Float    | Yes
  *      32bit Float    | Yes
  *      64bit Float    | No
  *

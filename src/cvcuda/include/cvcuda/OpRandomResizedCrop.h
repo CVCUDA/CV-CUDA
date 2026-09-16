@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,7 +83,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRandomResizedCropCreate(NVCVOperatorHandle *handl
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       16bit Float    | No
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -99,7 +99,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRandomResizedCropCreate(NVCVOperatorHandle *handl
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       16bit Float    | No
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | No
  *

@@ -163,6 +163,15 @@ void CopyTensorImageBatch(const nvcv::TensorDataAccessStridedImagePlanar &inAcce
     if (inAccess.sampleStride() == inAccess.rowStride() * inAccess.numRows()
         && outAccess.sampleStride() == outAccess.rowStride() * outAccess.numRows())
     {
+        if (inAccess.rowStride() == static_cast<int64_t>(rowBytes)
+            && outAccess.rowStride() == static_cast<int64_t>(rowBytes))
+        {
+            const auto storageBytes = static_cast<std::size_t>(inAccess.sampleStride()) * inAccess.numSamples();
+            NVCV_CHECK_THROW(cudaMemcpyAsync(outAccess.sampleData(0), inAccess.sampleData(0), storageBytes,
+                                             cudaMemcpyDeviceToDevice, stream));
+            return;
+        }
+
         NVCV_CHECK_THROW(cudaMemcpy2DAsync(
             outAccess.sampleData(0), static_cast<std::size_t>(outAccess.rowStride()), inAccess.sampleData(0),
             static_cast<std::size_t>(inAccess.rowStride()), rowBytes,

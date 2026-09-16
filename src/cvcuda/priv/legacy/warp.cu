@@ -350,8 +350,16 @@ ErrorCode warpPlanarFusedCubicCaller(const TensorDataStridedCuda &inData, const 
                                 Transform transform, int borderMode, const float4 &borderValue, int numPlanes,
                                 cudaStream_t stream);
 
-    static const func_t funcs[6] = {warpPlanarFusedCubic<Transform, uchar>, 0, warpPlanarFusedCubic<Transform, ushort>,
-                                    warpPlanarFusedCubic<Transform, short>, 0, warpPlanarFusedCubic<Transform, float>};
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7), matching the interleaved
+    // dispatch tables in infer(); indexing past a 6-row table for F16 would read garbage.
+    static const func_t funcs[8] = {warpPlanarFusedCubic<Transform, uchar>,
+                                    0,
+                                    warpPlanarFusedCubic<Transform, ushort>,
+                                    warpPlanarFusedCubic<Transform, short>,
+                                    0,
+                                    warpPlanarFusedCubic<Transform, float>,
+                                    0 /*double*/,
+                                    warpPlanarFusedCubic<Transform, __half>};
 
     const func_t func = funcs[dataType];
     NVCV_ASSERT(func != 0);
@@ -398,7 +406,8 @@ ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDat
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F
+          || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -421,13 +430,18 @@ ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDat
                                 WarpAffineTransform transform, const int interpolation, int borderMode,
                                 const float4 &borderValue, cudaStream_t stream);
 
-    static const func_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). Warp interpolates through
+    // InterpolationWrap, which accumulates the taps in float and rounds to the element type once on
+    // store, so the F16 rows instantiate real half kernels instead of aliasing integer ones.
+    static const func_t funcs[8][4] = {
         { warpAffine<uchar1>, 0,  warpAffine<uchar3>,  warpAffine<uchar4>},
         {                  0, 0,                   0,                   0},
         {warpAffine<ushort1>, 0, warpAffine<ushort3>, warpAffine<ushort4>},
         { warpAffine<short1>, 0,  warpAffine<short3>,  warpAffine<short4>},
         {                  0, 0,                   0,                   0},
-        { warpAffine<float1>, 0,  warpAffine<float3>,  warpAffine<float4>}
+        { warpAffine<float1>, 0,  warpAffine<float3>,  warpAffine<float4>},
+        {                  0, 0,                   0,                   0},
+        {  warpAffine<half1>, 0,   warpAffine<half3>,   warpAffine<half4>}
     };
 
     WarpAffineTransform transform;
@@ -523,7 +537,8 @@ ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const Tens
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F
+          || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -546,15 +561,21 @@ ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const Tens
                                 PerspectiveTransform transform, const int interpolation, int borderMode,
                                 const float4 &borderValue, cudaStream_t stream);
 
-    static const func_t funcs[6][4] = {
-        {      warpPerspective<uchar1>,  0 /*warpPerspective<uchar2>*/,      warpPerspective<uchar3>,warpPerspective<uchar4>                                                                                                     },
-        {0 /*warpPerspective<schar1>*/,   0 /*warpPerspective<char2>*/, 0 /*warpPerspective<char3>*/,
-         0 /*warpPerspective<char4>*/                                                                                         },
-        {     warpPerspective<ushort1>, 0 /*warpPerspective<ushort2>*/,     warpPerspective<ushort3>, warpPerspective<ushort4>},
-        {      warpPerspective<short1>,  0 /*warpPerspective<short2>*/,      warpPerspective<short3>,  warpPerspective<short4>},
-        {  0 /*warpPerspective<int1>*/,    0 /*warpPerspective<int2>*/,  0 /*warpPerspective<int3>*/,
-         0 /*warpPerspective<int4>*/                                                                                          },
-        {      warpPerspective<float1>,  0 /*warpPerspective<float2>*/,      warpPerspective<float3>,  warpPerspective<float4>}
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). Warp interpolates through
+    // InterpolationWrap, which accumulates the taps in float and rounds to the element type once on
+    // store, so the F16 rows instantiate real half kernels instead of aliasing integer ones.
+    static const func_t funcs[8][4] = {
+        {       warpPerspective<uchar1>,  0 /*warpPerspective<uchar2>*/,        warpPerspective<uchar3>,warpPerspective<uchar4>                                                                                                        },
+        { 0 /*warpPerspective<schar1>*/,   0 /*warpPerspective<char2>*/,   0 /*warpPerspective<char3>*/,
+         0 /*warpPerspective<char4>*/                                                                                            },
+        {      warpPerspective<ushort1>, 0 /*warpPerspective<ushort2>*/,       warpPerspective<ushort3>, warpPerspective<ushort4>},
+        {       warpPerspective<short1>,  0 /*warpPerspective<short2>*/,        warpPerspective<short3>,  warpPerspective<short4>},
+        {   0 /*warpPerspective<int1>*/,    0 /*warpPerspective<int2>*/,    0 /*warpPerspective<int3>*/,
+         0 /*warpPerspective<int4>*/                                                                                             },
+        {       warpPerspective<float1>,  0 /*warpPerspective<float2>*/,        warpPerspective<float3>,  warpPerspective<float4>},
+        {0 /*warpPerspective<double1>*/, 0 /*warpPerspective<double2>*/, 0 /*warpPerspective<double3>*/,
+         0 /*warpPerspective<double4>*/                                                                                          },
+        {        warpPerspective<half1>,   0 /*warpPerspective<half2>*/,         warpPerspective<half3>,   warpPerspective<half4>}
     };
 
     PerspectiveTransform transform(transMatrix);

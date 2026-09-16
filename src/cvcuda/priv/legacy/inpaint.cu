@@ -69,10 +69,15 @@ __device__ __forceinline__ T *inpaint_out_ptr(Ptr2dNCHW<T> out, int batch, int y
     return out.ptr(batch, y, x, channel);
 }
 
-template<typename OutWrapper>
+template<bool IsPlanar, typename OutWrapper>
 __device__ void inpaint(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, OutWrapper out, int i, int j, int range, int ch)
 {
     const int batch_idx = get_batch_idx();
+    const int range2    = range * range;
+    const int kBegin    = i - range > 0 ? i - range : 1;
+    const int kEnd      = i + range < t.rows - 1 ? i + range : t.rows - 2;
+    const int lBegin    = j - range > 0 ? j - range : 1;
+    const int lEnd      = j + range < t.cols - 1 ? j + range : t.cols - 2;
 
     for (int color = 0; color < ch; color++)
     {
@@ -123,89 +128,95 @@ __device__ void inpaint(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, OutWrapp
                 gradT.y = 0;
             }
         }
-        for (int k = i - range; k <= i + range; k++)
+        for (int k = kBegin; k <= kEnd; k++)
         {
+            int rowBegin = lBegin;
+            int rowEnd   = lEnd;
+            if constexpr (!IsPlanar)
+            {
+                const int kOffset = k - i;
+                const int lRadius = (int)sqrtf((float)(range2 - kOffset * kOffset));
+                rowBegin          = j - lRadius > lBegin ? j - lRadius : lBegin;
+                rowEnd            = j + lRadius < lEnd ? j + lRadius : lEnd;
+            }
             int km = k - 1 + (k == 1), kp = k - 1 - (k == t.rows - 2);
-            for (int l = j - range; l <= j + range; l++)
+            for (int l = rowBegin; l <= rowEnd; l++)
             {
                 int lm = l - 1 + (l == 1), lp = l - 1 - (l == t.cols - 2);
-                if (k > 0 && l > 0 && k < t.rows - 1 && l < t.cols - 1)
+                if ((!IsPlanar || ((l - j) * (l - j) + (k - i) * (k - i) <= range2)) && ((i != k) || (j != l))
+                    && (*f.ptr(batch_idx, k, l) != INSIDE)) // r != 0
                 {
-                    if ((*f.ptr(batch_idx, k, l) != INSIDE) && ((l - j) * (l - j) + (k - i) * (k - i) <= range * range)
-                        && ((i != k) || (j != l))) // r != 0
+                    r.y = (float)(i - k);
+                    r.x = (float)(j - l);
+
+                    float len = VectorLength(r);
+                    dst       = 1.0f / (len * sqrtf(len));
+                    lev       = 1.0f / (1.0f + fabsf(*t.ptr(batch_idx, k, l) - *t.ptr(batch_idx, i, j)));
+
+                    dir = VectorScalMult(r, gradT);
+                    // Preserve the Telea weighting floor: near-orthogonal directions get a tiny
+                    // nonzero contribution instead of disappearing through floating-point noise.
+                    if (fabsf(dir) <= 0.01f)
+                        dir = 0.000001f;
+                    w = fabsf(dst * lev * dir);
+
+                    if (*f.ptr(batch_idx, k, l + 1) != INSIDE)
                     {
-                        r.y = (float)(i - k);
-                        r.x = (float)(j - l);
-
-                        float len = VectorLength(r);
-                        dst       = 1.0f / (len * sqrtf(len));
-                        lev       = 1.0f / (1.0f + fabsf(*t.ptr(batch_idx, k, l) - *t.ptr(batch_idx, i, j)));
-
-                        dir = VectorScalMult(r, gradT);
-                        // Preserve the Telea weighting floor: near-orthogonal directions get a tiny
-                        // nonzero contribution instead of disappearing through floating-point noise.
-                        if (fabsf(dir) <= 0.01f)
-                            dir = 0.000001f;
-                        w = fabsf(dst * lev * dir);
-
-                        if (*f.ptr(batch_idx, k, l + 1) != INSIDE)
+                        if (*f.ptr(batch_idx, k, l - 1) != INSIDE)
                         {
-                            if (*f.ptr(batch_idx, k, l - 1) != INSIDE)
-                            {
-                                gradI.x = (float)((*inpaint_out_ptr(out, batch_idx, km, lp + 1, color)
-                                                   - *inpaint_out_ptr(out, batch_idx, km, lm - 1, color)))
-                                        * 2.0f;
-                            }
-                            else
-                            {
-                                gradI.x = (float)((*inpaint_out_ptr(out, batch_idx, km, lp + 1, color)
-                                                   - *inpaint_out_ptr(out, batch_idx, km, lm, color)));
-                            }
+                            gradI.x = (float)((*inpaint_out_ptr(out, batch_idx, km, lp + 1, color)
+                                               - *inpaint_out_ptr(out, batch_idx, km, lm - 1, color)))
+                                    * 2.0f;
                         }
                         else
                         {
-                            if (*f.ptr(batch_idx, k, l - 1) != INSIDE)
-                            {
-                                gradI.x = (float)((*inpaint_out_ptr(out, batch_idx, km, lp, color)
-                                                   - *inpaint_out_ptr(out, batch_idx, km, lm - 1, color)));
-                            }
-                            else
-                            {
-                                gradI.x = 0;
-                            }
+                            gradI.x = (float)((*inpaint_out_ptr(out, batch_idx, km, lp + 1, color)
+                                               - *inpaint_out_ptr(out, batch_idx, km, lm, color)));
                         }
-                        if (*f.ptr(batch_idx, k + 1, l) != INSIDE)
-                        {
-                            if (*f.ptr(batch_idx, k - 1, l) != INSIDE)
-                            {
-                                gradI.y = (float)((*inpaint_out_ptr(out, batch_idx, kp + 1, lm, color)
-                                                   - *inpaint_out_ptr(out, batch_idx, km - 1, lm, color)))
-                                        * 2.0f;
-                            }
-                            else
-                            {
-                                gradI.y = (float)((*inpaint_out_ptr(out, batch_idx, kp + 1, lm, color)
-                                                   - *inpaint_out_ptr(out, batch_idx, km, lm, color)));
-                            }
-                        }
-                        else
-                        {
-                            if (*f.ptr(batch_idx, k - 1, l) != INSIDE)
-                            {
-                                gradI.y = (float)((*inpaint_out_ptr(out, batch_idx, kp, lm, color)
-                                                   - *inpaint_out_ptr(out, batch_idx, km - 1, lm, color)));
-                            }
-                            else
-                            {
-                                gradI.y = 0;
-                            }
-                        }
-                        //  float Iaorg = Ia, Jxorg = Jx, Jyorg = Jy, sorg = s;
-                        Ia += (float)w * (float)(*inpaint_out_ptr(out, batch_idx, km, lm, color));
-                        Jx -= (float)w * (float)(gradI.x * r.x);
-                        Jy -= (float)w * (float)(gradI.y * r.y);
-                        s += w;
                     }
+                    else
+                    {
+                        if (*f.ptr(batch_idx, k, l - 1) != INSIDE)
+                        {
+                            gradI.x = (float)((*inpaint_out_ptr(out, batch_idx, km, lp, color)
+                                               - *inpaint_out_ptr(out, batch_idx, km, lm - 1, color)));
+                        }
+                        else
+                        {
+                            gradI.x = 0;
+                        }
+                    }
+                    if (*f.ptr(batch_idx, k + 1, l) != INSIDE)
+                    {
+                        if (*f.ptr(batch_idx, k - 1, l) != INSIDE)
+                        {
+                            gradI.y = (float)((*inpaint_out_ptr(out, batch_idx, kp + 1, lm, color)
+                                               - *inpaint_out_ptr(out, batch_idx, km - 1, lm, color)))
+                                    * 2.0f;
+                        }
+                        else
+                        {
+                            gradI.y = (float)((*inpaint_out_ptr(out, batch_idx, kp + 1, lm, color)
+                                               - *inpaint_out_ptr(out, batch_idx, km, lm, color)));
+                        }
+                    }
+                    else
+                    {
+                        if (*f.ptr(batch_idx, k - 1, l) != INSIDE)
+                        {
+                            gradI.y = (float)((*inpaint_out_ptr(out, batch_idx, kp, lm, color)
+                                               - *inpaint_out_ptr(out, batch_idx, km - 1, lm, color)));
+                        }
+                        else
+                        {
+                            gradI.y = 0;
+                        }
+                    }
+                    //  float Iaorg = Ia, Jxorg = Jx, Jyorg = Jy, sorg = s;
+                    Ia += (float)w * (float)(*inpaint_out_ptr(out, batch_idx, km, lm, color));
+                    Jx -= (float)w * (float)(gradI.x * r.x);
+                    Jy -= (float)w * (float)(gradI.y * r.y);
+                    s += w;
                 }
             }
         }
@@ -216,7 +227,7 @@ __device__ void inpaint(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, OutWrapp
     }
 }
 
-template<typename OutWrapper>
+template<bool IsPlanar, typename OutWrapper>
 __global__ void TeleaInpaintFMM(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, OutWrapper out, int range,
                                 Ptr2dNHWC<unsigned char> band, int ch)
 {
@@ -262,7 +273,7 @@ __global__ void TeleaInpaintFMM(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, 
                             FastMarching_solve(i - 1, j, i, j + 1, f, t), FastMarching_solve(i + 1, j, i, j + 1, f, t));
                 *t.ptr(batch_idx, i, j) = dist;
 
-                inpaint(f, t, out, i, j, range, ch);
+                inpaint<IsPlanar>(f, t, out, i, j, range, ch);
 
                 *f.ptr(batch_idx, i, j)    = BAND;
                 *band.ptr(batch_idx, i, j) = 1; // non-zero
@@ -511,7 +522,7 @@ ErrorCode RunTeleaInpaint(Ptr2dNHWC<unsigned char> inpaint_mask, Ptr2dNHWC<float
         Ptr2dNCHW<T> dst(*outAccess);
         for (int i = 0; i < iteration; i++)
         {
-            TeleaInpaintFMM<<<grid, block, 0, stream>>>(inpaint_mask, t, dst, range, band, channel);
+            TeleaInpaintFMM<true><<<grid, block, 0, stream>>>(inpaint_mask, t, dst, range, band, channel);
         }
     }
     else
@@ -519,7 +530,7 @@ ErrorCode RunTeleaInpaint(Ptr2dNHWC<unsigned char> inpaint_mask, Ptr2dNHWC<float
         auto dst = CreateTensorWrapNHWC<T, int32_t>(outData);
         for (int i = 0; i < iteration; i++)
         {
-            TeleaInpaintFMM<<<grid, block, 0, stream>>>(inpaint_mask, t, dst, range, band, channel);
+            TeleaInpaintFMM<false><<<grid, block, 0, stream>>>(inpaint_mask, t, dst, range, band, channel);
             /* icvTeleaInpaintFMM<uchar>(mask,t,output_img,range,Heap); */
         }
     }

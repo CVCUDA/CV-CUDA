@@ -452,6 +452,21 @@ TEST(OpHistogramEq_Negative, rejects_two_channel_planar_tensor)
                                              });
 }
 
+TEST(OpHistogramEq_Negative, rejects_non_image_tensor)
+{
+    nvcv::Tensor inTensor{
+        {{16}, "N"},
+        nvcv::TYPE_U8
+    };
+    nvcv::Tensor outTensor{
+        {{16}, "N"},
+        nvcv::TYPE_U8
+    };
+
+    cvcuda::HistogramEq op(1);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, inTensor, outTensor); }));
+}
+
 TEST(OpHistogramEq_Negative, rejects_two_channel_planar_varshape)
 {
     const nvcv::ImageFormat twoChannelPlanar{NVCV_DETAIL_MAKE_NONCOLOR_FMT2(PL, UNSIGNED, XY00, ASSOCIATED, X8, X8)};
@@ -557,6 +572,31 @@ TEST(OpHistogramEqVarshape_Negative, varshape_batch_exceeds_maxBatch)
 
     cvcuda::HistogramEq op(1);
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&op, &stream, &batchSrc, &batchDst] { op(stream, batchSrc, batchDst); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHistogramEqVarshape_Negative, varshape_batch_exceeds_cuda_grid_limit)
+{
+    constexpr int batchSize = 65536;
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Image srcImage(nvcv::Size2D{1, 1}, nvcv::FMT_U8);
+    nvcv::Image dstImage(nvcv::Size2D{1, 1}, nvcv::FMT_U8);
+
+    nvcv::ImageBatchVarShape batchSrc(batchSize);
+    nvcv::ImageBatchVarShape batchDst(batchSize);
+    for (int i = 0; i < batchSize; ++i)
+    {
+        batchSrc.pushBack(srcImage);
+        batchDst.pushBack(dstImage);
+    }
+
+    cvcuda::HistogramEq op(batchSize);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcv::ProtectCall([&op, &stream, &batchSrc, &batchDst] { op(stream, batchSrc, batchDst); }));
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));

@@ -105,8 +105,16 @@ def _write_baseline_config_tree(root):
                     "gpu_name": "NVIDIA Test GPU",
                     "power_cap_w": 250,
                     "locked_sm_clock_mhz": 1095,
+                    "cuda_major": 13,
                     "stem": "A100_PCIE_40GB_250W_1095MHz",
-                }
+                },
+                {
+                    "gpu_name": "NVIDIA Test GPU",
+                    "power_cap_w": 250,
+                    "locked_sm_clock_mhz": 1095,
+                    "cuda_major": 12,
+                    "stem": "A100_PCIE_40GB_250W_1095MHz_CUDA12",
+                },
             ]
         },
     )
@@ -336,6 +344,39 @@ def _entry_row_count(entry):
     return count
 
 
+@pytest.mark.parametrize(
+    ("key", "dtype", "shape"),
+    (
+        ("cvtcolor_lab_u8_advanced", "uint8", "128x1080x1920"),
+        ("cvtcolor_lab_f16_advanced", "float16", "64x1080x1920"),
+        ("cvtcolor_lab_f32_advanced", "float32", "32x1080x1920"),
+    ),
+)
+def test_cvtcolor_lab_configs_cover_dtypes_containers_and_native_layouts(
+    key, dtype, shape
+):
+    entry = load_bench_config()[key]
+
+    assert entry["tier"] == "advanced"
+    assert entry["dtypes"] == [dtype]
+    assert entry["string_axes"] == {
+        "shape": [shape],
+        "code": [
+            "BGR2Lab",
+            "RGB2Lab",
+            "Lab2BGR",
+            "Lab2RGB",
+            "LBGR2Lab",
+            "LRGB2Lab",
+            "Lab2LBGR",
+            "Lab2LRGB",
+        ],
+        "inputKind": ["Tensor", "VarShape"],
+        "layout": ["NHWC", "NCHW"],
+    }
+    assert _entry_row_count(entry) == 32
+
+
 _RESIZE_ANISOTROPIC_TARGETS = {
     "CONTRACT": "TARGET_480x864",
     "EXPAND": "TARGET_2160x3840",
@@ -428,6 +469,11 @@ def test_repository_config_separates_basic_and_advanced_tiers():
             assert (
                 "layout" in string_axes
             ), f"{key} names a planar layout but has no layout axis"
+
+        if "fake" in key.lower():
+            assert any(
+                layout in fake_planar_layouts for layout in layouts
+            ), f"{key} names a fake-planar layout but has no fake-planar axis"
 
         if any(layout in planar_layouts for layout in layouts):
             planar_keys.append(key)
@@ -633,9 +679,9 @@ _RESIZE_EXISTING_BASIC_ANISOTROPIC_SIGNATURES = {
 @pytest.mark.parametrize(
     "operator,basic_rows,advanced_rows",
     [
-        ("resize", 22, 209),
+        ("resize", 22, 227),
         ("pillowresize", 22, 247),
-        ("hqresize", 26, 86),
+        ("hqresize", 26, 128),
     ],
 )
 def test_resize_family_anisotropic_coverage_mirrors_isotropic_matrix(
@@ -733,6 +779,7 @@ def test_resize_family_anisotropic_coverage_mirrors_isotropic_matrix(
     "operator",
     [
         "autocontrast",
+        "bilateralfilter",
         "bndbox",
         "boxblur",
         "brightnesscontrast",
@@ -746,6 +793,7 @@ def test_resize_family_anisotropic_coverage_mirrors_isotropic_matrix(
         "gaussiannoise",
         "inpaint",
         "invert",
+        "morphology",
     ],
 )
 def test_priority_operator_fake_planar_rows_have_native_twins(operator):
@@ -921,6 +969,8 @@ def test_parse_args_accepts_keep_outputs_and_json_output(monkeypatch, tmp_path):
             "--keep-outputs",
             "--output",
             str(out),
+            "--cuda-major",
+            "13",
         ],
     )
 
@@ -972,6 +1022,7 @@ def test_baseline_payload_from_dataframe_emits_raw_baselines_json(tmp_path):
         df,
         index=index,
         sku_map_path=config_dir / "sku_map.json",
+        cuda_major=12,
         source=tmp_path / "bench_output.json",
     )
 
@@ -987,7 +1038,7 @@ def test_baseline_payload_from_dataframe_emits_raw_baselines_json(tmp_path):
     )
     assert payload == {
         case: {
-            "A100_PCIE_40GB_250W_1095MHz": {
+            "A100_PCIE_40GB_250W_1095MHz_CUDA12": {
                 "n_runs": 1,
                 "gpu_time_us_cpp": 525.7525,
                 "gpu_time_us_python": 535.7935,
@@ -1009,6 +1060,7 @@ def test_baseline_payload_from_dataframe_allows_single_language(tmp_path):
         pd.DataFrame([_baseline_row(language="cpp")]),
         index=index,
         sku_map_path=config_dir / "sku_map.json",
+        cuda_major=13,
         source=tmp_path / "bench_output.json",
     )
 
@@ -1038,8 +1090,36 @@ def test_baseline_payload_from_dataframe_rejects_missing_ambiguous_axis(tmp_path
             pd.DataFrame([_baseline_row(language="cpp")]),
             index=index,
             sku_map_path=config_dir / "sku_map.json",
+            cuda_major=13,
             source=tmp_path / "bench_output.json",
         )
+
+
+def test_parse_args_requires_cuda_major_for_json(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        sys, "argv", ["run_bench.py", "--output", str(tmp_path / "out.json")]
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        run_bench.parse_args()
+
+    assert exc.value.code == 2
+
+
+def test_parse_args_accepts_cuda_major_for_json(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_bench.py",
+            "--output",
+            str(tmp_path / "out.json"),
+            "--cuda-major",
+            "12",
+        ],
+    )
+
+    assert run_bench.parse_args().cuda_major == 12
 
 
 def test_baseline_config_paths_uses_run_manifest(tmp_path):
@@ -1066,7 +1146,7 @@ def test_baseline_config_paths_uses_run_manifest(tmp_path):
     assert sku_map_path == config_dir / "sku_map.json"
 
 
-def test_write_output_json_writes_raw_payload(tmp_path):
+def test_write_output_json_writes_enveloped_payload(tmp_path):
     config_dir = tmp_path / "config"
     _write_baseline_config_tree(config_dir)
     _write_json(
@@ -1085,6 +1165,9 @@ def test_write_output_json_writes_raw_payload(tmp_path):
     args = SimpleNamespace(
         config_file=str(config_dir / "bench_params.json"),
         output=str(out),
+        cuda_major=13,
+        run_context="local",
+        tier="basic",
     )
     df = pd.DataFrame(
         [
@@ -1097,7 +1180,13 @@ def test_write_output_json_writes_raw_payload(tmp_path):
 
     run_bench._write_output(args, df)
 
-    case = next(iter(json.loads(out.read_text())))
+    document = json.loads(out.read_text())
+    assert document["schema_version"] == 1
+    # A run that does not declare itself nightly must not be consumable by the
+    # drift analysis.
+    assert document["run_metadata"]["is_nightly"] is False
+
+    case = next(iter(document["baselines"]))
     assert case == (
         "resize_contract_area_tensor_uchar3_basic"
         "[InOutDataType=uchar3]"

@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include "GaussianNoiseUtils.cuh"
@@ -23,6 +24,7 @@
 #include <common/InterpUtils.hpp>
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpGaussianNoise.hpp>
 #include <cvcuda/cuda_tools/MathWrappers.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
@@ -112,6 +114,31 @@ void GaussianNoise(std::vector<T> &src, std::vector<T> &dst, float mu, float sig
     }
 }
 
+// FP32 gold for the F16 rows: the same host-replicated noise stream is added in float and
+// clamped to [0, 1] exactly like the F32 path the half kernels ride, but the result is never
+// narrowed to half, so the comparison bounds only the kernel's single half store rounding.
+void GaussianNoiseF16Gold(const std::vector<__half> &src, std::vector<float> &dst, float mu, float sigma, int batch,
+                          bool per_channel, int channels, int call_index = 0)
+{
+    auto mem_size = static_cast<int>(src.size());
+    if (!per_channel)
+        mem_size /= channels;
+    std::vector<float> rand_h(mem_size);
+    get_random(rand_h.data(), per_channel, batch, mem_size, channels,
+               call_index); // NOSONAR: deterministic test data, not security-sensitive.
+    const float *rand = rand_h.data();
+
+    auto img_size = static_cast<int>(src.size() / channels);
+    for (int i = 0; i < img_size; i++)
+    {
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            float delta            = mu + rand[per_channel ? i * channels + ch : i] * sigma;
+            dst[i * channels + ch] = nvcv::cuda::clamp(__half2float(src[i * channels + ch]) + delta, 0.f, 1.f);
+        }
+    }
+}
+
 nvcv::Tensor MakeGaussianNoiseParam(int batch, float value)
 {
     nvcv::Tensor tensor({{batch}, "N"}, nvcv::TYPE_F32);
@@ -128,14 +155,19 @@ std::vector<uint8_t> MakeGaussianNoiseInput(nvcv::ImageFormat fmt, int width, in
     std::vector<uint8_t> bytes(count * elemSize);
     if (fmt.dataKind() == nvcv::DataKind::FLOAT)
     {
-        if (elemSize != static_cast<int>(sizeof(float)))
+        if (elemSize != static_cast<int>(sizeof(__half)) && elemSize != static_cast<int>(sizeof(float)))
         {
-            throw std::invalid_argument("MakeGaussianNoiseInput supports only 32-bit float formats");
+            throw std::invalid_argument("MakeGaussianNoiseInput supports only 16/32-bit float formats");
         }
         std::vector<float> values(count);
         for (size_t i = 0; i < values.size(); ++i)
         {
             values[i] = static_cast<float>(((i + 1) * 37 + sample * 17) % 1024) / 1023.f;
+        }
+        if (elemSize == static_cast<int>(sizeof(__half)))
+        {
+            // Parity compares raw bytes, so both layouts must consume identical half bits.
+            return nvcv::test::FloatToHalfBytes(values);
         }
         std::memcpy(bytes.data(), values.data(), values.size() * sizeof(float));
     }
@@ -367,7 +399,7 @@ static void tensor_correct_output_test(int batch, int height, int width, float m
 
     //Generate input
     std::vector<std::vector<datatype>> srcVec(batch);
-    std::default_random_engine         randEng;
+    std::default_random_engine         randEng; // NOSONAR: deterministic test data, not security-sensitive.
     int                                rowStride = width * fmt.planePixelStrideBytes(0);
 
     for (int i = 0; i < batch; i++)
@@ -379,6 +411,15 @@ static void tensor_correct_output_test(int batch, int height, int width, float m
             std::uniform_int_distribution<int64_t> rand(minValue, maxValue);
             srcVec[i].resize(height * rowStride / sizeof(datatype));
             std::ranges::generate(srcVec[i], [&rand, &randEng]() { return static_cast<datatype>(rand(randEng)); });
+        }
+        else if constexpr (std::is_same_v<datatype, __half>)
+        {
+            // Same [0, 1] range as the float rows; values are half by construction, so the FP32
+            // gold consumes exactly what the kernel reads.
+            std::uniform_real_distribution<float> rand(0.f, 1.f); // NOSONAR: deterministic test data only.
+            srcVec[i].resize(height * rowStride / sizeof(datatype));
+            std::ranges::generate( // NOSONAR: deterministic test data, not security-sensitive.
+                srcVec[i], [&rand, &randEng]() { return __float2half(rand(randEng)); });
         }
         else
         {
@@ -409,9 +450,21 @@ static void tensor_correct_output_test(int batch, int height, int width, float m
         ASSERT_EQ(cudaSuccess, cudaMemcpy2D(testVec.data(), rowStride, outAccess->sampleData(i), outAccess->rowStride(),
                                             rowStride, height, cudaMemcpyDeviceToHost));
 
-        std::vector<datatype> goldVec(height * rowStride / sizeof(datatype));
-        GaussianNoise<datatype>(srcVec[i], goldVec, mu, sigma, i, per_channel, fmt.numChannels(), calls - 1);
-        EXPECT_EQ(goldVec, testVec);
+        if constexpr (std::is_same_v<datatype, __half>)
+        {
+            // F16 gold: the identical noise stream is added in FP32 and clamped to [0, 1] (the
+            // F32 policy the half path mirrors) without ever rounding to half; one add plus one
+            // saturating store rounding => kUlps = 1 per the HalfTestUtils.hpp policy.
+            std::vector<float> goldVec(testVec.size());
+            GaussianNoiseF16Gold(srcVec[i], goldVec, mu, sigma, i, per_channel, fmt.numChannels(), calls - 1);
+            nvcv::test::ExpectNearHalfUlps(goldVec, testVec, 1.f);
+        }
+        else
+        {
+            std::vector<datatype> goldVec(height * rowStride / sizeof(datatype));
+            GaussianNoise<datatype>(srcVec[i], goldVec, mu, sigma, i, per_channel, fmt.numChannels(), calls - 1);
+            EXPECT_EQ(goldVec, testVec);
+        }
     }
 
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -437,6 +490,26 @@ TEST_P(OpGaussianNoise, tensor_correct_output_float)
     float sigma       = GetParamValue<4>();
     bool  per_channel = GetParamValue<5>();
     tensor_correct_output_test<float>(batch, height, width, mu, sigma, per_channel, nvcv::FMT_RGBf32);
+}
+
+TEST_P(OpGaussianNoise, tensor_correct_output_f16)
+{
+    int   batch       = GetParamValue<0>();
+    int   height      = GetParamValue<1>();
+    int   width       = GetParamValue<2>();
+    float mu          = GetParamValue<3>();
+    float sigma       = GetParamValue<4>();
+    bool  per_channel = GetParamValue<5>();
+    tensor_correct_output_test<__half>(batch, height, width, mu, sigma, per_channel, nvcv::FMT_RGBf16);
+}
+
+TEST(OpGaussianNoise, tensor_correct_output_f16_channels)
+{
+    // The 1/2/4-channel interleaved F16 paths hit the __half/__half2/half4 instantiations.
+    tensor_correct_output_test<__half>(2, 17, 19, 0.f, 0.05f, false, nvcv::FMT_F16);
+    tensor_correct_output_test<__half>(2, 19, 17, 0.f, 0.05f, false, nvcv::FMT_2F16);
+    tensor_correct_output_test<__half>(2, 17, 19, 0.f, 0.05f, true, nvcv::FMT_2F16);
+    tensor_correct_output_test<__half>(2, 19, 17, 0.f, 0.05f, true, nvcv::FMT_RGBAf16);
 }
 
 TEST(OpGaussianNoise, tensor_repeated_call_advances_rng_state)
@@ -543,7 +616,7 @@ static void varshape_correct_output_test(int batch, int height, int width, float
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
     // Create input and output
-    std::default_random_engine    randEng;
+    std::default_random_engine    randEng; // NOSONAR: deterministic test data, not security-sensitive.
     std::uniform_int_distribution rndWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
     std::uniform_int_distribution rndHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
@@ -603,6 +676,15 @@ static void varshape_correct_output_test(int batch, int height, int width, float
             srcVec[i].resize(srcHeight * srcRowStride / sizeof(datatype));
             std::ranges::generate(srcVec[i], [&rand, &randEng]() { return static_cast<datatype>(rand(randEng)); });
         }
+        else if constexpr (std::is_same_v<datatype, __half>)
+        {
+            // Same [0, 1] range as the float rows; values are half by construction, so the FP32
+            // gold consumes exactly what the kernel reads.
+            std::uniform_real_distribution<float> rand(0.f, 1.f); // NOSONAR: deterministic test data only.
+            srcVec[i].resize(srcHeight * srcRowStride / sizeof(datatype));
+            std::ranges::generate( // NOSONAR: deterministic test data, not security-sensitive.
+                srcVec[i], [&rand, &randEng]() { return __float2half(rand(randEng)); });
+        }
         else
         {
             std::uniform_real_distribution<float> rand(0.f, 1.f);
@@ -645,9 +727,21 @@ static void varshape_correct_output_test(int batch, int height, int width, float
                                dstRowStride, // vec has no padding
                                dstHeight, cudaMemcpyDeviceToHost));
 
-        std::vector<datatype> goldVec(dstHeight * dstRowStride / sizeof(datatype));
-        GaussianNoise<datatype>(srcVec[i], goldVec, mu, sigma, i, per_channel, fmt.numChannels(), calls - 1);
-        EXPECT_EQ(goldVec, testVec);
+        if constexpr (std::is_same_v<datatype, __half>)
+        {
+            // F16 gold: the identical noise stream is added in FP32 and clamped to [0, 1] (the
+            // F32 policy the half path mirrors) without ever rounding to half; one add plus one
+            // saturating store rounding => kUlps = 1 per the HalfTestUtils.hpp policy.
+            std::vector<float> goldVec(testVec.size());
+            GaussianNoiseF16Gold(srcVec[i], goldVec, mu, sigma, i, per_channel, fmt.numChannels(), calls - 1);
+            nvcv::test::ExpectNearHalfUlps(goldVec, testVec, 1.f);
+        }
+        else
+        {
+            std::vector<datatype> goldVec(dstHeight * dstRowStride / sizeof(datatype));
+            GaussianNoise<datatype>(srcVec[i], goldVec, mu, sigma, i, per_channel, fmt.numChannels(), calls - 1);
+            EXPECT_EQ(goldVec, testVec);
+        }
     }
 
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -675,6 +769,27 @@ TEST_P(OpGaussianNoise, varshape_correct_shape_float)
     bool  per_channel = GetParamValue<5>();
 
     varshape_correct_output_test<float>(batch, height, width, mu, sigma, per_channel, nvcv::FMT_RGBf32);
+}
+
+TEST_P(OpGaussianNoise, varshape_correct_shape_f16)
+{
+    int   batch       = GetParamValue<0>();
+    int   height      = GetParamValue<1>();
+    int   width       = GetParamValue<2>();
+    float mu          = GetParamValue<3>();
+    float sigma       = GetParamValue<4>();
+    bool  per_channel = GetParamValue<5>();
+
+    varshape_correct_output_test<__half>(batch, height, width, mu, sigma, per_channel, nvcv::FMT_RGBf16);
+}
+
+TEST(OpGaussianNoise, varshape_correct_output_f16_channels)
+{
+    // The 1/2/4-channel interleaved F16 paths hit the __half/__half2/half4 instantiations.
+    varshape_correct_output_test<__half>(2, 17, 19, 0.f, 0.05f, false, nvcv::FMT_F16);
+    varshape_correct_output_test<__half>(2, 19, 17, 0.f, 0.05f, false, nvcv::FMT_2F16);
+    varshape_correct_output_test<__half>(2, 17, 19, 0.f, 0.05f, true, nvcv::FMT_2F16);
+    varshape_correct_output_test<__half>(2, 19, 17, 0.f, 0.05f, true, nvcv::FMT_RGBAf16);
 }
 
 TEST(OpGaussianNoise, varshape_repeated_call_advances_rng_state)
@@ -709,8 +824,16 @@ NVCV_TEST_SUITE_P(OpGaussianNoisePlanar, nvcv::test::ValueList<int, int, int, fl
     {    1,     47,    65, 0.f, 0.008f,        true,     nvcv::FMT_RGB8p,     nvcv::FMT_RGB8},
     {    2,     29,    33, 0.f, 0.004f,       false, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
     {    1,     27,    31, 0.f, 0.006f,        true, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    {    1,      7,    11, 3.f,    25.f,       false,     nvcv::FMT_RGB8p,     nvcv::FMT_RGB8},
+    {    1,      7,    11, 3.f,    25.f,        true,     nvcv::FMT_RGB8p,     nvcv::FMT_RGB8},
+    {    1,      7,    11, 0.f,  0.005f,       false, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    {    1,      7,    11, 0.f,  0.005f,        true, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
     {    1,    257,   263, 3.f,   25.f,         true,     nvcv::FMT_RGB8p,     nvcv::FMT_RGB8},
     {    1,    263,   257, 0.f,  0.05f,        false, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    // F16 rides the float kernels; both layouts consume the same RNG stream in the same order and
+    // round once at the store, so parity stays bit-exact like the other dtypes.
+    {    2,     29,    33, 0.f, 0.004f,       false,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+    {    1,     27,    31, 0.f, 0.006f,        true, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 // clang-format on
@@ -803,6 +926,42 @@ TEST(OpGaussianNoiseScalar, uint8_matches_torchvision_clip_and_wrap_semantics)
               nvcv::test::planar::DownloadInterleavedSample(*clippedAccess, 0, width, height, rowStride));
     EXPECT_EQ((std::vector<uint8_t>{4, 11, 137, 10, 255, 9}),
               nvcv::test::planar::DownloadInterleavedSample(*wrappedAccess, 0, width, height, rowStride));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpGaussianNoiseScalar, single_channel_per_channel_matches_exact_reference)
+{
+    constexpr int width  = 513;
+    constexpr int height = 2;
+    nvcv::Tensor  src    = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_U8);
+    nvcv::Tensor  dst    = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_U8);
+
+    auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData && dstData);
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(srcAccess && dstAccess);
+
+    std::vector<uint8_t> input(static_cast<size_t>(width) * height);
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+        input[i] = i % 2 == 0 ? 250 : 1;
+    }
+    nvcv::test::planar::UploadInterleavedSample(*srcAccess, 0, input, width, height, width);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::GaussianNoise op(1);
+    ASSERT_NO_THROW(op(stream, src, dst, 10.75f, 0.f, true, 12345, true, true));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint8_t> expected(input.size());
+    for (size_t i = 0; i < expected.size(); ++i)
+    {
+        expected[i] = i % 2 == 0 ? 255 : 11;
+    }
+    EXPECT_EQ(expected, nvcv::test::planar::DownloadInterleavedSample(*dstAccess, 0, width, height, width));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
@@ -937,21 +1096,141 @@ TEST(OpGaussianNoiseScalar, planar_matches_interleaved)
         nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 31, 27, 31, 27, 2,
         [&op](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst, nvcv::ImageFormat)
         { op(stream, src, dst, 3.f, 25.f, true, 12345, true, true); });
+
+    // F16 parity is bit-exact like the other dtypes: both layouts share GaussianNoiseScalarOutput
+    // and consume the RNG stream in the same order.
+    cvcuda::GaussianNoise opF16(2);
+    nvcv::test::planar::RunTensorParity(
+        nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16, 31, 27, 31, 27, 2,
+        [&opF16](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst, nvcv::ImageFormat)
+        { opF16(stream, src, dst, 0.1f, 0.05f, true, 12345, true, true); });
+}
+
+TEST(OpGaussianNoiseScalar, f16_clip_is_optional)
+{
+    constexpr int width     = 1;
+    constexpr int height    = 1;
+    constexpr int rowStride = 3 * sizeof(__half);
+    nvcv::Tensor  src       = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBf16);
+    nvcv::Tensor  clipped   = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBf16);
+    nvcv::Tensor  raw       = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBf16);
+
+    auto srcData     = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto clippedData = clipped.exportData<nvcv::TensorDataStridedCuda>();
+    auto rawData     = raw.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData && clippedData && rawData);
+    auto srcAccess     = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto clippedAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*clippedData);
+    auto rawAccess     = nvcv::TensorDataAccessStridedImagePlanar::Create(*rawData);
+    ASSERT_TRUE(srcAccess && clippedAccess && rawAccess);
+
+    std::vector<float> input{0.9f, -0.2f, 0.5f};
+    nvcv::test::QuantizeToHalf(input);
+    nvcv::test::planar::UploadInterleavedSample(*srcAccess, 0, nvcv::test::FloatToHalfBytes(input), width, height,
+                                                rowStride);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::GaussianNoise op(1);
+    // sigma = 0 makes delta exactly mu on both host and device (no RNG term), so the FP32 gold
+    // is deterministic and the comparison bounds only the kernel's single half store rounding
+    // => kUlps = 1 per the HalfTestUtils.hpp policy.
+    op(stream, src, clipped, 0.3f, 0.f, true, 12345, true, true);
+    op(stream, src, raw, 0.3f, 0.f, true, 12345, true, false);
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<float> goldClipped(input.size());
+    std::vector<float> goldRaw(input.size());
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+        goldRaw[i]     = input[i] + 0.3f;
+        goldClipped[i] = nvcv::cuda::clamp(goldRaw[i], 0.f, 1.f);
+    }
+
+    auto clippedBytes = nvcv::test::planar::DownloadInterleavedSample(*clippedAccess, 0, width, height, rowStride);
+    auto rawBytes     = nvcv::test::planar::DownloadInterleavedSample(*rawAccess, 0, width, height, rowStride);
+    nvcv::test::ExpectNearHalfUlps(goldClipped, nvcv::test::HalfBytesToFloat(clippedBytes), 1.f);
+    nvcv::test::ExpectNearHalfUlps(goldRaw, nvcv::test::HalfBytesToFloat(rawBytes), 1.f);
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpGaussianNoiseScalar, planar_interleaved_option_matrix_matches)
+{
+    for (bool perChannel : {false, true})
+    {
+        for (bool clip : {false, true})
+        {
+            cvcuda::GaussianNoise op(1);
+            nvcv::test::planar::RunTensorParity(nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8, 513, 2, 513, 2, 1,
+                                                [&op, perChannel, clip](cudaStream_t stream, const nvcv::Tensor &src,
+                                                                        const nvcv::Tensor &dst, nvcv::ImageFormat)
+                                                { op(stream, src, dst, 3.f, 25.f, perChannel, 12345, true, clip); });
+        }
+    }
+
+    for (bool perChannel : {false, true})
+    {
+        for (bool clip : {false, true})
+        {
+            cvcuda::GaussianNoise op(1);
+            nvcv::test::planar::RunTensorParity(nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32, 513, 2, 513, 2, 1,
+                                                [&op, perChannel, clip](cudaStream_t stream, const nvcv::Tensor &src,
+                                                                        const nvcv::Tensor &dst, nvcv::ImageFormat)
+                                                { op(stream, src, dst, 0.1f, 0.05f, perChannel, 12345, true, clip); });
+        }
+    }
 }
 
 TEST(OpGaussianNoiseScalar_Negative, rejects_negative_sigma_and_unsupported_dtype)
 {
-    nvcv::Tensor          srcU8  = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_RGB8);
-    nvcv::Tensor          dstU8  = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_RGB8);
-    nvcv::Tensor          srcF16 = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_RGBf16);
-    nvcv::Tensor          dstF16 = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_RGBf16);
+    nvcv::Tensor          srcU8 = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_RGB8);
+    nvcv::Tensor          dstU8 = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_RGB8);
+    // unsupported data type (64-bit float; F16 is now valid)
+    nvcv::Tensor          srcF64 = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_F64);
+    nvcv::Tensor          dstF64 = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_F64);
     cvcuda::GaussianNoise op(1);
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcv::ProtectCall([&op, &srcU8, &dstU8] { op(nullptr, srcU8, dstU8, 0.f, -1.f, true, 0, true, true); }));
     EXPECT_EQ(
         NVCV_ERROR_INVALID_ARGUMENT,
-        nvcv::ProtectCall([&op, &srcF16, &dstF16] { op(nullptr, srcF16, dstF16, 0.f, 1.f, true, 0, true, true); }));
+        nvcv::ProtectCall([&op, &srcF64, &dstF64] { op(nullptr, srcF64, dstF64, 0.f, 1.f, true, 0, true, true); }));
+}
+
+TEST(OpGaussianNoiseScalar_Negative, rejects_layout_shape_channel_and_batch_mismatches)
+{
+    cvcuda::GaussianNoise op(1);
+
+    nvcv::Tensor invalidLayout(
+        {
+            {1, 4, 4, 3},
+            "ABCD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor invalidLayoutOut(invalidLayout.shape(), invalidLayout.dtype());
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, invalidLayout, invalidLayoutOut, 0.f, 1.f, true, 0, true, true); }));
+
+    nvcv::Tensor src        = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_RGB8);
+    nvcv::Tensor wrongShape = nvcv::util::CreateTensor(1, 3, 4, nvcv::FMT_RGB8);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, src, wrongShape, 0.f, 1.f, true, 0, true, true); }));
+
+    nvcv::Tensor planarTwoChannel(
+        {
+            {1, 2, 4, 4},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor planarTwoChannelOut(planarTwoChannel.shape(), planarTwoChannel.dtype());
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall([&] { op(nullptr, planarTwoChannel, planarTwoChannelOut, 0.f, 1.f, true, 0, true, true); }));
+
+    nvcv::Tensor batchSrc = nvcv::util::CreateTensor(2, 4, 4, nvcv::FMT_RGB8);
+    nvcv::Tensor batchDst = nvcv::util::CreateTensor(2, 4, 4, nvcv::FMT_RGB8);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, batchSrc, batchDst, 0.f, 1.f, true, 0, true, true); }));
 }
 
 TEST(OpGaussianNoise_Negative, create_with_null_handle)
@@ -1105,7 +1384,8 @@ NVCV_TEST_SUITE_P(OpGaussianNoiseVarShape_Negative, nvcv::test::ValueList<nvcv::
     // inFmt, outFmt, mu_layout, mu_data_type, sigma_layout, sigma_data_type
     {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32},
-    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32},
+    // unsupported data type (64-bit float; F16 is now valid)
+    {nvcv::FMT_F64, nvcv::FMT_F64, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32},
     {nvcv::FMT_RGB8, nvcv::FMT_RGBf32, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_F64, "N", nvcv::TYPE_F32},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F64},
@@ -1169,7 +1449,7 @@ TEST_P(OpGaussianNoiseVarShape_Negative, op)
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
     // Create input and output
-    std::default_random_engine    randEng;
+    std::default_random_engine    randEng; // NOSONAR: deterministic test data, not security-sensitive.
     std::uniform_int_distribution rndWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
     std::uniform_int_distribution rndHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 

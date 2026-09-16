@@ -89,6 +89,15 @@ import cvcuda_tools as cv_tools
             cvcuda.Border.REFLECT101,
             [0],
         ),
+        (
+            ((5, 16, 23, 3), np.float16, "NHWC"),
+            1,
+            2,
+            3,
+            4,
+            cvcuda.Border.CONSTANT,
+            [12, 3, 4],
+        ),
     ],
 )
 def test_op_copymakeborder(
@@ -172,6 +181,14 @@ def test_op_copymakeborder(
             (128, 128),
             cvcuda.Border.REFLECT101,
             [0],
+        ),
+        (
+            5,
+            cvcuda.Format.RGBf16,
+            (1, 1),
+            (128, 128),
+            cvcuda.Border.CONSTANT,
+            [12, 3, 4],
         ),
     ],
 )
@@ -286,6 +303,7 @@ globals().update(
             cvcuda.Type.U8,
             cvcuda.Type.U16,
             cvcuda.Type.S16,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
@@ -294,6 +312,7 @@ globals().update(
         exclude_dlc=[
             (cvcuda.Type.U16, None, 2),
             (cvcuda.Type.S16, None, 2),
+            (cvcuda.Type.F16, None, 2),
             (cvcuda.Type.F32, None, 2),
             (None, "NCHW", 2),
             (None, "CHW", 2),

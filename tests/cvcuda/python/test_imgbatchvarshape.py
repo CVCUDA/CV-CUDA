@@ -136,6 +136,24 @@ def test_imgbatchvarshape_several_images():
     assert batch.maxsize == (0, 0)
 
 
+def test_imgbatchvarshape_bulk_pushback_failure_preserves_batch():
+    batch = cvcuda.ImageBatchVarShape(2)
+    images = [cvcuda.Image((2, 2), cvcuda.Format.U8) for _ in range(3)]
+    batch.pushback(images[:1])
+
+    with t.raises(RuntimeError, match="NVCV_ERROR_OVERFLOW"):
+        batch.pushback(images[1:])
+
+    iterator = iter(batch)
+    assert next(iterator) is images[0]
+    with t.raises(StopIteration):
+        next(iterator)
+    assert len(batch) == 1
+
+    batch.pushback(images[1:2])
+    assert list(batch) == images[:2]
+
+
 buffmt_common = [
     ([5, 7, 1], np.uint8, cvcuda.Format.U8),
     ([5, 7, 1], np.uint8, cvcuda.Format.U8),

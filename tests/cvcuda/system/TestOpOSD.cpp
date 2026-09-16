@@ -359,6 +359,18 @@ TEST(OpOSD, OSD_memory)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpOSD, planar_workspace_shape_change_preserves_draw)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::OSD op;
+    runOp(stream, op, 2, 18, 14, 4, 11, nvcv::FMT_RGB8p);
+    runOp(stream, op, 2, 22, 16, 4, 17, nvcv::FMT_RGB8p);
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpOSD, stb_backend)
 {
     cudaStream_t stream;
@@ -710,6 +722,23 @@ TEST(OpOSD_Negative, invalid_osd_type)
 
     nvcv::Tensor imgIn  = nvcv::util::CreateTensor(inN, inW, inH, format);
     nvcv::Tensor imgOut = nvcv::util::CreateTensor(inN, inW, inH, format);
+
+    runOSDOperation(imgIn, imgOut, ctx, true);
+}
+
+TEST(OpOSD_Negative, planar_invalid_osd_type_marks_workspace_pending)
+{
+    constexpr int width  = 32;
+    constexpr int height = 24;
+
+    NVCVText text("Hello", 12, DEFAULT_OSD_FONT, NVCVPointI({4, 4}), NVCVColorRGBA({255, 0, 0, 255}),
+                  NVCVColorRGBA({0, 0, 0, 0}));
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_NONE, &text)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    nvcv::Tensor imgIn(1, {width, height}, nvcv::FMT_RGBA8p);
+    nvcv::Tensor imgOut(1, {width, height}, nvcv::FMT_RGBA8p);
 
     runOSDOperation(imgIn, imgOut, ctx, true);
 }

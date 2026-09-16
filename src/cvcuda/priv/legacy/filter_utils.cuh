@@ -24,30 +24,35 @@
 
 namespace nvcv::legacy::cuda_op {
 
-// Keep scalar planar and compound interleaved kernels on the same explicitly rounded instruction sequence.
-template<typename T>
-__device__ __forceinline__ T LaplacianFloatMulRN(T value, float coefficient)
+// Keep scalar planar and compound interleaved kernels on the same explicitly rounded instruction
+// sequence. The value may be float- or half-based: taps accumulate in the float work type R, and
+// the per-element widen is exact for half and a no-op for float, so float instantiations are
+// bit-identical to the value-type-only form.
+template<typename T, typename R = cuda::ConvertBaseTypeTo<float, T>>
+__device__ __forceinline__ R LaplacianFloatMulRN(T value, float coefficient)
 {
-    static_assert(std::is_same_v<cuda::BaseType<T>, float>);
+    static_assert(std::is_same_v<cuda::BaseType<R>, float>);
 
-    T result;
+    R result;
 #pragma unroll
     for (int c = 0; c < cuda::NumElements<T>; ++c)
     {
-        cuda::GetElement(result, c) = __fmul_rn(cuda::GetElement(value, c), coefficient);
+        cuda::GetElement(result, c) = __fmul_rn(static_cast<float>(cuda::GetElement(value, c)), coefficient);
     }
     return result;
 }
 
-template<typename T>
-__device__ __forceinline__ T LaplacianFloatFmaRN(T value, float coefficient, T result)
+template<typename T, typename R>
+__device__ __forceinline__ R LaplacianFloatFmaRN(T value, float coefficient, R result)
 {
-    static_assert(std::is_same_v<cuda::BaseType<T>, float>);
+    static_assert(std::is_same_v<cuda::BaseType<R>, float>);
+    static_assert(cuda::NumElements<T> == cuda::NumElements<R>);
 
 #pragma unroll
     for (int c = 0; c < cuda::NumElements<T>; ++c)
     {
-        cuda::GetElement(result, c) = __fmaf_rn(cuda::GetElement(value, c), coefficient, cuda::GetElement(result, c));
+        cuda::GetElement(result, c)
+            = __fmaf_rn(static_cast<float>(cuda::GetElement(value, c)), coefficient, cuda::GetElement(result, c));
     }
     return result;
 }

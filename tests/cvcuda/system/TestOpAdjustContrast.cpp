@@ -24,9 +24,11 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <random>
+#include <thread>
 #include <type_traits>
 #include <vector>
 
@@ -341,11 +343,49 @@ TEST_P(OpAdjustContrastVarShape, correct_output)
     }
 }
 
+// F16 correctness: the kernel widens every half to float, reduces the mean in the same fixed
+// 256-lane tree as the FP32 gold, and rounds once on the blended store. kUlps = 1 per the
+// HalfTestUtils.hpp policy: a single clamped mul-add blend; the float-domain mean difference
+// (host/device FMA contraction) is orders of magnitude below one half-ULP.
+constexpr float kContrastF16Ulps = 1.f;
+
+// Buffer-level FP32 gold for the F16 runners: the float instantiation of the bit-exact gold,
+// run on the widened half-quantized input (numPixels recovered from the flat buffer).
+static auto contrastGoldF32(double factor)
+{
+    return [factor](const std::vector<float> &in, int channels)
+    {
+        return AdjustContrastGoldImage<float>(in, static_cast<int>(in.size()) / channels, 1, channels, factor);
+    };
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpAdjustContrastF16, test::ValueList<int, int, int, nvcv::ImageFormat>
+{
+    // Parameters: width, height, batch, format (channels).
+    {       33,     23,     2,   nvcv::FMT_F16    }, // f16 / 1ch
+    {       57,     41,     2,   nvcv::FMT_RGBf16 }, // f16 / 3ch
+});
+
+// clang-format on
+TEST_P(OpAdjustContrastF16, tensor_matches_fp32_gold)
+{
+    ew::RunTensorCorrectBufferF16(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(),
+                                  contrastGoldF32(kFactor), invokeFactor(kFactor), kContrastF16Ulps);
+}
+
+TEST(OpAdjustContrastF16, varshape_matches_fp32_gold)
+{
+    ew::RunVarShapeCorrectBufferF16(nvcv::FMT_RGBf16, contrastGoldF32(kFactor), invokeFactor(kFactor),
+                                    kContrastF16Ulps);
+}
+
 // Planar == interleaved parity ------------------------------------------------------------------
 // clang-format off
 NVCV_TEST_SUITE_P(OpAdjustContrastPlanar,
                   test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat>{
     {176, 113, 2,   nvcv::FMT_RGB8p,   nvcv::FMT_RGB8},
+    {100,  80, 2, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16},
     {257,  33, 2, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32},
 });
 
@@ -371,7 +411,7 @@ TEST_P(OpAdjustContrastPlanar, varshape_matches_interleaved)
 // NVCV_ERROR_INVALID_ARGUMENT (ew::ExpectRejected asserts this via nvcv::ProtectCall).
 // clang-format off
 NVCV_TEST_SUITE_P(OpAdjustContrast_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
-    {nvcv::FMT_F16,    nvcv::FMT_F16   }, // unsupported dtype (16-bit float)
+    {nvcv::FMT_F64,    nvcv::FMT_F64   }, // unsupported dtype (64-bit float; F16 is now valid)
     {nvcv::FMT_S16,    nvcv::FMT_S16   }, // unsupported dtype (signed 16-bit)
     {nvcv::FMT_U16,    nvcv::FMT_U16   }, // unsupported dtype (unsigned 16-bit)
     {nvcv::FMT_RGBA8,  nvcv::FMT_RGBA8 }, // unsupported channel count (4, interleaved)
@@ -452,6 +492,127 @@ TEST(OpAdjustContrast, empty_inputs_are_noops)
     EXPECT_NO_THROW(invokeFactor(kFactor)(stream, srcBatch, dstBatch));
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdjustContrast, same_handle_cross_stream_submissions)
+{
+    cudaStream_t stream1{};
+    cudaStream_t stream2{};
+    cudaStream_t gateStream{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream1, cudaStreamNonBlocking));
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream2, cudaStreamNonBlocking));
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&gateStream, cudaStreamNonBlocking));
+
+    cudaEvent_t gate{};
+    cudaEvent_t start2{};
+    cudaEvent_t done2{};
+    ASSERT_EQ(cudaSuccess, cudaEventCreateWithFlags(&gate, cudaEventDisableTiming));
+    ASSERT_EQ(cudaSuccess, cudaEventCreate(&start2));
+    ASSERT_EQ(cudaSuccess, cudaEventCreate(&done2));
+
+    constexpr int width  = 257;
+    constexpr int height = 129;
+    constexpr int batch  = 3;
+    constexpr int count  = width * height;
+
+    nvcv::Tensor src1     = nvcv::util::CreateTensor(batch, width, height, nvcv::FMT_U8);
+    nvcv::Tensor dst1     = nvcv::util::CreateTensor(batch, width, height, nvcv::FMT_U8);
+    nvcv::Tensor src2     = nvcv::util::CreateTensor(batch, width, height, nvcv::FMT_U8);
+    nvcv::Tensor dst2     = nvcv::util::CreateTensor(batch, width, height, nvcv::FMT_U8);
+    auto         srcData1 = src1.exportData<nvcv::TensorDataStridedCuda>();
+    auto         dstData1 = dst1.exportData<nvcv::TensorDataStridedCuda>();
+    auto         srcData2 = src2.exportData<nvcv::TensorDataStridedCuda>();
+    auto         dstData2 = dst2.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData1 && dstData1 && srcData2 && dstData2);
+
+    std::vector<uint8_t> input1(count, 17);
+    std::vector<uint8_t> input2(count, 231);
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        nvcv::util::SetImageTensorFromVector<uint8_t>(*srcData1, input1, sample);
+        nvcv::util::SetImageTensorFromVector<uint8_t>(*srcData2, input2, sample);
+    }
+
+    cvcuda::AdjustContrast op;
+    ASSERT_NO_THROW(op(stream1, src1, dst1, 0.0));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream1));
+
+    ASSERT_EQ(cudaSuccess,
+              cudaLaunchHostFunc(
+                  gateStream, [](void *) { std::this_thread::sleep_for(std::chrono::milliseconds(200)); }, nullptr));
+    ASSERT_EQ(cudaSuccess, cudaEventRecord(gate, gateStream));
+    ASSERT_EQ(cudaSuccess, cudaStreamWaitEvent(stream1, gate));
+    ASSERT_NO_THROW(op(stream1, src1, dst1, 0.0));
+
+    ASSERT_EQ(cudaSuccess, cudaEventRecord(start2, stream2));
+    ASSERT_NO_THROW(op(stream2, src2, dst2, 0.0));
+    ASSERT_EQ(cudaSuccess, cudaEventRecord(done2, stream2));
+    ASSERT_EQ(cudaSuccess, cudaEventSynchronize(done2));
+
+    float elapsedMs{};
+    ASSERT_EQ(cudaSuccess, cudaEventElapsedTime(&elapsedMs, start2, done2));
+    EXPECT_GE(elapsedMs, 100.f);
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream1));
+
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        std::vector<uint8_t> got1;
+        std::vector<uint8_t> got2;
+        nvcv::util::GetImageVectorFromTensor<uint8_t>(*dstData1, sample, got1);
+        nvcv::util::GetImageVectorFromTensor<uint8_t>(*dstData2, sample, got2);
+        EXPECT_EQ(input1, got1);
+        EXPECT_EQ(input2, got2);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaEventDestroy(gate));
+    ASSERT_EQ(cudaSuccess, cudaEventDestroy(start2));
+    ASSERT_EQ(cudaSuccess, cudaEventDestroy(done2));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream1));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream2));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(gateStream));
+}
+
+TEST(OpAdjustContrast, cuda_graph_capture_replays)
+{
+    cudaStream_t stream{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+
+    constexpr int        width  = 31;
+    constexpr int        height = 17;
+    std::vector<uint8_t> input(width * height, 73);
+
+    nvcv::Tensor src     = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_U8);
+    nvcv::Tensor dst     = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_U8);
+    auto         srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto         dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData && dstData);
+    nvcv::util::SetImageTensorFromVector<uint8_t>(*srcData, input, 0);
+
+    cvcuda::AdjustContrast op;
+    ASSERT_EQ(cudaSuccess, cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal));
+    ASSERT_NO_THROW(op(stream, src, dst, 0.0));
+
+    cudaGraph_t graph{};
+    ASSERT_EQ(cudaSuccess, cudaStreamEndCapture(stream, &graph));
+    cudaGraphExec_t graphExec{};
+    ASSERT_EQ(cudaSuccess, cudaGraphInstantiate(&graphExec, graph, nullptr, nullptr, 0));
+    ASSERT_EQ(cudaSuccess, cudaGraphLaunch(graphExec, stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint8_t> got;
+    nvcv::util::GetImageVectorFromTensor<uint8_t>(*dstData, 0, got);
+    EXPECT_EQ(input, got);
+
+    std::ranges::fill(input, 91);
+    nvcv::util::SetImageTensorFromVector<uint8_t>(*srcData, input, 0);
+    ASSERT_EQ(cudaSuccess, cudaGraphLaunch(graphExec, stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    nvcv::util::GetImageVectorFromTensor<uint8_t>(*dstData, 0, got);
+    EXPECT_EQ(input, got);
+
+    ASSERT_EQ(cudaSuccess, cudaGraphExecDestroy(graphExec));
+    ASSERT_EQ(cudaSuccess, cudaGraphDestroy(graph));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 

@@ -967,6 +967,9 @@ void SIFT::FindExtrema(const nvcv::TensorDataStridedCuda &featCoordsData,
         currShape.x /= 2;
         currShape.y /= 2;
     }
+
+    // cudaGetLastError() is sticky until read: one check here covers every launch above.
+    NVCV_CHECK_THROW(cudaGetLastError());
 }
 
 // Compute run-time pyramids, DT is the input data type
@@ -1104,6 +1107,9 @@ void SIFT::ComputePyramids(const nvcv::TensorDataStridedCuda &inData, int3 currS
         currShape.x /= 2;
         currShape.y /= 2;
     }
+
+    // cudaGetLastError() is sticky until read: one check here covers every launch above.
+    NVCV_CHECK_THROW(cudaGetLastError());
 }
 
 // Reshape payload-time maxPyramids to submit (or execution) time runPyramids

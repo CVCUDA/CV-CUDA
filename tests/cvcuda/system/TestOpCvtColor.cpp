@@ -17,6 +17,7 @@
 
 #include "CvtColorUtils.hpp"
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 #include "TestUtils.hpp"
 
@@ -67,6 +68,7 @@ static int ScaledSize(int size, double scale)
 
 #define NVCV_IMAGE_FORMAT_YUVf16 NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, XYZ1, ASSOCIATED, X16_Y16_Z16)
 #define NVCV_IMAGE_FORMAT_Yf16   NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, X000, ASSOCIATED, X16)
+#define NVCV_IMAGE_FORMAT_HSVf16 NVCV_DETAIL_MAKE_COLOR_FMT1(HSV, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X16_Y16_Z16)
 
 #define NVCV_IMAGE_FORMAT_YS32   NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, SIGNED, X000, ASSOCIATED, X32)
 #define NVCV_IMAGE_FORMAT_BGRS32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, ZYX1, ASSOCIATED, X32_Y32_Z32)
@@ -88,6 +90,7 @@ static int ScaledSize(int size, double scale)
     NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZW, ASSOCIATED, X64_Y64_Z64_W64)
 #define NVCV_IMAGE_FORMAT_HSVf64 NVCV_DETAIL_MAKE_COLOR_FMT1(HSV, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X64_Y64_Z64)
 #define NVCV_IMAGE_FORMAT_Yf64   NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, X000, ASSOCIATED, X64)
+#define NVCV_IMAGE_FORMAT_YUVf64 NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, XYZ1, ASSOCIATED, X64_Y64_Z64)
 
 // clang-format off
 
@@ -119,6 +122,25 @@ static bool IsHsvToRgb(NVCVColorConversionCode code)
 static bool IsFullHsvToRgb(NVCVColorConversionCode code)
 {
     return code == NVCV_COLOR_HSV2BGR_FULL || code == NVCV_COLOR_HSV2RGB_FULL;
+}
+
+static bool IsLabToRgb(NVCVColorConversionCode code)
+{
+    return code == NVCV_COLOR_Lab2BGR || code == NVCV_COLOR_Lab2RGB || code == NVCV_COLOR_Lab2LBGR
+        || code == NVCV_COLOR_Lab2LRGB;
+}
+
+static bool IsLabConversion(NVCVColorConversionCode code)
+{
+    return code == NVCV_COLOR_BGR2Lab || code == NVCV_COLOR_RGB2Lab || code == NVCV_COLOR_Lab2BGR
+        || code == NVCV_COLOR_Lab2RGB || code == NVCV_COLOR_LBGR2Lab || code == NVCV_COLOR_LRGB2Lab
+        || code == NVCV_COLOR_Lab2LBGR || code == NVCV_COLOR_Lab2LRGB;
+}
+
+static bool IsLinearLabConversion(NVCVColorConversionCode code)
+{
+    return code == NVCV_COLOR_LBGR2Lab || code == NVCV_COLOR_LRGB2Lab || code == NVCV_COLOR_Lab2LBGR
+        || code == NVCV_COLOR_Lab2LRGB;
 }
 
 template<typename T, bool full>
@@ -158,6 +180,26 @@ static void PopulateSource(vector<T> &srcVec, int srcWdth, int srcHght, int imgs
         else
         {
             GenerateHsvSource<T, false>(srcVec, srcWdth, srcHght, imgs, numPixels, randEng);
+        }
+        return;
+    }
+
+    if (IsLabToRgb(code))
+    {
+        if constexpr (std::is_floating_point_v<T>)
+        {
+            std::uniform_real_distribution<double> lightness(0.0, 100.0);
+            std::uniform_real_distribution<double> chroma(-128.0, 127.0);
+            for (size_t i = 0; i < numPixels; ++i)
+            {
+                srcVec[3 * i]     = static_cast<T>(lightness(randEng));
+                srcVec[3 * i + 1] = static_cast<T>(chroma(randEng));
+                srcVec[3 * i + 2] = static_cast<T>(chroma(randEng));
+            }
+        }
+        else
+        {
+            generateRandVec(srcVec, randEng);
         }
         return;
     }
@@ -219,6 +261,20 @@ static bool BuildBasicColorReference(vector<T> &refVec, const vector<T> &srcVec,
     case NVCV_COLOR_HSV2BGR_FULL:
     case NVCV_COLOR_HSV2RGB_FULL:
         convertHSVtoRGB<T, true>(refVec, srcVec, numPixels, dstRGBA, dstBGR);
+        return true;
+
+    case NVCV_COLOR_BGR2Lab:
+    case NVCV_COLOR_RGB2Lab:
+    case NVCV_COLOR_LBGR2Lab:
+    case NVCV_COLOR_LRGB2Lab:
+        convertRGBtoLab<T>(refVec, srcVec, numPixels, srcBGR, !IsLinearLabConversion(code));
+        return true;
+
+    case NVCV_COLOR_Lab2BGR:
+    case NVCV_COLOR_Lab2RGB:
+    case NVCV_COLOR_Lab2LBGR:
+    case NVCV_COLOR_Lab2LRGB:
+        convertLabToRGB<T>(refVec, srcVec, numPixels, dstBGR, !IsLinearLabConversion(code));
         return true;
 
     case NVCV_COLOR_BGR2YUV:
@@ -478,6 +534,96 @@ static void verifyOutput(nvcv::Tensor srcTensor, nvcv::ImageFormat srcFrmt,
 }
 
 //--------------------------------------------------------------------------------------------------------------------//
+// F16 path: the operator computes in float and rounds once to half, so outputs are validated
+// against the existing FP32 CPU reference evaluated on half-quantized inputs (see the tolerance
+// policy in HalfTestUtils.hpp). The row's maxDiff column carries the half-ULP budget (kUlps);
+// 0 requires bit-exact 16-bit output patterns (pure data movement / alpha insertion).
+static void verifyOutputF16(nvcv::Tensor srcTensor, nvcv::ImageFormat srcFrmt, nvcv::Tensor dstTensor,
+                            nvcv::ImageFormat dstFrmt, NVCVColorConversionCode code, int wdth, int hght, int imgs,
+                            double kUlps)
+{
+    // The F16 rows never use subsampled or interleaved-YUV formats (those stay 8-bit only).
+    ASSERT_FALSE(IsInterleavedYuv422(srcFrmt) || IsInterleavedYuv422(dstFrmt));
+    ASSERT_FALSE(IsSemiPlanarYuv420(srcFrmt) || IsSemiPlanarYuv420(dstFrmt));
+
+    auto srcData = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData);
+    ASSERT_TRUE(dstData);
+
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(srcAccess);
+    ASSERT_TRUE(dstAccess);
+
+    const int srcChannels = srcAccess->numChannels();
+    const int dstChannels = dstAccess->numChannels();
+
+    const size_t numPixels = (size_t)imgs * (size_t)wdth * (size_t)hght;
+    const size_t srcElems  = numPixels * (size_t)srcChannels;
+    const size_t dstElems  = numPixels * (size_t)dstChannels;
+
+    const size_t srcPitchCPU = (size_t)wdth * srcChannels * sizeof(__half);
+    const size_t dstPitchCPU = (size_t)wdth * dstChannels * sizeof(__half);
+
+    const bool srcBGR  = IsBGR(srcFrmt.swizzle());
+    const bool dstBGR  = IsBGR(dstFrmt.swizzle());
+    const bool srcRGBA = (srcChannels == 4);
+    const bool dstRGBA = (dstChannels == 4);
+
+    RandEng randEng(0);
+
+    // Generate float test data and quantize it to half so the operator and the FP32 reference
+    // consume identical half-representable inputs.
+    vector<float> srcVec(srcElems);
+    PopulateSource(srcVec, wdth, hght, imgs, srcChannels, numPixels, srcRGBA, srcBGR, code, randEng);
+    test::QuantizeToHalf(srcVec);
+
+    const std::vector<uint8_t> srcHalf = test::FloatToHalfBytes(srcVec);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(srcData->basePtr(), srcAccess->rowStride(), srcHalf.data(), srcPitchCPU,
+                                        srcPitchCPU, (size_t)imgs * (size_t)hght, cudaMemcpyHostToDevice));
+
+    vector<float> refVec(dstElems);
+    ASSERT_TRUE(BuildCvtColorReference(refVec, srcVec, code, numPixels, wdth, hght, imgs, srcRGBA, srcBGR, dstRGBA,
+                                       dstBGR));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::CvtColor convertColor;
+    EXPECT_NO_THROW(convertColor(stream, srcTensor, dstTensor, code));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::vector<uint8_t> dstHalf(dstElems * sizeof(__half));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(dstHalf.data(), dstPitchCPU, dstData->basePtr(), dstAccess->rowStride(),
+                                        dstPitchCPU, (size_t)imgs * (size_t)hght, cudaMemcpyDeviceToHost));
+
+    if (kUlps == 0.0)
+    {
+        // Pure data movement (channel swap, gray broadcast, alpha = 1.0 insertion): the output
+        // bit patterns must match the half-rounded reference exactly.
+        const auto *dstVals = reinterpret_cast<const __half *>(dstHalf.data());
+        for (size_t i = 0; i < refVec.size(); ++i)
+        {
+            const __half expected = __float2half(refVec[i]);
+            EXPECT_EQ(reinterpret_cast<const uint16_t &>(expected), reinterpret_cast<const uint16_t &>(dstVals[i]))
+                << "F16 output bits differ at index " << i;
+        }
+    }
+    else
+    {
+        // Lab's matrix products and piecewise nonlinear stages can produce small cancellation
+        // differences around zero. Half of the smallest normal F16 value is a negligible absolute
+        // floor for Lab's documented channel ranges; other conversions retain the ULP-only bound.
+        const float absToleranceFloor = IsLabConversion(code) ? 0x1p-15f : 0.f;
+        test::ExpectNearHalfUlps(refVec, test::HalfBytesToFloat(dstHalf), static_cast<float>(kUlps),
+                                 absToleranceFloor);
+    }
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
 
 #define ERR2_3 (2.0 / 1024.0) // 0.0009765625    --> approximates 2e-3 but can be exactly represented in floating point.
 #define ERR1_3 (1.0 / 1024.0) // 0.0009765625    --> approximates 1e-3 but can be exactly represented in floating point.
@@ -548,13 +694,20 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {  38,  58,  2,  NVCV_IMAGE_FORMAT_RGBS32,   NVCV_IMAGE_FORMAT_BGRS32,   NVCV_COLOR_RGB2BGR,       0.0},
     {  52,  22,  4,  NVCV_IMAGE_FORMAT_BGRS32,   NVCV_IMAGE_FORMAT_RGBS32,   NVCV_COLOR_BGR2RGB,       0.0},
 
-    // Conversions that add alpha to output tensor are not allowed for f16 type.
+    // F16 maxDiff is a half-ULP budget vs the FP32 reference (see verifyOutputF16): 0 = pure
+    // data movement incl. the alpha = 1.0 insertion (bit-exact), 2 = one float mul-add chain
+    // (luma), 4 = YUV offset/scale chains, 8 = HSV sector/hue arithmetic.
     { 113, 176,  2,  NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_BGRA2BGR,      0.0},
     { 431, 336,  2,  NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_COLOR_RGBA2RGB,      0.0},
     {  77, 212,  3,  NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_RGBA2BGR,      0.0},
     {  33,  55,  4,  NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_COLOR_BGRA2RGB,      0.0},
     { 123, 321,  5,  NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_RGBA2BGRA,     0.0},
     { 123, 321,  5,  NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_COLOR_BGRA2RGBA,     0.0},
+    { 129,  61,  4,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_BGR2BGRA,      0.0},
+    {  63,  31,  3,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_COLOR_RGB2RGBA,      0.0},
+    {  42, 111,  2,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_COLOR_BGR2RGBA,      0.0},
+    {  21,  72,  2,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_RGB2BGRA,      0.0},
+    {  54,  77,  3,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_RGBf16,   NVCV_COLOR_BGR2RGB,       0.0},
 
     { 129,  61,  4,  NVCV_IMAGE_FORMAT_BGRf32,   NVCV_IMAGE_FORMAT_BGRAf32,  NVCV_COLOR_BGR2BGRA,      0.0},
     { 129,  61,  4,  NVCV_IMAGE_FORMAT_BGRAf32,  NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_BGRA2BGR,      0.0},
@@ -597,7 +750,11 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {  54,  66,  5,  NVCV_IMAGE_FORMAT_RGB16,    NVCV_IMAGE_FORMAT_Y16,      NVCV_COLOR_RGB2GRAY,      2.0},
     {4096,4096,  1,  NVCV_IMAGE_FORMAT_RGB16,    NVCV_IMAGE_FORMAT_Y16,      NVCV_COLOR_RGB2GRAY,      2.0},
 
-    {  52,  22,  2,  NVCV_IMAGE_FORMAT_Yf16,     NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_GRAY2BGR,   ERR1_4},
+    {  52,  22,  2,  NVCV_IMAGE_FORMAT_Yf16,     NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_GRAY2BGR,      0.0},
+    {  25,  11,  2,  NVCV_IMAGE_FORMAT_Yf16,     NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_GRAY2BGRA,     0.0},
+    {  64,  21,  4,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_Yf16,     NVCV_COLOR_BGR2GRAY,      2.0},
+    { 121,  66,  5,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_IMAGE_FORMAT_Yf16,     NVCV_COLOR_RGB2GRAY,      2.0},
+    {   8,  14,  7,  NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_IMAGE_FORMAT_Yf16,     NVCV_COLOR_BGRA2GRAY,     2.0},
 
     {  44,  17,  7,  NVCV_IMAGE_FORMAT_YS32,     NVCV_IMAGE_FORMAT_BGRS32,   NVCV_COLOR_GRAY2BGR,      0.0},
     {  88,  34,  4,  NVCV_IMAGE_FORMAT_YS32,     NVCV_IMAGE_FORMAT_RGBS32,   NVCV_COLOR_GRAY2RGB,      0.0},
@@ -653,7 +810,40 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {4096,4096,  1,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_HSVf32,   NVCV_COLOR_RGB2HSV,    ERR2_3},
     {5760,4096,  1,  NVCV_IMAGE_FORMAT_HSVf32,   NVCV_IMAGE_FORMAT_RGBf32,   NVCV_COLOR_RGB2HSV,    ERR2_3},
 
-    // // Codes 42 to 53 and 56 to 65 and 68 to 69 are not implemented
+    // F16 HSV: 8 half-ULPs (sector select + divisions; see verifyOutputF16 comment).
+    {  55, 257,  4,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_HSVf16,   NVCV_COLOR_BGR2HSV,       8.0},
+    {  33, 525,  3,  NVCV_IMAGE_FORMAT_HSVf16,   NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_HSV2BGR,       8.0},
+    {  33, 525,  4,  NVCV_IMAGE_FORMAT_HSVf16,   NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_HSV2BGR,       8.0},
+    { 365,  14,  5,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_IMAGE_FORMAT_HSVf16,   NVCV_COLOR_RGB2HSV,       8.0},
+    { 367, 223,  2,  NVCV_IMAGE_FORMAT_HSVf16,   NVCV_IMAGE_FORMAT_RGBf16,   NVCV_COLOR_HSV2RGB,       8.0},
+
+    // CIE Lab uses OpenCV-compatible U8 packing and conventional floating-point ranges.
+    { 131,  59,  2,  NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_LAB8,     NVCV_COLOR_BGR2Lab,       1.0},
+    { 127,  61,  3,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_LAB8,     NVCV_COLOR_RGB2Lab,       1.0},
+    { 109,  71,  2,  NVCV_IMAGE_FORMAT_LAB8,     NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_Lab2BGR,       1.0},
+    { 113,  67,  2,  NVCV_IMAGE_FORMAT_LAB8,     NVCV_IMAGE_FORMAT_RGB8,     NVCV_COLOR_Lab2RGB,       1.0},
+    { 103,  57,  2,  NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_LAB8,     NVCV_COLOR_LBGR2Lab,      1.0},
+    { 101,  63,  3,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_LAB8,     NVCV_COLOR_LRGB2Lab,      1.0},
+    {  97,  69,  2,  NVCV_IMAGE_FORMAT_LAB8,     NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_Lab2LBGR,      1.0},
+    { 107,  65,  3,  NVCV_IMAGE_FORMAT_LAB8,     NVCV_IMAGE_FORMAT_RGB8,     NVCV_COLOR_Lab2LRGB,      1.0},
+    {  89,  55,  3,  NVCV_IMAGE_FORMAT_BGRf32,   NVCV_IMAGE_FORMAT_LABf32,   NVCV_COLOR_BGR2Lab,    ERR2_3},
+    {  91,  53,  2,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_LABf32,   NVCV_COLOR_RGB2Lab,    ERR2_3},
+    {  85,  51,  2,  NVCV_IMAGE_FORMAT_LABf32,   NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_Lab2BGR,    ERR2_3},
+    {  87,  49,  3,  NVCV_IMAGE_FORMAT_LABf32,   NVCV_IMAGE_FORMAT_RGBf32,   NVCV_COLOR_Lab2RGB,    ERR2_3},
+    {  83,  47,  2,  NVCV_IMAGE_FORMAT_BGRf32,   NVCV_IMAGE_FORMAT_LABf32,   NVCV_COLOR_LBGR2Lab,   ERR2_3},
+    {  81,  45,  3,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_LABf32,   NVCV_COLOR_LRGB2Lab,   ERR2_3},
+    {  77,  43,  2,  NVCV_IMAGE_FORMAT_LABf32,   NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_Lab2LBGR,   ERR2_3},
+    {  75,  41,  3,  NVCV_IMAGE_FORMAT_LABf32,   NVCV_IMAGE_FORMAT_RGBf32,   NVCV_COLOR_Lab2LRGB,   ERR2_3},
+    {  71,  39,  2,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_LABf16,   NVCV_COLOR_BGR2Lab,       8.0},
+    {  79,  43,  2,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_IMAGE_FORMAT_LABf16,   NVCV_COLOR_RGB2Lab,       8.0},
+    {  69,  37,  3,  NVCV_IMAGE_FORMAT_LABf16,   NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_Lab2BGR,       8.0},
+    {  73,  47,  3,  NVCV_IMAGE_FORMAT_LABf16,   NVCV_IMAGE_FORMAT_RGBf16,   NVCV_COLOR_Lab2RGB,       8.0},
+    {  67,  35,  2,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_LABf16,   NVCV_COLOR_LBGR2Lab,      8.0},
+    {  65,  33,  3,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_IMAGE_FORMAT_LABf16,   NVCV_COLOR_LRGB2Lab,      8.0},
+    {  63,  31,  2,  NVCV_IMAGE_FORMAT_LABf16,   NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_Lab2LBGR,      8.0},
+    {  61,  29,  3,  NVCV_IMAGE_FORMAT_LABf16,   NVCV_IMAGE_FORMAT_RGBf16,   NVCV_COLOR_Lab2LRGB,      8.0},
+
+    // Codes 42 to 53 except 44 to 45, 58 to 65, and 68 to 69 are not implemented.
     { 112, 157,  4,  NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_BGR2HSV_FULL,  1.0},
     { 112, 157,  4,  NVCV_IMAGE_FORMAT_HSV8,     NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_HSV2BGR_FULL,  1.0},
     { 333,  13,  3,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_RGB2HSV_FULL,  1.0},
@@ -661,7 +851,7 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {4096,4096,  1,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_RGB2HSV_FULL,  1.0},
     {4096,4096,  1,  NVCV_IMAGE_FORMAT_HSV8,     NVCV_IMAGE_FORMAT_RGB8,     NVCV_COLOR_RGB2HSV_FULL,  1.0},
 
-    // Codes 72 to 81 are not implemented
+    // Codes 72 to 73, 76 to 77, and 80 to 81 are not implemented.
     { 133,  22,  2,  NVCV_IMAGE_FORMAT_YUV8,     NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_YUV2BGR,       1.0},
     { 133,  22,  2,  NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_YUV8,     NVCV_COLOR_BGR2YUV,       1.0},
     { 123,  21,  3,  NVCV_IMAGE_FORMAT_YUV8,     NVCV_IMAGE_FORMAT_RGB8,     NVCV_COLOR_YUV2RGB,       1.0},
@@ -679,6 +869,12 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     { 123,  21,  3,  NVCV_IMAGE_FORMAT_YUVf32,   NVCV_IMAGE_FORMAT_RGBf32,   NVCV_COLOR_YUV2RGB,    ERR1_4},
     { 123,  21,  3,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_YUVf32,   NVCV_COLOR_RGB2YUV,    ERR1_4},
     {4096,4096,  1,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_YUVf32,   NVCV_COLOR_RGB2YUV,    ERR1_4},
+
+    // F16 YUV: 4 half-ULPs (see verifyOutputF16 comment).
+    { 133,  21,  3,  NVCV_IMAGE_FORMAT_YUVf16,   NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_YUV2BGR,       4.0},
+    { 133,  21,  3,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_YUVf16,   NVCV_COLOR_BGR2YUV,       4.0},
+    { 123,  21,  3,  NVCV_IMAGE_FORMAT_YUVf16,   NVCV_IMAGE_FORMAT_RGBf16,   NVCV_COLOR_YUV2RGB,       4.0},
+    { 123,  21,  3,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_IMAGE_FORMAT_YUVf16,   NVCV_COLOR_RGB2YUV,       4.0},
     // Codes 86 to 89 are not implemented
     // Codes 90 to 147 dealing with subsampled planes (NV12, etc. formats) are postponed (see comment below)
     //     Codes 109, 110, 113, 114 dealing with VYUY format are not implemented
@@ -796,11 +992,14 @@ TEST_P(OpCvtColor, correct_output)
     case NVCV_DATA_TYPE_2S16:
     case NVCV_DATA_TYPE_3S16:
     case NVCV_DATA_TYPE_4S16:
-    case NVCV_DATA_TYPE_F16:  // Data type float16 is only allowed in conversions that treat it as 16-bit integer
-    case NVCV_DATA_TYPE_2F16: //   (e.g., RGB2BGR or Gray2RGB).
+        verifyOutput<uint16_t>(srcTensor, srcFrmt, dstTensor, dstFrmt, code, wdth, hght, imgs, maxDiff);
+        break;
+
+    case NVCV_DATA_TYPE_F16: // F16 validates against the FP32 reference; maxDiff is the half-ULP budget.
+    case NVCV_DATA_TYPE_2F16:
     case NVCV_DATA_TYPE_3F16:
     case NVCV_DATA_TYPE_4F16:
-        verifyOutput<uint16_t>(srcTensor, srcFrmt, dstTensor, dstFrmt, code, wdth, hght, imgs, maxDiff);
+        verifyOutputF16(srcTensor, srcFrmt, dstTensor, dstFrmt, code, wdth, hght, imgs, maxDiff);
         break;
 
     case NVCV_DATA_TYPE_S32:
@@ -839,15 +1038,20 @@ NVCV_TEST_SUITE_P(OpCvtColorVarShapeReference,
                       {NVCV_IMAGE_FORMAT_RGBA8,  NVCV_IMAGE_FORMAT_RGB8, NVCV_COLOR_RGBA2RGB, 0},
                       { NVCV_IMAGE_FORMAT_RGB8,    NVCV_IMAGE_FORMAT_Y8, NVCV_COLOR_RGB2GRAY, 1},
                       { NVCV_IMAGE_FORMAT_HSV8,  NVCV_IMAGE_FORMAT_RGB8,  NVCV_COLOR_HSV2RGB, 1},
+                      { NVCV_IMAGE_FORMAT_BGR8,  NVCV_IMAGE_FORMAT_LAB8,  NVCV_COLOR_BGR2Lab, 1},
+                      { NVCV_IMAGE_FORMAT_RGB8,  NVCV_IMAGE_FORMAT_LAB8,  NVCV_COLOR_RGB2Lab, 1},
+                      { NVCV_IMAGE_FORMAT_LAB8,  NVCV_IMAGE_FORMAT_BGR8,  NVCV_COLOR_Lab2BGR, 1},
+                      { NVCV_IMAGE_FORMAT_LAB8,  NVCV_IMAGE_FORMAT_RGB8,  NVCV_COLOR_Lab2RGB, 1},
+                      { NVCV_IMAGE_FORMAT_BGR8,  NVCV_IMAGE_FORMAT_LAB8, NVCV_COLOR_LBGR2Lab, 1},
+                      { NVCV_IMAGE_FORMAT_RGB8,  NVCV_IMAGE_FORMAT_LAB8, NVCV_COLOR_LRGB2Lab, 1},
+                      { NVCV_IMAGE_FORMAT_LAB8,  NVCV_IMAGE_FORMAT_BGR8, NVCV_COLOR_Lab2LBGR, 1},
+                      { NVCV_IMAGE_FORMAT_LAB8,  NVCV_IMAGE_FORMAT_RGB8, NVCV_COLOR_Lab2LRGB, 1},
 });
 
-TEST_P(OpCvtColorVarShapeReference, benchmark_kernels_match_independent_reference)
+template<typename T>
+static void RunCvtColorVarShapeReference(nvcv::ImageFormat srcFormat, nvcv::ImageFormat dstFormat,
+                                         NVCVColorConversionCode code, double maxDiff)
 {
-    nvcv::ImageFormat       srcFormat{GetParamValue<0>()};
-    nvcv::ImageFormat       dstFormat{GetParamValue<1>()};
-    NVCVColorConversionCode code{GetParamValue<2>()};
-    int                     maxDiff = GetParamValue<3>();
-
     // Odd, nonuniform dimensions cover scalar tails and per-image var-shape addressing.
     const std::vector<nvcv::Size2D> sizes{
         {31, 23},
@@ -857,10 +1061,10 @@ TEST_P(OpCvtColorVarShapeReference, benchmark_kernels_match_independent_referenc
     const int srcChannels = srcFormat.numChannels();
     const int dstChannels = dstFormat.numChannels();
 
-    std::vector<nvcv::Image>          srcImages;
-    std::vector<nvcv::Image>          dstImages;
-    std::vector<std::vector<uint8_t>> srcVectors;
-    std::vector<std::vector<uint8_t>> refVectors;
+    std::vector<nvcv::Image>    srcImages;
+    std::vector<nvcv::Image>    dstImages;
+    std::vector<std::vector<T>> srcVectors;
+    std::vector<std::vector<T>> refVectors;
     srcImages.reserve(sizes.size());
     dstImages.reserve(sizes.size());
     srcVectors.reserve(sizes.size());
@@ -907,8 +1111,8 @@ TEST_P(OpCvtColorVarShapeReference, benchmark_kernels_match_independent_referenc
         SCOPED_TRACE(i);
         auto dstData = dstImages[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_TRUE(dstData);
-        const size_t         dstRowBytes = static_cast<size_t>(sizes[i].w) * dstFormat.planePixelStrideBytes(0);
-        std::vector<uint8_t> dstVector(static_cast<size_t>(sizes[i].h) * dstRowBytes);
+        const size_t   dstRowBytes = static_cast<size_t>(sizes[i].w) * dstFormat.planePixelStrideBytes(0);
+        std::vector<T> dstVector(static_cast<size_t>(sizes[i].h) * sizes[i].w * dstChannels);
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2D(dstVector.data(), dstRowBytes, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
                                dstRowBytes, sizes[i].h, cudaMemcpyDeviceToHost));
@@ -922,13 +1126,162 @@ TEST_P(OpCvtColorVarShapeReference, benchmark_kernels_match_independent_referenc
             ASSERT_EQ(refVectors[i].size(), dstVector.size());
             for (size_t j = 0; j < refVectors[i].size(); ++j)
             {
-                // This one-level tolerance covers fixed-point luma/HSV rounding against the scalar reference.
+                // Conversion-specific tolerances cover nonlinear and matrix rounding against the scalar reference.
                 EXPECT_NEAR(refVectors[i][j], dstVector[j], maxDiff) << "At index " << j;
             }
         }
     }
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpCvtColorVarShapeReference, benchmark_kernels_match_independent_reference)
+{
+    RunCvtColorVarShapeReference<uint8_t>(nvcv::ImageFormat{GetParamValue<0>()}, nvcv::ImageFormat{GetParamValue<1>()},
+                                          GetParamValue<2>(), GetParamValue<3>());
+}
+
+NVCV_TEST_SUITE_P(OpCvtColorVarShapeReferenceF32,
+                  test::ValueList<NVCVImageFormat, NVCVImageFormat, NVCVColorConversionCode, double>{
+  //  Input Format,              Output Format,             Conversion Code,       Max Diff
+                      {NVCV_IMAGE_FORMAT_BGRf32, NVCV_IMAGE_FORMAT_LABf32,  NVCV_COLOR_BGR2Lab, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_RGBf32, NVCV_IMAGE_FORMAT_LABf32,  NVCV_COLOR_RGB2Lab, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_LABf32, NVCV_IMAGE_FORMAT_BGRf32,  NVCV_COLOR_Lab2BGR, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_LABf32, NVCV_IMAGE_FORMAT_RGBf32,  NVCV_COLOR_Lab2RGB, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_BGRf32, NVCV_IMAGE_FORMAT_LABf32, NVCV_COLOR_LBGR2Lab, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_RGBf32, NVCV_IMAGE_FORMAT_LABf32, NVCV_COLOR_LRGB2Lab, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_LABf32, NVCV_IMAGE_FORMAT_BGRf32, NVCV_COLOR_Lab2LBGR, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_LABf32, NVCV_IMAGE_FORMAT_RGBf32, NVCV_COLOR_Lab2LRGB, ERR2_3},
+});
+
+TEST_P(OpCvtColorVarShapeReferenceF32, benchmark_kernels_match_independent_reference)
+{
+    RunCvtColorVarShapeReference<float>(nvcv::ImageFormat{GetParamValue<0>()}, nvcv::ImageFormat{GetParamValue<1>()},
+                                        GetParamValue<2>(), GetParamValue<3>());
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+// clang-format off
+
+// F16 var-shape correctness: FP32 reference on half-quantized inputs; the last column is the
+// half-ULP budget per the HalfTestUtils.hpp policy (0 = bit-exact data movement, 2 = luma
+// mul-add chain, 4 = YUV offset/scale chains, 8 = nonlinear HSV/Lab arithmetic).
+NVCV_TEST_SUITE_P(OpCvtColorVarShapeF16,
+                  test::ValueList<NVCVImageFormat, NVCVImageFormat, NVCVColorConversionCode, double>{
+  //  Input Format,             Output Format,            Conversion Code,      kUlps
+    { NVCV_IMAGE_FORMAT_RGBf16, NVCV_IMAGE_FORMAT_RGBAf16, NVCV_COLOR_RGB2RGBA, 0.0},
+    {NVCV_IMAGE_FORMAT_RGBAf16, NVCV_IMAGE_FORMAT_RGBf16,  NVCV_COLOR_RGBA2RGB, 0.0},
+    { NVCV_IMAGE_FORMAT_RGBf16, NVCV_IMAGE_FORMAT_Yf16,    NVCV_COLOR_RGB2GRAY, 2.0},
+    {   NVCV_IMAGE_FORMAT_Yf16, NVCV_IMAGE_FORMAT_RGBf16,  NVCV_COLOR_GRAY2RGB, 0.0},
+    { NVCV_IMAGE_FORMAT_RGBf16, NVCV_IMAGE_FORMAT_YUVf16,  NVCV_COLOR_RGB2YUV,  4.0},
+    { NVCV_IMAGE_FORMAT_YUVf16, NVCV_IMAGE_FORMAT_RGBf16,  NVCV_COLOR_YUV2RGB,  4.0},
+    { NVCV_IMAGE_FORMAT_RGBf16, NVCV_IMAGE_FORMAT_HSVf16,  NVCV_COLOR_RGB2HSV,  8.0},
+    { NVCV_IMAGE_FORMAT_HSVf16, NVCV_IMAGE_FORMAT_RGBf16,  NVCV_COLOR_HSV2RGB,  8.0},
+    { NVCV_IMAGE_FORMAT_BGRf16, NVCV_IMAGE_FORMAT_LABf16,  NVCV_COLOR_BGR2Lab,  8.0},
+    { NVCV_IMAGE_FORMAT_RGBf16, NVCV_IMAGE_FORMAT_LABf16,  NVCV_COLOR_RGB2Lab,  8.0},
+    { NVCV_IMAGE_FORMAT_LABf16, NVCV_IMAGE_FORMAT_BGRf16,  NVCV_COLOR_Lab2BGR,  8.0},
+    { NVCV_IMAGE_FORMAT_LABf16, NVCV_IMAGE_FORMAT_RGBf16,  NVCV_COLOR_Lab2RGB,  8.0},
+    { NVCV_IMAGE_FORMAT_BGRf16, NVCV_IMAGE_FORMAT_LABf16,  NVCV_COLOR_LBGR2Lab, 8.0},
+    { NVCV_IMAGE_FORMAT_RGBf16, NVCV_IMAGE_FORMAT_LABf16,  NVCV_COLOR_LRGB2Lab, 8.0},
+    { NVCV_IMAGE_FORMAT_LABf16, NVCV_IMAGE_FORMAT_BGRf16,  NVCV_COLOR_Lab2LBGR, 8.0},
+    { NVCV_IMAGE_FORMAT_LABf16, NVCV_IMAGE_FORMAT_RGBf16,  NVCV_COLOR_Lab2LRGB, 8.0},
+});
+
+// clang-format on
+
+TEST_P(OpCvtColorVarShapeF16, correct_output)
+{
+    nvcv::ImageFormat       srcFormat{GetParamValue<0>()};
+    nvcv::ImageFormat       dstFormat{GetParamValue<1>()};
+    NVCVColorConversionCode code{GetParamValue<2>()};
+    double                  kUlps = GetParamValue<3>();
+
+    // Odd, nonuniform dimensions cover scalar tails and per-image var-shape addressing.
+    const std::vector<nvcv::Size2D> sizes{
+        {31, 23},
+        {37, 19},
+        {65, 17}
+    };
+    const int srcChannels = srcFormat.numChannels();
+    const int dstChannels = dstFormat.numChannels();
+
+    std::vector<nvcv::Image>        srcImages;
+    std::vector<nvcv::Image>        dstImages;
+    std::vector<std::vector<float>> refVectors;
+
+    RandEng randEng(0);
+    for (const nvcv::Size2D &size : sizes)
+    {
+        const size_t numPixels = static_cast<size_t>(size.w) * size.h;
+
+        // Generate float test data quantized to half so the operator and the FP32 reference
+        // consume identical half-representable inputs.
+        std::vector<float> srcVec(numPixels * srcChannels);
+        const bool         srcRGBA = srcChannels == 4;
+        const bool         dstRGBA = dstChannels == 4;
+        const bool         srcBGR  = IsBGR(srcFormat.swizzle());
+        const bool         dstBGR  = IsBGR(dstFormat.swizzle());
+        PopulateSource(srcVec, size.w, size.h, 1, srcChannels, numPixels, srcRGBA, srcBGR, code, randEng);
+        test::QuantizeToHalf(srcVec);
+
+        refVectors.emplace_back(numPixels * dstChannels);
+        ASSERT_TRUE(BuildCvtColorReference(refVectors.back(), srcVec, code, numPixels, size.w, size.h, 1, srcRGBA,
+                                           srcBGR, dstRGBA, dstBGR));
+
+        srcImages.emplace_back(size, srcFormat);
+        dstImages.emplace_back(size, dstFormat);
+        auto srcData = srcImages.back().exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_TRUE(srcData);
+        const std::vector<uint8_t> srcHalf     = test::FloatToHalfBytes(srcVec);
+        const size_t               srcRowBytes = static_cast<size_t>(size.w) * srcChannels * sizeof(__half);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(srcData->plane(0).basePtr, srcData->plane(0).rowStride, srcHalf.data(),
+                                            srcRowBytes, srcRowBytes, size.h, cudaMemcpyHostToDevice));
+    }
+
+    nvcv::ImageBatchVarShape srcBatch(static_cast<int32_t>(sizes.size()));
+    nvcv::ImageBatchVarShape dstBatch(static_cast<int32_t>(sizes.size()));
+    srcBatch.pushBack(srcImages.begin(), srcImages.end());
+    dstBatch.pushBack(dstImages.begin(), dstImages.end());
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::CvtColor op;
+    EXPECT_NO_THROW(op(stream, srcBatch, dstBatch, code));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (size_t i = 0; i < sizes.size(); ++i)
+    {
+        SCOPED_TRACE(i);
+        auto dstData = dstImages[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_TRUE(dstData);
+        const size_t         dstRowBytes = static_cast<size_t>(sizes[i].w) * dstChannels * sizeof(__half);
+        std::vector<uint8_t> dstHalf(static_cast<size_t>(sizes[i].h) * dstRowBytes);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(dstHalf.data(), dstRowBytes, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
+                               dstRowBytes, sizes[i].h, cudaMemcpyDeviceToHost));
+
+        if (kUlps == 0.0)
+        {
+            // Pure data movement (channel swap, gray broadcast, alpha = 1.0 insertion).
+            const auto *dstVals = reinterpret_cast<const __half *>(dstHalf.data());
+            for (size_t j = 0; j < refVectors[i].size(); ++j)
+            {
+                const __half expected = __float2half(refVectors[i][j]);
+                EXPECT_EQ(reinterpret_cast<const uint16_t &>(expected), reinterpret_cast<const uint16_t &>(dstVals[j]))
+                    << "F16 output bits differ at index " << j;
+            }
+        }
+        else
+        {
+            // Lab's matrix products and piecewise nonlinear stages can produce small cancellation
+            // differences around zero. Use half of the smallest normal F16 value as an absolute floor.
+            const float absToleranceFloor = IsLabConversion(code) ? 0x1p-15f : 0.f;
+            test::ExpectNearHalfUlps(refVectors[i], test::HalfBytesToFloat(dstHalf), static_cast<float>(kUlps),
+                                     absToleranceFloor);
+        }
+    }
 }
 
 //--------------------------------------------------------------------------------------------------------------------//
@@ -948,40 +1301,59 @@ static std::vector<uint8_t> GenerateCvtColorPlanarParitySource(int width, int he
     return srcBytes;
 }
 
+// F16 sources are generated as float and narrowed to half: the host-side generators are not
+// instantiated for __half, and parity only needs identical bytes on both layouts.
+template<>
+std::vector<uint8_t> GenerateCvtColorPlanarParitySource<__half>(int width, int height, int numImages, int srcChannels,
+                                                                NVCVColorConversionCode code, bool srcRGBA, bool srcBGR)
+{
+    const size_t       numPixels = static_cast<size_t>(numImages) * height * width;
+    std::vector<float> srcVec(numPixels * srcChannels);
+    RandEng            randEng(0); // NOSONAR: deterministic test data, not security-sensitive.
+
+    PopulateSource(srcVec, width, height, numImages, srcChannels, numPixels, srcRGBA, srcBGR, code, randEng);
+
+    return test::FloatToHalfBytes(srcVec);
+}
+
+template<typename T>
 static void RunCvtColorTensorPlanarParity(int width, int height, int numImages, int srcChannels, int dstChannels,
                                           NVCVColorConversionCode code, bool srcRGBA, bool srcBGR)
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    constexpr int elemSize     = 1;
+    constexpr int elemSize     = sizeof(T);
     const int     srcRowStride = width * srcChannels * elemSize;
     const int     dstRowStride = width * dstChannels * elemSize;
+    const auto    dtype        = std::is_same_v<T, float>  ? nvcv::TYPE_F32
+                               : std::is_same_v<T, __half> ? nvcv::TYPE_F16
+                                                           : nvcv::TYPE_U8;
 
     nvcv::Tensor srcI(
         {
             {numImages, height, width, srcChannels},
             "NHWC"
     },
-        nvcv::TYPE_U8);
+        dtype);
     nvcv::Tensor dstI(
         {
             {numImages, height, width, dstChannels},
             "NHWC"
     },
-        nvcv::TYPE_U8);
+        dtype);
     nvcv::Tensor srcP(
         {
             {numImages, srcChannels, height, width},
             "NCHW"
     },
-        nvcv::TYPE_U8);
+        dtype);
     nvcv::Tensor dstP(
         {
             {numImages, dstChannels, height, width},
             "NCHW"
     },
-        nvcv::TYPE_U8);
+        dtype);
 
     auto srcIData = srcI.exportData<nvcv::TensorDataStridedCuda>();
     auto dstIData = dstI.exportData<nvcv::TensorDataStridedCuda>();
@@ -996,7 +1368,7 @@ static void RunCvtColorTensorPlanarParity(int width, int height, int numImages, 
     ASSERT_TRUE(srcIAcc && dstIAcc && srcPAcc && dstPAcc);
 
     const auto srcHwcBytes
-        = GenerateCvtColorPlanarParitySource<uint8_t>(width, height, numImages, srcChannels, code, srcRGBA, srcBGR);
+        = GenerateCvtColorPlanarParitySource<T>(width, height, numImages, srcChannels, code, srcRGBA, srcBGR);
     const size_t sampleBytes = static_cast<size_t>(height) * srcRowStride;
     for (int i = 0; i < numImages; ++i)
     {
@@ -1021,7 +1393,21 @@ static void RunCvtColorTensorPlanarParity(int width, int height, int numImages, 
         auto planesOut   = test::planar::DownloadPlanarSample(*dstPAcc, i, width, height, dstChannels, elemSize);
         auto planarInter = test::planar::InterleaveFromPlanes(planesOut, width, height, dstChannels, elemSize);
 
-        EXPECT_EQ(gpuInter, planarInter);
+        if constexpr (std::is_same_v<T, float>)
+        {
+            ASSERT_EQ(gpuInter.size(), planarInter.size());
+            ASSERT_EQ(0, gpuInter.size() % sizeof(float));
+            const auto *gpuValues    = reinterpret_cast<const float *>(gpuInter.data());
+            const auto *planarValues = reinterpret_cast<const float *>(planarInter.data());
+            for (size_t j = 0; j < gpuInter.size() / sizeof(float); ++j)
+            {
+                EXPECT_NEAR(gpuValues[j], planarValues[j], 1e-6f) << "element " << j;
+            }
+        }
+        else
+        {
+            EXPECT_EQ(gpuInter, planarInter);
+        }
     }
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -1131,8 +1517,49 @@ test::ValueList<int, int, int, int, int, NVCVColorConversionCode, bool, bool>
     { 35, 21, 1,    1,    3, NVCV_COLOR_GRAY2RGB,    false,  false},
     { 23, 31, 2,    3,    3,  NVCV_COLOR_RGB2HSV,    false,  false},
     { 25, 29, 1,    3,    3,  NVCV_COLOR_HSV2RGB,    false,  false},
+    { 29, 25, 2,    3,    3,  NVCV_COLOR_BGR2Lab,    false,   true},
+    { 31, 27, 2,    3,    3,  NVCV_COLOR_RGB2Lab,    false,  false},
+    { 35, 23, 1,    3,    3,  NVCV_COLOR_Lab2BGR,    false,  false},
+    { 33, 25, 1,    3,    3,  NVCV_COLOR_Lab2RGB,    false,  false},
+    { 37, 21, 2,    3,    3,  NVCV_COLOR_LBGR2Lab,   false,   true},
+    { 39, 19, 1,    3,    3,  NVCV_COLOR_LRGB2Lab,   false,  false},
+    { 41, 17, 2,    3,    3,  NVCV_COLOR_Lab2LBGR,   false,  false},
+    { 43, 15, 1,    3,    3,  NVCV_COLOR_Lab2LRGB,   false,  false},
     { 37, 27, 2,    3,    3,  NVCV_COLOR_RGB2YUV,    false,  false},
     { 39, 23, 1,    3,    3,  NVCV_COLOR_YUV2RGB,    false,  false},
+});
+
+NVCV_TEST_SUITE_P(OpCvtColorPlanarTensorFloat,
+test::ValueList<int, int, int, int, int, NVCVColorConversionCode, bool, bool>
+{
+    //  W,  H,  N, SrcC, DstC, Conversion Code,  SrcRGBA, SrcBGR
+    { 21, 15, 2,    3,    1, NVCV_COLOR_RGB2GRAY, false, false},
+    { 23, 17, 1,    3,    3,  NVCV_COLOR_RGB2YUV, false, false},
+    { 25, 19, 2,    3,    3,  NVCV_COLOR_YUV2RGB, false, false},
+    { 27, 21, 1,    3,    3,  NVCV_COLOR_RGB2HSV, false, false},
+    { 29, 23, 2,    3,    3,  NVCV_COLOR_HSV2RGB, false, false},
+    { 29, 27, 2,    3,    3,  NVCV_COLOR_BGR2Lab, false,  true},
+    { 31, 25, 1,    3,    3,  NVCV_COLOR_RGB2Lab, false, false},
+    { 35, 29, 1,    3,    3,  NVCV_COLOR_Lab2BGR, false, false},
+    { 33, 27, 2,    3,    3,  NVCV_COLOR_Lab2RGB, false, false},
+    { 37, 31, 2,    3,    3,  NVCV_COLOR_LBGR2Lab, false, true},
+    { 39, 33, 1,    3,    3,  NVCV_COLOR_LRGB2Lab, false, false},
+    { 41, 35, 2,    3,    3,  NVCV_COLOR_Lab2LBGR, false, false},
+    { 43, 37, 1,    3,    3,  NVCV_COLOR_Lab2LRGB, false, false},
+});
+
+NVCV_TEST_SUITE_P(OpCvtColorPlanarTensorHalf,
+test::ValueList<int, int, int, int, int, NVCVColorConversionCode, bool, bool>
+{
+    //  W,  H,  N, SrcC, DstC, Conversion Code,  SrcRGBA, SrcBGR
+    { 29, 27, 2,    3,    3,  NVCV_COLOR_BGR2Lab, false,  true},
+    { 31, 25, 1,    3,    3,  NVCV_COLOR_RGB2Lab, false, false},
+    { 35, 29, 1,    3,    3,  NVCV_COLOR_Lab2BGR, false, false},
+    { 33, 27, 2,    3,    3,  NVCV_COLOR_Lab2RGB, false, false},
+    { 37, 31, 2,    3,    3,  NVCV_COLOR_LBGR2Lab, false, true},
+    { 39, 33, 1,    3,    3,  NVCV_COLOR_LRGB2Lab, false, false},
+    { 41, 35, 2,    3,    3,  NVCV_COLOR_Lab2LBGR, false, false},
+    { 43, 37, 1,    3,    3,  NVCV_COLOR_Lab2LRGB, false, false},
 });
 
 NVCV_TEST_SUITE_P(OpCvtColorPlanarVarShape,
@@ -1144,6 +1571,14 @@ test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::Image
     { 33, 21, 2,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_BGR8p,  nvcv::FMT_BGR8, NVCV_COLOR_RGB2BGR,   false, false},
     { 35, 19, 2,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_COLOR_RGB2HSV,   false, false},
     { 37, 23, 1,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_COLOR_HSV2RGB,   false, false},
+    { 37, 29, 2,  nvcv::FMT_BGR8p,  nvcv::FMT_BGR8,    nvcv::FMT_LAB8p,  nvcv::FMT_LAB8, NVCV_COLOR_BGR2Lab,   false, true },
+    { 39, 27, 2,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_LAB8p,  nvcv::FMT_LAB8, NVCV_COLOR_RGB2Lab,   false, false},
+    { 43, 27, 1,  nvcv::FMT_LAB8p,  nvcv::FMT_LAB8,    nvcv::FMT_BGR8p,  nvcv::FMT_BGR8, NVCV_COLOR_Lab2BGR,   false, false},
+    { 41, 25, 1,  nvcv::FMT_LAB8p,  nvcv::FMT_LAB8,    nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_COLOR_Lab2RGB,   false, false},
+    { 45, 23, 2,  nvcv::FMT_BGR8p,  nvcv::FMT_BGR8,    nvcv::FMT_LAB8p,  nvcv::FMT_LAB8, NVCV_COLOR_LBGR2Lab,  false, true },
+    { 47, 21, 1,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_LAB8p,  nvcv::FMT_LAB8, NVCV_COLOR_LRGB2Lab,  false, false},
+    { 49, 19, 2,  nvcv::FMT_LAB8p,  nvcv::FMT_LAB8,    nvcv::FMT_BGR8p,  nvcv::FMT_BGR8, NVCV_COLOR_Lab2LBGR,  false, false},
+    { 51, 17, 1,  nvcv::FMT_LAB8p,  nvcv::FMT_LAB8,    nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_COLOR_Lab2LRGB,  false, false},
     { 39, 25, 2,  nvcv::FMT_BGR8p,  nvcv::FMT_BGR8,    nvcv::FMT_BGR8p,  nvcv::FMT_BGR8, NVCV_COLOR_BGR2HSV_FULL, false, true},
     { 41, 27, 1,  nvcv::FMT_BGR8p,  nvcv::FMT_BGR8,    nvcv::FMT_BGR8p,  nvcv::FMT_BGR8, NVCV_COLOR_HSV2BGR_FULL, false, true},
     { 43, 29, 2,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_COLOR_RGB2YUV,   false, false},
@@ -1158,18 +1593,64 @@ test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::Image
     //  W,  H,  N, Planar Src,          Interleaved Src,    Planar Dst,          Interleaved Dst, Conversion Code,      SrcRGBA, SrcBGR
     { 23, 17, 2, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_RGB2HSV,      false, false},
     { 25, 19, 1, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_HSV2RGB,      false, false},
+    { 25, 21, 1, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, nvcv::FMT_LABf32p,  nvcv::FMT_LABf32, NVCV_COLOR_BGR2Lab,      false, true },
+    { 27, 23, 2, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_LABf32p,  nvcv::FMT_LABf32, NVCV_COLOR_RGB2Lab,      false, false},
+    { 31, 23, 2, nvcv::FMT_LABf32p,  nvcv::FMT_LABf32, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, NVCV_COLOR_Lab2BGR,      false, false},
+    { 29, 21, 1, nvcv::FMT_LABf32p,  nvcv::FMT_LABf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_Lab2RGB,      false, false},
+    { 33, 25, 1, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, nvcv::FMT_LABf32p,  nvcv::FMT_LABf32, NVCV_COLOR_LBGR2Lab,     false, true },
+    { 35, 27, 2, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_LABf32p,  nvcv::FMT_LABf32, NVCV_COLOR_LRGB2Lab,     false, false},
+    { 37, 29, 1, nvcv::FMT_LABf32p,  nvcv::FMT_LABf32, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, NVCV_COLOR_Lab2LBGR,     false, false},
+    { 39, 31, 2, nvcv::FMT_LABf32p,  nvcv::FMT_LABf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_Lab2LRGB,     false, false},
     { 27, 21, 2, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, NVCV_COLOR_BGR2HSV_FULL, false, true },
     { 29, 23, 1, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, NVCV_COLOR_HSV2BGR_FULL, false, true },
     { 31, 25, 2, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_RGB2YUV,      false, false},
     { 33, 27, 1, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_YUV2RGB,      false, false},
 });
 
+// F16 mirror of the float planar parity rows, plus an alpha-adding pair (newly supported for F16).
+NVCV_TEST_SUITE_P(OpCvtColorPlanarVarShapeHalf,
+test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVColorConversionCode, bool, bool>
+{
+    //  W,  H,  N, Planar Src,          Interleaved Src,    Planar Dst,          Interleaved Dst, Conversion Code,      SrcRGBA, SrcBGR
+    { 23, 17, 2, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, NVCV_COLOR_RGB2HSV,      false, false},
+    { 25, 19, 1, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, NVCV_COLOR_HSV2RGB,      false, false},
+    { 25, 21, 1, nvcv::FMT_BGRf16p,  nvcv::FMT_BGRf16, nvcv::FMT_LABf16p,  nvcv::FMT_LABf16, NVCV_COLOR_BGR2Lab,      false, true },
+    { 27, 23, 2, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, nvcv::FMT_LABf16p,  nvcv::FMT_LABf16, NVCV_COLOR_RGB2Lab,      false, false},
+    { 31, 23, 2, nvcv::FMT_LABf16p,  nvcv::FMT_LABf16, nvcv::FMT_BGRf16p,  nvcv::FMT_BGRf16, NVCV_COLOR_Lab2BGR,      false, false},
+    { 29, 21, 1, nvcv::FMT_LABf16p,  nvcv::FMT_LABf16, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, NVCV_COLOR_Lab2RGB,      false, false},
+    { 33, 25, 1, nvcv::FMT_BGRf16p,  nvcv::FMT_BGRf16, nvcv::FMT_LABf16p,  nvcv::FMT_LABf16, NVCV_COLOR_LBGR2Lab,     false, true },
+    { 35, 27, 2, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, nvcv::FMT_LABf16p,  nvcv::FMT_LABf16, NVCV_COLOR_LRGB2Lab,     false, false},
+    { 37, 29, 1, nvcv::FMT_LABf16p,  nvcv::FMT_LABf16, nvcv::FMT_BGRf16p,  nvcv::FMT_BGRf16, NVCV_COLOR_Lab2LBGR,     false, false},
+    { 39, 31, 2, nvcv::FMT_LABf16p,  nvcv::FMT_LABf16, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, NVCV_COLOR_Lab2LRGB,     false, false},
+    { 27, 21, 2, nvcv::FMT_BGRf16p,  nvcv::FMT_BGRf16, nvcv::FMT_BGRf16p,  nvcv::FMT_BGRf16, NVCV_COLOR_BGR2HSV_FULL, false, true },
+    { 29, 23, 1, nvcv::FMT_BGRf16p,  nvcv::FMT_BGRf16, nvcv::FMT_BGRf16p,  nvcv::FMT_BGRf16, NVCV_COLOR_HSV2BGR_FULL, false, true },
+    { 31, 25, 2, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, NVCV_COLOR_RGB2YUV,      false, false},
+    { 33, 27, 1, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, NVCV_COLOR_YUV2RGB,      false, false},
+    { 35, 29, 2, nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16, NVCV_COLOR_RGB2RGBA,    false, false},
+    { 37, 31, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16, NVCV_COLOR_RGBA2RGB,     true,  false},
+});
+
 // clang-format on
 
 TEST_P(OpCvtColorPlanarTensor, tensor_matches_interleaved)
 {
-    RunCvtColorTensorPlanarParity(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(),
-                                  GetParamValue<4>(), GetParamValue<5>(), GetParamValue<6>(), GetParamValue<7>());
+    RunCvtColorTensorPlanarParity<uint8_t>(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(),
+                                           GetParamValue<3>(), GetParamValue<4>(), GetParamValue<5>(),
+                                           GetParamValue<6>(), GetParamValue<7>());
+}
+
+TEST_P(OpCvtColorPlanarTensorFloat, tensor_matches_interleaved)
+{
+    RunCvtColorTensorPlanarParity<float>(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(),
+                                         GetParamValue<4>(), GetParamValue<5>(), GetParamValue<6>(),
+                                         GetParamValue<7>());
+}
+
+TEST_P(OpCvtColorPlanarTensorHalf, tensor_matches_interleaved)
+{
+    RunCvtColorTensorPlanarParity<__half>(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(),
+                                          GetParamValue<3>(), GetParamValue<4>(), GetParamValue<5>(),
+                                          GetParamValue<6>(), GetParamValue<7>());
 }
 
 TEST_P(OpCvtColorPlanarVarShape, varshape_matches_interleaved)
@@ -1182,6 +1663,13 @@ TEST_P(OpCvtColorPlanarVarShape, varshape_matches_interleaved)
 TEST_P(OpCvtColorPlanarVarShapeFloat, varshape_matches_interleaved)
 {
     RunCvtColorVarShapePlanarParity<float>(
+        GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(),
+        GetParamValue<5>(), GetParamValue<6>(), GetParamValue<7>(), GetParamValue<8>(), GetParamValue<9>());
+}
+
+TEST_P(OpCvtColorPlanarVarShapeHalf, varshape_matches_interleaved)
+{
+    RunCvtColorVarShapePlanarParity<__half>(
         GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(),
         GetParamValue<5>(), GetParamValue<6>(), GetParamValue<7>(), GetParamValue<8>(), GetParamValue<9>());
 }
@@ -1226,6 +1714,12 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     { 123, 321,  5,  NVCV_IMAGE_FORMAT_RGBAS16,  NVCV_IMAGE_FORMAT_BGRAS16,  NVCV_COLOR_RGBA2BGRA,     NVCV_COLOR_BGRA2RGBA,     0.0},
     {  77, 212,  3,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_RGBf16,   NVCV_COLOR_BGR2RGB,       NVCV_COLOR_RGB2BGR,       0.0},
     { 123, 321,  5,  NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_RGBA2BGRA,     NVCV_COLOR_BGRA2RGBA,     0.0},
+    // F16 alpha add/drop round trips: the source values are copied bit-exactly (the inserted
+    // alpha = 1.0 is dropped on the way back).
+    { 176, 113,  1,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_BGR2BGRA,      NVCV_COLOR_BGRA2BGR,      0.0},
+    { 336, 432,  2,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_COLOR_RGB2RGBA,      NVCV_COLOR_RGBA2RGB,      0.0},
+    {  77, 212,  3,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_COLOR_BGR2RGBA,      NVCV_COLOR_RGBA2BGR,      0.0},
+    {  33,  55,  4,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_RGB2BGRA,      NVCV_COLOR_BGRA2RGB,      0.0},
     { 176, 113,  1,  NVCV_IMAGE_FORMAT_BGRS32,   NVCV_IMAGE_FORMAT_BGRAS32,  NVCV_COLOR_BGR2BGRA,      NVCV_COLOR_BGRA2BGR,      0.0},
     {  88, 110,  3,  NVCV_IMAGE_FORMAT_RGBS32,   NVCV_IMAGE_FORMAT_BGRS32,   NVCV_COLOR_BGR2RGB,       NVCV_COLOR_RGB2BGR,       0.0},
     { 336, 432,  2,  NVCV_IMAGE_FORMAT_RGBS32,   NVCV_IMAGE_FORMAT_RGBAS32,  NVCV_COLOR_RGB2RGBA,      NVCV_COLOR_RGBA2RGB,      0.0},
@@ -1255,10 +1749,10 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     { 366,  14,  5,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_RGB2HSV,       NVCV_COLOR_HSV2RGB,       5.0},
     {  55, 257,  4,  NVCV_IMAGE_FORMAT_BGRf32,   NVCV_IMAGE_FORMAT_HSVf32,   NVCV_COLOR_BGR2HSV,       NVCV_COLOR_HSV2BGR,      1E-2},
     { 366,  14,  5,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_HSVf32,   NVCV_COLOR_RGB2HSV,       NVCV_COLOR_HSV2RGB,      1E-2},
-    // Codes 42 to 53 and 56 to 65 and 68 to 69 are not implemented
+    // Codes 42 to 53 except 44 to 45, 58 to 65, and 68 to 69 are not implemented.
     { 112, 157,  4,  NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_BGR2HSV_FULL,  NVCV_COLOR_HSV2BGR_FULL,  8.0},
     { 333,  13,  3,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_RGB2HSV_FULL,  NVCV_COLOR_HSV2RGB_FULL,  8.0},
-    // Codes 72 to 81 are not implemented
+    // Codes 72 to 73, 76 to 77, and 80 to 81 are not implemented.
     { 133,  22,  2,  NVCV_IMAGE_FORMAT_YUV8,     NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_YUV2BGR,       NVCV_COLOR_BGR2YUV,     128.0},
     { 123,  21,  3,  NVCV_IMAGE_FORMAT_YUV8,     NVCV_IMAGE_FORMAT_RGB8,     NVCV_COLOR_YUV2RGB,       NVCV_COLOR_RGB2YUV,     128.0},
     { 133,  21,  3,  NVCV_IMAGE_FORMAT_YUV16,    NVCV_IMAGE_FORMAT_BGR16,    NVCV_COLOR_YUV2RGB,       NVCV_COLOR_RGB2YUV,   32768.0},
@@ -1414,6 +1908,29 @@ TEST_P(OpCvtColor_circular, varshape_correct_output)
             VEC_EXPECT_NEAR(testVec, srcVec[i], maxDiff, uint8_t);
             break;
         }
+
+        if (srcFormat.numChannels() == 3 && dstFormat.numChannels() == 4
+            && (nvcvDataType == NVCV_DATA_TYPE_3F32 || nvcvDataType == NVCV_DATA_TYPE_3F64))
+        {
+            const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
+            ASSERT_NE(dstData, nvcv::NullOpt);
+
+            const size_t dstRowBytes = imgDst[i].size().w * dstFormat.planePixelStrideBytes(0);
+            auto         checkAlpha  = [&](auto one)
+            {
+                using T = decltype(one);
+                std::vector<T> pixels(imgDst[i].size().h * dstRowBytes / sizeof(T));
+                ASSERT_EQ(cudaSuccess, cudaMemcpy2D(pixels.data(), dstRowBytes, dstData->plane(0).basePtr,
+                                                    dstData->plane(0).rowStride, dstRowBytes, imgDst[i].size().h,
+                                                    cudaMemcpyDeviceToHost));
+                for (size_t j = 3; j < pixels.size(); j += 4) EXPECT_EQ(pixels[j], one) << "At alpha index " << j;
+            };
+
+            if (nvcvDataType == NVCV_DATA_TYPE_3F32)
+                checkAlpha(1.0f);
+            else
+                checkAlpha(1.0);
+        }
     }
 }
 
@@ -1459,6 +1976,79 @@ TEST(OpCvtColor_Negative, planar_varshape_layout_mismatch)
     cvcuda::CvtColor cvtColorOp;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcv::ProtectCall([&] { cvtColorOp(nullptr, batchSrc, batchDst, NVCV_COLOR_RGB2RGBA); }));
+}
+
+TEST(OpCvtColor_Negative, planar_varshape_channel_changing_conversions_are_rejected)
+{
+    std::vector<nvcv::Image> rgbImages;
+    rgbImages.emplace_back(nvcv::Size2D{8, 8}, nvcv::FMT_RGB8p);
+    nvcv::ImageBatchVarShape rgbBatch(1);
+    rgbBatch.pushBack(rgbImages.begin(), rgbImages.end());
+
+    std::vector<nvcv::Image> grayImages;
+    grayImages.emplace_back(nvcv::Size2D{8, 8}, nvcv::FMT_U8);
+    nvcv::ImageBatchVarShape grayBatch(1);
+    grayBatch.pushBack(grayImages.begin(), grayImages.end());
+
+    cvcuda::CvtColor cvtColorOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { cvtColorOp(nullptr, rgbBatch, grayBatch, NVCV_COLOR_RGB2GRAY); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { cvtColorOp(nullptr, grayBatch, rgbBatch, NVCV_COLOR_GRAY2RGB); }));
+}
+
+TEST(OpCvtColor_Negative, subsampled_yuv_varshape_requires_u8_output)
+{
+    struct TestCase
+    {
+        nvcv::Size2D            srcSize;
+        NVCVImageFormat         srcFormat;
+        nvcv::Size2D            dstSize;
+        NVCVImageFormat         dstFormat;
+        NVCVColorConversionCode code;
+    };
+
+    const TestCase testCases[]{
+        {{8, 12},   NVCV_IMAGE_FORMAT_Y8,  {8, 8}, NVCV_IMAGE_FORMAT_BGR16, NVCV_COLOR_YUV2BGR_NV12},
+        { {8, 8}, NVCV_IMAGE_FORMAT_UYVY,  {8, 8}, NVCV_IMAGE_FORMAT_BGR16, NVCV_COLOR_YUV2BGR_UYVY},
+        { {8, 8}, NVCV_IMAGE_FORMAT_BGR8, {8, 12},   NVCV_IMAGE_FORMAT_Y16, NVCV_COLOR_BGR2YUV_NV12},
+    };
+
+    cvcuda::CvtColor cvtColorOp;
+    for (const TestCase &testCase : testCases)
+    {
+        SCOPED_TRACE(static_cast<int>(testCase.code));
+
+        nvcv::Image srcImage(testCase.srcSize, nvcv::ImageFormat{testCase.srcFormat});
+        nvcv::Image dstImage(testCase.dstSize, nvcv::ImageFormat{testCase.dstFormat});
+
+        nvcv::ImageBatchVarShape srcBatch(1);
+        nvcv::ImageBatchVarShape dstBatch(1);
+        srcBatch.pushBack(srcImage);
+        dstBatch.pushBack(dstImage);
+
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcBatch, dstBatch, testCase.code); }));
+    }
+}
+
+TEST(OpCvtColor_regression, yuv420_to_gray_varshape_accepts_single_channel_output)
+{
+    nvcv::Image srcImage(nvcv::Size2D{8, 12}, nvcv::FMT_Y8);
+    nvcv::Image dstImage(nvcv::Size2D{8, 8}, nvcv::FMT_Y8);
+
+    nvcv::ImageBatchVarShape srcBatch(1);
+    nvcv::ImageBatchVarShape dstBatch(1);
+    srcBatch.pushBack(srcImage);
+    dstBatch.pushBack(dstImage);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::CvtColor cvtColorOp;
+    EXPECT_NO_THROW(cvtColorOp(stream, srcBatch, dstBatch, NVCV_COLOR_YUV2GRAY_420));
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 TEST(OpCvtColor_negative, mismatch_shape)
@@ -1656,20 +2246,18 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_GRAY2BGR}, // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_GRAY2BGR}, // mismatch data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_GRAY2BGR}, // invalid output channel
-    {   8,   8,  3,  NVCV_IMAGE_FORMAT_Yf16,    NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_GRAY2BGRA}, // invalid f16 + adding alpha
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRA8,   NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_BGR2GRAY}, // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf32,  NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_BGR2GRAY}, // mismatch data type
-    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf16,  NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_BGR2BGRA}, // f16 type not allowed to add alpha
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_BGR2GRAY}, // invalid output channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf64,  NVCV_IMAGE_FORMAT_Yf64,     NVCV_COLOR_BGR2GRAY}, // unsupported data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRA8,   NVCV_IMAGE_FORMAT_YUV8,     NVCV_COLOR_BGR2YUV},  // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf32,  NVCV_IMAGE_FORMAT_YUV8,     NVCV_COLOR_BGR2YUV},  // mismatch data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_BGR2YUV},  // invalid output channel
-    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf16,  NVCV_IMAGE_FORMAT_YUVf16,   NVCV_COLOR_BGR2YUV},  // unsupported data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf64,  NVCV_IMAGE_FORMAT_YUVf64,   NVCV_COLOR_BGR2YUV},  // unsupported data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRA8,   NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_YUV2BGR},  // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_YUV8,    NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_YUV2BGR},  // mismatch data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_YUV8,    NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_YUV2BGR},  // invalid output channel
-    {   8,   8,  3,  NVCV_IMAGE_FORMAT_YUVf16,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_YUV2BGR},  // unsupported data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_YUVf64,  NVCV_IMAGE_FORMAT_BGRf64,   NVCV_COLOR_YUV2BGR},  // unsupported data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRA8,   NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_BGR2HSV},  // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf32,  NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_BGR2HSV},  // mismatch data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf64,  NVCV_IMAGE_FORMAT_HSVf64,   NVCV_COLOR_BGR2HSV},  // unsupported data type
@@ -1678,6 +2266,22 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_HSV8,    NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_HSV2BGR},  // mismatch data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_HSV8,    NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_HSV2BGR},  // invalid output channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_HSVf64,  NVCV_IMAGE_FORMAT_BGRf64,   NVCV_COLOR_HSV2BGR},  // unsupported data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_LAB8,     NVCV_COLOR_BGR2Lab},   // invalid input channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_LAB8,     NVCV_COLOR_RGB2Lab},   // invalid input channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_LAB8,    NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_Lab2BGR},   // invalid output channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_LAB8,    NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_Lab2RGB},   // invalid output channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_LAB8,     NVCV_COLOR_LBGR2Lab},  // invalid input channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_LAB8,     NVCV_COLOR_LRGB2Lab},  // invalid input channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_LAB8,    NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_Lab2LBGR},  // invalid output channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_LAB8,    NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_Lab2LRGB},  // invalid output channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf64,  NVCV_IMAGE_FORMAT_RGBf64,   NVCV_COLOR_BGR2Lab},   // unsupported data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_RGBf64,  NVCV_IMAGE_FORMAT_RGBf64,   NVCV_COLOR_RGB2Lab},   // unsupported data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_RGBf64,  NVCV_IMAGE_FORMAT_BGRf64,   NVCV_COLOR_Lab2BGR},   // unsupported data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_RGBf64,  NVCV_IMAGE_FORMAT_RGBf64,   NVCV_COLOR_Lab2RGB},   // unsupported data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf64,  NVCV_IMAGE_FORMAT_RGBf64,   NVCV_COLOR_LBGR2Lab},  // unsupported data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_RGBf64,  NVCV_IMAGE_FORMAT_RGBf64,   NVCV_COLOR_LRGB2Lab},  // unsupported data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_RGBf64,  NVCV_IMAGE_FORMAT_BGRf64,   NVCV_COLOR_Lab2LBGR},  // unsupported data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_RGBf64,  NVCV_IMAGE_FORMAT_RGBf64,   NVCV_COLOR_Lab2LRGB},  // unsupported data type
     {  16,   8,  1,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_NV21,     NVCV_COLOR_BGR2YUV_YV12}, // invalid channel
 });
 
@@ -1783,8 +2387,10 @@ NVCV_TEST_SUITE_P(OpCvtColor_negative_diff_format, test::ValueList<NVCVImageForm
 #undef NVCV_IMAGE_FORMAT_Yf32
 #undef NVCV_IMAGE_FORMAT_HSVf32
 
+#undef NVCV_IMAGE_FORMAT_HSVf16
 #undef NVCV_IMAGE_FORMAT_HSVf64
 #undef NVCV_IMAGE_FORMAT_Yf64
+#undef NVCV_IMAGE_FORMAT_YUVf64
 
 TEST_P(OpCvtColor_negative_diff_format, varshape_hasDifferentFormat)
 {

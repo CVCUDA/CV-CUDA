@@ -76,6 +76,13 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.REPLICATE,
             [1, 2, 3, 4],
         ),
+        (
+            ((5, 16, 23, 4), np.float16, "NHWC"),
+            [[1, 2, 0], [2, 1, 1]],
+            cvcuda.Interp.LINEAR,
+            cvcuda.Border.REPLICATE,
+            [1, 2, 3, 4],
+        ),
     ],
 )
 def test_op_warp_affine(input_args, xform, flags, border_mode, border_value):
@@ -146,6 +153,16 @@ def test_op_warp_affine(input_args, xform, flags, border_mode, border_value):
             cvcuda.Interp.CUBIC,
             cvcuda.Border.REPLICATE,
             [2, 1, 0],
+        ),
+        (
+            4,
+            cvcuda.Format.RGBf16,
+            (16, 23),
+            128.0,
+            5,
+            cvcuda.Interp.LINEAR,
+            cvcuda.Border.WRAP,
+            [0],
         ),
     ],
 )
@@ -223,6 +240,7 @@ globals().update(
             cvcuda.Type.U8,
             cvcuda.Type.U16,
             cvcuda.Type.S16,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},

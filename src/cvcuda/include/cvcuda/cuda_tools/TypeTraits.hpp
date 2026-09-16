@@ -169,6 +169,30 @@ constexpr BaseType<T> Lowest = []
 }();
 
 /**
+ * Metafunctions to get limits of the __half type.
+ *
+ * __half is not a literal type, so TypeTraits cannot provide its constexpr min/max members
+ * (and \ref Lowest is unavailable for half-based types).  These function-form limits are the
+ * __half counterparts.
+ *
+ * @{
+ */
+
+// Largest finite __half value: 65504.
+inline __host__ __device__ __half HalfMax()
+{
+    return __half(__half_raw{0x7BFFU});
+}
+
+// Lowest finite __half value: -65504.
+inline __host__ __device__ __half HalfLowest()
+{
+    return __half(__half_raw{0xFBFFU});
+}
+
+/**@}*/
+
+/**
  * Metatype to make a type from a base type and number of components.
  *
  * When number of components is zero, it yields the identity (regular C) type, and when it is between 1

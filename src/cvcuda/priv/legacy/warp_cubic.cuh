@@ -21,6 +21,7 @@
 #include "CvCudaUtils.cuh"
 
 #include <cstdint>
+#include <type_traits>
 
 namespace nvcv::legacy::cuda_op {
 
@@ -36,9 +37,14 @@ namespace nvcv::legacy::cuda_op {
 // Wide pixels stay on the InterpolationWrap path: uchar4's aligned per-tap loads are already
 // issue-efficient, and float3/float4-class pixels regressed on the reference SKUs (their taps
 // are wide loads already, so the restructured gather only adds overhead where big L2s absorb
-// the footprint). The fast sampler pays off for byte/short and scalar pixels.
+// the footprint). The fast sampler pays off for byte/short and scalar pixels. __half pixels are
+// excluded: the restructured gather's wins were only measured for integer and float pixels, so
+// F16 CUBIC keeps the validated InterpolationWrap path, which accumulates half taps in float and
+// matches the fused planar kernels bit-for-bit (a measured half fast path is a future
+// optimization).
 template<typename T>
-constexpr bool kCubicFastSampler = sizeof(T) < 12 && !(sizeof(T) == 4 && cuda::NumElements<T> == 4);
+constexpr bool kCubicFastSampler
+    = sizeof(T) < 12 && !(sizeof(T) == 4 && cuda::NumElements<T> == 4) && !std::is_same_v<cuda::BaseType<T>, __half>;
 
 // Number of 8-byte loads covering one row of 4 T pixels at arbitrary 8B phase.
 template<typename T>
@@ -102,6 +108,12 @@ inline __device__ void LoadTapRow(const T *rowp, T (&out)[4])
             if constexpr (sizeof(BT) == 4)
             {
                 cuda::GetElement(out[k], c) = cuda::BaseType<T>(__uint_as_float(aligned[bo >> 2]));
+            }
+            else if constexpr (std::is_same_v<BT, __half>)
+            {
+                // Reinterpret the 16 bits as a half (like __uint_as_float above); a static_cast
+                // would convert the bit pattern's integer value instead.
+                cuda::GetElement(out[k], c) = __ushort_as_half(static_cast<unsigned short>(bits & 0xFFFFu));
             }
             else if constexpr (sizeof(BT) == 2)
             {

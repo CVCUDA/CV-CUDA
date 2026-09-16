@@ -22,6 +22,7 @@
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
 #include <cvcuda/cuda_tools/math/LinAlg.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>   // For std::floor
 #include <cstring> // For std::memcpy
@@ -595,6 +596,145 @@ MAKE_HSVtoRGB(float);
 MAKE_HSVtoRGB(double);
 
 #undef MAKE_HSVtoRGB
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+namespace {
+
+// Independent scalar oracle based on the equations and channel ranges documented by OpenCV. Formula and constant
+// provenance: https://github.com/opencv/opencv/blob/4.x/modules/imgproc/src/color_lab.cpp (Apache-2.0). That source
+// further attributes RGB-to-Lab to RGB2Lab.m by Mark Ruzon, translated from C code by Yossi Rubner (23 September 1997).
+
+constexpr double kLabEpsilon = 216.0 / 24389.0;
+constexpr double kLabKappa   = 24389.0 / 27.0;
+constexpr double kLabDelta   = 6.0 / 29.0;
+
+double Clamp01(double value)
+{
+    return std::clamp(value, 0.0, 1.0);
+}
+
+double InputToLinear(double value, bool srgb)
+{
+    value = Clamp01(value);
+    if (!srgb)
+    {
+        return value;
+    }
+    return value <= 0.04045 ? value / 12.92 : std::pow((value + 0.055) / 1.055, 2.4);
+}
+
+double LinearToOutput(double value, bool srgb)
+{
+    value = Clamp01(value);
+    if (!srgb)
+    {
+        return value;
+    }
+    return value <= 0.0031308 ? 12.92 * value : 1.055 * std::pow(value, 1.0 / 2.4) - 0.055;
+}
+
+double XYZToLab(double value)
+{
+    return value > kLabEpsilon ? std::cbrt(value) : (kLabKappa * value + 16.0) / 116.0;
+}
+
+double LabToXYZ(double value)
+{
+    return value > kLabDelta ? value * value * value : 3.0 * kLabDelta * kLabDelta * (value - 4.0 / 29.0);
+}
+
+} // namespace
+
+//-==================================================================================================================-//
+template<typename T>
+void convertRGBtoLab(vector<T> &dst, const vector<T> &src, size_t numPixels, bool bgr, bool srgb)
+{
+    constexpr bool   kIsU8 = std::is_same_v<T, uint8_t>;
+    constexpr double scale = kIsU8 ? 1.0 / 255.0 : 1.0;
+
+    for (size_t i = 0; i < numPixels; ++i)
+    {
+        const double red   = InputToLinear(static_cast<double>(src[3 * i + (bgr ? 2 : 0)]) * scale, srgb);
+        const double green = InputToLinear(static_cast<double>(src[3 * i + 1]) * scale, srgb);
+        const double blue  = InputToLinear(static_cast<double>(src[3 * i + (bgr ? 0 : 2)]) * scale, srgb);
+
+        const double x = (0.412453 * red + 0.357580 * green + 0.180423 * blue) / 0.950456;
+        const double y = 0.212671 * red + 0.715160 * green + 0.072169 * blue;
+        const double z = (0.019334 * red + 0.119193 * green + 0.950227 * blue) / 1.088754;
+
+        const double fx = XYZToLab(x);
+        const double fy = XYZToLab(y);
+        const double fz = XYZToLab(z);
+
+        double lightness = 116.0 * fy - 16.0;
+        double a         = 500.0 * (fx - fy);
+        double b         = 200.0 * (fy - fz);
+        if constexpr (kIsU8)
+        {
+            lightness *= 255.0 / 100.0;
+            a += 128.0;
+            b += 128.0;
+        }
+
+        dst[3 * i]     = cuda::SaturateCast<T>(lightness);
+        dst[3 * i + 1] = cuda::SaturateCast<T>(a);
+        dst[3 * i + 2] = cuda::SaturateCast<T>(b);
+    }
+}
+
+template<typename T>
+void convertLabToRGB(vector<T> &dst, const vector<T> &src, size_t numPixels, bool bgr, bool srgb)
+{
+    constexpr bool kIsU8 = std::is_same_v<T, uint8_t>;
+
+    for (size_t i = 0; i < numPixels; ++i)
+    {
+        double lightness = static_cast<double>(src[3 * i]);
+        double a         = static_cast<double>(src[3 * i + 1]);
+        double b         = static_cast<double>(src[3 * i + 2]);
+        if constexpr (kIsU8)
+        {
+            lightness *= 100.0 / 255.0;
+            a -= 128.0;
+            b -= 128.0;
+        }
+
+        const double fy = (lightness + 16.0) / 116.0;
+        const double fx = fy + a / 500.0;
+        const double fz = fy - b / 200.0;
+
+        const double x = 0.950456 * LabToXYZ(fx);
+        const double y = LabToXYZ(fy);
+        const double z = 1.088754 * LabToXYZ(fz);
+
+        double red   = LinearToOutput(3.240479 * x - 1.537150 * y - 0.498535 * z, srgb);
+        double green = LinearToOutput(-0.969256 * x + 1.875991 * y + 0.041556 * z, srgb);
+        double blue  = LinearToOutput(0.055648 * x - 0.204043 * y + 1.057311 * z, srgb);
+        if constexpr (kIsU8)
+        {
+            red *= 255.0;
+            green *= 255.0;
+            blue *= 255.0;
+        }
+
+        dst[3 * i]     = cuda::SaturateCast<T>(bgr ? blue : red);
+        dst[3 * i + 1] = cuda::SaturateCast<T>(green);
+        dst[3 * i + 2] = cuda::SaturateCast<T>(bgr ? red : blue);
+    }
+}
+
+#define MAKE_LAB_CONVERSIONS(T)                                                           \
+    template void convertRGBtoLab<T>(vector<T> &, const vector<T> &, size_t, bool, bool); \
+    template void convertLabToRGB<T>(vector<T> &, const vector<T> &, size_t, bool, bool)
+
+MAKE_LAB_CONVERSIONS(uint8_t);
+MAKE_LAB_CONVERSIONS(uint16_t);
+MAKE_LAB_CONVERSIONS(int32_t);
+MAKE_LAB_CONVERSIONS(float);
+MAKE_LAB_CONVERSIONS(double);
+
+#undef MAKE_LAB_CONVERSIONS
 
 //-==================================================================================================================-//
 template<typename T>

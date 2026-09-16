@@ -31,6 +31,9 @@ RNG = np.random.default_rng(0)
         (((3, 88, 13, 1), np.uint16, "NHWC"), 32768.0),
         (((2, 4, 16, 23), np.float32, "NCHW"), 0.5),
         (((3, 8, 8), np.float32, "CHW"), 0.5),
+        (((5, 16, 23, 3), np.float16, "NHWC"), 0.5),
+        (((3, 88, 13, 1), np.float16, "NHWC"), 0.5),  # f16 single channel
+        (((2, 4, 16, 23), np.float16, "NCHW"), 0.5),  # planar f16
     ],
 )
 def test_op_solarize(tensor_params, threshold):
@@ -57,6 +60,8 @@ def test_op_solarize(tensor_params, threshold):
         (7, cvcuda.Format.RGBf32, (62, 35), 1.0, 0.5),
         (1, cvcuda.Format.U16, (33, 48), 1234, 600.0),
         (4, cvcuda.Format.RGBA8, (26, 52), 256, 100.0),
+        (5, cvcuda.Format.RGBf16, (62, 35), 1.0, 0.5),
+        (2, cvcuda.Format.F16, (33, 48), 1.0, 0.5),  # f16 single channel
     ],
 )
 def test_op_solarize_varshape(num_images, img_format, img_size, max_pixel, threshold):
@@ -79,7 +84,7 @@ def test_op_solarize_varshape(num_images, img_format, img_size, max_pixel, thres
 
 
 def test_op_solarize_negative_dtype():
-    # float16 is outside the supported dtype set (u8/u16/f32) and must be rejected.
-    input = cvcuda.Tensor((1, 16, 16, 3), np.float16, "NHWC")
+    # float64 is outside the supported dtype set (u8/u16/f16/f32) and must be rejected.
+    input = cvcuda.Tensor((1, 16, 16, 3), np.float64, "NHWC")
     with pytest.raises(Exception):
         cvcuda.solarize(input, 0.5)

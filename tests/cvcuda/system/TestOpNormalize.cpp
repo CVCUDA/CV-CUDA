@@ -16,10 +16,12 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpNormalize.hpp>
 #include <nvcv/DataType.hpp>
 #include <nvcv/Image.hpp>
@@ -317,6 +319,9 @@ static void ExpectPlanarVectorsNear(const std::vector<T> &gold, const std::vecto
     {
         for (size_t i = 0; i < gold.size(); ++i)
         {
+            // 1e-4 absolute: float outputs are checked against a naive host expression, and the
+            // device may contract (src - base) * mul * global_scale + shift with FMA, so the two
+            // float results are not bit-identical (see the RunTensorFloatRefCase rationale).
             EXPECT_NEAR(gold[i], test[i], 1e-4f) << "at flat index " << i;
         }
     }
@@ -1631,6 +1636,307 @@ TEST(OpNormalize, varshape_interleaved_float_ref)
                                         mode, flags);
 }
 
+// =============================================================================
+// F16 (half) correctness. ReferenceNormalizeCast<T> / MakeNormalizeGold<T> must NOT be
+// instantiated for __half: std::is_floating_point_v<__half> is false, so the gold would take the
+// integer rint/clamp branch. Instead the half input is widened losslessly to float, the FP32
+// reference (MakeNormalizeGold<float>) reproduces the kernel's float arithmetic, and half output
+// is compared within kUlps = 1 half-ULP -- per the HalfTestUtils.hpp policy, the single
+// (src - base) * mul * global_scale + shift chain rounds exactly once on the half store.
+// =============================================================================
+
+static nvcv::ImageFormat F16FormatFor(int channels)
+{
+    switch (channels)
+    {
+    case 1:
+        return nvcv::FMT_F16;
+    case 2:
+        return nvcv::FMT_2F16;
+    case 3:
+        return nvcv::FMT_RGBf16;
+    default:
+        return nvcv::FMT_RGBAf16;
+    }
+}
+
+static nvcv::ImageFormat F32FormatFor(int channels)
+{
+    switch (channels)
+    {
+    case 1:
+        return nvcv::FMT_F32;
+    case 2:
+        return nvcv::FMT_2F32;
+    case 3:
+        return nvcv::FMT_RGBf32;
+    default:
+        return nvcv::FMT_RGBAf32;
+    }
+}
+
+// Like MakeFloatRefParams, but with small positive bases (0.40 + 0.05c) and scales (0.20 + 0.03c)
+// so every gold output stays bounded away from zero: the half-ULP bound is evaluated at the gold's
+// magnitude, and an output crossing zero would shrink the allowed error below the float-level FMA
+// reassociation noise this comparison intentionally tolerates.
+static void MakeF16RefParams(ParamMode mode, int channels, nvcv::Tensor &imgBase, nvcv::Tensor &imgScale,
+                             std::vector<float> &goldBase, std::vector<float> &goldScale)
+{
+    const int          count = (mode == ParamMode::PerChannel) ? channels : 1;
+    std::vector<float> baseVals(count);
+    std::vector<float> scaleVals(count);
+    for (int c = 0; c < count; ++c)
+    {
+        baseVals[c]  = 0.40f + 0.05f * static_cast<float>(c);
+        scaleVals[c] = 0.20f + 0.03f * static_cast<float>(c);
+    }
+
+    // base/scale parameter tensors are always F32, independent of the F16 image dtype.
+    imgBase = nvcv::Tensor(
+        {
+            {1, 1, 1, count},
+            nvcv::TENSOR_NHWC
+    },
+        nvcv::TYPE_F32);
+    imgScale = nvcv::Tensor(
+        {
+            {1, 1, 1, count},
+            nvcv::TENSOR_NHWC
+    },
+        nvcv::TYPE_F32);
+    UploadParamTensor(imgBase, baseVals);
+    UploadParamTensor(imgScale, scaleVals);
+
+    goldBase.assign(channels, baseVals[0]);
+    goldScale.assign(channels, scaleVals[0]);
+    if (mode == ParamMode::PerChannel)
+    {
+        goldBase  = baseVals;
+        goldScale = scaleVals;
+    }
+}
+
+template<typename Byte>
+static void UploadHalfQuantized(Byte *devPtr, long devRowStride, std::vector<float> &values, int rowElems, int height)
+{
+    test::QuantizeToHalf(values);
+    const std::vector<uint8_t> halfBytes = test::FloatToHalfBytes(values);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(devPtr, devRowStride, halfBytes.data(), rowElems * sizeof(__half),
+                                        rowElems * sizeof(__half), height, cudaMemcpyHostToDevice));
+}
+
+template<typename Byte>
+static std::vector<float> DownloadHalfAsFloat(const Byte *devPtr, long devRowStride, int rowElems, int height)
+{
+    std::vector<uint8_t> halfBytes(static_cast<size_t>(height) * rowElems * sizeof(__half));
+    EXPECT_EQ(cudaSuccess, cudaMemcpy2D(halfBytes.data(), rowElems * sizeof(__half), devPtr, devRowStride,
+                                        rowElems * sizeof(__half), height, cudaMemcpyDeviceToHost));
+    return test::HalfBytesToFloat(halfBytes);
+}
+
+static void RunTensorF16RefCase(int channels, int width, int height, int numImages, ParamMode mode, uint32_t flags)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const float             epsilon  = 0.234f;
+    const nvcv::ImageFormat fmt      = F16FormatFor(channels);
+    const int               rowElems = width * channels;
+
+    nvcv::Tensor imgSrc  = nvcv::util::CreateTensor(numImages, width, height, fmt);
+    auto         srcData = imgSrc.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, srcData);
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    ASSERT_TRUE(srcAccess);
+
+    std::vector<std::vector<float>> srcVec(numImages);
+    for (int i = 0; i < numImages; ++i)
+    {
+        srcVec[i] = MakePlanarHostImage<float>(i, width, height, channels);
+        // Round-trip through half so the gold and the operator consume identical inputs.
+        UploadHalfQuantized(srcAccess->sampleData(i), srcAccess->rowStride(), srcVec[i], rowElems, height);
+    }
+
+    nvcv::Tensor       imgBase;
+    nvcv::Tensor       imgScale;
+    std::vector<float> goldBase;
+    std::vector<float> goldScale;
+    MakeF16RefParams(mode, channels, imgBase, imgScale, goldBase, goldScale);
+
+    nvcv::Tensor imgDst = nvcv::util::CreateTensor(numImages, width, height, fmt);
+
+    cvcuda::Normalize op;
+    EXPECT_NO_THROW(
+        op(stream, imgSrc, imgBase, imgScale, imgDst, kStdDevGlobalScale, kStdDevGlobalShift, epsilon, flags));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    auto dstData = imgDst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, dstData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(dstAccess);
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        SCOPED_TRACE(i);
+        const std::vector<float> testVec
+            = DownloadHalfAsFloat(dstAccess->sampleData(i), dstAccess->rowStride(), rowElems, height);
+        const std::vector<float> gold
+            = MakeNormalizeGold<float>(srcVec[i], width, height, channels, goldBase, goldScale, kStdDevGlobalScale,
+                                       kStdDevGlobalShift, flags, epsilon);
+        test::ExpectNearHalfUlps(gold, testVec, 1.f);
+    }
+}
+
+TEST(OpNormalize, tensor_f16_ref)
+{
+    for (uint32_t flags : {normalScale, scaleIsStdDev})
+    {
+        RunTensorF16RefCase(1, 1920, 4, 2, ParamMode::Scalar, flags);
+        RunTensorF16RefCase(3, 257, 5, 1, ParamMode::PerChannel, flags);
+        RunTensorF16RefCase(4, 64, 7, 2, ParamMode::PerChannel, flags);
+    }
+}
+
+// Var-shape F16 coverage, including the mixed-output columns only the var-shape dispatch supports
+// (output dtype independent of input dtype, mirroring the existing U8-input -> F32-output column).
+// F16 output compares within 1 half-ULP of the FP32 gold as above; F32 output from F16 input uses
+// the float reference comparison (EXPECT_NEAR 1e-4 via ExpectPlanarVectorsNear): the device may
+// contract the float expression with FMA, so a bit-exact host comparison is not applicable.
+static void RunVarShapeF16Case(int channels, bool f16Input, bool f16Output, const std::vector<nvcv::Size2D> &sizes,
+                               ParamMode mode, uint32_t flags)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const float             epsilon   = 0.234f;
+    const nvcv::ImageFormat inFmt     = f16Input ? F16FormatFor(channels) : F32FormatFor(channels);
+    const nvcv::ImageFormat outFmt    = f16Output ? F16FormatFor(channels) : F32FormatFor(channels);
+    const auto              numImages = static_cast<int>(sizes.size());
+
+    std::vector<nvcv::Image>        imgSrc;
+    std::vector<std::vector<float>> srcVec(numImages);
+    for (int i = 0; i < numImages; ++i)
+    {
+        imgSrc.emplace_back(sizes[i], inFmt);
+        srcVec[i] = MakePlanarHostImage<float>(i, sizes[i].w, sizes[i].h, channels);
+
+        auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgData, nvcv::NullOpt);
+        const int rowElems = sizes[i].w * channels;
+        if (f16Input)
+        {
+            // Round-trip through half so the gold and the operator consume identical inputs.
+            UploadHalfQuantized(imgData->plane(0).basePtr, imgData->plane(0).rowStride, srcVec[i], rowElems,
+                                sizes[i].h);
+        }
+        else
+        {
+            ASSERT_EQ(cudaSuccess, cudaMemcpy2D(imgData->plane(0).basePtr, imgData->plane(0).rowStride,
+                                                srcVec[i].data(), rowElems * sizeof(float), rowElems * sizeof(float),
+                                                sizes[i].h, cudaMemcpyHostToDevice));
+        }
+    }
+    nvcv::ImageBatchVarShape batchSrc(numImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    nvcv::Tensor       imgBase;
+    nvcv::Tensor       imgScale;
+    std::vector<float> goldBase;
+    std::vector<float> goldScale;
+    MakeF16RefParams(mode, channels, imgBase, imgScale, goldBase, goldScale);
+
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < numImages; ++i) imgDst.emplace_back(sizes[i], outFmt);
+    nvcv::ImageBatchVarShape batchDst(numImages);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    cvcuda::Normalize op;
+    EXPECT_NO_THROW(
+        op(stream, batchSrc, imgBase, imgScale, batchDst, kStdDevGlobalScale, kStdDevGlobalShift, epsilon, flags));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        SCOPED_TRACE(i);
+        auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(dstData, nvcv::NullOpt);
+
+        const int                rowElems = sizes[i].w * channels;
+        const std::vector<float> gold
+            = MakeNormalizeGold<float>(srcVec[i], sizes[i].w, sizes[i].h, channels, goldBase, goldScale,
+                                       kStdDevGlobalScale, kStdDevGlobalShift, flags, epsilon);
+        if (f16Output)
+        {
+            const std::vector<float> testVec
+                = DownloadHalfAsFloat(dstData->plane(0).basePtr, dstData->plane(0).rowStride, rowElems, sizes[i].h);
+            test::ExpectNearHalfUlps(gold, testVec, 1.f);
+        }
+        else
+        {
+            std::vector<float> testVec(static_cast<size_t>(sizes[i].h) * rowElems);
+            ASSERT_EQ(cudaSuccess, cudaMemcpy2D(testVec.data(), rowElems * sizeof(float), dstData->plane(0).basePtr,
+                                                dstData->plane(0).rowStride, rowElems * sizeof(float), sizes[i].h,
+                                                cudaMemcpyDeviceToHost));
+            ExpectPlanarVectorsNear(gold, testVec);
+        }
+    }
+}
+
+TEST(OpNormalize, varshape_f16_ref)
+{
+    for (uint32_t flags : {normalScale, scaleIsStdDev})
+    {
+        RunVarShapeF16Case(1, true, true,
+                           {
+                               {1920, 4},
+                               {  21, 7}
+        },
+                           ParamMode::Scalar, flags);
+        RunVarShapeF16Case(2, true, true,
+                           {
+                               {64, 5}
+        },
+                           ParamMode::Scalar, flags); // exercises the half2 column
+        RunVarShapeF16Case(3, true, true,
+                           {
+                               {257, 3},
+                               { 64, 5}
+        },
+                           ParamMode::PerChannel, flags);
+        RunVarShapeF16Case(4, true, true,
+                           {
+                               {64, 3}
+        },
+                           ParamMode::PerChannel, flags);
+    }
+}
+
+TEST(OpNormalize, varshape_f16_mixed_output_ref)
+{
+    for (uint32_t flags : {normalScale, scaleIsStdDev})
+    {
+        RunVarShapeF16Case(3, true, false,
+                           {
+                               {257, 3},
+                               { 64, 5}
+        },
+                           ParamMode::PerChannel, flags); // F16 -> F32
+        RunVarShapeF16Case(3, false, true,
+                           {
+                               {257, 3},
+                               { 64, 5}
+        },
+                           ParamMode::PerChannel, flags); // F32 -> F16
+        RunVarShapeF16Case(1, true, false,
+                           {
+                               {1920, 4}
+        },
+                           ParamMode::Scalar, flags); // single-channel F16 -> F32
+    }
+}
+
 TEST_P(OpNormalize, varshape_correct_output)
 {
     cudaStream_t stream;
@@ -2126,9 +2432,23 @@ static void UploadScalarParamTensor(nvcv::Tensor &tensor, const std::vector<floa
     ASSERT_NO_FATAL_FAILURE(UploadParamTensor(tensor, values));
 }
 
+// F16 samples travel as raw uint16_t bit patterns: the case asserts bit identity between the
+// tensor-parameter and by-value paths, and 16-bit storage avoids host __half arithmetic and gtest
+// printing/comparison of __half. The values are the float host image quantized to half, so the
+// kernels see representative (non-denormal) data instead of reinterpreted integer patterns.
+static std::vector<uint16_t> MakePlanarHostImageF16Bits(int sample, int width, int height, int channels)
+{
+    const std::vector<float>   values = MakePlanarHostImage<float>(sample, width, height, channels);
+    const std::vector<uint8_t> bytes  = test::FloatToHalfBytes(values);
+    std::vector<uint16_t>      bits(values.size());
+    std::memcpy(bits.data(), bytes.data(), bytes.size());
+    return bits;
+}
+
 template<typename T>
 static void RunScalarBitIdentityCase(nvcv::DataType dtype, nvcv::TensorLayout layout, int channels, uint32_t flags,
-                                     bool scalarBase, bool scalarScale, float gscale, float gshift, float eps)
+                                     bool scalarBase, bool scalarScale, float gscale, float gshift, float eps,
+                                     std::vector<T> (*makeImage)(int, int, int, int) = MakePlanarHostImage<T>)
 {
     const bool isPlanar  = IsScalarPlanarLayout(layout);
     const int  numImages = layout == nvcv::TENSOR_CHW ? 1 : 2;
@@ -2154,7 +2474,7 @@ static void RunScalarBitIdentityCase(nvcv::DataType dtype, nvcv::TensorLayout la
     std::vector<std::vector<T>> srcVec(numImages);
     for (int i = 0; i < numImages; ++i)
     {
-        srcVec[i] = MakePlanarHostImage<T>(i, width, height, channels);
+        srcVec[i] = makeImage(i, width, height, channels);
         ASSERT_NO_FATAL_FAILURE(
             UploadScalarTensorSample<T>(*srcAccess, i, srcVec[i], width, height, channels, isPlanar));
     }
@@ -2226,11 +2546,25 @@ TEST_P(OpNormalizeScalarIdentity, matches_tensor_path)
                                       globalShift, epsilon);
     RunScalarBitIdentityCase<float>(nvcv::TYPE_F32, layout, channels, flags, scalarBase, scalarScale, globalScale,
                                     globalShift, epsilon);
+    // F16 rides the same bit-identity oracle; samples move as raw 16-bit patterns (see
+    // MakePlanarHostImageF16Bits), so both paths consume and produce identical half bits.
+    RunScalarBitIdentityCase<uint16_t>(nvcv::TYPE_F16, layout, channels, flags, scalarBase, scalarScale, globalScale,
+                                       globalShift, epsilon, MakePlanarHostImageF16Bits);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     AxisCovering, OpNormalizeScalarIdentity,
     testing::Values(ScalarIdentityParams{nvcv::TENSOR_NHWC, 1, normalScale, false, false, identityProfile},
+                    ScalarIdentityParams{nvcv::TENSOR_NHWC, 3, normalScale, false, false, adjustedProfile},
+                    ScalarIdentityParams{nvcv::TENSOR_NHWC, 3, normalScale, false, true, adjustedProfile},
+                    ScalarIdentityParams{nvcv::TENSOR_NHWC, 3, scaleIsStdDev, false, false, adjustedProfile},
+                    ScalarIdentityParams{nvcv::TENSOR_NHWC, 3, scaleIsStdDev, false, true, adjustedProfile},
+                    ScalarIdentityParams{nvcv::TENSOR_NHWC, 3, scaleIsStdDev, true, false, adjustedProfile},
+                    ScalarIdentityParams{nvcv::TENSOR_NHWC, 3, scaleIsStdDev, true, true, adjustedProfile},
+                    ScalarIdentityParams{nvcv::TENSOR_NCHW, 3, normalScale, false, false, adjustedProfile},
+                    ScalarIdentityParams{nvcv::TENSOR_NCHW, 3, normalScale, false, true, adjustedProfile},
+                    ScalarIdentityParams{nvcv::TENSOR_NCHW, 3, scaleIsStdDev, false, false, adjustedProfile},
+                    ScalarIdentityParams{nvcv::TENSOR_NCHW, 3, scaleIsStdDev, false, true, adjustedProfile},
                     ScalarIdentityParams{nvcv::TENSOR_NCHW, 3, scaleIsStdDev, true, true, adjustedProfile},
                     ScalarIdentityParams{nvcv::TENSOR_CHW, 4, normalScale, true, false, adjustedProfile}));
 
@@ -2338,6 +2672,85 @@ TEST(OpNormalizeScalar_Negative, rejects_batch_exceeding_grid_z)
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcv::ProtectCall([&]() { op(stream, src, base, scale, 1, 1, dst, 1.f, 0.f, 0.f, normalScale); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpNormalizeScalar_Negative, rejects_planar_planes_exceeding_grid_z)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    // Planar kernels launch one grid.z plane per sample and channel. This stays small in memory
+    // while exceeding the CUDA grid.z limit: 21846 * 3 = 65538.
+    const nvcv::TensorShape shape({21846, 3, 1, 1}, nvcv::TENSOR_NCHW);
+    nvcv::Tensor            src(shape, nvcv::TYPE_U8);
+    nvcv::Tensor            dst(shape, nvcv::TYPE_U8);
+    cvcuda::Normalize       op;
+    float4                  base{0.f, 0.f, 0.f, 0.f};
+    float4                  scale{1.f, 1.f, 1.f, 0.f};
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&]() { op(stream, src, base, scale, 3, 3, dst, 1.f, 0.f, 0.f, normalScale); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpNormalizeScalar_Negative, rejects_invalid_layout_and_format_mismatch)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Normalize op;
+    float4            value{1.f, 1.f, 1.f, 0.f};
+
+    nvcv::Tensor invalidSrc(
+        {
+            {13, 9, 3, 2},
+            "ABCD"
+    },
+        nvcv::TYPE_F32);
+    nvcv::Tensor invalidDst(
+        {
+            {13, 9, 3, 2},
+            "ABCD"
+    },
+        nvcv::TYPE_F32);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&]() { op(stream, invalidSrc, value, value, 3, 3, invalidDst, 1.f, 0.f, 0.f, normalScale); }));
+
+    nvcv::Tensor src(
+        {
+            {2, 9, 13, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_F32);
+    nvcv::Tensor dst(
+        {
+            {2, 3, 9, 13},
+            "NCHW"
+    },
+        nvcv::TYPE_F32);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&]() { op(stream, src, value, value, 3, 3, dst, 1.f, 0.f, 0.f, normalScale); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpNormalizeScalar_Negative, rejects_unsupported_dtype)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const nvcv::TensorShape shape({2, 9, 13, 3}, nvcv::TENSOR_NHWC);
+    nvcv::Tensor            src(shape, nvcv::TYPE_F64);
+    nvcv::Tensor            dst(shape, nvcv::TYPE_F64);
+    cvcuda::Normalize       op;
+    float4                  value{1.f, 1.f, 1.f, 0.f};
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&]() { op(stream, src, value, value, 3, 3, dst, 1.f, 0.f, 0.f, normalScale); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
@@ -2550,7 +2963,8 @@ NVCV_TEST_SUITE_P(OpNormalize_Negative, test::ValueList<nvcv::ImageFormat, nvcv:
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, false},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, true},
     {nvcv::FMT_2F32, nvcv::FMT_2F32, false},
-    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, false},
+    // F64 is the remaining unsupported float dtype now that F16 is supported.
+    {nvcv::FMT_F64, nvcv::FMT_F64, false},
     {nvcv::FMT_U16, nvcv::FMT_U16, false},
 });
 
@@ -2785,6 +3199,10 @@ NVCV_TEST_SUITE_P(OpNormalizePlanar,
                       {64, 48, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
                       {50, 40, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
                       {64, 48, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+ // F16 planar (3 and 4 channel) -- the planar half kernel must match the interleaved one
+  // bit-for-bit (identical float expression, one half rounding on the store).
+                      {64, 48, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+                      {33, 17, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 TEST_P(OpNormalizePlanar, tensor_matches_interleaved)

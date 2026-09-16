@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,8 @@
 // Internal implementation of meta-programming functionalities.
 // Not to be used directly.
 
-#include "../Compat.hpp" // for double4_16a, etc.
+#include "../Compat.hpp"    // for double4_16a, etc.
+#include "../HalfTypes.hpp" // for half1, half3, half4, etc.
 
 #include <cuda.h>         // for CUDA_VERSION
 #include <cuda_runtime.h> // for uchar1, etc.
@@ -119,6 +120,27 @@ NVCV_CUDA_TYPE_TRAITS(double4_16a, double, 4, 4, DBL_MIN, DBL_MAX);
 #undef NVCV_CUDA_TYPE_TRAITS_1_TO_4
 #undef NVCV_CUDA_TYPE_TRAITS
 
+// __half is not a literal type (its constructors are not constexpr), so the half traits cannot
+// provide the constexpr min/max members the macro above requires; use the function-form limits
+// in TypeTraits.hpp (e.g. HalfMax) where limits are needed.
+#define NVCV_CUDA_HALF_TYPE_TRAITS(COMPOUND_TYPE, COMPONENTS, ELEMENTS) \
+    template<>                                                          \
+    struct TypeTraits<COMPOUND_TYPE>                                    \
+    {                                                                   \
+        using base_type                  = __half;                      \
+        static constexpr int  components = COMPONENTS;                  \
+        static constexpr int  elements   = ELEMENTS;                    \
+        static constexpr char name[]     = #COMPOUND_TYPE;              \
+    }
+
+NVCV_CUDA_HALF_TYPE_TRAITS(__half, 0, 1);
+NVCV_CUDA_HALF_TYPE_TRAITS(half1, 1, 1);
+NVCV_CUDA_HALF_TYPE_TRAITS(__half2, 2, 2);
+NVCV_CUDA_HALF_TYPE_TRAITS(half3, 3, 3);
+NVCV_CUDA_HALF_TYPE_TRAITS(half4, 4, 4);
+
+#undef NVCV_CUDA_HALF_TYPE_TRAITS
+
 template<class T>
 struct TypeTraits<const T> : TypeTraits<T>
 {
@@ -184,6 +206,12 @@ NVCV_CUDA_MAKE_TYPE_0_TO_4(float, float);
 NVCV_CUDA_MAKE_TYPE_0_TO_3(double, double);
 NVCV_CUDA_MAKE_TYPE(double, 4, double4_16a);
 
+NVCV_CUDA_MAKE_TYPE(__half, 0, __half);
+NVCV_CUDA_MAKE_TYPE(__half, 1, half1);
+NVCV_CUDA_MAKE_TYPE(__half, 2, __half2);
+NVCV_CUDA_MAKE_TYPE(__half, 3, half3);
+NVCV_CUDA_MAKE_TYPE(__half, 4, half4);
+
 #undef NVCV_CUDA_MAKE_TYPE_0_TO_4
 #undef NVCV_CUDA_MAKE_TYPE
 
@@ -247,6 +275,15 @@ template<typename T>
 struct HasTypeTraits_t<T, std::void_t<typename TypeTraits<T>::base_type>> : std::true_type
 {
 };
+
+// Metavariable to check if a type is the __half type, ignoring const/volatile.
+template<typename T>
+constexpr bool IsHalfV = std::is_same_v<std::remove_cv_t<T>, __half>;
+
+// Metavariable to check if a base type is floating point; needed because
+// std::is_floating_point does not cover the extended type __half.
+template<typename T>
+constexpr bool IsFloatingPointV = std::is_floating_point_v<T> || IsHalfV<T>;
 
 } // namespace nvcv::cuda::detail
 

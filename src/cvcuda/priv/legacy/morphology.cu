@@ -23,9 +23,13 @@
 #include "CvCudaLegacyHelpers.hpp"
 
 #include "CvCudaUtils.cuh"
+#include "morphology_util.cuh"
 
 #include <cvcuda/cuda_tools/MathWrappers.hpp>
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
+
+#include <type_traits>
 
 using namespace nvcv::legacy::helpers;
 using namespace nvcv::legacy::cuda_op;
@@ -280,8 +284,7 @@ ErrorCode MorphFilter2DCaller(const TensorDataStridedCuda &inData, const TensorD
 {
     using BT = cuda::BaseType<D>;
 
-    BT val = (morph_type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
-                                                             : std::numeric_limits<BT>::max();
+    BT val = MorphIdentityValue<BT>(morph_type);
 
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
@@ -366,7 +369,7 @@ ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDat
     }
     const bool isPlanar = IsPlanar(format);
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -430,13 +433,17 @@ ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDat
                                     NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor,
                                     NVCVBorderType borderMode, cudaStream_t stream);
 
-    static const filter2D_t funcs[6][4] = {
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6 stays unsupported, kCV_16F = 7). The
+    // erode/dilate kernels only compare and select input values, so __half reuses them unchanged.
+    static const filter2D_t funcs[8][4] = {
         { MorphFilter2D<uchar>, 0,  MorphFilter2D<uchar3>,  MorphFilter2D<uchar4>},
         {                    0, 0,                      0,                      0},
         {MorphFilter2D<ushort>, 0, MorphFilter2D<ushort3>, MorphFilter2D<ushort4>},
         {                    0, 0,                      0,                      0},
         {                    0, 0,                      0,                      0},
         { MorphFilter2D<float>, 0,  MorphFilter2D<float3>,  MorphFilter2D<float4>},
+        {                    0, 0,                      0,                      0},
+        {MorphFilter2D<__half>, 0,   MorphFilter2D<half3>,   MorphFilter2D<half4>},
     };
 
     return funcs[data_type][channels - 1](inData, outData, morph_type, mask_size_, anchor_, borderMode, stream);

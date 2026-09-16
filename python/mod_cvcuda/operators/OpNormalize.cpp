@@ -42,8 +42,9 @@ enum OpFlags : uint32_t
 } // namespace
 
 namespace {
-Tensor NormalizeInto(Tensor &output, Tensor &input, Tensor &base, Tensor &scale, std::optional<uint32_t> flags,
-                     float globalScale, float globalShift, float epsilon, std::optional<Stream> pstream)
+template<class DstT, class SrcT>
+DstT NormalizeSubmitInto(DstT &output, SrcT &input, Tensor &base, Tensor &scale, std::optional<uint32_t> flags,
+                         float globalScale, float globalShift, float epsilon, std::optional<Stream> pstream)
 {
     if (!pstream.has_value())
     {
@@ -68,7 +69,13 @@ Tensor NormalizeInto(Tensor &output, Tensor &input, Tensor &base, Tensor &scale,
                               *flags);
         });
 
-    return std::move(output);
+    return output;
+}
+
+Tensor NormalizeInto(Tensor &output, Tensor &input, Tensor &base, Tensor &scale, std::optional<uint32_t> flags,
+                     float globalScale, float globalShift, float epsilon, std::optional<Stream> pstream)
+{
+    return NormalizeSubmitInto(output, input, base, scale, flags, globalScale, globalShift, epsilon, pstream);
 }
 
 Tensor Normalize(Tensor &input, Tensor &base, Tensor &scale, std::optional<uint32_t> flags, float globalScale,
@@ -150,30 +157,7 @@ ImageBatchVarShape VarShapeNormalizeInto(ImageBatchVarShape &output, ImageBatchV
                                          Tensor &scale, std::optional<uint32_t> flags, float globalScale,
                                          float globalShift, float epsilon, std::optional<Stream> pstream)
 {
-    if (!pstream.has_value())
-    {
-        pstream = Stream::Current();
-    }
-
-    if (!flags.has_value())
-    {
-        flags = 0;
-    }
-
-    auto normalize = CreateOperator<cvcuda::Normalize>();
-
-    ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_MODE_READ, {input, base, scale});
-    guard.add(LockMode::LOCK_MODE_WRITE, {output});
-    guard.add(LockMode::LOCK_MODE_NONE, {*normalize});
-
-    guard.run(
-        [&normalize, &pstream, &input, &base, &scale, &output, &globalScale, &globalShift, &epsilon, &flags]() {
-            normalize->submit(pstream->cudaHandle(), input, base, scale, output, globalScale, globalShift, epsilon,
-                              *flags);
-        });
-
-    return output;
+    return NormalizeSubmitInto(output, input, base, scale, flags, globalScale, globalShift, epsilon, pstream);
 }
 
 ImageBatchVarShape VarShapeNormalize(ImageBatchVarShape &input, Tensor &base, Tensor &scale,

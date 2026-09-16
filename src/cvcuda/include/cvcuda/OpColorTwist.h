@@ -78,7 +78,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaColorTwistCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
- *       16bit Float    | No
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -94,7 +94,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaColorTwistCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
- *       16bit Float    | No
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -128,6 +128,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaColorTwistCreate(NVCVOperatorHandle *handle);
  *       uint8          | float32
  *       int16, uint16  | float32
  *       int32, uint32  | float64
+ *       float16        | float32
  *       float32        | float32
  *
  * @param [in] handle Handle to the operator.

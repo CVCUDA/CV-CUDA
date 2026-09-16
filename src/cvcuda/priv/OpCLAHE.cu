@@ -407,13 +407,16 @@ __global__ void CLAHETensorBuildLUTDirectKernel(SrcWrapper src, unsigned char *l
     luts[tileIdx * kHistBins + tid] = (unsigned char)lutV;
 }
 
-template<class SrcWrapper, class DstWrapper>
+template<int32_t StaticTilesX, int32_t StaticTilesY, class SrcWrapper, class DstWrapper>
 __global__ void CLAHETensorApplyKernel(SrcWrapper src, DstWrapper dst, const unsigned char *luts, int32_t tilesX,
                                        int32_t tilesY, int32_t width, int32_t height, float invTileW, float invTileH)
 {
-    const int32_t batch = blockIdx.z;
-    const int32_t x     = blockIdx.x * blockDim.x + threadIdx.x;
-    const int32_t y     = blockIdx.y * blockDim.y + threadIdx.y;
+    constexpr bool kStaticGrid = StaticTilesX > 0 && StaticTilesY > 0;
+    const int32_t  gridTilesX  = kStaticGrid ? StaticTilesX : tilesX;
+    const int32_t  gridTilesY  = kStaticGrid ? StaticTilesY : tilesY;
+    const int32_t  batch       = blockIdx.z;
+    const int32_t  x           = blockIdx.x * blockDim.x + threadIdx.x;
+    const int32_t  y           = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height)
     {
         return;
@@ -421,22 +424,22 @@ __global__ void CLAHETensorApplyKernel(SrcWrapper src, DstWrapper dst, const uns
 
     float gx = __fmul_rn((float)x, invTileW) - 0.5f;
     float gy = __fmul_rn((float)y, invTileH) - 0.5f;
-    gx       = fminf(fmaxf(gx, 0.0f), (float)(tilesX - 1));
-    gy       = fminf(fmaxf(gy, 0.0f), (float)(tilesY - 1));
+    gx       = fminf(fmaxf(gx, 0.0f), (float)(gridTilesX - 1));
+    gy       = fminf(fmaxf(gy, 0.0f), (float)(gridTilesY - 1));
 
     const int32_t tx0 = (int32_t)floorf(gx);
     const int32_t ty0 = (int32_t)floorf(gy);
     const float   fx  = gx - (float)tx0;
     const float   fy  = gy - (float)ty0;
-    const int32_t tx1 = min(tx0 + 1, tilesX - 1);
-    const int32_t ty1 = min(ty0 + 1, tilesY - 1);
+    const int32_t tx1 = min(tx0 + 1, gridTilesX - 1);
+    const int32_t ty1 = min(ty0 + 1, gridTilesY - 1);
     const int32_t v   = *(src.ptr(batch, y, x));
 
-    const int32_t base  = batch * tilesY * tilesX * kHistBins;
-    const int32_t idx00 = base + ((ty0 * tilesX + tx0) * kHistBins + v);
-    const int32_t idx10 = base + ((ty0 * tilesX + tx1) * kHistBins + v);
-    const int32_t idx01 = base + ((ty1 * tilesX + tx0) * kHistBins + v);
-    const int32_t idx11 = base + ((ty1 * tilesX + tx1) * kHistBins + v);
+    const int32_t base  = batch * gridTilesY * gridTilesX * kHistBins;
+    const int32_t idx00 = base + ((ty0 * gridTilesX + tx0) * kHistBins + v);
+    const int32_t idx10 = base + ((ty0 * gridTilesX + tx1) * kHistBins + v);
+    const int32_t idx01 = base + ((ty1 * gridTilesX + tx0) * kHistBins + v);
+    const int32_t idx11 = base + ((ty1 * gridTilesX + tx1) * kHistBins + v);
 
     const float w00 = (1.0f - fx) * (1.0f - fy);
     const float w10 = fx * (1.0f - fy);
@@ -536,13 +539,20 @@ static void RunCLAHETensor(const nvcv::TensorDataStridedCuda &inData, const nvcv
         CLAHETensorBuildLUTKernel<<<lutGrid, lutBlock, 0, stream>>>(srcBorder, dLUTs, clipLimit, tilesX, tilesY, width,
                                                                     height);
     }
-    checkKernelErrors();
-
     const dim3 applyBlock(32, 8, 1);
     const dim3 applyGrid((width + applyBlock.x - 1) / applyBlock.x, (height + applyBlock.y - 1) / applyBlock.y, batch);
-    CLAHETensorApplyKernel<<<applyGrid, applyBlock, 0, stream>>>(src, dst, dLUTs, tilesX, tilesY, width, height,
-                                                                 invTileW, invTileH);
-    checkKernelErrors();
+    if (tilesX == 8 && tilesY == 8)
+    {
+        CLAHETensorApplyKernel<8, 8>
+            <<<applyGrid, applyBlock, 0, stream>>>(src, dst, dLUTs, tilesX, tilesY, width, height, invTileW, invTileH);
+    }
+    else
+    {
+        CLAHETensorApplyKernel<0, 0>
+            <<<applyGrid, applyBlock, 0, stream>>>(src, dst, dLUTs, tilesX, tilesY, width, height, invTileW, invTileH);
+    }
+    // cudaGetLastError() is sticky until read: one check here covers every launch above.
+    NVCV_CHECK_THROW(cudaGetLastError());
 }
 
 static void ValidateVarShapeFormat(const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out)
@@ -582,13 +592,13 @@ static void RunCLAHEVarShape(const nvcv::ImageBatchVarShapeDataStridedCuda &inDa
     const dim3 lutGrid(tilesX, tilesY, inData.numImages());
     const dim3 lutBlock(kHistBins, 1, 1);
     CLAHEBuildLUTKernel<<<lutGrid, lutBlock, 0, stream>>>(srcBorder, dLUTs, clipLimit, tilesX, tilesY);
-    checkKernelErrors();
 
     const dim3 applyBlock(16, 16, 1);
     const dim3 applyGrid((inData.maxSize().w + applyBlock.x - 1) / applyBlock.x,
                          (inData.maxSize().h + applyBlock.y - 1) / applyBlock.y, inData.numImages());
     CLAHEApplyKernel<<<applyGrid, applyBlock, 0, stream>>>(src, dst, dLUTs, tilesX, tilesY);
-    checkKernelErrors();
+    // cudaGetLastError() is sticky until read: one check here covers every launch above.
+    NVCV_CHECK_THROW(cudaGetLastError());
 }
 
 } // namespace

@@ -604,11 +604,17 @@ NVCV_TYPED_TEST_SUITE(OpLabel, type::Types<
     NVCV_TEST_ROW(NVCV_SHAPE(16, 28, 4, 3), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 3, true),
     NVCV_TEST_ROW(NVCV_SHAPE(17, 27, 5, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 4, true),
     NVCV_TEST_ROW(NVCV_SHAPE(40, 17, 5, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 4, true),
+    NVCV_TEST_ROW(NVCV_SHAPE(23, 17, 4, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 2, true),
     // Widths above one CUDA block exercise the X-reduction threshold paths for both 2D and 3D inputs.
     NVCV_TEST_ROW(NVCV_SHAPE(48, 17, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, false, true, false, 0, false),
     NVCV_TEST_ROW(NVCV_SHAPE(49, 17, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, false, false, true, 0, false),
     NVCV_TEST_ROW(NVCV_SHAPE(48, 17, 5, 1), NVCV_DATA_TYPE_U8, uint8_t, false, true, false, 0, false),
-    NVCV_TEST_ROW(NVCV_SHAPE(49, 17, 5, 1), NVCV_DATA_TYPE_U8, uint8_t, false, false, true, 0, false)
+    NVCV_TEST_ROW(NVCV_SHAPE(49, 17, 5, 1), NVCV_DATA_TYPE_U8, uint8_t, false, false, true, 0, false),
+    // bgLabel without count selects ReplaceBgLabels2D; cover every threshold-presence combination.
+    NVCV_TEST_ROW(NVCV_SHAPE(31, 19, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, false, false, 0, false),
+    NVCV_TEST_ROW(NVCV_SHAPE(30, 21, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, true, false, 0, false),
+    NVCV_TEST_ROW(NVCV_SHAPE(29, 23, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, false, true, 0, false),
+    NVCV_TEST_ROW(NVCV_SHAPE(28, 25, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 0, false)
 >);
 
 // clang-format on

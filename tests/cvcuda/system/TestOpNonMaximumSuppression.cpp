@@ -95,7 +95,9 @@ struct GoldNmsContext
             }
 
             const float &score2 = util::ValueAt<float>(srcScVec, srcScStrides, int2{x, y2});
-            if (score1 < score2 || (score1 == score2 && GoldArea(src1) < GoldArea(src2)))
+            const float  area1  = GoldArea(src1);
+            const float  area2  = GoldArea(src2);
+            if (score1 < score2 || (score1 == score2 && (area1 < area2 || (area1 == area2 && y1 > y2))))
             {
                 return true;
             }
@@ -147,6 +149,9 @@ NVCV_TEST_SUITE_P(OpNonMaximumSuppression, test::ValueList<int, int, float, floa
     // numSamples, numBBoxes, scThresh, iouThresh,
     {           1,         5,     .50f,      .75f,},
     {           3,        23,     .25f,      .50f,},
+    {           2,      1023,     .30f,      .55f,},
+    {           2,      1024,     .30f,      .55f,},
+    {           2,      1025,     .30f,      .55f,},
     {          10,       123,     .35f,      .45f,},
     {          15,      1234,     .45f,      .65f,},
     {           2,      8765,     .95f,      .85f,},
@@ -271,6 +276,64 @@ TEST(OpNonMaximumSuppression, score_order_and_area_tiebreak)
     };
     const std::vector<float>   scores{0.9f, 0.8f, 0.7f, 0.7f, 0.4f};
     const std::vector<uint8_t> expected{1, 0, 0, 1, 0};
+
+    auto srcBBData = srcBB.exportData<nvcv::TensorDataStridedCuda>();
+    auto srcScData = srcSc.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstMkData = dstMk.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcBBData && srcScData && dstMkData);
+
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(srcBBData->basePtr(), boxes.data(), boxes.size() * sizeof(short4), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(srcScData->basePtr(), scores.data(), scores.size() * sizeof(float), cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::NonMaximumSuppression nms;
+    EXPECT_NO_THROW(nms(stream, srcBB, dstMk, srcSc, scoreThreshold, iouThreshold));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::vector<uint8_t> actual(numBoxes);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(actual.data(), dstMkData->basePtr(), actual.size() * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(actual, expected);
+}
+
+NVCV_TEST_SUITE_P(OpNonMaximumSuppressionIdenticalTies, test::ValueList<int>{
+                                                            {2},
+                                                            {1024},
+                                                        });
+
+TEST_P(OpNonMaximumSuppressionIdenticalTies, keeps_first_box)
+{
+    const int       numBoxes       = GetParam();
+    constexpr float scoreThreshold = 0.5f;
+    constexpr float iouThreshold   = 0.5f;
+
+    nvcv::Tensor srcBB(
+        {
+            {1, numBoxes},
+            "NW"
+    },
+        nvcv::TYPE_4S16);
+    nvcv::Tensor dstMk(
+        {
+            {1, numBoxes},
+            "NW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor srcSc(
+        {
+            {1, numBoxes},
+            "NW"
+    },
+        nvcv::TYPE_F32);
+
+    const std::vector<short4> boxes(numBoxes, short4{10, 20, 30, 40});
+    const std::vector<float>  scores(numBoxes, 0.75f);
+    std::vector<uint8_t>      expected(numBoxes, 0);
+    expected.front() = 1;
 
     auto srcBBData = srcBB.exportData<nvcv::TensorDataStridedCuda>();
     auto srcScData = srcSc.exportData<nvcv::TensorDataStridedCuda>();

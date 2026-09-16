@@ -571,6 +571,10 @@ inline void RunSrcTypeSwitch(int numChannels, nvcv::DataType srcType, nvcv::Data
     else if NVCV_RUN_COLOR_TWIST (4, S32, F64, int4, double4_16a);
     else if NVCV_RUN_COLOR_TWIST (3, F32, F32, float3, float4);
     else if NVCV_RUN_COLOR_TWIST (4, F32, F32, float4, float4);
+    // F16 images keep the F32 twist matrix: the kernel widens each __half through float, applies
+    // the float4 transform, and rounds once to half on the SaturateCast store.
+    else if NVCV_RUN_COLOR_TWIST (3, F16, F32, half3, float4);
+    else if NVCV_RUN_COLOR_TWIST (4, F16, F32, half4, float4);
     else
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid input/twist/output data types");

@@ -81,7 +81,12 @@ NVCVArrayData FillNVCVArrayData(const DLTensor &tensor, NVCVArrayBufferType bufT
     NVCVArrayData arrayData = {};
 
     // dtype ------------
-    arrayData.dtype = static_cast<NVCVDataType>(py::cast<nvcv::DataType>(ToDType(ToNVCVDataType(tensor.dtype))));
+    std::optional<nvcv::DataType> dtype = NormalizeDataType(ToNVCVDataType(tensor.dtype));
+    if (!dtype)
+    {
+        throw ArrayError("Buffer data type is not supported");
+    }
+    arrayData.dtype = static_cast<NVCVDataType>(*dtype);
 
     // rank ------------
     {

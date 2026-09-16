@@ -87,7 +87,10 @@ except ImportError:
 
 
 from binding_api import binding_api_snapshot as _binding_api_snapshot  # noqa: E402
-from operator_source_map import SHARED_KERNEL_SOURCES  # noqa: E402
+from operator_source_map import (  # noqa: E402
+    SHARED_KERNEL_SOURCES,
+    operators_for_path,
+)
 from _internal.quality import DEFAULT_BENCHMARK_QUALITY  # noqa: E402
 
 PASS, GAP, NA, MANUAL = "PASS", "GAP", "N-A", "MANUAL"
@@ -225,8 +228,10 @@ def review_op_findings(P, domain):
         return None
 
 
-def changed_paths(base):
-    out = git("diff", "--name-only", f"{base}...HEAD")
+def changed_paths(base, head="HEAD"):
+    # --no-renames exposes both sides of a rename; without it a renamed kernel reports only its
+    # destination and the source operator drops out of attribution.
+    out = git("diff", "--name-only", "--no-renames", f"{base}...{head}")
     return [ln.strip() for ln in out.splitlines() if ln.strip()]
 
 
@@ -400,7 +405,136 @@ def check_preflight(P, base):
             ".agents/guidance/OPTIMIZATION_GUIDELINES.md#survey-and-scope",
         )
     )
+
+    # PRE-6: the committed baselines must describe the code the campaign starts from
+    out.append(_baseline_freshness_gate(P, base, g))
     return out
+
+
+def _git_returncode(*args):
+    """Exit status of a read-only git command, or None when git could not run at all."""
+    try:
+        return subprocess.run(
+            ["git", *args], cwd=str(REPO), capture_output=True, text=True
+        ).returncode
+    except OSError:
+        return None
+
+
+def _last_baseline_refresh(config_path, limit=100):
+    """Newest commit whose committed `baselines` differ from its parent's.
+
+    The operator config carries case definitions alongside the numbers, so the last commit that
+    touched the file is not necessarily the last time the numbers were re-measured - adding a
+    case, which the guidelines tell campaigns to do first, would otherwise reset the freshness
+    window and let the gate pass on arbitrarily old baselines.
+    """
+
+    def baselines(ref):
+        document = git_json(ref, config_path) or {}
+        configs = document.get("configs") or {}
+        return {
+            key: entry.get("baselines")
+            for key, entry in configs.items()
+            if isinstance(entry, dict)
+        }
+
+    history = git("log", "--format=%H", f"-{limit}", "--", config_path).split()
+    for commit in history:
+        if baselines(commit) != baselines(f"{commit}~1"):
+            return commit
+    # Window exhausted without finding a baselines change: inconclusive, not "never refreshed".
+    # Returning the newest touched commit here would report the gate as fresh on evidence it
+    # does not have.
+    return ""
+
+
+def _baseline_freshness_gate(P, base, guide):
+    """Reject a before-wave inherited from a seed that predates the operator's current code.
+
+    PRE-3 only proves baselines exist and BEN-7 only proves the case/SKU grid is complete.
+    Neither notices that the numbers were measured against different code. The advanced tier
+    is the usual offender: normal merge-request CI verifies `basic` only, so advanced rows can
+    sit untouched across driver, toolkit and shared-kernel changes. A speedup measured against
+    them is not attributable to the campaign.
+
+    The check is exact rather than time-based: find the commit that last wrote this operator's
+    config, then ask whether anything that feeds the operator's benchmarks changed between
+    that commit and the campaign base.
+    """
+
+    def outcome(status, summary, evidence, fix=""):
+        return Finding("PRE-6", "preflight", status, summary, evidence, guide, fix)
+
+    config_path = rel(P.bench_cfg)
+    regen = (
+        '```ci\n{"config": "baseline-regen", "benchmark_operators": "%s"}\n```' % P.op
+    )
+    last_refresh = _last_baseline_refresh(config_path)
+    base_sha = resolve_commit(base) if base else ""
+
+    if not last_refresh or not base_sha:
+        return outcome(
+            MANUAL,
+            "Baseline freshness could not be determined from git history",
+            "config=%s; base=%s; last refresh=%s"
+            % (config_path, base or "unset", last_refresh or "unknown"),
+            "Fetch full history (a shallow clone hides the refresh commit), then re-run. "
+            "Capture a fresh reference-SKU burn-in with:\n" + regen,
+        )
+
+    # Baselines written on this branch (not an ancestor of the base) are current by
+    # construction: they postdate the campaign's starting point.
+    ancestry = _git_returncode("merge-base", "--is-ancestor", last_refresh, base_sha)
+    if ancestry not in (0, 1):
+        return outcome(
+            MANUAL,
+            "Baseline freshness could not be determined: git could not compare the commits",
+            "config=%s; merge-base --is-ancestor exited %s (shallow clone?)"
+            % (config_path, ancestry),
+            "Fetch full history, then re-run. Capture a fresh burn-in with:\n" + regen,
+        )
+    if ancestry == 1:
+        return outcome(
+            PASS,
+            "Baselines were refreshed at or after the campaign base",
+            "config=%s; last refresh=%s; base=%s"
+            % (config_path, last_refresh[:12], base_sha[:12]),
+        )
+
+    ops = all_operator_stems()
+    if _git_returncode("cat-file", "-e", f"{last_refresh}^{{commit}}") != 0:
+        return outcome(
+            MANUAL,
+            "Baseline freshness could not be determined: the refresh commit is not available",
+            "config=%s; %s is missing locally (shallow clone?)"
+            % (config_path, last_refresh[:12]),
+            "Fetch full history, then re-run. Capture a fresh burn-in with:\n" + regen,
+        )
+    changed = changed_paths(last_refresh, base_sha)
+    stale_from = sorted(
+        path for path in changed if P.op in operators_for_path(path, ops)
+    )
+
+    if not stale_from:
+        return outcome(
+            PASS,
+            "Committed baselines still describe the code at the campaign base",
+            "config=%s; unchanged since %s" % (config_path, last_refresh[:12]),
+        )
+
+    shown = ", ".join(stale_from[:5]) + (
+        " (+%d more)" % (len(stale_from) - 5) if len(stale_from) > 5 else ""
+    )
+    return outcome(
+        GAP,
+        "Committed baselines predate code changes to this operator",
+        "config=%s last refreshed at %s; %d attributed path(s) changed since: %s"
+        % (config_path, last_refresh[:12], len(stale_from), shown),
+        "Do not reuse these rows as the before wave. Capture a fresh reference-SKU burn-in "
+        "at the campaign base - it runs basic,advanced on both reference SKUs - and import "
+        "it with bench/_internal/update_baseline.py:\n" + regen,
+    )
 
 
 # ============================================================================ EVIDENCE
@@ -1187,7 +1321,15 @@ def _case_count(config):
 
 
 def _changed_perf_operators(paths, all_ops):
-    """Attribute deterministic per-operator config, binding, and priv deltas."""
+    """Attribute deterministic per-operator config, binding, and priv deltas.
+
+    Deliberately narrower than operator_source_map.operators_for_paths, which asks "whose
+    benchmarks can this change move" and therefore fans a shared kernel out to every consumer.
+    ODO-10 asks the different question "is this MR authored against one operator", so it counts
+    only files whose own name identifies the operator. Widening it here would make every
+    Gaussian campaign look multi-operator, since Gaussian's kernel lives in the shared
+    legacy/filter.cu alongside AverageBlur and Laplacian.
+    """
     touched = set()
     known = set(all_ops)
     for path in paths:

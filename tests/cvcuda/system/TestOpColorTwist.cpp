@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/InterpUtils.hpp>
@@ -47,9 +48,27 @@ static int ScaledSize(int size, double scale)
 template<typename T, int N, int M>
 using Mat = cuda::math::Matrix<T, N, M>;
 
+// std distributions do not accept __half: draw halves in float and let the __half assignment
+// quantize them, so the operator and the FP32 gold consume identical half-representable inputs.
 template<typename T>
 using uniform_distribution
-    = std::conditional_t<std::is_integral_v<T>, std::uniform_int_distribution<T>, std::uniform_real_distribution<T>>;
+    = std::conditional_t<std::is_integral_v<T>, std::uniform_int_distribution<T>,
+                         std::uniform_real_distribution<std::conditional_t<std::is_same_v<T, __half>, float, T>>>;
+
+// TypeTraits<__half> has no constexpr max (non-literal type), so the integral-vs-floating range
+// selection cannot be a single ternary expression for every base type.
+template<typename BT>
+uniform_distribution<BT> MakeUniformDistribution()
+{
+    if constexpr (std::is_integral_v<BT>)
+    {
+        return uniform_distribution<BT>(BT{0}, cuda::TypeTraits<BT>::max);
+    }
+    else
+    {
+        return uniform_distribution<BT>(0, 1);
+    }
+}
 
 template<typename ValueType, typename TwistT>
 cuda::math::Vector<TwistT, 4> LoadColorTwistInput(ValueType pixel)
@@ -107,7 +126,17 @@ void CompareTensorPixel(std::vector<uint8_t> &dst, std::vector<uint8_t> &ref, co
     {
         auto val     = cuda::GetElement(test::ValueAt<ValueType>(dst, strides, coord), k);
         auto ref_val = cuda::GetElement(test::ValueAt<ValueType>(ref, strides, coord), k);
-        EXPECT_NEAR(val, ref_val, tolerance);
+        if constexpr (std::is_same_v<cuda::BaseType<ValueType>, __half>)
+        {
+            // For F16 the tolerance column carries the half-ULP budget (kUlps) against the
+            // FP32-computed gold, per the HalfTestUtils.hpp policy.
+            const float refFloat = __half2float(ref_val);
+            EXPECT_NEAR(__half2float(val), refFloat, tolerance * test::HalfUlp(refFloat));
+        }
+        else
+        {
+            EXPECT_NEAR(val, ref_val, tolerance);
+        }
     }
 }
 
@@ -230,7 +259,7 @@ void RunColorTwistTensorPlanarParity(const int3 &shape, nvcv::ImageFormat interl
     auto dstPAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstPData);
     ASSERT_TRUE(srcIAcc && dstIAcc && srcPAcc && dstPAcc);
 
-    uniform_distribution<BT> rand(BT{0}, std::is_integral_v<BT> ? cuda::TypeTraits<BT>::max : BT{1});
+    uniform_distribution<BT> rand = MakeUniformDistribution<BT>();
     std::mt19937_64          rng(12345);
     const long3              hostStrides{srcSampleStr, srcRowStride, sizeof(ValueType)};
 
@@ -295,7 +324,7 @@ void RunColorTwistVarShapePlanarParity(const int3 &shape, nvcv::ImageFormat inte
 
     std::uniform_int_distribution randW(ScaledSize(shape.x, 0.5), ScaledSize(shape.x, 1.5));
     std::uniform_int_distribution randH(ScaledSize(shape.y, 0.5), ScaledSize(shape.y, 1.5));
-    uniform_distribution<BT>      rand(BT{0}, std::is_integral_v<BT> ? cuda::TypeTraits<BT>::max : BT{1});
+    uniform_distribution<BT>      rand = MakeUniformDistribution<BT>();
     std::mt19937_64               rng(12345);
 
     for (int z = 0; z < shape.z; ++z)
@@ -398,7 +427,11 @@ inline nvcv::Tensor GetTwistTensor(bool usePerSampleArgs, int numSamples)
     return nvcv::Tensor{shape, dType};
 }
 
-template<typename TwistValueType_>
+// F16 rows set NonNegativeCoeffs: with mixed-sign coefficients a 3x4 twist row can cancel to a
+// near-zero result whose half-ULP is far below the kernel's FP32 error (which scales with the
+// term magnitudes), making a half-ULP-of-the-result bound meaningless. Nonnegative coefficients
+// on [0, 1] inputs keep the result on the order of its terms, so the kUlps budget applies.
+template<typename TwistValueType_, bool NonNegativeCoeffs = false>
 struct TwistMatrixArgument
 {
     using TwistValueType = TwistValueType_;
@@ -425,7 +458,7 @@ struct TwistMatrixArgument
         size_t twistBufSize = m_twistStrides.x * numArgs;
         m_twistVec          = std::vector<uint8_t>(twistBufSize, uint8_t{0});
 
-        std::uniform_real_distribution<float> coeffDist(-10.f, 10.f);
+        std::uniform_real_distribution<float> coeffDist(NonNegativeCoeffs ? 0.f : -10.f, 10.f);
         for (int y = 0; y < numArgs; ++y)
         {
             FillTwistSample<TwistValueType>(m_twistVec, m_twistStrides, y, numRows, numCols, coeffDist, rng);
@@ -439,6 +472,9 @@ struct TwistMatrixArgument
     long2                m_twistStrides;
     std::vector<uint8_t> m_twistVec;
 };
+
+// Alias so the F16 rows fit in a single macro argument (the template comma would split it).
+using TwistMatrixArgumentF16 = TwistMatrixArgument<float4, true>;
 
 #define NVCV_SHAPE(w, h, n) (int3{w, h, n})
 
@@ -478,19 +514,23 @@ NVCV_TYPED_TEST_SUITE(
         NVCV_TEST_ROW(NVCV_SHAPE(101, 32, 5), short4, NVCV_IMAGE_FORMAT_RGBA16S, true, TwistMatrixArgument<float4>),
         NVCV_TEST_ROW(NVCV_SHAPE(79, 50, 3), uint3, NVCV_IMAGE_FORMAT_RGB32U, true, TwistMatrixArgument<double4_16a>),
         NVCV_TEST_ROW(NVCV_SHAPE(79, 50, 3), uint4, NVCV_IMAGE_FORMAT_RGBA32U, true, TwistMatrixArgument<double4_16a>),
-        NVCV_TEST_ROW(NVCV_SHAPE(101, 32, 5), int3, NVCV_IMAGE_FORMAT_RGB32S, false,
-                      TwistMatrixArgument<double4_16a>)>);
+        NVCV_TEST_ROW(NVCV_SHAPE(101, 32, 5), int3, NVCV_IMAGE_FORMAT_RGB32S, false, TwistMatrixArgument<double4_16a>),
+        NVCV_TEST_ROW(NVCV_SHAPE(42, 60, 6), half3, NVCV_IMAGE_FORMAT_RGBf16, true, TwistMatrixArgumentF16),
+        NVCV_TEST_ROW(NVCV_SHAPE(42, 60, 6), half4, NVCV_IMAGE_FORMAT_RGBAf16, true, TwistMatrixArgumentF16),
+        NVCV_TEST_ROW(NVCV_SHAPE(41, 59, 1), half3, NVCV_IMAGE_FORMAT_RGBf16, false, TwistMatrixArgumentF16),
+        NVCV_TEST_ROW(NVCV_SHAPE(55, 27, 1), half4, NVCV_IMAGE_FORMAT_RGBAf16, false, TwistMatrixArgumentF16)>);
 
-NVCV_TYPED_TEST_SUITE(
-    OpColorTwistPlanarTensor,
-    ttype::Types<NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(42, 60, 3), uchar3, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_RGB8p,
-                                      true, TwistMatrixArgument<float4>),
-                 NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(35, 37, 2), uchar4, NVCV_IMAGE_FORMAT_RGBA8, NVCV_IMAGE_FORMAT_RGBA8p,
-                                      false, TwistMatrixArgument<float4>),
-                 NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(31, 29, 2), float3, NVCV_IMAGE_FORMAT_RGBf32,
-                                      NVCV_IMAGE_FORMAT_RGBf32p, true, TwistMatrixArgument<float4>),
-                 NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(17, 19, 1), float4, NVCV_IMAGE_FORMAT_RGBAf32,
-                                      NVCV_IMAGE_FORMAT_RGBAf32p, false, TwistMatrixArgument<float4>)>);
+NVCV_TYPED_TEST_SUITE(OpColorTwistPlanarTensor,
+                      ttype::Types<NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(42, 60, 3), uchar3, NVCV_IMAGE_FORMAT_RGB8,
+                                                        NVCV_IMAGE_FORMAT_RGB8p, true, TwistMatrixArgument<float4>),
+                                   NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(35, 37, 2), uchar4, NVCV_IMAGE_FORMAT_RGBA8,
+                                                        NVCV_IMAGE_FORMAT_RGBA8p, false, TwistMatrixArgument<float4>),
+                                   NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(31, 29, 2), float3, NVCV_IMAGE_FORMAT_RGBf32,
+                                                        NVCV_IMAGE_FORMAT_RGBf32p, true, TwistMatrixArgument<float4>),
+                                   NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(17, 19, 1), float4, NVCV_IMAGE_FORMAT_RGBAf32,
+                                                        NVCV_IMAGE_FORMAT_RGBAf32p, false, TwistMatrixArgument<float4>),
+                                   NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(31, 29, 2), half3, NVCV_IMAGE_FORMAT_RGBf16,
+                                                        NVCV_IMAGE_FORMAT_RGBf16p, true, TwistMatrixArgument<float4>)>);
 
 NVCV_TYPED_TEST_SUITE(
     OpColorTwistPlanarVarShape,
@@ -499,7 +539,9 @@ NVCV_TYPED_TEST_SUITE(
                  NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(31, 29, 2), float3, NVCV_IMAGE_FORMAT_RGBf32,
                                       NVCV_IMAGE_FORMAT_RGBf32p, false, TwistMatrixArgument<float4>),
                  NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(17, 19, 2), float4, NVCV_IMAGE_FORMAT_RGBAf32,
-                                      NVCV_IMAGE_FORMAT_RGBAf32p, true, TwistMatrixArgument<float4>)>);
+                                      NVCV_IMAGE_FORMAT_RGBAf32p, true, TwistMatrixArgument<float4>),
+                 NVCV_PLANAR_TEST_ROW(NVCV_SHAPE(31, 29, 2), half3, NVCV_IMAGE_FORMAT_RGBf16, NVCV_IMAGE_FORMAT_RGBf16p,
+                                      false, TwistMatrixArgument<float4>)>);
 
 TYPED_TEST(OpColorTwist, correct_output)
 {
@@ -534,7 +576,7 @@ TYPED_TEST(OpColorTwist, correct_output)
     std::vector<uint8_t> dstVec(bufSize, uint8_t{0});
     std::vector<uint8_t> refVec(bufSize, uint8_t{0});
 
-    uniform_distribution<BT> rand(BT{0}, std::is_integral_v<BT> ? cuda::TypeTraits<BT>::max : BT{1});
+    uniform_distribution<BT> rand = MakeUniformDistribution<BT>();
     std::mt19937_64          rng(12345);
 
     for (int z = 0; z < shape.z; ++z)
@@ -565,7 +607,14 @@ TYPED_TEST(OpColorTwist, correct_output)
     ColorTwist<ValueType, TwistValueType>(srcVec, refVec, arg.m_twistVec, strides, arg.m_twistStrides, shape,
                                           usePerSampleArgs);
 
-    float absTolerance = std::is_integral_v<BT> ? 1.f : 1e-5f;
+    // F16: gold and kernel both evaluate the 3x4 twist row in FP32 and round once to half; the
+    // only divergence is device FMA contraction across the 4 mul-adds, so per the
+    // HalfTestUtils.hpp policy the budget is kUlps = 4 half-ULPs of the gold.
+    float absTolerance = 1e-5f;
+    if constexpr (std::is_integral_v<BT>)
+        absTolerance = 1.f;
+    else if constexpr (std::is_same_v<BT, __half>)
+        absTolerance = 4.f;
     CompareTensors<ValueType>(dstVec, refVec, strides, shape, absTolerance);
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -624,7 +673,7 @@ TYPED_TEST(OpColorTwist, varshape_correct_output)
 
     std::uniform_int_distribution randW(ScaledSize(shape.x, 0.5), ScaledSize(shape.x, 1.5));
     std::uniform_int_distribution randH(ScaledSize(shape.y, 0.5), ScaledSize(shape.y, 1.5));
-    uniform_distribution<BT>      rand(BT{0}, std::is_integral_v<BT> ? cuda::TypeTraits<BT>::max : BT{1});
+    uniform_distribution<BT>      rand = MakeUniformDistribution<BT>();
     std::mt19937_64               rng(12345);
 
     ASSERT_EQ(sizeof(ValueType), imgFormat.planePixelStrideBytes(0));
@@ -694,7 +743,12 @@ TYPED_TEST(OpColorTwist, varshape_correct_output)
         ColorTwist<ValueType, TwistValueType>(srcVec[z], refVec, twistVec, sampleStrides, arg.m_twistStrides,
                                               sampleShape, usePerSampleArgs);
 
-        float absTolerance = std::is_integral_v<BT> ? 1.f : 1e-5f;
+        // F16: kUlps = 4 half-ULPs of the FP32 gold (see the tensor test above).
+        float absTolerance = 1e-5f;
+        if constexpr (std::is_integral_v<BT>)
+            absTolerance = 1.f;
+        else if constexpr (std::is_same_v<BT, __half>)
+            absTolerance = 4.f;
         CompareTensors<ValueType>(dstVec, refVec, sampleStrides, sampleShape, absTolerance);
     }
 

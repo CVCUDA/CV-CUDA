@@ -67,9 +67,11 @@ CVCUDA_PUBLIC NVCVStatus cvcudaConv2DCreate(NVCVOperatorHandle *handle);
  *      16bit Signed   | Yes
  *      32bit Unsigned | No
  *      32bit Signed   | Yes
- *      16bit Float    | No
+ *      16bit Float    | Yes
  *      32bit Float    | Yes
  *      64bit Float    | No
+ *
+ *      The convolution kernel batch remains 32bit Float for every image data type.
  *
  * Output:
  *      Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
@@ -83,7 +85,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaConv2DCreate(NVCVOperatorHandle *handle);
  *      16bit Signed   | Yes
  *      32bit Unsigned | No
  *      32bit Signed   | Yes
- *      16bit Float    | No
+ *      16bit Float    | Yes
  *      32bit Float    | Yes
  *      64bit Float    | No
  *

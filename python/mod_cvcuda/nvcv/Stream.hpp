@@ -122,6 +122,7 @@ private:
     static std::shared_mutex                     m_auxStreamMutex;
     static std::atomic<int>                      m_instanceCount;
     static std::unordered_map<int, cudaStream_t> m_auxStreams;
+    static std::weak_ptr<Stream>                 m_defaultStream;
 
     static void         incrementInstanceCount();
     static int          decrementInstanceCount();

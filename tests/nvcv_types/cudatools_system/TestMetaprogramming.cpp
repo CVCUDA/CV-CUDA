@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,4 +47,44 @@ TYPED_TEST(CopyConstnessTest, correct_type)
     using ConstType = detail::CopyConstness_t<typename TestFixture::SourceType, typename TestFixture::TargetType>;
 
     EXPECT_TRUE((std::is_same_v<typename std::remove_const_t<ConstType>, typename TestFixture::TargetType>));
+}
+
+// ----------------------------- Testing IsHalfV --------------------------------
+
+TEST(IsHalfTest, is_false)
+{
+    EXPECT_FALSE(detail::IsHalfV<float>);
+    EXPECT_FALSE(detail::IsHalfV<double>);
+    EXPECT_FALSE(detail::IsHalfV<unsigned short>);
+    // only the __half base type is half; half vector types are not
+    EXPECT_FALSE(detail::IsHalfV<half1>);
+    EXPECT_FALSE(detail::IsHalfV<__half2>);
+    EXPECT_FALSE(detail::IsHalfV<half3>);
+    EXPECT_FALSE(detail::IsHalfV<half4>);
+}
+
+TEST(IsHalfTest, is_true)
+{
+    EXPECT_TRUE(detail::IsHalfV<__half>);
+    EXPECT_TRUE(detail::IsHalfV<const __half>);
+    EXPECT_TRUE(detail::IsHalfV<volatile __half>);
+    EXPECT_TRUE(detail::IsHalfV<const volatile __half>);
+}
+
+// ------------------------ Testing IsFloatingPointV ----------------------------
+
+TEST(IsFloatingPointTest, is_false)
+{
+    EXPECT_FALSE(detail::IsFloatingPointV<int>);
+    EXPECT_FALSE(detail::IsFloatingPointV<unsigned char>);
+    EXPECT_FALSE(detail::IsFloatingPointV<half3>);
+}
+
+TEST(IsFloatingPointTest, is_true)
+{
+    EXPECT_TRUE(detail::IsFloatingPointV<float>);
+    EXPECT_TRUE(detail::IsFloatingPointV<double>);
+    // std::is_floating_point does not cover the extended type __half; IsFloatingPointV must
+    EXPECT_TRUE(detail::IsFloatingPointV<__half>);
+    EXPECT_TRUE(detail::IsFloatingPointV<const __half>);
 }

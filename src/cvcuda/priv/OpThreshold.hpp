@@ -26,8 +26,8 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 
@@ -45,8 +45,30 @@ public:
                     const nvcv::Tensor &thresh, const nvcv::Tensor &maxval) const;
 
 private:
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::Threshold>         m_legacyOp;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::ThresholdVarShape> m_legacyOpVarShape;
+    // The automatic thresholding modes (OTSU, TRIANGLE) accumulate one 256-bin histogram per image
+    // into persistent device scratch sized from maxBatchSize at construction, never per submit.
+    // Nothing is allocated for the fixed-threshold modes.
+    struct Histogram
+    {
+        Histogram(uint32_t automaticThresh, int maxBatchSize);
+        ~Histogram();
+
+        Histogram(const Histogram &)            = delete;
+        Histogram &operator=(const Histogram &) = delete;
+
+        int *data      = nullptr;
+        bool allocated = false;
+    };
+
+    uint32_t m_type;
+    uint32_t m_automaticThresh;
+    uint32_t m_maskedType;
+    int      m_maxBatchSize;
+
+    // The tensor and var-shape paths keep separate scratch, matching the two legacy operator objects
+    // they replace; PerDeviceResource gives each CUDA device its own allocation.
+    mutable PerDeviceResource<Histogram> m_histogram;
+    mutable PerDeviceResource<Histogram> m_histogramVarShape;
 };
 
 } // namespace cvcuda::priv

@@ -30,6 +30,7 @@
 #include <nvcv/TensorData.hpp>
 #include <nvcv/TensorLayout.hpp>
 #include <nvcv/util/Assert.h>
+#include <nvcv/util/CheckError.hpp>
 #include <nvcv/util/Math.hpp>
 
 namespace cuda = nvcv::cuda;
@@ -357,6 +358,7 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
                 dim3 grid(util::DivUp(dstMaxSize.x, block.x * NIX), util::DivUp(dstMaxSize.y, block.y), dstMaxSize.z);
                 RemapPlanarVarShape<NIX><<<grid, block, 0, stream>>>(src, dst, mapWrap, mapSize, mapNumSamples,
                                                                      alignCorners, mapValueType, channels);
+                NVCV_CHECK_THROW(cudaGetLastError());
                 return;
             }
         }
@@ -364,6 +366,9 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
         dim3 grid(util::DivUp(dstMaxSize.x, block.x * NIX), util::DivUp(dstMaxSize.y, block.y), dstMaxSize.z);
         Remap<NIX><<<grid, block, 0, stream>>>(src, dst, mapWrap, mapSize, mapNumSamples, alignCorners, mapValueType);
     }
+
+    // cudaGetLastError() is sticky until read: one check here covers every launch above.
+    NVCV_CHECK_THROW(cudaGetLastError());
 }
 
 template<typename T, NVCVBorderType B, NVCVInterpolationType MI, NVCVInterpolationType SI, class DataStridedCuda>
@@ -490,6 +495,9 @@ inline void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const 
     else if NVCV_RUN_REMAP(U8, 3U8, uchar3);
     else if NVCV_RUN_REMAP(U8, 4U8, uchar4);
     else if NVCV_RUN_REMAP(F32, F32, float1);
+    // F16 mirrors F32: single-channel only. InterpolationWrap accumulates in float and
+    // SaturateCast rounds once to half at the store.
+    else if NVCV_RUN_REMAP(F16, F16, half1);
     else
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid data type in input/output");

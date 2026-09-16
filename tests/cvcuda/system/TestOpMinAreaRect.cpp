@@ -396,6 +396,35 @@ TEST(OpMinAreaRect, invalid_create)
     EXPECT_EQ(cvcudaMinAreaRectCreate(nullptr, 1), NVCV_ERROR_INVALID_ARGUMENT);
 }
 
+TEST(OpMinAreaRect_Negative, rejects_contours_without_xy_channels)
+{
+    constexpr int contours  = 2;
+    constexpr int maxPoints = 8;
+
+    nvcv::Tensor inContours(
+        {
+            {contours, maxPoints, 3},
+            "NWC"
+    },
+        nvcv::TYPE_S16);
+    nvcv::Tensor numPoints(
+        {
+            {1, contours},
+            "NW"
+    },
+        nvcv::TYPE_S32);
+    nvcv::Tensor output(
+        {
+            {contours, 8},
+            "NW"
+    },
+        nvcv::TYPE_F32);
+
+    cvcuda::MinAreaRect op(contours);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, inContours, output, numPoints, contours); }));
+}
+
 TEST(OpMinAreaRect, numPointsInContour_exceeds_tensor_width)
 {
     // Regression test for GPU heap overread: numPointsInContour > max_pts must not

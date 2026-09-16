@@ -434,3 +434,95 @@ TYPED_TEST(TypeTraitsVectorTypePrintTest, correct_output_stream)
 
     EXPECT_STREQ(oss.str().c_str(), this->GoldValueOutput.value.data());
 }
+
+// -------------------- Testing TypeTraits for __half --------------------------
+
+// __half is not a literal type (its constructors are not constexpr), so half-based types
+// cannot go through the value-driven typed suites above; the compile-time coverage below
+// uses static_asserts and the value coverage builds halves at run time via __float2half.
+
+TEST(TypeTraitsHalfTest, correct_metaprogramming_types)
+{
+    static_assert(cuda::HasTypeTraits<__half, half1, __half2, half3, half4>);
+
+    static_assert(std::is_same_v<cuda::BaseType<__half>, __half>);
+    static_assert(std::is_same_v<cuda::BaseType<half1>, __half>);
+    static_assert(std::is_same_v<cuda::BaseType<__half2>, __half>);
+    static_assert(std::is_same_v<cuda::BaseType<half3>, __half>);
+    static_assert(std::is_same_v<cuda::BaseType<half4>, __half>);
+
+    static_assert(cuda::NumComponents<__half> == 0);
+    static_assert(cuda::NumComponents<half1> == 1);
+    static_assert(cuda::NumComponents<__half2> == 2);
+    static_assert(cuda::NumComponents<half3> == 3);
+    static_assert(cuda::NumComponents<half4> == 4);
+
+    static_assert(cuda::NumElements<__half> == 1);
+    static_assert(cuda::NumElements<half1> == 1);
+    static_assert(cuda::NumElements<__half2> == 2);
+    static_assert(cuda::NumElements<half3> == 3);
+    static_assert(cuda::NumElements<half4> == 4);
+
+    static_assert(!cuda::IsCompound<__half>);
+    static_assert(
+        cuda::IsCompound<half1> && cuda::IsCompound<__half2> && cuda::IsCompound<half3> && cuda::IsCompound<half4>);
+
+    static_assert(std::is_same_v<cuda::MakeType<__half, 0>, __half>);
+    static_assert(std::is_same_v<cuda::MakeType<__half, 1>, half1>);
+    static_assert(std::is_same_v<cuda::MakeType<__half, 2>, __half2>);
+    static_assert(std::is_same_v<cuda::MakeType<__half, 3>, half3>);
+    static_assert(std::is_same_v<cuda::MakeType<__half, 4>, half4>);
+
+    static_assert(std::is_same_v<cuda::ConvertBaseTypeTo<float, half3>, float3>);
+    static_assert(std::is_same_v<cuda::ConvertBaseTypeTo<__half, float4>, half4>);
+    static_assert(std::is_same_v<cuda::ConvertBaseTypeTo<__half, uchar2>, __half2>);
+
+    static_assert(sizeof(half1) == 2 && sizeof(half3) == 6 && sizeof(half4) == 8);
+    static_assert(alignof(half4) == 8);
+}
+
+TEST(TypeTraitsHalfTest, correct_function_form_limits)
+{
+    // __half is not a literal type, so TypeTraits cannot provide constexpr min/max members;
+    // the function-form limits below are the half counterparts
+    EXPECT_EQ(__half2float(cuda::HalfMax()), 65504.f);
+    EXPECT_EQ(__half2float(cuda::HalfLowest()), -65504.f);
+}
+
+TEST(TypeTraitsHalfTest, correct_set_all_and_get_element)
+{
+    auto test = cuda::SetAll<half3>(__float2half(1.f));
+
+    EXPECT_TRUE((std::is_same_v<decltype(test), half3>));
+
+    for (int e = 0; e < cuda::NumElements<half3>; ++e)
+    {
+        EXPECT_EQ(__half2float(cuda::GetElement(test, e)), 1.f);
+    }
+
+    cuda::GetElement(test, 1) = __float2half(-2.f);
+
+    EXPECT_EQ(__half2float(cuda::GetElement<1>(test)), -2.f);
+}
+
+TEST(TypeTraitsHalfTest, correct_output_stream)
+{
+    EXPECT_STREQ(cuda::GetTypeName<__half>(), "__half");
+    EXPECT_STREQ(cuda::GetTypeName<half1>(), "half1");
+    EXPECT_STREQ(cuda::GetTypeName<__half2>(), "__half2");
+    EXPECT_STREQ(cuda::GetTypeName<half3>(), "half3");
+    EXPECT_STREQ(cuda::GetTypeName<half4>(), "half4");
+
+    std::ostringstream oss;
+
+    // __half has no standard stream inserter; Printer.hpp prints it through its float value
+    EXPECT_NO_THROW(oss << __float2half(1.5f));
+    EXPECT_STREQ(oss.str().c_str(), "1.5");
+
+    oss.str("");
+
+    half3 val{__float2half(1.f), __float2half(2.f), __float2half(3.f)};
+
+    EXPECT_NO_THROW(oss << val);
+    EXPECT_STREQ(oss.str().c_str(), "half3(1, 2, 3)");
+}

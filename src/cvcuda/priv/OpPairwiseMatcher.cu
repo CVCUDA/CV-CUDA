@@ -555,10 +555,13 @@ inline void RunBruteForceMatcherForNorm(cudaStream_t stream, const nvcv::Tensor 
     //       to use shared memory for those big points, given a certain maximum point dimension, and use threads to
     //       compute per element results instead of per point.
 
+// Every exit path launches and then checks; cudaGetLastError() is sticky until read, so these
+// exit checks also cover the earlier WriteNumMatches launch.
 #define CVCUDA_BFM_RUN(NB)                                                                                      \
     BruteForceMatcher<NB, NORM><<<blocks2, threads, 0, stream>>>(                                               \
         w_set1, w_set2, w_numSet1, w_numSet2, w_matches, w_numMatches, w_distances, set1Capacity, set2Capacity, \
         outCapacity, numDim, crossCheck, matchesPerPoint);                                                      \
+    NVCV_CHECK_THROW(cudaGetLastError());                                                                       \
     return
 
     if (w_set1.strides()[1] >= minStride && w_set2.strides()[1] >= minStride)
@@ -572,6 +575,7 @@ inline void RunBruteForceMatcherForNorm(cudaStream_t stream, const nvcv::Tensor 
                     BruteForceMatcher<32, NORM, const SrcT, PackedU8Point32><<<blocks2, threads, 0, stream>>>(
                         w_set1, w_set2, w_numSet1, w_numSet2, w_matches, w_numMatches, w_distances, set1Capacity,
                         set2Capacity, outCapacity, numDim, crossCheck, matchesPerPoint);
+                    NVCV_CHECK_THROW(cudaGetLastError());
                     return;
                 }
             }

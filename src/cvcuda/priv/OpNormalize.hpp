@@ -25,19 +25,17 @@
 #define CVCUDA_PRIV_NORMALIZE_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
 class Normalize final : public IOperator
 {
 public:
-    explicit Normalize();
+    explicit Normalize() = default;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &base, const nvcv::Tensor &scale,
                     const nvcv::Tensor &out, float global_scale, float shift, float epsilon, uint32_t flags) const;
@@ -49,10 +47,6 @@ public:
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &base,
                     const nvcv::Tensor &scale, const nvcv::ImageBatchVarShape &out, float global_scale, float shift,
                     float epsilon, uint32_t flags) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::Normalize>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::NormalizeVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

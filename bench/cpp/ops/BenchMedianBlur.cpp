@@ -105,7 +105,7 @@ try
     // Note: For Tensor (4D NHWC), column is c.z; for ImageBatch (2D HW), column is c.y
     auto gradientValue = [](long col) -> BT
     {
-        if constexpr (std::is_floating_point_v<BT>)
+        if constexpr (nvcv::cuda::detail::IsFloatingPointV<BT>)
             return static_cast<BT>(255 - (col % 256)) / BT{255};
         else
             return static_cast<BT>(255 - (col % 256));

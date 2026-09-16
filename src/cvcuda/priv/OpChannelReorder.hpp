@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,29 +25,25 @@
 #define CVCUDA_PRIV_CHANNEL_REORDER_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 
 #include <cstdint>
-#include <memory>
 
 namespace cvcuda::priv {
 
 class ChannelReorder final : public IOperator
 {
 public:
-    explicit ChannelReorder();
+    explicit ChannelReorder() = default;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const int32_t *order,
                     int32_t orderLength) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                     const nvcv::Tensor &orders) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::ChannelReorderVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# POSIX character-class names for `tr` case conversion (shared to avoid
-# duplicating the literals; SonarQube shelldre:S1192).
+# POSIX character-class names for `tr` case conversion, shared to avoid
+# duplicating the literals.
 readonly TR_LOWER='[:lower:]'
 readonly TR_UPPER='[:upper:]'
 

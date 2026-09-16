@@ -343,6 +343,46 @@ TEST_P(OpHistogramPlanar, output_matches_interleaved)
     ASSERT_EQ(histIVec, histPVec);
 }
 
+TEST(OpHistogramPlanar, reused_operator_reallocates_workspace_and_preserves_output)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Histogram op;
+
+    nvcv::Tensor srcFirst   = CreateSingleChannelTensor(2, 13, 9, true, true);
+    nvcv::Tensor histFirst  = nvcv::util::CreateTensor(1, 256, 2, nvcv::FMT_S32);
+    nvcv::Tensor srcSecond  = CreateSingleChannelTensor(2, 17, 11, true, true);
+    nvcv::Tensor histSecond = nvcv::util::CreateTensor(1, 256, 2, nvcv::FMT_S32);
+
+    std::vector<uint32_t> goldFirst;
+    std::vector<uint32_t> goldSecond;
+    for (int sample = 0; sample < 2; ++sample)
+    {
+        auto first  = MakeHistogramParityInput(13, 9, sample);
+        auto second = MakeHistogramParityInput(17, 11, sample);
+        ASSERT_TRUE(SetImageTensor(srcFirst, first, sample));
+        ASSERT_TRUE(SetImageTensor(srcSecond, second, sample));
+        computeHistogram(first, goldFirst);
+        computeHistogram(second, goldSecond);
+    }
+
+    EXPECT_NO_THROW(op(stream, srcFirst, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histFirst));
+    // Reuse the still-busy planar workspace with a different shape. The operator must wait for the
+    // first use before reallocating it, and both results must remain correct.
+    EXPECT_NO_THROW(op(stream, srcSecond, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histSecond));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint32_t> actualFirst;
+    std::vector<uint32_t> actualSecond;
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(histFirst.exportData(), 0, actualFirst));
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(histSecond.exportData(), 0, actualSecond));
+    EXPECT_EQ(goldFirst, actualFirst);
+    EXPECT_EQ(goldSecond, actualSecond);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 static void ExpectHistogramInvalidArgument(const nvcv::Tensor &histogram, nvcv::OptionalTensorConstRef mask)
 {
     cudaStream_t stream;
@@ -402,6 +442,20 @@ TEST(OpHistogram_Negative, rejects_invalid_histogram_dtype)
     ExpectHistogramInvalidArgument(histogram, nvcv::OptionalTensorConstRef{nvcv::NullOpt});
 }
 
+TEST(OpHistogram_Negative, rejects_non_image_tensor)
+{
+    nvcv::Tensor inTensor{
+        {{16}, "N"},
+        nvcv::TYPE_U8
+    };
+    nvcv::Tensor histogram = nvcv::util::CreateTensor(1, 256, 1, nvcv::FMT_S32);
+
+    cvcuda::Histogram op;
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall([&] { op(nullptr, inTensor, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histogram); }));
+}
+
 TEST(OpHistogram_Negative, rejects_histogram_width_less_than_256)
 {
     nvcv::Tensor histogram = nvcv::util::CreateTensor(1, 255, 1, nvcv::FMT_S32);
@@ -450,6 +504,27 @@ TEST(OpHistogram_Negative, rejects_mask_layout_different_from_input)
               nvcv::ProtectCall([&] { op(stream, inTensor, nvcv::OptionalTensorConstRef{mask}, histogram); }));
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHistogram_Negative, rejects_planar_mask_layout_different_from_input)
+{
+    nvcv::Tensor inTensor(
+        {
+            {1, 1, 2, 2},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor mask(
+        {
+            {1, 2, 2},
+            "CHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor histogram = nvcv::util::CreateTensor(1, 256, 1, nvcv::FMT_S32);
+
+    cvcuda::Histogram op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, inTensor, nvcv::OptionalTensorConstRef{mask}, histogram); }));
 }
 
 TEST(OpHistogram_Negative, create_null_handle)

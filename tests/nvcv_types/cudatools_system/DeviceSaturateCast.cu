@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -92,5 +92,18 @@ NVCV_TEST_INST(uchar2, int2);
 NVCV_TEST_INST(char2, uint2);
 NVCV_TEST_INST(uchar2, ulonglong2);
 NVCV_TEST_INST(char2, long2);
+
+// __half combinations, cf. the half section in TestSaturateCast.cpp
+
+NVCV_TEST_INST(uchar4, half4);
+NVCV_TEST_INST(char3, half3);
+NVCV_TEST_INST(ushort3, half3);
+NVCV_TEST_INST(short3, half3);
+NVCV_TEST_INST(int3, half3);
+NVCV_TEST_INST(float3, half3);
+
+NVCV_TEST_INST(half3, float3);
+NVCV_TEST_INST(half3, double3);
+NVCV_TEST_INST(half3, int3);
 
 #undef NVCV_TEST_INST

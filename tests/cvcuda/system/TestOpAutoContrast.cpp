@@ -16,11 +16,13 @@
  */
 
 #include "../../../src/cvcuda/priv/OpAutoContrast.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpAutoContrast.hpp>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Exception.hpp>
@@ -325,6 +327,152 @@ void ExpectVarShapeMatchesGold(int width, int height, nvcv::ImageFormat fmt, Pix
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 
     ExpectSampleEqual<T>(dstVec.data(), refVec.data(), width, height, rowStride);
+}
+
+// ---------------------------------------------------------------------------
+// F16 coverage. The reduction widens every half to float (exact), so the per-channel extrema
+// are exact; the remap is one float multiply and one divide with a single float->half rounding
+// on the store. RemapGold is deliberately not instantiated for __half (its truncation branch is
+// gated on std::is_integral, which does not classify __half); instead the gold runs
+// RemapGold<float> with the F16 bound of 1.0 on the half-quantized input, and per the
+// HalfTestUtils.hpp policy the half output is validated within kUlps = 2 half-ULPs of that
+// FP32 reference.
+// ---------------------------------------------------------------------------
+
+// Builds the half-quantized source bytes and the FP32 gold for one sample. pixelAt(x, y)
+// returns the float pixel (float / float3 / float4); values are quantized to half before both
+// the operator input and the gold computation, so the comparison measures kernel error only.
+template<typename T, class PixelAt>
+void BuildF16SampleAndGold(std::vector<uint8_t> &srcBytes, std::vector<float> &goldValues, int width, int height,
+                           long rowStride, PixelAt pixelAt)
+{
+    using FloatPixel          = nvcvcuda::ConvertBaseTypeTo<float, T>;
+    constexpr int numChannels = nvcvcuda::NumElements<T>;
+
+    goldValues.assign(static_cast<size_t>(width) * height * numChannels, 0.f);
+    std::array<float, numChannels> lo;
+    std::array<float, numChannels> hi;
+    lo.fill(std::numeric_limits<float>::infinity());
+    hi.fill(-std::numeric_limits<float>::infinity());
+
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            const FloatPixel px = pixelAt(x, y);
+            T &out = *reinterpret_cast<T *>(srcBytes.data() + y * rowStride + x * static_cast<long>(sizeof(T)));
+            for (int c = 0; c < numChannels; ++c)
+            {
+                auto &halfValue       = nvcvcuda::GetElement(out, c);
+                halfValue             = __float2half(nvcvcuda::GetElement(px, c));
+                const float quantized = __half2float(halfValue);
+                goldValues[(static_cast<size_t>(y) * width + x) * numChannels + c] = quantized;
+                UpdateFiniteExtrema(quantized, lo[c], hi[c]);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < goldValues.size(); ++i)
+    {
+        const auto c  = static_cast<int>(i % numChannels);
+        goldValues[i] = RemapGold<float>(goldValues[i], lo[c], hi[c], 1.0f);
+    }
+}
+
+template<typename T>
+void ExpectF16SampleNearGold(const uint8_t *got, const std::vector<float> &gold, int width, int height, long rowStride)
+{
+    constexpr int numChannels = nvcvcuda::NumElements<T>;
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            const T px = *reinterpret_cast<const T *>(got + y * rowStride + x * static_cast<long>(sizeof(T)));
+            for (int c = 0; c < numChannels; ++c)
+            {
+                const float ref = gold[(static_cast<size_t>(y) * width + x) * numChannels + c];
+                // min/max are exact after the float widen; the remap is one multiply and one
+                // divide with a single rounding on the half store -> kUlps = 2 (policy above).
+                EXPECT_NEAR(static_cast<float>(nvcvcuda::GetElement(px, c)), ref, 2.f * test::HalfUlp(ref))
+                    << "pixel (" << x << "," << y << ") channel " << c;
+            }
+        }
+    }
+}
+
+template<typename T, class PixelAt>
+void ExpectTensorMatchesGoldF16(int width, int height, nvcv::ImageFormat fmt, PixelAt pixelAt)
+{
+    nvcv::Tensor srcTensor = nvcv::util::CreateTensor(1, width, height, fmt);
+    nvcv::Tensor dstTensor = nvcv::util::CreateTensor(1, width, height, fmt);
+
+    auto srcData = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData && dstData);
+
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    ASSERT_TRUE(srcAccess);
+
+    const long           rowStride = srcAccess->rowStride();
+    const size_t         bufSize   = static_cast<size_t>(rowStride) * height;
+    std::vector<uint8_t> srcVec(bufSize, uint8_t{0});
+    std::vector<uint8_t> dstVec(bufSize, uint8_t{0});
+    std::vector<float>   gold;
+
+    BuildF16SampleAndGold<T>(srcVec, gold, width, height, rowStride, pixelAt);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), srcVec.data(), bufSize, cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::AutoContrast op;
+    ASSERT_NO_THROW(op(stream, srcTensor, dstTensor));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstVec.data(), dstData->basePtr(), bufSize, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    ExpectF16SampleNearGold<T>(dstVec.data(), gold, width, height, rowStride);
+}
+
+template<typename T, class PixelAt>
+void ExpectVarShapeMatchesGoldF16(int width, int height, nvcv::ImageFormat fmt, PixelAt pixelAt)
+{
+    nvcv::Image srcImage({width, height}, fmt);
+    nvcv::Image dstImage({width, height}, fmt);
+
+    auto srcData = srcImage.exportData<nvcv::ImageDataStridedCuda>();
+    auto dstData = dstImage.exportData<nvcv::ImageDataStridedCuda>();
+    ASSERT_TRUE(srcData && dstData);
+    ASSERT_EQ(1, srcData->numPlanes());
+    ASSERT_EQ(sizeof(T), fmt.planePixelStrideBytes(0));
+
+    const long           rowStride = srcData->plane(0).rowStride;
+    const size_t         bufSize   = static_cast<size_t>(rowStride) * height;
+    std::vector<uint8_t> srcVec(bufSize, uint8_t{0});
+    std::vector<uint8_t> dstVec(bufSize, uint8_t{0});
+    std::vector<float>   gold;
+
+    BuildF16SampleAndGold<T>(srcVec, gold, width, height, rowStride, pixelAt);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy2DAsync(srcData->plane(0).basePtr, rowStride, srcVec.data(), rowStride,
+                                static_cast<size_t>(width) * sizeof(T), height, cudaMemcpyHostToDevice, stream));
+
+    nvcv::ImageBatchVarShape srcBatch(1);
+    nvcv::ImageBatchVarShape dstBatch(1);
+    srcBatch.pushBack(srcImage);
+    dstBatch.pushBack(dstImage);
+
+    cvcuda::AutoContrast op;
+    ASSERT_NO_THROW(op(stream, srcBatch, dstBatch));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy2D(dstVec.data(), rowStride, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
+                           static_cast<size_t>(width) * sizeof(T), height, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    ExpectF16SampleNearGold<T>(dstVec.data(), gold, width, height, rowStride);
 }
 
 static void ExpectZeroExtentTensorStatus(const nvcv::TensorShape &shape, nvcv::DataType dtype, NVCVStatus status)
@@ -801,6 +949,42 @@ TEST(OpAutoContrast, mixed_flat_and_nonflat_channels_match_gold)
                                     });
 }
 
+// F16 correctness (FP32 gold, 2 half-ULPs; see the F16 helper block above). The RGB pattern
+// mixes a negative-valued channel, a flat channel (pass-through), and a stretched channel.
+TEST(OpAutoContrast, f16_tensor_matches_fp32_gold)
+{
+    ExpectTensorMatchesGoldF16<half3>(41, 23, nvcv::FMT_RGBf16,
+                                      [](int x, int y)
+                                      {
+                                          return float3{
+                                              static_cast<float>((x % 11) - 5) * 0.25f,
+                                              0.375f,
+                                              static_cast<float>((x * 3 + y * 5) % 17) * 0.03125f,
+                                          };
+                                      });
+}
+
+TEST(OpAutoContrast, f16_single_channel_tensor_stretch_matches_fp32_gold)
+{
+    // Narrow input range so auto-contrast meaningfully stretches it toward the [0, 1] bound.
+    ExpectTensorMatchesGoldF16<__half>(
+        64, 48, nvcv::FMT_F16, [](int x, int y) { return 0.25f + static_cast<float>((x * 7 + y * 11) % 101) / 400.f; });
+}
+
+TEST(OpAutoContrast, f16_varshape_matches_fp32_gold)
+{
+    ExpectVarShapeMatchesGoldF16<half4>(33, 21, nvcv::FMT_RGBAf16,
+                                        [](int x, int y)
+                                        {
+                                            return float4{
+                                                static_cast<float>((x * 5 + y * 3) % 23) * 0.0625f,
+                                                static_cast<float>((y % 7) - 3) * 0.5f,
+                                                -1.5f,
+                                                static_cast<float>((x + y) % 13) * 0.125f,
+                                            };
+                                        });
+}
+
 // =============================================================================
 // Planar (NCHW/CHW) layout support
 //
@@ -856,6 +1040,9 @@ NVCV_TEST_SUITE_P(OpAutoContrastPlanar,
     {37, 29, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
     {41, 33, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
     {35, 31, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    // F16 parity is bit-exact: both layouts run the same float chain and round to half once.
+    {41, 33, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+    {35, 31, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
     {43, 27, 2, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB16Up}, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB16U}},
     {127, 9, 2, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
     {128, 7, 2, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB16Up}, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB16U}},

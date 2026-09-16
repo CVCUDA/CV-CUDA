@@ -18,6 +18,8 @@
 #include "Nvtx.hpp"
 #include "OpPosterize.hpp"
 
+#include "SameShapeCommon.cuh"
+
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
@@ -33,8 +35,9 @@
 
 #include <type_traits>
 
-namespace cuda = nvcv::cuda;
-namespace util = nvcv::util;
+namespace cuda       = nvcv::cuda;
+namespace util       = nvcv::util;
+namespace same_shape = cvcuda::priv::same_shape;
 
 namespace {
 
@@ -52,19 +55,6 @@ inline __device__ T PosterizeElem(T pixel, BT mask)
     return out;
 }
 
-template<bool IsPlanar>
-inline __device__ std::conditional_t<IsPlanar, int4, int3> GetCoordForLayout(int3 nhwCoord, int p)
-{
-    if constexpr (!IsPlanar)
-    {
-        return nhwCoord;
-    }
-    else
-    {
-        return {nhwCoord.x, nhwCoord.y, p, nhwCoord.z};
-    }
-}
-
 template<bool IsPlanar, class SrcWrapper, class DstWrapper, typename BT>
 inline __device__ void DoPosterize(SrcWrapper src, DstWrapper dst, const int2 size, const int p, BT mask)
 {
@@ -79,7 +69,7 @@ inline __device__ void DoPosterize(SrcWrapper src, DstWrapper dst, const int2 si
     {
         return;
     }
-    auto coord = GetCoordForLayout<IsPlanar>(nhwCoord, p);
+    auto coord = same_shape::GetCoordForLayout<IsPlanar>(nhwCoord, p);
     dst[coord] = PosterizeElem<DstT>(src[coord], mask);
 }
 
@@ -152,23 +142,8 @@ inline BT PosterizeMask(int bits)
 // paths memory-latency bound (long-scoreboard stalls, low BWUtil) -- each warp has a single outstanding
 // load. These map each (sample, plane) to grid.z and have each thread issue NGROUP wide vector loads
 // (uchar4 / ushort4) before compute, raising memory-level parallelism. Pure bitwise (in & mask), so no
-// extra compute; per element bit-identical to PosterizeElem. Modeled on legacy/normalize_planar.cuh;
+// extra compute; per element bit-identical to PosterizeElem. Modeled on OpNormalize.cu's planar vector body;
 // caller guards sizeof(Vec4)-aligned base+strides with a scalar fallback; per-thread tail handles width%4.
-template<typename T, int Size = sizeof(T)>
-struct PosterizeVec4Type;
-
-template<typename T>
-struct PosterizeVec4Type<T, 1>
-{
-    using type = uchar4;
-};
-
-template<typename T>
-struct PosterizeVec4Type<T, 2>
-{
-    using type = ushort4;
-};
-
 template<int NGROUP, typename BT>
 __global__ void PosterizePlanarVec4Kernel(cuda::Tensor4DWrap<const BT, int32_t> src,
                                           cuda::Tensor4DWrap<BT, int32_t> dst, int4 inout_size, BT mask)
@@ -185,7 +160,7 @@ __global__ void PosterizePlanarVec4Kernel(cuda::Tensor4DWrap<const BT, int32_t> 
         return;
     }
 
-    using Vec4 = typename PosterizeVec4Type<BT>::type;
+    using Vec4 = cuda::MakeType<BT, 4>;
 
     int  cx[NGROUP];
     bool full[NGROUP];
@@ -323,7 +298,7 @@ inline void RunPosterize(cudaStream_t stream, const SrcData &srcData, const DstD
             // uchar4) already moves 3-4 B/thread at the bandwidth ridge -> keep the scalar kernel.
             if constexpr (cuda::NumElements<ValueT> == 1)
             {
-                using Vec4            = typename PosterizeVec4Type<BT>::type;
+                using Vec4            = cuda::MakeType<BT, 4>;
                 constexpr int NGROUP  = 4;
                 const int64_t sStride = srcAccess->sampleStride(), rStride = srcAccess->rowStride();
                 const int64_t dsStride = dstAccess->sampleStride(), drStride = dstAccess->rowStride();
@@ -360,7 +335,7 @@ inline void RunPosterize(cudaStream_t stream, const SrcData &srcData, const DstD
             bool      launchedVec = false;
             if constexpr (sizeof(BT) == 1 || sizeof(BT) == 2)
             {
-                using Vec4            = typename PosterizeVec4Type<BT>::type;
+                using Vec4            = cuda::MakeType<BT, 4>;
                 constexpr int NGROUP  = 4;
                 const int64_t planes  = static_cast<int64_t>(numSamples) * numPlanes;
                 const int64_t sStride = srcAccess->sampleStride(), pStride = srcAccess->planeStride(),
@@ -466,172 +441,8 @@ inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
 template<typename Cb>
 inline void RunChannelSwitch(int numChannels, int numPlanes, nvcv::DataType dType, const Cb &cb)
 {
-    RunTypeSwitch(dType,
-                  [&numChannels, &numPlanes, &cb](auto dummyVal)
-                  {
-                      using ValBase = decltype(dummyVal);
-                      // clang-format off
-            if (numChannels == 1)
-            {
-                using Val = cuda::MakeType<ValBase, 1>;
-                if (numPlanes == 1)
-                {
-                    cb(Val{}, std::integral_constant<bool, false>{});
-                }
-                else
-                {
-                    cb(Val{}, std::integral_constant<bool, true>{});
-                }
-            }
-            else if (numChannels == 3)
-            {
-                cb(cuda::MakeType<ValBase, 3>{}, std::integral_constant<bool, false>{});
-            }
-            else if (numChannels == 4)
-            {
-                cb(cuda::MakeType<ValBase, 4>{}, std::integral_constant<bool, false>{});
-            }
-            else
-            {
-                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                      "Invalid number of channels: Posterize supports 1, 3 or 4 channels");
-            }
-                      // clang-format on
-                  });
-}
-
-// Validation ------------------------------------------------------------------------------
-
-inline void ValidateSrcDstTensors(int &numInterleavedChannels, int &numPlanes, nvcv::DataType &dtype,
-                                  const nvcv::Optional<nvcv::TensorDataStridedCuda> &srcData,
-                                  const nvcv::Optional<nvcv::TensorDataStridedCuda> &dstData)
-{
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-    if (srcData->layout() != dstData->layout())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
-    }
-    if (!(srcData->layout() == nvcv::TENSOR_HWC || srcData->layout() == nvcv::TENSOR_NHWC
-          || srcData->layout() == nvcv::TENSOR_CHW || srcData->layout() == nvcv::TENSOR_NCHW))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have (N)HWC or (N)CHW layout");
-    }
-    if (srcData->dtype() != dstData->dtype())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same data type");
-    }
-
-    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
-    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
-    NVCV_ASSERT(srcAccess && dstAccess);
-
-    if (srcAccess->numSamples() != dstAccess->numSamples())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-
-    int numChannels = srcAccess->numChannels();
-    if (numChannels != dstAccess->numChannels())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of channels");
-    }
-
-    numPlanes = srcAccess->numPlanes();
-    if (numPlanes != dstAccess->numPlanes())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of planes");
-    }
-    if (numPlanes > 1 && numChannels == 2)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel planar images are not supported");
-    }
-
-    if (srcAccess->numCols() != dstAccess->numCols() || srcAccess->numRows() != dstAccess->numRows())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input and output must have matching width and height");
-    }
-
-    dtype                  = srcData->dtype();
-    numInterleavedChannels = srcAccess->infoLayout().isChannelLast() ? numChannels : 1;
-}
-
-inline auto ValidateSrcDstVarBatch(int &numInterleavedChannels, int &numPlanes, nvcv::DataType &dtype,
-                                   cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
-                                   const nvcv::ImageBatchVarShape &dst)
-{
-    using maybeVarShape = nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda>;
-    std::tuple<maybeVarShape, maybeVarShape> srcDstData{
-        src.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream),
-        dst.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream)};
-    auto &[srcData, dstData] = srcDstData;
-
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, varshape pitch-linear image batch");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    int numSamples = srcData->numImages();
-    if (numSamples != dstData->numImages())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-
-    const auto &srcFormat = srcData->uniqueFormat();
-    const auto &dstFormat = dstData->uniqueFormat();
-    if (!srcFormat || !dstFormat)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All images in a batch must have the same format");
-    }
-    if (srcFormat != dstFormat)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same format");
-    }
-
-    int numChannels = srcFormat.numChannels();
-    numPlanes       = srcFormat.numPlanes();
-    if (numPlanes > 1 && numChannels == 2)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel planar images are not supported");
-    }
-
-    dtype = srcFormat.planeDataType(0);
-    for (int i = 1; i < numPlanes; ++i)
-    {
-        if (dtype != srcFormat.planeDataType(i))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "All planes in the input image must have the same data type");
-        }
-    }
-
-    numInterleavedChannels = dtype.numChannels();
-
-    for (int i = 0; i < numSamples; i++)
-    {
-        if (src[i].size() != dst[i].size())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Input and output must have matching width and height");
-        }
-    }
-
-    return srcDstData;
+    RunTypeSwitch(dType, [&](auto dummyVal)
+                  { same_shape::DispatchChannels<decltype(dummyVal)>(numChannels, numPlanes, "Posterize", cb); });
 }
 
 } // anonymous namespace
@@ -649,7 +460,7 @@ void Posterize::operator()(cudaStream_t stream, const nvcv::Tensor &src, const n
     nvcv::DataType dtype;
     auto           srcData = src.exportData<nvcv::TensorDataStridedCuda>();
     auto           dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
-    ValidateSrcDstTensors(numInterleavedChannels, numPlanes, dtype, srcData, dstData);
+    same_shape::ValidateSrcDstTensors(numInterleavedChannels, numPlanes, dtype, srcData, dstData);
 
     RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
                      [&stream, &srcData, &dstData, bits](auto dummyVal, auto isPlanar)
@@ -668,7 +479,7 @@ void Posterize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &
     int            numInterleavedChannels;
     int            numPlanes;
     nvcv::DataType dtype;
-    auto           srcDstData = ValidateSrcDstVarBatch(numInterleavedChannels, numPlanes, dtype, stream, src, dst);
+    auto srcDstData = same_shape::ValidateSrcDstVarBatch(numInterleavedChannels, numPlanes, dtype, stream, src, dst);
 
     RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
                      [&stream, &srcDstData, bits](auto dummyVal, auto isPlanar)

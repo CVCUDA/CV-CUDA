@@ -841,6 +841,85 @@ TEST(OpMinMaxLoc, ignores_nan_float)
     EXPECT_EQ(maxLocHost.y, 3);
 }
 
+TEST(OpMinMaxLoc, rank3_location_representations_produce_correct_extrema)
+{
+    constexpr int W        = 5;
+    constexpr int H        = 3;
+    constexpr int capacity = 4;
+
+    nvcv::Tensor in     = nvcv::util::CreateTensor(1, W, H, nvcv::FMT_U8);
+    auto         inData = in.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inData);
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
+    ASSERT_TRUE(inAccess);
+
+    const long3 inStrides{inAccess->numRows() * inAccess->rowStride(), inAccess->rowStride(), inAccess->colStride()};
+    std::vector<uint8_t> input(inStrides.x, 17);
+    test::ValueAt<uchar1>(input, inStrides, int3{1, 2, 0}).x = 1;
+    test::ValueAt<uchar1>(input, inStrides, int3{4, 0, 0}).x = 250;
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(inData->basePtr(), input.data(), input.size(), cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::MinMaxLoc op;
+
+    for (bool scalarMin : {true, false}) // NOSONAR: ASSERT_NO_THROW expands to two internal goto statements.
+    {
+        nvcv::Tensor minVal({{1}, "N"}, nvcv::TYPE_U32);
+        nvcv::Tensor minLoc = scalarMin ? nvcv::Tensor(
+                                  {
+                                      {1, capacity, 2},
+                                      "NMC"
+        },
+                                  nvcv::TYPE_S32)
+                                        : nvcv::Tensor({{1, capacity, 1}, "NMC"}, nvcv::TYPE_2S32);
+        nvcv::Tensor numMin({{1}, "N"}, nvcv::TYPE_S32);
+        nvcv::Tensor maxVal({{1}, "N"}, nvcv::TYPE_U32);
+        nvcv::Tensor maxLoc = scalarMin ? nvcv::Tensor(
+                                  {
+                                      {1, capacity, 1},
+                                      "NMC"
+        },
+                                  nvcv::TYPE_2S32)
+                                        : nvcv::Tensor({{1, capacity, 2}, "NMC"}, nvcv::TYPE_S32);
+        nvcv::Tensor numMax({{1}, "N"}, nvcv::TYPE_S32);
+
+        ASSERT_NO_THROW(op(stream, in, minVal, minLoc, numMin, maxVal, maxLoc, numMax));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        auto readFirst = [](const nvcv::Tensor &tensor, auto &value)
+        {
+            auto data = tensor.exportData<nvcv::TensorDataStridedCuda>();
+            ASSERT_TRUE(data);
+            ASSERT_EQ(cudaSuccess, cudaMemcpy(&value, data->basePtr(), sizeof(value), cudaMemcpyDeviceToHost));
+        };
+
+        uint1 minValue{};
+        uint1 maxValue{};
+        int1  minCount{};
+        int1  maxCount{};
+        int2  minLocation{};
+        int2  maxLocation{};
+        readFirst(minVal, minValue);
+        readFirst(maxVal, maxValue);
+        readFirst(numMin, minCount);
+        readFirst(numMax, maxCount);
+        readFirst(minLoc, minLocation);
+        readFirst(maxLoc, maxLocation);
+
+        EXPECT_EQ(minValue.x, 1);
+        EXPECT_EQ(maxValue.x, 250);
+        EXPECT_EQ(minCount.x, 1);
+        EXPECT_EQ(maxCount.x, 1);
+        EXPECT_EQ(minLocation.x, 1);
+        EXPECT_EQ(minLocation.y, 2);
+        EXPECT_EQ(maxLocation.x, 4);
+        EXPECT_EQ(maxLocation.y, 0);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpMinMaxLoc_Negative, op)
 {
     int3         inShape{24, 24, 2};
@@ -947,6 +1026,25 @@ TEST(OpMinMaxLoc_Negative, op)
 TEST(OpMinMaxLoc_Negative, create_with_null_handle)
 {
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaMinMaxLocCreate(nullptr));
+}
+
+TEST(OpMinMaxLoc_Negative, tensor_rejects_non_image_layout)
+{
+    nvcv::Tensor input(
+        {
+            {2, 7, 9},
+            "ABC"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::MinMaxLoc op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&]
+                                               {
+                                                   op(nullptr, input, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
+                                                      nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
+                                                      nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr});
+                                               }));
 }
 
 TEST(OpMinMaxLoc_Negative, varshape_invalid_plane)

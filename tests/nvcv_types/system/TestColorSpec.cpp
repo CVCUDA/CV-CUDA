@@ -260,6 +260,7 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Positive, ColorModelNeedsColorSpecTests,
                                   {      NVCV_COLOR_MODEL_HSV, false},
                                   {     NVCV_COLOR_MODEL_CMYK, false},
                                   {     NVCV_COLOR_MODEL_YCCK, false},
+                                  {      NVCV_COLOR_MODEL_LAB, false},
 } * NVCV_SUCCESS);
 
 #if !NVCV_SANITIZED
@@ -577,6 +578,7 @@ TEST(ColorModelTests, get_name)
     EXPECT_STREQ("NVCV_COLOR_MODEL_HSV", nvcvColorModelGetName(NVCV_COLOR_MODEL_HSV));
     EXPECT_STREQ("NVCV_COLOR_MODEL_CMYK", nvcvColorModelGetName(NVCV_COLOR_MODEL_CMYK));
     EXPECT_STREQ("NVCV_COLOR_MODEL_YCCK", nvcvColorModelGetName(NVCV_COLOR_MODEL_YCCK));
+    EXPECT_STREQ("NVCV_COLOR_MODEL_LAB", nvcvColorModelGetName(NVCV_COLOR_MODEL_LAB));
     EXPECT_STREQ("NVCVColorModel(-1)", nvcvColorModelGetName(static_cast<NVCVColorModel>(-1)));
 }
 

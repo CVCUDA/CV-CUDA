@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,6 @@
 #define NVCV_PYTHON_PRIV_STREAMSTACK_HPP
 
 #include <memory>
-#include <mutex>
 #include <stack>
 
 namespace nvcvpy::priv {
@@ -29,16 +28,21 @@ class Stream;
 class StreamStack
 {
 public:
-    void                    push(Stream &stream);
-    void                    pop();
+    void push(Stream &stream);
+    void pop();
+
+    // Returns the calling thread's current stream, or nullptr if it has none.
+    // Entries whose Stream was destroyed without exiting its context are dropped
+    // on the way: nothing else can remove them, because the object whose
+    // __exit__ would have popped them is already gone.
     std::shared_ptr<Stream> top();
 
+    // Instances are thread-local, so the stack needs no synchronization: only
+    // the owning thread can reach it.
     static StreamStack &Instance();
 
 private:
     std::stack<std::weak_ptr<Stream>> m_stack;
-    std::weak_ptr<Stream>             m_cur;
-    std::mutex                        m_mtx;
 };
 
 } // namespace nvcvpy::priv

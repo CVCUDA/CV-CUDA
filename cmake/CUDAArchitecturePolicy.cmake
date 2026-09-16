@@ -71,6 +71,7 @@ function(cvcuda_configure_cuda_architecture_policy)
                 if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
                     list(APPEND _CVCUDA_CUDA_ARCHITECTURES
                         100-real # Blackwell GB200, GB300
+                        120-real # RTX Pro 6000, RTX 50**
                     )
                 endif()
                 if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0")

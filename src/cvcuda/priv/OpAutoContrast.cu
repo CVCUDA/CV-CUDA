@@ -19,6 +19,8 @@
 #include "OpAutoContrast.hpp"
 #include "PerDeviceResource.hpp"
 
+#include "PhotometricBound.cuh"
+
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
@@ -183,9 +185,10 @@ static __device__ __noinline__ float RemapWideFloat(float in, float lo, float hi
 template<typename BT>
 inline __device__ BT RemapPixel(BT in, float lo, float hi, float bound)
 {
-    if constexpr (std::is_floating_point_v<BT>)
+    if constexpr (cuda::detail::IsFloatingPointV<BT>)
     {
-        if (!isfinite(in))
+        // Widening to float is exact for both float and half, and there is no isfinite(__half).
+        if (!isfinite(static_cast<float>(in)))
         {
             return in;
         }
@@ -202,7 +205,8 @@ inline __device__ BT RemapPixel(BT in, float lo, float hi, float bound)
     }
     else
     {
-        if constexpr (std::is_floating_point_v<BT>)
+        // Unreachable for F16: half extrema widen to float exactly and their range is finite.
+        if constexpr (cuda::detail::IsFloatingPointV<BT>)
         {
             val = RemapWideFloat(static_cast<float>(in), lo, hi);
         }
@@ -244,7 +248,8 @@ inline int ComputeGridX(int width, int xSteps, int numPlanes = 1)
 template<typename BT>
 inline __device__ void AccumulateExtrema(float value, float &lo, float &hi)
 {
-    if constexpr (std::is_floating_point_v<BT>)
+    // F16 sources can carry non-finite values too; value is already widened to float.
+    if constexpr (cuda::detail::IsFloatingPointV<BT>)
     {
         if (!isfinite(value))
         {
@@ -703,12 +708,6 @@ __global__ void ApplyVarShape(SrcWrapper src, DstWrapper dst, const float *lo, c
 
 // ------------------------------- Launchers ---------------------------------
 
-template<typename BT>
-inline float DtypeBound()
-{
-    return std::is_floating_point_v<BT> ? 1.0f : static_cast<float>(cuda::TypeTraits<BT>::max);
-}
-
 struct ReductionWorkspace
 {
     float *partialLo;
@@ -853,7 +852,7 @@ void RunTensor(cudaStream_t stream, cvcuda::priv::AutoContrastWorkspace &ws, con
                const nvcv::TensorDataStridedCuda &dstData, int numSamples, int numChannels, int numPlanes)
 {
     using BT          = cuda::BaseType<T>;
-    const float bound = DtypeBound<BT>();
+    const float bound = cvcuda::priv::PhotometricUpperBound<BT, float>();
 
     auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(srcData);
     auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(dstData);
@@ -934,7 +933,7 @@ void RunVarShapeBatch(cudaStream_t stream, cvcuda::priv::AutoContrastWorkspace &
                       int numPlanes)
 {
     using BT          = cuda::BaseType<T>;
-    const float bound = DtypeBound<BT>();
+    const float bound = cvcuda::priv::PhotometricUpperBound<BT, float>();
 
     int3          maxSize{dstData.maxSize().w, dstData.maxSize().h, numSamples};
     dim3          block(BLOCK_X, BLOCK_Y, 1);
@@ -973,7 +972,7 @@ void RunVarShapeBatch(cudaStream_t stream, cvcuda::priv::AutoContrastWorkspace &
     releaseGuard.finish();
 }
 
-// Pick the supported base type (u8 / u16 / f32 only) from a tensor/format dtype.
+// Pick the supported base type (u8 / u16 / f16 / f32 only) from a tensor/format dtype.
 template<typename Cb>
 inline void DispatchBaseType(nvcv::DataType dtype, const Cb &cb)
 {
@@ -987,11 +986,12 @@ inline void DispatchBaseType(nvcv::DataType dtype, const Cb &cb)
     // clang-format off
     if      CVCUDA_AC_BASE(U8, uchar)
     else if CVCUDA_AC_BASE(U16, ushort)
+    else if CVCUDA_AC_BASE(F16, __half)
     else if CVCUDA_AC_BASE(F32, float)
     else
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid input/output data type (only U8, U16, F32 are supported)");
+                              "Invalid input/output data type (only U8, U16, F16, F32 are supported)");
     }
         // clang-format on
 

@@ -27,8 +27,8 @@ The ``/make-op`` skill
 ----------------------
 
 This page is the narrative how-to.  For an assisted, gated workflow, use the **make-op skill**
-family (defined once under ``.agents/skills/make-op*/SKILL.md``; ``.claude/skills`` symlinks to it
-for Claude Code), whose checklist and definition-of-done live in
+family (defined under ``.agents/skills/make-op*/SKILL.md``), whose checklist and
+definition-of-done live in
 ``.agents/guidance/MAKE_OP_GUIDELINES.md`` and are enforced by the deterministic checker
 ``tools/make_op.py``.  Two modes:
 

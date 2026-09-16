@@ -20,7 +20,9 @@
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
+#include <cuda_fp16.h>
 #include <cvcuda/OpThreshold.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
@@ -32,6 +34,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <string>
 #include <tuple>
@@ -333,6 +336,9 @@ void Threshold(std::vector<double> &src, std::vector<double> &dst, double thresh
     }
 }
 
+template<typename T>
+void ThresholdGold(std::vector<T> &src, std::vector<T> &dst, double thresh, double maxval, uint32_t type);
+
 void ThresholdWrapper(std::vector<uint8_t> &src, std::vector<uint8_t> &dst, double thresh, double maxval, uint32_t type,
                       NVCVDataType nvcvDataType)
 {
@@ -344,6 +350,15 @@ void ThresholdWrapper(std::vector<uint8_t> &src, std::vector<uint8_t> &dst, doub
         memcpy(static_cast<void *>(src_tmp.data()), static_cast<void *>(src.data()), copySize);
         memcpy(static_cast<void *>(dst_tmp.data()), static_cast<void *>(dst.data()), copySize);
         Threshold(src_tmp, dst_tmp, thresh, maxval, type);
+        memcpy(static_cast<void *>(dst.data()), static_cast<void *>(dst_tmp.data()), copySize);
+    }
+    else if (nvcvDataType == NVCV_DATA_TYPE_F16)
+    {
+        std::vector<__half> src_tmp(src.size() / sizeof(__half));
+        std::vector<__half> dst_tmp(dst.size() / sizeof(__half));
+        size_t              copySize = src.size();
+        memcpy(static_cast<void *>(src_tmp.data()), static_cast<void *>(src.data()), copySize);
+        ThresholdGold(src_tmp, dst_tmp, thresh, maxval, type);
         memcpy(static_cast<void *>(dst.data()), static_cast<void *>(dst_tmp.data()), copySize);
     }
     else
@@ -374,6 +389,20 @@ void myGenerate( // NOSONAR: std::span is C++20.
     }
 }
 
+// F16 draws in float and quantizes to half, so the operator and the gold consume identical
+// half-representable inputs.
+template<>
+void myGenerate( // NOSONAR: std::span is C++20.
+    __half *src, std::size_t size,
+    std::default_random_engine &randEng) // NOSONAR: deterministic test data, not security-sensitive.
+{
+    std::uniform_real_distribution rand(0.f, 1.f);
+    for (std::size_t idx = 0; idx < size; ++idx)
+    {
+        src[idx] = __float2half(rand(randEng));
+    }
+}
+
 nvcv::Tensor MakeThresholdParam(int numImages, double value)
 {
     return nvcv::test::planar::MakePerImageTensor<double>(numImages, nvcv::TYPE_F64, value);
@@ -384,7 +413,15 @@ T ThresholdGoldValue(T input, double thresh, double maxval, uint32_t type)
 {
     T typedThresh;
     T typedMaxval;
-    if constexpr (std::is_floating_point_v<T>)
+    if constexpr (std::is_same_v<T, __half>)
+    {
+        // Match the device kernels bit-for-bit: they cast the F64 thresh/maxval with (T)value,
+        // i.e. __double2half round-to-nearest-even. std::is_floating_point does not classify
+        // __half, so without this branch it would silently take the integer floor/round path.
+        typedThresh = __double2half(thresh);
+        typedMaxval = __double2half(maxval);
+    }
+    else if constexpr (std::is_floating_point_v<T>)
     {
         typedThresh = static_cast<T>(thresh);
         typedMaxval = static_cast<T>(maxval);
@@ -395,18 +432,32 @@ T ThresholdGoldValue(T input, double thresh, double maxval, uint32_t type)
         typedMaxval = static_cast<T>(static_cast<int>(std::round(maxval)));
     }
 
+    // Compare halves widened to float (exact for every half value, NaN unordered either way)
+    // instead of relying on host-side __half comparison operators.
+    const auto greater = [](T lhs, T rhs)
+    {
+        if constexpr (std::is_same_v<T, __half>)
+        {
+            return __half2float(lhs) > __half2float(rhs);
+        }
+        else
+        {
+            return lhs > rhs;
+        }
+    };
+
     switch (type & NVCV_THRESH_MASK)
     {
     case NVCV_THRESH_BINARY:
-        return input > typedThresh ? typedMaxval : T{};
+        return greater(input, typedThresh) ? typedMaxval : T{};
     case NVCV_THRESH_BINARY_INV:
-        return input > typedThresh ? T{} : typedMaxval;
+        return greater(input, typedThresh) ? T{} : typedMaxval;
     case NVCV_THRESH_TRUNC:
-        return input > typedThresh ? typedThresh : input;
+        return greater(input, typedThresh) ? typedThresh : input;
     case NVCV_THRESH_TOZERO:
-        return input > typedThresh ? input : T{};
+        return greater(input, typedThresh) ? input : T{};
     default:
-        return input > typedThresh ? T{} : input;
+        return greater(input, typedThresh) ? T{} : input;
     }
 }
 
@@ -414,9 +465,13 @@ template<typename T>
 T ThresholdPackInput(int sample, int index)
 {
     int value = (sample * 11 + index * 7) % 19;
-    if constexpr (std::is_signed_v<T> || std::is_floating_point_v<T>)
+    // __half is signed but neither std::is_signed nor std::is_floating_point.
+    if constexpr (std::is_signed_v<T> || nvcv::cuda::detail::IsFloatingPointV<T>)
         value -= 7;
-    return static_cast<T>(value);
+    if constexpr (std::is_same_v<T, __half>)
+        return __float2half(static_cast<float>(value));
+    else
+        return static_cast<T>(value);
 }
 
 template<typename T>
@@ -428,6 +483,19 @@ void ThresholdGold(std::vector<T> &src, std::vector<T> &dst, double thresh, doub
     }
     else
     {
+        if constexpr (std::is_integral_v<T>)
+        {
+            if (const auto integralThresh = static_cast<int>(std::floor(thresh));
+                (type & NVCV_THRESH_MASK) == NVCV_THRESH_BINARY
+                && (integralThresh < static_cast<double>(std::numeric_limits<T>::min())
+                    || integralThresh > static_cast<double>(std::numeric_limits<T>::max())))
+            {
+                const auto typedMaxval = static_cast<T>(static_cast<int>(std::round(maxval)));
+                std::ranges::fill(
+                    dst, integralThresh < static_cast<double>(std::numeric_limits<T>::min()) ? typedMaxval : T{});
+                return;
+            }
+        }
         std::ranges::transform(src, dst.begin(),
                                [=](T input) { return ThresholdGoldValue(input, thresh, maxval, type); });
     }
@@ -522,14 +590,12 @@ void RunTensorUnalignedPackCase(nvcv::DataType dtype, uint32_t type, int width)
 }
 
 template<typename T>
-void RunVarShapeUnalignedPackCase(nvcv::ImageFormat fmt, uint32_t type)
+void RunVarShapeUnalignedPackCase(nvcv::ImageFormat fmt, uint32_t type, double thresh = 3.5, double maxval = 9.25)
 {
     constexpr int    numImages  = 2;
     constexpr int    width      = 9;
     constexpr int    height     = 2;
     constexpr size_t guardBytes = 32;
-    constexpr double thresh     = 3.5;
-    constexpr double maxval     = 9.25;
     const size_t     offset     = alignof(T);
     const int        rowBytes   = width * sizeof(T);
     const int        rowStride  = rowBytes + 16;
@@ -612,6 +678,52 @@ void RunVarShapeUnalignedPackCase(nvcv::ImageFormat fmt, uint32_t type)
         EXPECT_EQ(cudaSuccess, cudaFree(dstAllocations[b]));
     }
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpThreshold, varshape_u16_binary_out_of_range_thresholds_exact)
+{
+    RunVarShapeUnalignedPackCase<uint16_t>(nvcv::FMT_U16, NVCV_THRESH_BINARY, -1.0);
+    RunVarShapeUnalignedPackCase<uint16_t>(nvcv::FMT_U16, NVCV_THRESH_BINARY, 65536.0);
+}
+
+TEST(OpThreshold, varshape_s16_binary_below_minimum_threshold_exact)
+{
+    RunVarShapeUnalignedPackCase<int16_t>(nvcv::FMT_S16, NVCV_THRESH_BINARY, -32769.0);
+}
+
+TEST(OpThreshold, varshape_zero_width_sample_returns_without_affecting_valid_sample)
+{
+    nvcv::Image zeroWidth({0, 1}, nvcv::FMT_U8);
+    nvcv::Image validSrc({1, 1}, nvcv::FMT_U8);
+    nvcv::Image zeroWidthOut({0, 1}, nvcv::FMT_U8);
+    nvcv::Image validDst({1, 1}, nvcv::FMT_U8);
+
+    nvcv::ImageBatchVarShape src(2);
+    nvcv::ImageBatchVarShape dst(2);
+    src.pushBack(zeroWidth);
+    src.pushBack(validSrc);
+    dst.pushBack(zeroWidthOut);
+    dst.pushBack(validDst);
+
+    auto validSrcData = validSrc.exportData<nvcv::ImageDataStridedCuda>();
+    auto validDstData = validDst.exportData<nvcv::ImageDataStridedCuda>();
+    ASSERT_TRUE(validSrcData && validDstData);
+    const uint8_t input = 50;
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(validSrcData->plane(0).basePtr, &input, sizeof(input), cudaMemcpyHostToDevice));
+
+    auto         thresh = MakeThresholdParam(2, 100.0);
+    auto         maxval = MakeThresholdParam(2, 255.0);
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::Threshold op(NVCV_THRESH_BINARY, 2);
+    ASSERT_NO_THROW(op(stream, src, dst, thresh, maxval));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    uint8_t actual = 0xff;
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(&actual, validDstData->plane(0).basePtr, sizeof(actual), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(0, actual);
+    EXPECT_EQ((nvcv::Size2D{0, 1}), zeroWidthOut.size());
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 struct U8BinaryPackCase
@@ -851,6 +963,7 @@ enum class UnalignedDataType
 {
     U16,
     S16,
+    F16,
     F32,
     F64,
 };
@@ -887,6 +1000,9 @@ std::string UnalignedNonU8Name(const testing::TestParamInfo<UnalignedNonU8Param>
     case UnalignedDataType::S16:
         dtypeName = "S16";
         break;
+    case UnalignedDataType::F16:
+        dtypeName = "F16";
+        break;
     case UnalignedDataType::F32:
         dtypeName = "F32";
         break;
@@ -918,6 +1034,12 @@ TEST_P(OpThresholdUnalignedNonU8, exact_gold)
         else
             RunVarShapeUnalignedPackCase<int16_t>(nvcv::FMT_S16, type);
         break;
+    case UnalignedDataType::F16:
+        if (container == UnalignedContainer::Tensor)
+            RunTensorUnalignedPackCase<__half>(nvcv::TYPE_F16, type, 8);
+        else
+            RunVarShapeUnalignedPackCase<__half>(nvcv::FMT_F16, type);
+        break;
     case UnalignedDataType::F32:
         if (container == UnalignedContainer::Tensor)
             RunTensorUnalignedPackCase<float>(nvcv::TYPE_F32, type, 8);
@@ -936,13 +1058,16 @@ TEST_P(OpThresholdUnalignedNonU8, exact_gold)
 INSTANTIATE_TEST_SUITE_P(
     All, OpThresholdUnalignedNonU8,
     testing::Values(UnalignedNonU8Param{UnalignedContainer::Tensor, UnalignedDataType::U16, NVCV_THRESH_BINARY},
+                    UnalignedNonU8Param{UnalignedContainer::VarShape, UnalignedDataType::U16, NVCV_THRESH_BINARY},
                     UnalignedNonU8Param{UnalignedContainer::VarShape, UnalignedDataType::U16, NVCV_THRESH_BINARY_INV},
                     UnalignedNonU8Param{UnalignedContainer::Tensor, UnalignedDataType::S16, NVCV_THRESH_TRUNC},
                     UnalignedNonU8Param{UnalignedContainer::VarShape, UnalignedDataType::S16, NVCV_THRESH_TOZERO},
                     UnalignedNonU8Param{UnalignedContainer::Tensor, UnalignedDataType::F32, NVCV_THRESH_TOZERO_INV},
                     UnalignedNonU8Param{UnalignedContainer::VarShape, UnalignedDataType::F32, NVCV_THRESH_BINARY},
                     UnalignedNonU8Param{UnalignedContainer::Tensor, UnalignedDataType::F64, NVCV_THRESH_BINARY_INV},
-                    UnalignedNonU8Param{UnalignedContainer::VarShape, UnalignedDataType::F64, NVCV_THRESH_TRUNC}),
+                    UnalignedNonU8Param{UnalignedContainer::VarShape, UnalignedDataType::F64, NVCV_THRESH_TRUNC},
+                    UnalignedNonU8Param{UnalignedContainer::Tensor, UnalignedDataType::F16, NVCV_THRESH_TOZERO_INV},
+                    UnalignedNonU8Param{UnalignedContainer::VarShape, UnalignedDataType::F16, NVCV_THRESH_BINARY}),
     UnalignedNonU8Name);
 
 enum class AutomaticMode
@@ -1033,6 +1158,15 @@ NVCV_TEST_SUITE_P(OpThreshold, nvcv::test::ValueList<int, int, int, uint32_t, do
     {     2,       100,       101,                              NVCV_THRESH_TOZERO_INV,            256,         255, nvcv::FMT_U8},
     {     2,       100,       101,                              NVCV_THRESH_TOZERO_INV,            0.5,         255, nvcv::FMT_F64},
     {     1,         9,         9,                              NVCV_THRESH_TOZERO_INV,            0.5,         255, nvcv::FMT_F64},
+    // F16 BINARY family on half-quantized [0, 1) inputs; 0.5 and 255 are exactly representable
+    // in half and the gold applies the same double->half round-to-nearest casts as the kernels,
+    // so the comparison stays bit-exact (kUlps = 0: outputs are 0, maxval, thresh, or the input).
+    {     1,       480,       360,                                  NVCV_THRESH_BINARY,            0.5,         255, nvcv::FMT_F16},
+    {     1,         9,         9,                                  NVCV_THRESH_BINARY,            0.5,         255, nvcv::FMT_F16},
+    {     5,       100,       100,                              NVCV_THRESH_BINARY_INV,            0.5,         255, nvcv::FMT_F16},
+    {     4,       100,       101,                                   NVCV_THRESH_TRUNC,            0.5,         255, nvcv::FMT_F16},
+    {     3,       360,       480,                                  NVCV_THRESH_TOZERO,            0.5,         255, nvcv::FMT_F16},
+    {     2,       100,       101,                              NVCV_THRESH_TOZERO_INV,            0.5,         255, nvcv::FMT_F16},
     {     1,       800,       600,                 NVCV_THRESH_OTSU|NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_U8},
     {     3,       600,       1000,        NVCV_THRESH_TRIANGLE|NVCV_THRESH_BINARY_INV,            100,         255, nvcv::FMT_U8},
 });
@@ -1112,6 +1246,10 @@ TEST_P(OpThreshold, tensor_correct_output)
         if (nvcvDataType == NVCV_DATA_TYPE_F64)
         {
             myGenerate(reinterpret_cast<double *>(srcVec[i].data()), srcVec[i].size() / sizeof(double), randEng);
+        }
+        else if (nvcvDataType == NVCV_DATA_TYPE_F16)
+        {
+            myGenerate(reinterpret_cast<__half *>(srcVec[i].data()), srcVec[i].size() / sizeof(__half), randEng);
         }
         else
         {
@@ -1219,6 +1357,10 @@ TEST_P(OpThreshold, varshape_correct_shape)
         {
             myGenerate(reinterpret_cast<double *>(srcVec[i].data()), srcVec[i].size() / sizeof(double), randEng);
         }
+        else if (nvcvDataType == NVCV_DATA_TYPE_F16)
+        {
+            myGenerate(reinterpret_cast<__half *>(srcVec[i].data()), srcVec[i].size() / sizeof(__half), randEng);
+        }
         else
         {
             myGenerate(srcVec[i].data(), srcVec[i].size(), randEng);
@@ -1274,6 +1416,7 @@ NVCV_TEST_SUITE_P(OpThresholdPlanar, nvcv::test::ValueList<int, int, int, uint32
     {    51,     37,     1,        NVCV_THRESH_TOZERO,  100.0,  255.0,          nvcv::FMT_RGB8p,          nvcv::FMT_RGB8},
     {    49,     35,     1,    NVCV_THRESH_TOZERO_INV,  100.0,  255.0,          nvcv::FMT_RGB8p,          nvcv::FMT_RGB8},
     {    47,     33,     1,    NVCV_THRESH_BINARY_INV,   -1.0,  201.0,          nvcv::FMT_RGB8p,          nvcv::FMT_RGB8},
+    {    46,     32,     1,        NVCV_THRESH_BINARY,   -1.0,  201.0,          nvcv::FMT_RGB8p,          nvcv::FMT_RGB8},
     {    45,     31,     1,         NVCV_THRESH_TRUNC,  300.0,  255.0,          nvcv::FMT_RGB8p,          nvcv::FMT_RGB8},
     {    43,     29,     1,        NVCV_THRESH_TOZERO,   -1.0,  255.0,          nvcv::FMT_RGB8p,          nvcv::FMT_RGB8},
     {    41,     27,     1,    NVCV_THRESH_TOZERO_INV,  300.0,  255.0,          nvcv::FMT_RGB8p,          nvcv::FMT_RGB8},
@@ -1282,6 +1425,9 @@ NVCV_TEST_SUITE_P(OpThresholdPlanar, nvcv::test::ValueList<int, int, int, uint32
     {    35,     31,     2,          NVCV_THRESH_TRUNC,    0.5,    1.0,       nvcv::FMT_RGBf32p,       nvcv::FMT_RGBf32},
     {    31,     21,     1,         NVCV_THRESH_TOZERO,    0.5,    1.0,      nvcv::FMT_RGBAf32p,      nvcv::FMT_RGBAf32},
     {    33,     29,     1,     NVCV_THRESH_TOZERO_INV,    0.5,    1.0,      nvcv::FMT_RGBAf32p,      nvcv::FMT_RGBAf32},
+    {    39,     25,     1,        NVCV_THRESH_BINARY,    0.5,    1.0,       nvcv::FMT_RGBf16p,       nvcv::FMT_RGBf16},
+    {    35,     31,     2,          NVCV_THRESH_TRUNC,    0.5,    1.0,       nvcv::FMT_RGBf16p,       nvcv::FMT_RGBf16},
+    {    31,     21,     1,         NVCV_THRESH_TOZERO,    0.5,    1.0,      nvcv::FMT_RGBAf16p,      nvcv::FMT_RGBAf16},
 });
 
 // clang-format on
@@ -1350,7 +1496,9 @@ TEST(OpThresholdPlanar, tensor_rejects_two_channel)
 NVCV_TEST_SUITE_P(OpThreshold_Negative, nvcv::test::ValueList<int, int, int, uint32_t, double, double, std::string, std::string, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::DataType, nvcv::DataType>
 {
     //batch,    height,     width,                                                     type,         thresh,      maxval,      inFormat,    outFormat,  threshDataType,     maxvalType
-    {     1,       224,       224,                                       NVCV_THRESH_BINARY,            100,         255, "N", "N", nvcv::FMT_F16, nvcv::FMT_F16, nvcv::TYPE_F64, nvcv::TYPE_F64},
+    // F16 supports the BINARY family only; OTSU/TRIANGLE stay U8-only.
+    {     1,       224,       224,                      NVCV_THRESH_OTSU|NVCV_THRESH_BINARY,            100,         255, "N", "N", nvcv::FMT_F16, nvcv::FMT_F16, nvcv::TYPE_F64, nvcv::TYPE_F64},
+    {     1,       224,       224,                  NVCV_THRESH_TRIANGLE|NVCV_THRESH_BINARY,            100,         255, "N", "N", nvcv::FMT_F16, nvcv::FMT_F16, nvcv::TYPE_F64, nvcv::TYPE_F64},
     {     1,       224,       224,                                       NVCV_THRESH_BINARY,            100,         255, "N", "N", nvcv::FMT_U8,  nvcv::FMT_U16, nvcv::TYPE_F64, nvcv::TYPE_F64},
     {     1,       224,       224,                                       NVCV_THRESH_BINARY,            100,         255, "N", "N", nvcv::FMT_U8,  nvcv::FMT_U8,  nvcv::TYPE_F32, nvcv::TYPE_F64},
     {     1,       224,       224,                                       NVCV_THRESH_BINARY,            100,         255, "N", "N", nvcv::FMT_U8,  nvcv::FMT_U8,  nvcv::TYPE_F64, nvcv::TYPE_F32},
@@ -1730,7 +1878,7 @@ TEST(OpThreshold, otsu_corner_cases)
 
 TEST(OpThreshold, otsu_corner_cases_varshape)
 {
-    int      batch  = 3;
+    int      batch  = 4;
     int      height = 255;
     int      width  = 255;
     uint32_t type   = NVCV_THRESH_OTSU | NVCV_THRESH_BINARY;
@@ -1815,6 +1963,8 @@ TEST(OpThreshold, otsu_corner_cases_varshape)
     {
         srcVec[2][j] = static_cast<uint8_t>((j % 4) * 64);
     }
+
+    std::ranges::fill(srcVec[3], 37);
 
     for (int i = 0; i < batch; i++)
     {

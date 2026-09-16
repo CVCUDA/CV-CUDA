@@ -1016,3 +1016,35 @@ TYPED_TEST(InterpolationWrapNHWCTest, correct_shift_in_device)
 
     VEC_EXPECT_NEAR(test, gold, 1);
 }
+
+// ------------------- Testing InterpolationWrap for __half --------------------
+
+// Host-side smoke test: __half is not a structural type, so it cannot go through the
+// ttype::Value<>-driven typed suites above; this proves the wrap layer works with the fp16
+// value types added in HalfTypes.hpp, including the mixed __half * float promotion used by
+// the linear interpolation arithmetic.
+
+TEST(InterpolationWrapHalfValueTypeTest, correct_nearest_and_linear_interpolation)
+{
+    using TensorWrap  = cuda::Tensor2DWrap<__half>;
+    using BorderWrap  = cuda::BorderWrap<TensorWrap, NVCV_BORDER_CONSTANT, true, true>;
+    using NearestWrap = cuda::InterpolationWrap<BorderWrap, NVCV_INTERP_NEAREST>;
+    using LinearWrap  = cuda::InterpolationWrap<BorderWrap, NVCV_INTERP_LINEAR>;
+
+    // 2x2 image: row 0 is {0, 2} and row 1 is {4, 6}
+    std::array<__half, 4> input{__float2half(0.f), __float2half(2.f), __float2half(4.f), __float2half(6.f)};
+
+    TensorWrap tensorWrap(input.data(), (int)(2 * sizeof(__half)));
+    BorderWrap borderWrap(tensorWrap, __float2half(0.f), 2, 2);
+
+    NearestWrap nearestWrap(borderWrap);
+
+    EXPECT_EQ(__half2float(nearestWrap[float2{0.6f, 0.1f}]), 2.f);
+    EXPECT_EQ(__half2float(nearestWrap[float2{0.2f, 0.9f}]), 4.f);
+
+    LinearWrap linearWrap(borderWrap);
+
+    // all 4 taps, the 0.25 weights and the result 3 are exact in float and in half
+    EXPECT_EQ(__half2float(linearWrap[float2{0.5f, 0.5f}]), 3.f);
+    EXPECT_EQ(__half2float(linearWrap[float2{0.f, 0.f}]), 0.f);
+}

@@ -46,6 +46,7 @@ RNG = np.random.default_rng(0)
         (((37, 19, 3), np.uint8, "HWC"), (113, 47, 3), cvcuda.Interp.NEAREST),
         (((37, 19, 1), np.single, "HWC"), (113, 47, 1), None),
         (((37, 19, 3), np.single, "HWC"), (113, 47, 3), None),
+        (((37, 19, 3), np.float16, "HWC"), (113, 47, 3), cvcuda.Interp.LINEAR),
         # Planar (NCHW/CHW) layouts.
         (
             ((5, 3, 16, 23), np.uint8, "NCHW"),
@@ -110,6 +111,7 @@ def test_op_resize(input_args, out_shape, interp):
         ((1, 37, 19, 3), (1, 113, 47, 3), np.uint8, cvcuda.Interp.NEAREST),  # noqa
         ((1, 37, 19, 1), (1, 113, 47, 1), np.float32, cvcuda.Interp.LINEAR),  # noqa
         ((1, 37, 19, 3), (1, 113, 47, 3), np.float32, cvcuda.Interp.LINEAR),  # noqa
+        ((1, 37, 19, 3), (1, 113, 47, 3), np.float16, cvcuda.Interp.LINEAR),  # noqa
     ],
 )
 def test_op_resize_packed_cuda_tensor(in_shape, out_shape, data_type, interp):
@@ -266,6 +268,7 @@ globals().update(
             cvcuda.Type.U8,
             cvcuda.Type.U16,
             cvcuda.Type.S16,
+            cvcuda.Type.F16,
             cvcuda.Type.F32,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},

@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 #include "ResizeUtils.hpp"
 
@@ -152,7 +153,14 @@ static void RunTensorCorrectOutput(int srcWidth, int srcHeight, int dstWidth, in
         std::uniform_int_distribution<uint8_t> rand(0, 255);
 
         srcVec[i].resize(srcHeight * srcVecRowStride);
-        std::ranges::generate(srcVec[i], [&rand, &randEng]() { return rand(randEng); });
+        if (test::IsF16Format(fmt))
+        {
+            test::FillRandomHalfBytes(srcVec[i], randEng);
+        }
+        else
+        {
+            std::ranges::generate(srcVec[i], [&rand, &randEng]() { return rand(randEng); });
+        }
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -208,6 +216,12 @@ static void RunTensorCorrectOutput(int srcWidth, int srcHeight, int dstWidth, in
         test::ResizedCrop(goldVec, dstVecRowStride, {dstWidth, dstHeight}, srcVec[i], srcVecRowStride,
                           {srcWidth, srcHeight}, top, left, crop_rows, crop_cols, fmt, interpolation);
 
+        if (test::IsF16Format(fmt))
+        {
+            test::ExpectF16InterpOutput(goldVec, testVec, interpolation);
+            continue;
+        }
+
         // maximum absolute error
         std::vector<int> absDiff(testVec.size());
         for (size_t idx = 0; idx < absDiff.size(); ++idx)
@@ -236,10 +250,20 @@ TEST_P(OpRandomResizedCrop, tensor_correct_output)
     {
         RunTensorCorrectOutput(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberImages, nvcv::FMT_RGB8);
         RunTensorCorrectOutput(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberImages, nvcv::FMT_U8);
+        // F16 LINEAR runs the real half kernels (FP32 accumulation, one rounding to half) and is
+        // checked against the FP32 gold within half-ULP bounds; see ExpectF16InterpOutput.
+        RunTensorCorrectOutput(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberImages, nvcv::FMT_RGBf16);
+        RunTensorCorrectOutput(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberImages, nvcv::FMT_F16);
     }
     else if (interpolation == NVCV_INTERP_CUBIC)
     {
         RunTensorCorrectOutput(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberImages, nvcv::FMT_U8);
+    }
+    else if (interpolation == NVCV_INTERP_NEAREST)
+    {
+        // F16 NEAREST is pure data movement and compares bit-exactly.
+        RunTensorCorrectOutput(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberImages,
+                               nvcv::FMT_RGBAf16);
     }
 }
 
@@ -296,7 +320,14 @@ static void RunVarShapeCorrectOutput(int srcWidthBase, int srcHeightBase, int ds
         std::uniform_int_distribution<uint8_t> rand(0, 255);
 
         srcVec[i].resize(srcHeight * srcRowStride);
-        std::ranges::generate(srcVec[i], [&rand, &randEng]() { return rand(randEng); });
+        if (test::IsF16Format(fmt))
+        {
+            test::FillRandomHalfBytes(srcVec[i], randEng);
+        }
+        else
+        {
+            std::ranges::generate(srcVec[i], [&rand, &randEng]() { return rand(randEng); });
+        }
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -355,6 +386,12 @@ static void RunVarShapeCorrectOutput(int srcWidthBase, int srcHeightBase, int ds
         test::ResizedCrop(goldVec, dstRowStride, {dstWidth, dstHeight}, srcVec[i], srcVecRowStride[i],
                           {srcWidth, srcHeight}, top, left, crop_rows, crop_cols, fmt, interpolation);
 
+        if (test::IsF16Format(fmt))
+        {
+            test::ExpectF16InterpOutput(goldVec, testVec, interpolation);
+            continue;
+        }
+
         // maximum absolute error
         std::vector<int> absDiff(testVec.size());
         for (size_t idx = 0; idx < absDiff.size(); ++idx)
@@ -386,11 +423,23 @@ TEST_P(OpRandomResizedCrop, varshape_correct_output)
                                  nvcv::FMT_RGB8);
         RunVarShapeCorrectOutput(srcWidthBase, srcHeightBase, dstWidthBase, dstHeightBase, interpolation, numberImages,
                                  nvcv::FMT_U8);
+        // F16 LINEAR runs the real half kernels (FP32 accumulation, one rounding to half) and is
+        // checked against the FP32 gold within half-ULP bounds; see ExpectF16InterpOutput.
+        RunVarShapeCorrectOutput(srcWidthBase, srcHeightBase, dstWidthBase, dstHeightBase, interpolation, numberImages,
+                                 nvcv::FMT_RGBf16);
+        RunVarShapeCorrectOutput(srcWidthBase, srcHeightBase, dstWidthBase, dstHeightBase, interpolation, numberImages,
+                                 nvcv::FMT_F16);
     }
     else if (interpolation == NVCV_INTERP_CUBIC)
     {
         RunVarShapeCorrectOutput(srcWidthBase, srcHeightBase, dstWidthBase, dstHeightBase, interpolation, numberImages,
                                  nvcv::FMT_U8);
+    }
+    else if (interpolation == NVCV_INTERP_NEAREST)
+    {
+        // F16 NEAREST is pure data movement and compares bit-exactly.
+        RunVarShapeCorrectOutput(srcWidthBase, srcHeightBase, dstWidthBase, dstHeightBase, interpolation, numberImages,
+                                 nvcv::FMT_RGBAf16);
     }
 }
 
@@ -456,6 +505,11 @@ NVCV_TEST_SUITE_P(OpRandomResizedCropPlanar,
     { 64, 48,  96, 72, NVCV_INTERP_NEAREST, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
     { 72, 54,  45, 35,  NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
     { 68, 52,  39, 31,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    // F16 planes take the same per-plane kernels as interleaved channels, so parity stays
+    // bit-exact; CUBIC F16 (no host-gold row) gets its coverage here, mirroring float above.
+    { 64, 48,  96, 72, NVCV_INTERP_NEAREST, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
+    { 72, 54,  45, 35,  NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+    { 68, 52,  39, 31,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
 });
 
 // clang-format on
@@ -535,7 +589,7 @@ NVCV_TEST_SUITE_P(OpRandomResizedCropVarshape_Negative, nvcv::test::ValueList<in
     {10, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8, NVCV_INTERP_NEAREST, nvcv::FMT_RGBA8, nvcv::FMT_RGB8},
     {2, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8p, NVCV_INTERP_NEAREST, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8},
     {2, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p, NVCV_INTERP_NEAREST, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p},
-    // invalid data type
+    // in/out data type mismatch (F16 is a supported dtype, but it must match on both sides)
     {2, nvcv::FMT_RGBAf16, nvcv::FMT_RGBA8, NVCV_INTERP_NEAREST, nvcv::FMT_RGBAf16, nvcv::FMT_RGBA8},
     {2, nvcv::FMT_RGBA8, nvcv::FMT_RGBAf16, NVCV_INTERP_NEAREST, nvcv::FMT_RGBA8, nvcv::FMT_RGBAf16},
     // invalid interpolation

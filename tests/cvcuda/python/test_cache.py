@@ -15,7 +15,9 @@
 
 import gc
 import os
+import subprocess
 import sys
+import textwrap
 import threading
 import time
 
@@ -29,6 +31,65 @@ import cvcuda_util as util
 import cupy
 
 RNG = np.random.default_rng(12345)
+
+
+def test_worker_cache_is_anchored_to_its_python_thread_state():
+    before = cvcuda._test.cache_anchors_installed()
+
+    def worker():
+        cvcuda.Image.zeros((256, 256), cvcuda.Format.RGB8)
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+
+    # The anchor is what lets the worker release its own items, while it still
+    # holds the GIL and a thread state. If it silently stopped installing, the
+    # destructor would leak instead and every other test would still pass, so
+    # this count is the only thing that would notice.
+    assert cvcuda._test.cache_anchors_installed() == before + 1
+
+
+def test_worker_cache_destruction_does_not_acquire_gil():
+    program = textwrap.dedent(
+        """
+        import atexit
+        import threading
+
+        import cvcuda
+
+        cvcuda._test.arm_cache_tls_destructor()
+
+        def create_thread_local_cache():
+            cvcuda.cache_size(cvcuda.ThreadScope.LOCAL)
+
+        thread = threading.Thread(target=create_thread_local_cache, daemon=True)
+        thread.start()
+        cvcuda._test.wait_cache_tls_destructor()
+
+        # Keep the main thread's GIL while the worker finishes its C++ TLS
+        # destructor. Acquiring the GIL from that destructor deadlocks here.
+        atexit.register(cvcuda._test.release_and_wait_cache_tls_destructor)
+        """
+    )
+
+    # The hook suspends teardown, so it stays inert unless a process asks for
+    # it. Backstop only: the hook's own waits time out first and say why.
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={**os.environ, "CVCUDA_CACHE_TLS_TEST_HOOK": "1"},
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("worker Cache destructor deadlocked acquiring the GIL")
+
+    assert result.returncode == 0, result.stderr
+    # An atexit callback that raises is only printed, so returncode alone would
+    # miss a release_and_wait that timed out instead of completing.
+    assert "test hook" not in result.stderr, result.stderr
 
 
 def test_clear_cache_inside_op():
@@ -123,6 +184,64 @@ def test_cache_current_byte_size():
     tensor_batch_create = cvcuda.TensorBatch(10)
     cvcuda_cache_size += cvcuda.internal.nbytes_in_cache(tensor_batch_create)
     assert cvcuda.current_cache_size_inbytes() == cvcuda_cache_size
+
+
+def test_clear_cache_local_credits_back_the_byte_count():
+    cvcuda.clear_cache()
+
+    item = cvcuda.Image.zeros((1024, 1024), cvcuda.Format.RGB8)
+    assert cvcuda.current_cache_size_inbytes() == cvcuda.internal.nbytes_in_cache(item)
+
+    cvcuda.clear_cache(cvcuda.ThreadScope.LOCAL)
+    assert cvcuda.cache_size() == 0
+    # A LOCAL clear used to drop the items without crediting their bytes back,
+    # so this kept reporting a cache that no longer existed.
+    assert cvcuda.current_cache_size_inbytes() == 0
+
+
+def test_clear_cache_local_does_not_evict_another_thread():
+    def image(side):
+        # Distinct sides give distinct cache keys, so each of these is really an
+        # add rather than a reuse of what is already cached.
+        return cvcuda.Image.zeros((side, side), cvcuda.Format.RGB8)
+
+    cvcuda.clear_cache()
+    worker_first_nbytes = cvcuda.internal.nbytes_in_cache(image(1024))
+    worker_second_nbytes = cvcuda.internal.nbytes_in_cache(image(512))
+    cvcuda.clear_cache()
+
+    original_limit = cvcuda.get_cache_limit_inbytes()
+    # Room for exactly the worker's two images, so what decides whether its
+    # second add evicts is the byte total the main thread leaves behind.
+    cvcuda.set_cache_limit_inbytes(worker_first_nbytes + worker_second_nbytes)
+
+    cached_first = threading.Event()
+    main_cleared = threading.Event()
+    worker_size = {}
+
+    def worker():
+        image(1024)
+        worker_size["before"] = cvcuda.cache_size()
+        cached_first.set()
+        assert main_cleared.wait(timeout=30)
+        image(512)
+        worker_size["after"] = cvcuda.cache_size()
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    try:
+        assert cached_first.wait(timeout=30)
+        image(256)
+        cvcuda.clear_cache(cvcuda.ThreadScope.LOCAL)
+    finally:
+        main_cleared.set()
+        thread.join(timeout=30)
+        cvcuda.set_cache_limit_inbytes(original_limit)
+
+    # The main thread's clear credited its bytes back, so the worker's second
+    # add stayed under the limit. Without that it saw a cache that looked full
+    # and evicted the image it had already cached.
+    assert worker_size["after"] == worker_size["before"] + 1
 
 
 def test_cache_external_cacheitem():
@@ -282,6 +401,75 @@ def _restore_device_and_limits():
         cvcuda.set_cache_limit_inbytes(total // 2)
     cudart.cudaSetDevice(0)
     cvcuda.clear_cache()
+
+
+def _image(side):
+    # Distinct sides give distinct cache keys, so each of these is really an add
+    # rather than a reuse of what is already cached.
+    return cvcuda.Image.zeros((side, side), cvcuda.Format.RGB8)
+
+
+def test_add_eviction_keeps_other_threads_bytes_accounted():
+    cvcuda.clear_cache()
+    worker_nbytes = cvcuda.internal.nbytes_in_cache(_image(1024))
+    main_nbytes = cvcuda.internal.nbytes_in_cache(_image(512))
+    cvcuda.clear_cache()
+
+    cached = threading.Event()
+    release = threading.Event()
+
+    def worker():
+        _image(1024)
+        cached.set()
+        assert release.wait(timeout=30)
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    original_limit = cvcuda.get_cache_limit_inbytes()
+    try:
+        assert cached.wait(timeout=30)
+        # Low enough that the main thread's next add takes the eviction branch.
+        cvcuda.set_cache_limit_inbytes(main_nbytes)
+        _image(512)
+
+        # Eviction dropped only this thread's items, so the worker's are still
+        # cached. Zeroing the shared total used to forget them, which let the
+        # device hold several times the limit while reporting it was at it.
+        assert cvcuda.current_cache_size_inbytes() == worker_nbytes + main_nbytes
+    finally:
+        release.set()
+        thread.join(timeout=30)
+        cvcuda.set_cache_limit_inbytes(original_limit)
+        cvcuda.clear_cache()
+
+
+def test_lowering_the_limit_keeps_other_threads_bytes_accounted():
+    cvcuda.clear_cache()
+    worker_nbytes = cvcuda.internal.nbytes_in_cache(_image(1024))
+    cvcuda.clear_cache()
+
+    cached = threading.Event()
+    release = threading.Event()
+
+    def worker():
+        _image(1024)
+        cached.set()
+        assert release.wait(timeout=30)
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    original_limit = cvcuda.get_cache_limit_inbytes()
+    try:
+        assert cached.wait(timeout=30)
+        _image(512)
+        # Forces set_cache_limit_inbytes to evict this thread's items.
+        cvcuda.set_cache_limit_inbytes(worker_nbytes)
+        assert cvcuda.current_cache_size_inbytes() == worker_nbytes
+    finally:
+        release.set()
+        thread.join(timeout=30)
+        cvcuda.set_cache_limit_inbytes(original_limit)
+        cvcuda.clear_cache()
 
 
 @requires_multi_gpu

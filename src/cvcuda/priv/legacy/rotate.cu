@@ -302,8 +302,16 @@ static ErrorCode rotatePlanarFusedCubicCaller(const TensorDataStridedCuda &inVie
                                 int numPlanes, int numSamples, float *d_aCoeffs, const double angleDeg,
                                 const double2 shift, cudaStream_t stream);
 
-    static const func_t funcs[6] = {rotatePlanarFusedCubic<uchar>, 0, rotatePlanarFusedCubic<ushort>,
-                                    rotatePlanarFusedCubic<short>, 0, rotatePlanarFusedCubic<float>};
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7), matching the interleaved
+    // dispatch table in infer(); indexing past a 6-row table for F16 would read garbage.
+    static const func_t funcs[8] = {rotatePlanarFusedCubic<uchar>,
+                                    0,
+                                    rotatePlanarFusedCubic<ushort>,
+                                    rotatePlanarFusedCubic<short>,
+                                    0,
+                                    rotatePlanarFusedCubic<float>,
+                                    0 /*double*/,
+                                    rotatePlanarFusedCubic<__half>};
 
     const func_t func = funcs[dataType];
     NVCV_ASSERT(func != 0);
@@ -379,7 +387,8 @@ ErrorCode Rotate::infer(const TensorDataStridedCuda &inData, const TensorDataStr
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F
+          || data_type == kCV_16F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
@@ -396,13 +405,18 @@ ErrorCode Rotate::infer(const TensorDataStridedCuda &inData, const TensorDataStr
                                 float *d_aCoeffs, const double angleDeg, const double2 shift,
                                 const NVCVInterpolationType interpolation, cudaStream_t stream);
 
-    static const func_t funcs[6][4] = {
-        {      rotate<uchar>,  0 /*rotate<uchar2>*/,      rotate<uchar3>,      rotate<uchar4>},
-        {0 /*rotate<schar>*/,   0 /*rotate<char2>*/, 0 /*rotate<char3>*/, 0 /*rotate<char4>*/},
-        {     rotate<ushort>, 0 /*rotate<ushort2>*/,     rotate<ushort3>,     rotate<ushort4>},
-        {      rotate<short>,  0 /*rotate<short2>*/,      rotate<short3>,      rotate<short4>},
-        {  0 /*rotate<int>*/,    0 /*rotate<int2>*/,  0 /*rotate<int3>*/,  0 /*rotate<int4>*/},
-        {      rotate<float>,  0 /*rotate<float2>*/,      rotate<float3>,      rotate<float4>}
+    // Rows 6/7 follow the legacy enum order (kCV_64F = 6, kCV_16F = 7). LINEAR/CUBIC sample through
+    // InterpolationWrap, which accumulates in float and rounds back to the element type, so the F16
+    // row instantiates real half kernels instead of aliasing the 16-bit integer ones.
+    static const func_t funcs[8][4] = {
+        {       rotate<uchar>,  0 /*rotate<uchar2>*/,        rotate<uchar3>,        rotate<uchar4>},
+        { 0 /*rotate<schar>*/,   0 /*rotate<char2>*/,   0 /*rotate<char3>*/,   0 /*rotate<char4>*/},
+        {      rotate<ushort>, 0 /*rotate<ushort2>*/,       rotate<ushort3>,       rotate<ushort4>},
+        {       rotate<short>,  0 /*rotate<short2>*/,        rotate<short3>,        rotate<short4>},
+        {   0 /*rotate<int>*/,    0 /*rotate<int2>*/,    0 /*rotate<int3>*/,    0 /*rotate<int4>*/},
+        {       rotate<float>,  0 /*rotate<float2>*/,        rotate<float3>,        rotate<float4>},
+        {0 /*rotate<double>*/, 0 /*rotate<double2>*/, 0 /*rotate<double3>*/, 0 /*rotate<double4>*/},
+        {      rotate<__half>, 0 /*rotate<__half2>*/,         rotate<half3>,         rotate<half4>}
     };
 
     if (isPlanar)

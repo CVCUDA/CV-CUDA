@@ -60,6 +60,13 @@ def assert_inverted(got, src):
         ((3, 88, 13, 1), np.uint16, "NHWC"),  # u16 single channel
         ((2, 4, 16, 23), np.float32, "NCHW"),  # planar float
         ((3, 8, 8), np.float32, "CHW"),  # planar float, no batch
+        ((5, 16, 23, 3), np.float16, "NHWC"),  # interleaved f16
+        (
+            (3, 88, 13, 1),
+            np.float16,
+            "NHWC",
+        ),  # f16 single channel (scalar-kernel fallback)
+        ((2, 4, 16, 23), np.float16, "NCHW"),  # planar f16
     ],
 )
 def test_op_invert(shape, dtype, layout):
@@ -92,6 +99,13 @@ def test_op_invert(shape, dtype, layout):
         (7, cvcuda.Format.RGBf32, (62, 35), 1.0),
         (1, cvcuda.Format.U16, (33, 48), 1234),
         (4, cvcuda.Format.RGBA8, (26, 52), 256),
+        (5, cvcuda.Format.RGBf16, (62, 35), 1.0),
+        (
+            2,
+            cvcuda.Format.F16,
+            (33, 48),
+            1.0,
+        ),  # f16 single channel (scalar-kernel fallback)
     ],
 )
 def test_op_invert_varshape(num_images, img_format, img_size, max_pixel):
@@ -128,7 +142,7 @@ def test_op_invert_varshape(num_images, img_format, img_size, max_pixel):
 
 
 def test_op_invert_negative_dtype():
-    # float16 is outside the supported dtype set (u8/u16/f32) and must be rejected.
-    src = cvcuda.Tensor((1, 16, 16, 3), np.float16, "NHWC")
+    # float64 is outside the supported dtype set (u8/u16/f16/f32) and must be rejected.
+    src = cvcuda.Tensor((1, 16, 16, 3), np.float64, "NHWC")
     with pytest.raises(RuntimeError):
         cvcuda.invert(src)

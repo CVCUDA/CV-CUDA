@@ -782,6 +782,9 @@ inline void RunMinMaxLocForType(cudaStream_t stream, const DataStridedCuda &inDa
 
         CollectMinMax<BW, BH, TW, TH><<<grid2, block, 0, stream>>>(inWrap, inSize, outWrap, op);
     }
+
+    // cudaGetLastError() is sticky until read: one check here covers every launch above.
+    NVCV_CHECK_THROW(cudaGetLastError());
 }
 
 // The 2nd run layer is after exporting output data ----------------------------

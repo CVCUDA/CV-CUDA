@@ -25,12 +25,12 @@
 #define CVCUDA_PRIV_SIFT_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <cvcuda/OpSIFT.h>
 #include <nvcv/Tensor.hpp>
+#include <nvcv/TensorData.hpp>
 
-#include <memory>
 #include <vector>
 
 namespace cvcuda::priv {
