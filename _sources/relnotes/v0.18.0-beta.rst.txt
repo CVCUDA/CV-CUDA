@@ -1,0 +1,123 @@
+..
+  # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-License-Identifier: Apache-2.0
+  #
+  # Licensed under the Apache License, Version 2.0 (the "License");
+  # you may not use this file except in compliance with the License.
+  # You may obtain a copy of the License at
+  #
+  # http://www.apache.org/licenses/LICENSE-2.0
+  #
+  # Unless required by applicable law or agreed to in writing, software
+  # distributed under the License is distributed on an "AS IS" BASIS,
+  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  # See the License for the specific language governing permissions and
+  # limitations under the License.
+
+.. _v0.18.0-beta:
+
+v0.18.0-beta
+============
+
+
+Release Highlights
+------------------
+
+CV-CUDA v0.18.0-beta includes the following changes.
+
+* **New Features and Enhancements**:
+
+  * Added FP16 (F16) image support to the following operators, on the tensor,
+    var-shape, and planar paths alike: ``AdjustContrast``, ``AdjustHue``,
+    ``AdjustSaturation``, ``AdjustSharpness``, ``AutoContrast``,
+    ``AverageBlur``, ``BilateralFilter``, ``BrightnessContrast``,
+    ``ChannelReorder``, ``ColorTwist``, ``Conv2D``, ``ConvertTo``,
+    ``CopyMakeBorder``, ``CropFlipNormalizeReformat``, ``CvtColor``, ``Erase``,
+    ``Flip``, ``GammaContrast``, ``Gaussian``, ``GaussianNoise``, ``HQResize``,
+    ``Invert``, ``JointBilateralFilter``, ``Laplacian``, ``MedianBlur``,
+    ``Morphology``, ``Normalize``, ``PadAndStack``, ``RandomResizedCrop``,
+    ``Remap``, ``Resize``, ``ResizeCropConvertReformat``, ``Rotate``,
+    ``Solarize``, ``Threshold``, ``WarpAffine``, and ``WarpPerspective``
+    (`issue #260 <https://github.com/CVCUDA/CV-CUDA/issues/260>`_).
+
+    Interpolating operators use native half storage with float arithmetic.
+    Exceptions: ``Conv2D`` kernels and the ``ColorTwist`` matrix stay 32-bit
+    float, ``Remap`` F16 is single-channel (matching F32), ``Threshold``
+    OTSU/TRIANGLE and subsampled YUV420/422 conversions remain 8-bit only, and
+    ``ResizeCropConvertReformat`` gains F16 output only.
+
+  * Added the complete CIE L*a*b* conversion family to ``CvtColor`` for U8,
+    F16, and F32 tensors and var-shape batches: sRGB and linear RGB/BGR in both
+    directions, with interleaved and planar layouts and dedicated Lab formats
+    (`issue #282 <https://github.com/CVCUDA/CV-CUDA/issues/282>`_).
+
+* **Performance Improvements**:
+
+  * Vectorized ``Morphology`` planar C3 dilate and ``Reformat`` planar RGB8
+    interleave.
+
+  * Added specialized fast paths for ``GaussianNoise`` planar C3 var-shape,
+    ``BilateralFilter`` planar C3 radius-2, ``CLAHE`` 8x8 tensor tiles, and
+    ``Threshold`` planar U8 binary var-shape.
+
+  * ``WarpAffine`` cubic with an integer inverse transform now uses the nearest
+    specialization, where it is bit-exact.
+
+  * ``MedianBlur`` skips the sort when the center pixel already holds the median
+    rank; ``Inpaint`` narrows its source scan window;
+    ``NonMaximumSuppression`` scans by warp; ``BndBox`` flattens dense image
+    copies.
+
+* **Bug Fixes**:
+
+  * CUDA kernel launch errors are now reported as exceptions across the modern
+    and legacy operators. ``AdvCvtColor`` and ``CLAHE`` previously aborted the
+    process instead of propagating the failure, and workspace allocation
+    failures now surface as public exceptions.
+
+  * Made ``cvcuda.Stream`` current-stream contexts host-thread-local. A host
+    thread without an active context now resolves ``cvcuda.Stream.current``
+    to ``cvcuda.Stream.default``. Invalid cross-thread or out-of-order
+    ``__exit__`` calls raise ``RuntimeError`` instead of corrupting another
+    context (`issue #274 <https://github.com/CVCUDA/CV-CUDA/issues/274>`_).
+
+  * ``NonMaximumSuppression`` no longer keeps duplicate boxes that tie on both
+    score and area; a deterministic index tiebreak now retains exactly one
+    (`issue #292 <https://github.com/CVCUDA/CV-CUDA/issues/292>`_).
+
+  * Tightened input validation, replacing undefined behavior with errors:
+    ``PadAndStack`` top/left tensor exports, ``FindHomography`` reusable
+    operator capsules and dimensions, ``MinMaxLoc`` tensor layouts,
+    ``MinAreaRect`` point-count rank, and ``Stack`` output metadata.
+
+  * Fixed ``Resize`` per-column source coordinates, wide AREA resize types,
+    partial OSD tiles, and ``Flip`` planar float3 on CUDA 12 SM80.
+
+  * Python container and cache fixes: ``Tensor``/``Image`` batches keep their
+    state after a failed insert, and the cache accounting no longer drifts on
+    eviction, thread-local clears, or interpreter shutdown.
+
+* **Compatibility Changes**:
+
+  * Default aarch64 (SBSA) builds now include SM120 code generation — RTX PRO
+    6000 Blackwell and GeForce RTX 50 series — when built with CUDA 12.8 or
+    newer.
+
+  * ``cvcuda.Stream`` contexts no longer span host threads. Code that entered a
+    stream context on one thread and submitted work from others — a worker pool
+    inside a ``with cvcuda.Stream():`` block, for example — previously picked up
+    that stream and now submits on the legacy default stream instead, without an
+    error. Enter the context on each thread that submits work.
+
+  * Leaving a ``cvcuda.Stream`` context raises ``RuntimeError`` when the stream
+    is not the entering thread's current stream. Contexts exited from another
+    thread, or nested contexts exited out of order — including contexts
+    interleaved by coroutines or generators on one thread — previously did so
+    silently. The error is suppressed while an exception is already propagating
+    out of the context body, so that exception still reaches the caller.
+
+  * ``cvcuda.Stream.default`` is read-only. Assigning it previously succeeded and
+    changed nothing — ``cvcuda.Stream.current`` resolves the default stream
+    internally rather than through the attribute — so the two names disagreed
+    from then on. Enter a stream's context or pass it as the operator's stream
+    argument instead.

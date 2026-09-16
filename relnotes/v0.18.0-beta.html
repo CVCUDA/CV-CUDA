@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>v0.4.0-beta &mdash; CV-CUDA 0.18.0 documentation</title>
+  <title>v0.18.0-beta &mdash; CV-CUDA 0.18.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=b1baae54" />
@@ -22,8 +22,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="0.3.1-beta" href="v0.3.1-beta.html" />
-    <link rel="prev" title="v0.5.0-beta" href="v0.5.0-beta.html" /> 
+    <link rel="next" title="v0.17.0-beta" href="v0.17.0-beta.html" />
+    <link rel="prev" title="Stack" href="../_c_cpp_api/group__NVCV__CPP__ALGORITHM____STACK.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -2383,8 +2383,8 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="v0.18.0-beta.html">v0.18.0-beta</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="v0.18.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">v0.18.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#release-highlights">Release Highlights</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="v0.17.0-beta.html">v0.17.0-beta</a><ul>
@@ -2499,13 +2499,13 @@
 <li class="toctree-l2"><a class="reference internal" href="v0.5.0-beta.html#acknowledgements">Acknowledgements</a></li>
 </ul>
 </li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">v0.4.0-beta</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#release-highlights">Release Highlights</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#compatibility">Compatibility</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#known-issues-limitations">Known Issues/Limitations</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#license">License</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#resources">Resources</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#acknowledgements">Acknowledgements</a></li>
+<li class="toctree-l1"><a class="reference internal" href="v0.4.0-beta.html">v0.4.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="v0.4.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="v0.4.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="v0.4.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="v0.4.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="v0.4.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="v0.4.0-beta.html#acknowledgements">Acknowledgements</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="v0.3.1-beta.html">v0.3.1-beta</a><ul>
@@ -2563,9 +2563,9 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">v0.4.0-beta</li>
+      <li class="breadcrumb-item active">v0.18.0-beta</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/relnotes/v0.4.0-beta.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/relnotes/v0.18.0-beta.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -2573,69 +2573,101 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="v0-4-0-beta">
-<span id="id1"></span><h1>v0.4.0-beta<a class="headerlink" href="#v0-4-0-beta" title="Link to this heading"></a></h1>
-<p>CV-CUDA 0.4.0 is a major release of the library providing multiple new operators, Jetson Orin support, and updated API documentation.</p>
+  <section id="v0-18-0-beta">
+<span id="id1"></span><h1>v0.18.0-beta<a class="headerlink" href="#v0-18-0-beta" title="Link to this heading"></a></h1>
 <section id="release-highlights">
 <h2>Release Highlights<a class="headerlink" href="#release-highlights" title="Link to this heading"></a></h2>
-<p>CV-CUDA v0.4.0 includes the following key features:</p>
-<ul class="simple">
-<li><p>14 new image processing and computer vision operators
-- Advanced Color Format Conversion
-- Brightness_Contrast
-- Color_Twist
-- FindContours
-- GaussianNoise
-- Histogram
-- Histogram Equalizer
-- Inpainting
-- MinAreaRect
-- MinMaxLoc
-- Morphology (Open, Close)
-- On-screen display (Polyline, Point, Line, Text, Rotated Rectangle, Segmented Mask)
-- RandomResizedCrop
-- SIFT</p></li>
-<li><p>Updated sample application
-- Streamed Triton-based Video Segmentation Sample using CV-CUDA and VPF (Video Processing Framework) optimized for performance with video decode/encode on server-side</p></li>
-<li><p>Added Jetson Orin support for core library</p></li>
-<li><p>Updated API documentation</p></li>
+<p>CV-CUDA v0.18.0-beta includes the following changes.</p>
+<ul>
+<li><p><strong>New Features and Enhancements</strong>:</p>
+<ul>
+<li><p>Added FP16 (F16) image support to the following operators, on the tensor,
+var-shape, and planar paths alike: <code class="docutils literal notranslate"><span class="pre">AdjustContrast</span></code>, <code class="docutils literal notranslate"><span class="pre">AdjustHue</span></code>,
+<code class="docutils literal notranslate"><span class="pre">AdjustSaturation</span></code>, <code class="docutils literal notranslate"><span class="pre">AdjustSharpness</span></code>, <code class="docutils literal notranslate"><span class="pre">AutoContrast</span></code>,
+<code class="docutils literal notranslate"><span class="pre">AverageBlur</span></code>, <code class="docutils literal notranslate"><span class="pre">BilateralFilter</span></code>, <code class="docutils literal notranslate"><span class="pre">BrightnessContrast</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ChannelReorder</span></code>, <code class="docutils literal notranslate"><span class="pre">ColorTwist</span></code>, <code class="docutils literal notranslate"><span class="pre">Conv2D</span></code>, <code class="docutils literal notranslate"><span class="pre">ConvertTo</span></code>,
+<code class="docutils literal notranslate"><span class="pre">CopyMakeBorder</span></code>, <code class="docutils literal notranslate"><span class="pre">CropFlipNormalizeReformat</span></code>, <code class="docutils literal notranslate"><span class="pre">CvtColor</span></code>, <code class="docutils literal notranslate"><span class="pre">Erase</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Flip</span></code>, <code class="docutils literal notranslate"><span class="pre">GammaContrast</span></code>, <code class="docutils literal notranslate"><span class="pre">Gaussian</span></code>, <code class="docutils literal notranslate"><span class="pre">GaussianNoise</span></code>, <code class="docutils literal notranslate"><span class="pre">HQResize</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Invert</span></code>, <code class="docutils literal notranslate"><span class="pre">JointBilateralFilter</span></code>, <code class="docutils literal notranslate"><span class="pre">Laplacian</span></code>, <code class="docutils literal notranslate"><span class="pre">MedianBlur</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Morphology</span></code>, <code class="docutils literal notranslate"><span class="pre">Normalize</span></code>, <code class="docutils literal notranslate"><span class="pre">PadAndStack</span></code>, <code class="docutils literal notranslate"><span class="pre">RandomResizedCrop</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Remap</span></code>, <code class="docutils literal notranslate"><span class="pre">Resize</span></code>, <code class="docutils literal notranslate"><span class="pre">ResizeCropConvertReformat</span></code>, <code class="docutils literal notranslate"><span class="pre">Rotate</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Solarize</span></code>, <code class="docutils literal notranslate"><span class="pre">Threshold</span></code>, <code class="docutils literal notranslate"><span class="pre">WarpAffine</span></code>, and <code class="docutils literal notranslate"><span class="pre">WarpPerspective</span></code>
+(<a class="reference external" href="https://github.com/CVCUDA/CV-CUDA/issues/260">issue #260</a>).</p>
+<p>Interpolating operators use native half storage with float arithmetic.
+Exceptions: <code class="docutils literal notranslate"><span class="pre">Conv2D</span></code> kernels and the <code class="docutils literal notranslate"><span class="pre">ColorTwist</span></code> matrix stay 32-bit
+float, <code class="docutils literal notranslate"><span class="pre">Remap</span></code> F16 is single-channel (matching F32), <code class="docutils literal notranslate"><span class="pre">Threshold</span></code>
+OTSU/TRIANGLE and subsampled YUV420/422 conversions remain 8-bit only, and
+<code class="docutils literal notranslate"><span class="pre">ResizeCropConvertReformat</span></code> gains F16 output only.</p>
+</li>
+<li><p>Added the complete CIE L*a*b* conversion family to <code class="docutils literal notranslate"><span class="pre">CvtColor</span></code> for U8,
+F16, and F32 tensors and var-shape batches: sRGB and linear RGB/BGR in both
+directions, with interleaved and planar layouts and dedicated Lab formats
+(<a class="reference external" href="https://github.com/CVCUDA/CV-CUDA/issues/282">issue #282</a>).</p></li>
 </ul>
-</section>
-<section id="compatibility">
-<h2>Compatibility<a class="headerlink" href="#compatibility" title="Link to this heading"></a></h2>
-<p>CV-CUDA has been tested on the following compute stack</p>
+</li>
+<li><p><strong>Performance Improvements</strong>:</p>
 <ul class="simple">
-<li><p>GPU Compute Capability: 7+.x</p></li>
-<li><p>Ubuntu x86_64: 20.04, 22.04</p></li>
-<li><p>CUDA Toolkit: 11.7+ (11.2+ for library build and run)</p></li>
-<li><p>GCC: 11.0+ (9.0 and 10.0 for APIs, with pre-built binary and run)</p></li>
-<li><p>Python: 3.7, 3.8, 3.10</p></li>
+<li><p>Vectorized <code class="docutils literal notranslate"><span class="pre">Morphology</span></code> planar C3 dilate and <code class="docutils literal notranslate"><span class="pre">Reformat</span></code> planar RGB8
+interleave.</p></li>
+<li><p>Added specialized fast paths for <code class="docutils literal notranslate"><span class="pre">GaussianNoise</span></code> planar C3 var-shape,
+<code class="docutils literal notranslate"><span class="pre">BilateralFilter</span></code> planar C3 radius-2, <code class="docutils literal notranslate"><span class="pre">CLAHE</span></code> 8x8 tensor tiles, and
+<code class="docutils literal notranslate"><span class="pre">Threshold</span></code> planar U8 binary var-shape.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">WarpAffine</span></code> cubic with an integer inverse transform now uses the nearest
+specialization, where it is bit-exact.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">MedianBlur</span></code> skips the sort when the center pixel already holds the median
+rank; <code class="docutils literal notranslate"><span class="pre">Inpaint</span></code> narrows its source scan window;
+<code class="docutils literal notranslate"><span class="pre">NonMaximumSuppression</span></code> scans by warp; <code class="docutils literal notranslate"><span class="pre">BndBox</span></code> flattens dense image
+copies.</p></li>
 </ul>
-<p>Refer to documentation of the sample applications for dependencies.</p>
-</section>
-<section id="known-issues-limitations">
-<h2>Known Issues/Limitations<a class="headerlink" href="#known-issues-limitations" title="Link to this heading"></a></h2>
+</li>
+<li><p><strong>Bug Fixes</strong>:</p>
 <ul class="simple">
-<li><p>Samples fails for encoding surfaces on T4 with CUDA 11.8 and display driver 520. Suggested workaround is to upgrade to a newer driver 525+.</p></li>
-<li><p>For GCC versions lower than 11.0, C++17 support needs to be enabled when compiling CV-CUDA.</p></li>
+<li><p>CUDA kernel launch errors are now reported as exceptions across the modern
+and legacy operators. <code class="docutils literal notranslate"><span class="pre">AdvCvtColor</span></code> and <code class="docutils literal notranslate"><span class="pre">CLAHE</span></code> previously aborted the
+process instead of propagating the failure, and workspace allocation
+failures now surface as public exceptions.</p></li>
+<li><p>Made <code class="docutils literal notranslate"><span class="pre">cvcuda.Stream</span></code> current-stream contexts host-thread-local. A host
+thread without an active context now resolves <code class="docutils literal notranslate"><span class="pre">cvcuda.Stream.current</span></code>
+to <code class="docutils literal notranslate"><span class="pre">cvcuda.Stream.default</span></code>. Invalid cross-thread or out-of-order
+<code class="docutils literal notranslate"><span class="pre">__exit__</span></code> calls raise <code class="docutils literal notranslate"><span class="pre">RuntimeError</span></code> instead of corrupting another
+context (<a class="reference external" href="https://github.com/CVCUDA/CV-CUDA/issues/274">issue #274</a>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">NonMaximumSuppression</span></code> no longer keeps duplicate boxes that tie on both
+score and area; a deterministic index tiebreak now retains exactly one
+(<a class="reference external" href="https://github.com/CVCUDA/CV-CUDA/issues/292">issue #292</a>).</p></li>
+<li><p>Tightened input validation, replacing undefined behavior with errors:
+<code class="docutils literal notranslate"><span class="pre">PadAndStack</span></code> top/left tensor exports, <code class="docutils literal notranslate"><span class="pre">FindHomography</span></code> reusable
+operator capsules and dimensions, <code class="docutils literal notranslate"><span class="pre">MinMaxLoc</span></code> tensor layouts,
+<code class="docutils literal notranslate"><span class="pre">MinAreaRect</span></code> point-count rank, and <code class="docutils literal notranslate"><span class="pre">Stack</span></code> output metadata.</p></li>
+<li><p>Fixed <code class="docutils literal notranslate"><span class="pre">Resize</span></code> per-column source coordinates, wide AREA resize types,
+partial OSD tiles, and <code class="docutils literal notranslate"><span class="pre">Flip</span></code> planar float3 on CUDA 12 SM80.</p></li>
+<li><p>Python container and cache fixes: <code class="docutils literal notranslate"><span class="pre">Tensor</span></code>/<code class="docutils literal notranslate"><span class="pre">Image</span></code> batches keep their
+state after a failed insert, and the cache accounting no longer drifts on
+eviction, thread-local clears, or interpreter shutdown.</p></li>
 </ul>
-</section>
-<section id="license">
-<h2>License<a class="headerlink" href="#license" title="Link to this heading"></a></h2>
-<p>CV-CUDA operates under the <a class="reference external" href="https://github.com/CVCUDA/CV-CUDA/blob/main/LICENSE.md">Apache 2.0</a> license.</p>
-</section>
-<section id="resources">
-<h2>Resources<a class="headerlink" href="#resources" title="Link to this heading"></a></h2>
-<ol class="arabic simple">
-<li><p><a class="reference external" href="https://github.com/CVCUDA/CV-CUDA">CV-CUDA GitHub</a></p></li>
-<li><p><a class="reference external" href="https://developer.nvidia.com/blog/increasing-throughput-and-reducing-costs-for-computer-vision-with-cv-cuda/">CV-CUDA Increasing Throughput and Reducing Costs for AI-Based Computer Vision with CV-CUDA</a></p></li>
-<li><p><a class="reference external" href="https://blogs.nvidia.com/blog/2023/03/21/cv-cuda-ai-computer-vision/">NVIDIA Announces Microsoft, Tencent, Baidu Adopting CV-CUDA for Computer Vision AI</a></p></li>
-<li><p><a class="reference external" href="https://developer.nvidia.com/zh-cn/blog/cv-cuda-high-performance-image-processing/">CV-CUDA helps Tencent Cloud audio and video PaaS platform achieve full-process GPU acceleration for video enhancement AI</a></p></li>
-</ol>
-</section>
-<section id="acknowledgements">
-<h2>Acknowledgements<a class="headerlink" href="#acknowledgements" title="Link to this heading"></a></h2>
-<p>CV-CUDA is developed jointly by NVIDIA and the ByteDance Machine Learning team.</p>
+</li>
+<li><p><strong>Compatibility Changes</strong>:</p>
+<ul class="simple">
+<li><p>Default aarch64 (SBSA) builds now include SM120 code generation — RTX PRO 6000 Blackwell and GeForce RTX 50 series — when built with CUDA 12.8
+or newer.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cvcuda.Stream</span></code> contexts no longer span host threads. Code that entered a
+stream context on one thread and submitted work from others — a worker pool
+inside a <code class="docutils literal notranslate"><span class="pre">with</span> <span class="pre">cvcuda.Stream():</span></code> block, for example — previously picked up
+that stream and now submits on the legacy default stream instead, without an
+error. Enter the context on each thread that submits work.</p></li>
+<li><p>Leaving a <code class="docutils literal notranslate"><span class="pre">cvcuda.Stream</span></code> context raises <code class="docutils literal notranslate"><span class="pre">RuntimeError</span></code> when the stream
+is not the entering thread’s current stream. Contexts exited from another
+thread, or nested contexts exited out of order — including contexts
+interleaved by coroutines or generators on one thread — previously did so
+silently. The error is suppressed while an exception is already propagating
+out of the context body, so that exception still reaches the caller.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cvcuda.Stream.default</span></code> is read-only. Assigning it previously succeeded and
+changed nothing — <code class="docutils literal notranslate"><span class="pre">cvcuda.Stream.current</span></code> resolves the default stream
+internally rather than through the attribute — so the two names disagreed
+from then on. Enter a stream’s context or pass it as the operator’s stream
+argument instead.</p></li>
+</ul>
+</li>
+</ul>
 </section>
 </section>
 
@@ -2643,8 +2675,8 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="v0.5.0-beta.html" class="btn btn-neutral float-left" title="v0.5.0-beta" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="v0.3.1-beta.html" class="btn btn-neutral float-right" title="0.3.1-beta" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="../_c_cpp_api/group__NVCV__CPP__ALGORITHM____STACK.html" class="btn btn-neutral float-left" title="Stack" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="v0.17.0-beta.html" class="btn btn-neutral float-right" title="v0.17.0-beta" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

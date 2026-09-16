@@ -1,5 +1,5 @@
 ..
-   # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+   # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    # SPDX-License-Identifier: Apache-2.0
    #
    # Licensed under the Apache License, Version 2.0 (the "License");
@@ -174,6 +174,7 @@ Common Image Formats
 **Single channel formats:**
 
 * :py:data:`cvcuda.Format.U8` - **8-bit grayscale/single channel** - Unsigned 8-bit integer, single plane
+* :py:data:`cvcuda.Format.F16` - **16-bit float single channel** - Half-precision floating point, single plane (halves bandwidth versus ``F32`` for mixed-precision pipelines)
 * :py:data:`cvcuda.Format.F32` - **32-bit float single channel** - 32-bit floating point, single plane (useful for depth maps, feature maps)
 
 **YUV formats (video/camera):**

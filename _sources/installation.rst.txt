@@ -194,6 +194,12 @@ The following table summarizes all dependencies needed to build and test CV-CUDA
      - libgtest-dev, libgmock-dev, libssl-dev, zlib1g-dev
      - fonts-dejavu
      - doxygen, graphviz, python3, python3-pip, python3-sphinx
+   * - **From-source libraries**
+     - (none)
+     - DLPack ≥ 1.3 (header-only)
+     - (none)
+     - (none)
+     - (none)
    * - **Python packages**
      - (none)
      - setuptools, wheel, build, patchelf, auditwheel
@@ -209,6 +215,24 @@ The following table summarizes all dependencies needed to build and test CV-CUDA
 - CUDA 12.2+ and CUDA 13.x should work. CV-CUDA was tested with 12.5 and 13.3; these versions are recommended.
 - For NumPy: Use ``tests/requirements.tests.numpy1.txt`` for Python 3.10-3.12 (NumPy 1.26.4) or ``tests/requirements.tests.numpy2.txt`` for Python 3.10-3.14 (NumPy 2.2.6 on Python 3.10, NumPy 2.4.4 on Python 3.11+).
 - PyTorch is installed separately and not included in requirements files.
+
+Building the Python bindings requires the `DLPack <https://github.com/dmlc/dlpack>`_
+headers (version **1.3 or newer**). There is no suitable PyPI package, so satisfy this
+dependency in one of two ways:
+
+1. **Install DLPack from source** (what the Docker images do). This is the recommended
+   option for repeated or offline builds:
+
+   .. code-block:: shell
+
+       git clone --depth 1 --branch v1.3 https://github.com/dmlc/dlpack.git /tmp/dlpack
+       cmake -S /tmp/dlpack -B /tmp/dlpack/build -DBUILD_MOCK=OFF -DBUILD_DOCS=OFF
+       sudo cmake --install /tmp/dlpack/build --prefix /usr/local
+
+2. **Let the build fetch it automatically.** If DLPack is not found on the system, CMake
+   downloads and builds ``v1.3`` via ``FetchContent`` during configuration. This requires
+   an **internet connection during the build** and is skipped entirely when a suitable
+   DLPack is already installed.
 
 If you are using WSL2, you can follow the instructions in the :ref:`WSL2 Setup <wsl2>`.
 
