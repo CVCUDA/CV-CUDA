@@ -1,7 +1,0 @@
-:orphan:
-
-Solarize
-========
-
-.. doxygengroup:: NVCV_C_ALGORITHM__SOLARIZE
-   :project: cvcuda
