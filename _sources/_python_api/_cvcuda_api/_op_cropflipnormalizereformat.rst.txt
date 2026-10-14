@@ -19,4 +19,4 @@ CropFlipNormalizeReformat
 
 .. automodule:: cvcuda
   :noindex:
-  :members: crop_flip_normalize_reformat, crop_flip_normalize_reformat_into
+  :members: crop_flip_normalize_reformat_into, crop_flip_normalize_reformat

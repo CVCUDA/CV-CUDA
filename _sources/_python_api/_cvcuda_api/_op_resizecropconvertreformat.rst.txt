@@ -19,4 +19,4 @@ ResizeCropConvertReformat
 
 .. automodule:: cvcuda
   :noindex:
-  :members: resize_crop_convert_reformat, resize_crop_convert_reformat_into
+  :members: resize_crop_convert_reformat_into, resize_crop_convert_reformat

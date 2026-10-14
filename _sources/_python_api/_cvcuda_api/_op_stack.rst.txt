@@ -19,4 +19,4 @@ Stack
 
 .. automodule:: cvcuda
   :noindex:
-  :members: stack_into, stack
+  :members: stack, stack_into

@@ -19,4 +19,4 @@ ConvertTo
 
 .. automodule:: cvcuda
   :noindex:
-  :members: convertto, convertto_into
+  :members: convertto_into, convertto

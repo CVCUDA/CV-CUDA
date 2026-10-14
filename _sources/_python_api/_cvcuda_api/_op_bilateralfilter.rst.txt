@@ -19,4 +19,4 @@ BilateralFilter
 
 .. automodule:: cvcuda
   :noindex:
-  :members: bilateral_filter_into, bilateral_filter
+  :members: bilateral_filter, bilateral_filter_into

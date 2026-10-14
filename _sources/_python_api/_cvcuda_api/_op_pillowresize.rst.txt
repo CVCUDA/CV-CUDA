@@ -19,4 +19,4 @@ PillowResize
 
 .. automodule:: cvcuda
   :noindex:
-  :members: pillowresize, pillowresize_into
+  :members: pillowresize_into, pillowresize

@@ -19,4 +19,4 @@ Remap
 
 .. automodule:: cvcuda
   :noindex:
-  :members: remap_into, remap
+  :members: remap, remap_into

@@ -19,4 +19,4 @@ Morphology
 
 .. automodule:: cvcuda
   :noindex:
-  :members: morphology, morphology_into
+  :members: morphology_into, morphology

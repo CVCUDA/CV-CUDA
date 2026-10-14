@@ -19,4 +19,4 @@ BrightnessContrast
 
 .. automodule:: cvcuda
   :noindex:
-  :members: brightness_contrast_into, brightness_contrast
+  :members: brightness_contrast, brightness_contrast_into
