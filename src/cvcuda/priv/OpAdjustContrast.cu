@@ -19,6 +19,8 @@
 #include "OpAdjustContrast.hpp"
 
 #include "AdjustColorCommon.cuh"
+#include "ElementStreamCommon.cuh"
+#include "SameShapeCommon.cuh"
 
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
@@ -42,24 +44,28 @@
 #include <tuple>
 #include <type_traits>
 
-namespace cuda   = nvcv::cuda;
-namespace util   = nvcv::util;
-namespace adjust = cvcuda::priv::adjust;
+namespace cuda        = nvcv::cuda;
+namespace util        = nvcv::util;
+namespace adjust      = cvcuda::priv::adjust;
+namespace elem_stream = cvcuda::priv::elem_stream;
 
 namespace {
 
 inline void ValidateFactor(double factor)
 {
-    if (factor < 0.0)
+    if (!std::isfinite(factor) || factor < 0.0 || factor > std::numeric_limits<float>::max())
     {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Contrast factor must be non-negative");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Contrast factor must be finite, non-negative, and representable as float");
     }
 }
 
-constexpr int     kBlockX                = 32;
-constexpr int     kBlockY                = 4;
-constexpr int     kApplyXSteps           = 4;
-constexpr int     kMeanBlock             = 256; // fixed legacy reduction width; must remain a power of two
+constexpr int     kBlockX      = 32;
+constexpr int     kBlockY      = 4;
+constexpr int     kApplyXSteps = 4;
+constexpr int     kMeanBlock   = 256; // fixed legacy reduction width; must remain a power of two
+// Independent loads hide memory latency without changing the exact reduction order.
+constexpr int     kMeanPrefetch          = 16;
 constexpr int     kF32MeanThreads        = 64;
 constexpr int64_t kF32MinParallelPixels  = 8192;
 constexpr int     kMeanValuesPerThread   = 32;
@@ -125,31 +131,189 @@ inline __device__ float PixelGray(const SrcWrapper &src, int x, int y, int z, in
     }
 }
 
-// Grayscale-mean reduction, tensor variant (uniform per-image size).
-template<int BLOCK, bool IsPlanar, class SrcWrapper>
-__global__ void ContrastMeanTensor(SrcWrapper src, int2 size, int numPlanes, int3 rgbIndices, float *means)
+// Keep packed-row loads separate from gray accumulation so the compiler can issue them ahead of dependent adds.
+template<bool IsPlanar, typename BT, int Channels>
+struct FlatPixels
 {
-    using BT        = cuda::BaseType<std::remove_const_t<typename SrcWrapper::ValueType>>;
-    const int     z = blockIdx.z;
-    const int64_t n = static_cast<int64_t>(size.x) * size.y;
+    // Single-channel images use the interleaved instantiation; planar input always has three planes.
+    static constexpr int kComp = IsPlanar ? 3 : Channels;
 
-    int64_t   idx   = threadIdx.x;
-    int       x     = static_cast<int>(idx % size.x);
-    int       y     = static_cast<int>(idx / size.x);
-    const int xStep = blockDim.x % size.x;
-    const int yStep = blockDim.x / size.x;
+    struct Raw
+    {
+        BT c[kComp];
+    };
+
+    const BT *plane[3];
+    int3      rgbIndices;
+
+    inline __device__ Raw Load(int64_t p) const
+    {
+        Raw r;
+        if constexpr (IsPlanar)
+        {
+#pragma unroll
+            for (int i = 0; i < 3; ++i)
+            {
+                r.c[i] = plane[i][p];
+            }
+        }
+        else if constexpr (Channels == 1)
+        {
+            r.c[0] = plane[0][p];
+        }
+        else
+        {
+            const BT *q = plane[0] + p * Channels;
+#pragma unroll
+            for (int i = 0; i < Channels; ++i)
+            {
+                r.c[i] = q[i];
+            }
+        }
+        return r;
+    }
+
+    inline __device__ float Gray(const Raw &r) const
+    {
+        if constexpr (kComp == 1)
+        {
+            return static_cast<float>(r.c[0]);
+        }
+        else if constexpr (IsPlanar)
+        {
+            return adjust::GrayFromRGB<BT>(r.c[0], r.c[1], r.c[2]);
+        }
+        else
+        {
+            // Runtime array indexing spills the prefetch batch to local memory; select from fixed registers instead.
+            const BT a = r.c[0], b = r.c[1], c = r.c[2];
+            const BT rr = rgbIndices.x == 0 ? a : (rgbIndices.x == 1 ? b : c);
+            const BT gg = rgbIndices.y == 0 ? a : (rgbIndices.y == 1 ? b : c);
+            const BT bb = rgbIndices.z == 0 ? a : (rgbIndices.z == 1 ? b : c);
+            return adjust::GrayFromRGB<BT>(rr, gg, bb);
+        }
+    }
+};
+
+template<typename BT>
+struct MeanFlatView
+{
+    const BT *base;
+    int64_t   sampleStride; // elements
+    int64_t   planeStride;  // elements; planar only
+    bool      valid;
+};
+
+__host__ __device__ inline constexpr int SwizzleComponent(int3 rgbIndices, int p)
+{
+    return p == 0 ? rgbIndices.x : (p == 1 ? rgbIndices.y : rgbIndices.z);
+}
+
+template<bool IsPlanar, typename BT, int Channels>
+inline __device__ FlatPixels<IsPlanar, BT, Channels> MakeFlatTensor(const MeanFlatView<BT> &view, int z,
+                                                                    int3 rgbIndices)
+{
+    FlatPixels<IsPlanar, BT, Channels> f{};
+    const BT                          *s = view.base + z * view.sampleStride;
+    f.rgbIndices                         = rgbIndices;
+    if constexpr (IsPlanar)
+    {
+#pragma unroll
+        for (int p = 0; p < 3; ++p)
+        {
+            const int idx = SwizzleComponent(rgbIndices, p);
+            f.plane[p]    = s + static_cast<int64_t>(idx) * view.planeStride;
+        }
+    }
+    else
+    {
+        f.plane[0] = s;
+    }
+    return f;
+}
+
+template<bool IsPlanar, typename ValueT, class SrcWrapper>
+inline __device__ bool MakeFlatVarShape(const SrcWrapper &src, int z, int3 rgbIndices,
+                                        FlatPixels<IsPlanar, cuda::BaseType<ValueT>, cuda::NumElements<ValueT>> &out)
+{
+    using BT       = cuda::BaseType<ValueT>;
+    const int w    = src.width(z);
+    out.rgbIndices = rgbIndices;
+#pragma unroll
+    for (int p = 0; p < (IsPlanar ? 3 : 1); ++p)
+    {
+        const int  srcPlane = IsPlanar ? SwizzleComponent(rgbIndices, p) : 0;
+        const auto pl       = src.plane(z, srcPlane);
+        if (pl.rowStride != static_cast<int32_t>(w * static_cast<int>(sizeof(ValueT))))
+        {
+            return false;
+        }
+        out.plane[p] = reinterpret_cast<const BT *>(pl.basePtr);
+    }
+    return true;
+}
+
+// Prefetch without reassociating: lane, lane + STRIDE, ... must retain every original rounding step.
+template<int STRIDE, int K, typename Acc, class Pixels>
+inline __device__ Acc OrderedLaneSum(const Pixels &px, int64_t n, int64_t lane, Acc local)
+{
+    int64_t idx = lane;
+    for (; idx + static_cast<int64_t>(STRIDE) * (K - 1) < n; idx += static_cast<int64_t>(STRIDE) * K)
+    {
+        typename Pixels::Raw raw[K];
+#pragma unroll
+        for (int k = 0; k < K; ++k)
+        {
+            raw[k] = px.Load(idx + static_cast<int64_t>(STRIDE) * k);
+        }
+#pragma unroll
+        for (int k = 0; k < K; ++k)
+        {
+            local += static_cast<Acc>(px.Gray(raw[k]));
+        }
+    }
+    for (; idx < n; idx += STRIDE)
+    {
+        local += static_cast<Acc>(px.Gray(px.Load(idx)));
+    }
+    return local;
+}
+
+template<int BLOCK, bool IsPlanar, class SrcWrapper, typename BTView>
+__global__ void ContrastMeanTensor(SrcWrapper src, MeanFlatView<BTView> flat, int2 size, int numPlanes, int3 rgbIndices,
+                                   float *means)
+{
+    using ValueT             = std::remove_const_t<typename SrcWrapper::ValueType>;
+    using BT                 = cuda::BaseType<ValueT>;
+    static constexpr int kCh = cuda::NumElements<ValueT>;
+    const int            z   = blockIdx.z;
+    const int64_t        n   = static_cast<int64_t>(size.x) * size.y;
 
     float local = 0.0f;
-    for (; idx < n; idx += blockDim.x)
+    if (flat.valid)
     {
-        local += PixelGray<IsPlanar, BT>(src, x, y, z, numPlanes, rgbIndices);
+        local = OrderedLaneSum<BLOCK, kMeanPrefetch, float>(MakeFlatTensor<IsPlanar, BT, kCh>(flat, z, rgbIndices), n,
+                                                            threadIdx.x, local);
+    }
+    else
+    {
+        int64_t   idx   = threadIdx.x;
+        int       x     = static_cast<int>(idx % size.x);
+        int       y     = static_cast<int>(idx / size.x);
+        const int xStep = blockDim.x % size.x;
+        const int yStep = blockDim.x / size.x;
 
-        x += xStep;
-        y += yStep;
-        if (x >= size.x)
+        for (; idx < n; idx += blockDim.x)
         {
-            x -= size.x;
-            ++y;
+            local += PixelGray<IsPlanar, BT>(src, x, y, z, numPlanes, rgbIndices);
+
+            x += xStep;
+            y += yStep;
+            if (x >= size.x)
+            {
+                x -= size.x;
+                ++y;
+            }
         }
     }
     WriteMean<BLOCK>(local, n, means);
@@ -159,29 +323,39 @@ __global__ void ContrastMeanTensor(SrcWrapper src, int2 size, int numPlanes, int
 template<int BLOCK, bool IsPlanar, class SrcWrapper>
 __global__ void ContrastMeanVarShape(SrcWrapper src, int numPlanes, int3 rgbIndices, float *means)
 {
-    using BT        = cuda::BaseType<std::remove_const_t<typename SrcWrapper::ValueType>>;
-    const int     z = blockIdx.z;
-    const int     w = src.width(z);
-    const int     h = src.height(z);
-    const int64_t n = static_cast<int64_t>(w) * h;
+    using ValueT             = std::remove_const_t<typename SrcWrapper::ValueType>;
+    using BT                 = cuda::BaseType<ValueT>;
+    static constexpr int kCh = cuda::NumElements<ValueT>;
+    const int            z   = blockIdx.z;
+    const int            w   = src.width(z);
+    const int            h   = src.height(z);
+    const int64_t        n   = static_cast<int64_t>(w) * h;
 
-    int64_t   idx   = threadIdx.x;
-    int       x     = static_cast<int>(idx % w);
-    int       y     = static_cast<int>(idx / w);
-    const int xStep = blockDim.x % w;
-    const int yStep = blockDim.x / w;
-
-    float local = 0.0f;
-    for (; idx < n; idx += blockDim.x)
+    float                         local = 0.0f;
+    FlatPixels<IsPlanar, BT, kCh> flat{};
+    if (MakeFlatVarShape<IsPlanar, ValueT>(src, z, rgbIndices, flat))
     {
-        local += PixelGray<IsPlanar, BT>(src, x, y, z, numPlanes, rgbIndices);
+        local = OrderedLaneSum<BLOCK, kMeanPrefetch, float>(flat, n, threadIdx.x, local);
+    }
+    else
+    {
+        int64_t   idx   = threadIdx.x;
+        int       x     = static_cast<int>(idx % w);
+        int       y     = static_cast<int>(idx / w);
+        const int xStep = blockDim.x % w;
+        const int yStep = blockDim.x / w;
 
-        x += xStep;
-        y += yStep;
-        if (x >= w)
+        for (; idx < n; idx += blockDim.x)
         {
-            x -= w;
-            ++y;
+            local += PixelGray<IsPlanar, BT>(src, x, y, z, numPlanes, rgbIndices);
+
+            x += xStep;
+            y += yStep;
+            if (x >= w)
+            {
+                x -= w;
+                ++y;
+            }
         }
     }
     WriteMean<BLOCK>(local, n, means);
@@ -189,33 +363,44 @@ __global__ void ContrastMeanVarShape(SrcWrapper src, int numPlanes, int3 rgbIndi
 
 // Split the fixed F32 reduction lanes across two-warp CTAs without changing their arithmetic.
 // Lane t still visits t, t + 256, ... in order; the final kernel below replays the original tree.
-template<int BLOCK, bool IsPlanar, class SrcWrapper>
-__global__ void ContrastMeanF32Tensor(SrcWrapper src, int2 size, int numPlanes, int3 rgbIndices, float *laneSums)
+template<int BLOCK, bool IsPlanar, class SrcWrapper, typename BTView>
+__global__ void ContrastMeanF32Tensor(SrcWrapper src, MeanFlatView<BTView> flat, int2 size, int numPlanes,
+                                      int3 rgbIndices, float *laneSums)
 {
-    using BT = cuda::BaseType<std::remove_const_t<typename SrcWrapper::ValueType>>;
+    using ValueT             = std::remove_const_t<typename SrcWrapper::ValueType>;
+    using BT                 = cuda::BaseType<ValueT>;
+    static constexpr int kCh = cuda::NumElements<ValueT>;
     static_assert(std::is_same_v<BT, float>);
 
     const int     z    = blockIdx.z;
     const int     lane = blockIdx.x * blockDim.x + threadIdx.x;
     const int64_t n    = static_cast<int64_t>(size.x) * size.y;
 
-    int64_t   idx   = lane;
-    int       x     = static_cast<int>(idx % size.x);
-    int       y     = static_cast<int>(idx / size.x);
-    const int xStep = BLOCK % size.x;
-    const int yStep = BLOCK / size.x;
-
     float local = 0.0f;
-    for (; idx < n; idx += BLOCK)
+    if (flat.valid)
     {
-        local += PixelGray<IsPlanar, BT>(src, x, y, z, numPlanes, rgbIndices);
+        local = OrderedLaneSum<BLOCK, kMeanPrefetch, float>(MakeFlatTensor<IsPlanar, BT, kCh>(flat, z, rgbIndices), n,
+                                                            lane, local);
+    }
+    else
+    {
+        int64_t   idx   = lane;
+        int       x     = static_cast<int>(idx % size.x);
+        int       y     = static_cast<int>(idx / size.x);
+        const int xStep = BLOCK % size.x;
+        const int yStep = BLOCK / size.x;
 
-        x += xStep;
-        y += yStep;
-        if (x >= size.x)
+        for (; idx < n; idx += BLOCK)
         {
-            x -= size.x;
-            ++y;
+            local += PixelGray<IsPlanar, BT>(src, x, y, z, numPlanes, rgbIndices);
+
+            x += xStep;
+            y += yStep;
+            if (x >= size.x)
+            {
+                x -= size.x;
+                ++y;
+            }
         }
     }
     laneSums[static_cast<size_t>(z) * BLOCK + lane] = local;
@@ -247,13 +432,36 @@ __global__ void ContrastMeanF32VarShape(SrcWrapper src, int numPlanes, int3 rgbI
     }
 #endif
 
+    using ValueT             = std::remove_const_t<typename SrcWrapper::ValueType>;
+    static constexpr int kCh = cuda::NumElements<ValueT>;
+
+    // Planar sm_90 flat prefetching wins with CUDA 12.5 but loses with CUDA 12.9/13.
+    // Keep the direct-address fallback for compiler versions without a measured flat-path gain.
+    constexpr bool kFlatVarShapePays =
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ == 900) && ((__CUDACC_VER_MAJOR__ != 12) || (__CUDACC_VER_MINOR__ != 5))
+        !IsPlanar;
+#else
+        true;
+#endif
+
+    float                         local = 0.0f;
+    FlatPixels<IsPlanar, BT, kCh> flatPixels{};
+    if constexpr (kFlatVarShapePays)
+    {
+        if (MakeFlatVarShape<IsPlanar, ValueT>(src, z, rgbIndices, flatPixels))
+        {
+            laneSums[static_cast<size_t>(z) * BLOCK + lane]
+                = OrderedLaneSum<BLOCK, kMeanPrefetch, float>(flatPixels, n, lane, local);
+            return;
+        }
+    }
+
     int64_t   idx   = lane;
     int       x     = static_cast<int>(idx % w);
     int       y     = static_cast<int>(idx / w);
     const int xStep = BLOCK % w;
     const int yStep = BLOCK / w;
 
-    float local = 0.0f;
     for (; idx < n; idx += BLOCK)
     {
 #if __CUDA_ARCH__ == 900
@@ -303,42 +511,95 @@ __global__ void FinalizeMeanF32VarShape(SrcWrapper src, const float *laneSums, f
     WriteMean<BLOCK>(local, count, means);
 }
 
+// Preserve the original lane ownership; exact U8 integer sums allow regrouping within each lane.
+template<int BLOCK, int VALUES, int P, class Pixels>
+inline __device__ uint32_t ChunkSumU8(const Pixels &px, int64_t n, int64_t base, uint32_t local)
+{
+    static_assert(VALUES % P == 0);
+    if (base + static_cast<int64_t>(BLOCK) * (VALUES - 1) < n)
+    {
+#pragma unroll
+        for (int g = 0; g < VALUES / P; ++g)
+        {
+            typename Pixels::Raw raw[P];
+#pragma unroll
+            for (int i = 0; i < P; ++i)
+            {
+                raw[i] = px.Load(base + static_cast<int64_t>(BLOCK) * (g * P + i));
+            }
+#pragma unroll
+            for (int i = 0; i < P; ++i)
+            {
+                local += static_cast<uint32_t>(px.Gray(raw[i]));
+            }
+        }
+    }
+    else
+    {
+#pragma unroll
+        for (int i = 0; i < VALUES; ++i)
+        {
+            const int64_t idx = base + static_cast<int64_t>(BLOCK) * i;
+            if (idx < n)
+            {
+                local += static_cast<uint32_t>(px.Gray(px.Load(idx)));
+            }
+        }
+    }
+    return local;
+}
+
 // Parallel U8 first pass. A thread always owns the same lane as in ContrastMean*, and each logical
 // chunk begins on a multiple of BLOCK. Consequently, the final pass can reconstruct the exact 256
 // per-lane values used by the original reduction tree.
-template<int BLOCK, bool IsPlanar, class SrcWrapper>
-__global__ void ContrastMeanU8Tensor(SrcWrapper src, int2 size, int numPlanes, int3 rgbIndices, uint32_t *partials)
+template<int BLOCK, bool IsPlanar, class SrcWrapper, typename BTView>
+__global__ void ContrastMeanU8Tensor(SrcWrapper src, MeanFlatView<BTView> flat, int2 size, int numPlanes,
+                                     int3 rgbIndices, uint32_t *partials)
 {
-    using BT = cuda::BaseType<std::remove_const_t<typename SrcWrapper::ValueType>>;
+    using ValueT             = std::remove_const_t<typename SrcWrapper::ValueType>;
+    using BT                 = cuda::BaseType<ValueT>;
+    static constexpr int kCh = cuda::NumElements<ValueT>;
     static_assert(std::is_same_v<BT, unsigned char>);
 
     constexpr int64_t chunkPixels = static_cast<int64_t>(BLOCK) * kMeanValuesPerThread;
     const int         z           = blockIdx.z;
     const int64_t     n           = static_cast<int64_t>(size.x) * size.y;
-    const int         xStep       = BLOCK % size.x;
-    const int         yStep       = BLOCK / size.x;
     uint32_t          local       = 0;
 
-    for (int64_t base = static_cast<int64_t>(blockIdx.x) * chunkPixels + threadIdx.x; base < n;
-         base += static_cast<int64_t>(gridDim.x) * chunkPixels)
+    if (flat.valid)
     {
-        int64_t idx = base;
-        int     x   = static_cast<int>(idx % size.x);
-        int     y   = static_cast<int>(idx / size.x);
-#pragma unroll
-        for (int i = 0; i < kMeanValuesPerThread; ++i)
+        const auto gray = MakeFlatTensor<IsPlanar, BT, kCh>(flat, z, rgbIndices);
+        for (int64_t base = static_cast<int64_t>(blockIdx.x) * chunkPixels + threadIdx.x; base < n;
+             base += static_cast<int64_t>(gridDim.x) * chunkPixels)
         {
-            if (idx < n)
+            local = ChunkSumU8<BLOCK, kMeanValuesPerThread, kMeanPrefetch>(gray, n, base, local);
+        }
+    }
+    else
+    {
+        const int xStep = BLOCK % size.x;
+        const int yStep = BLOCK / size.x;
+        for (int64_t base = static_cast<int64_t>(blockIdx.x) * chunkPixels + threadIdx.x; base < n;
+             base += static_cast<int64_t>(gridDim.x) * chunkPixels)
+        {
+            int64_t idx = base;
+            int     x   = static_cast<int>(idx % size.x);
+            int     y   = static_cast<int>(idx / size.x);
+#pragma unroll
+            for (int i = 0; i < kMeanValuesPerThread; ++i)
             {
-                local += static_cast<uint32_t>(PixelGray<IsPlanar, BT>(src, x, y, z, numPlanes, rgbIndices));
-            }
-            idx += BLOCK;
-            x += xStep;
-            y += yStep;
-            if (x >= size.x)
-            {
-                x -= size.x;
-                ++y;
+                if (idx < n)
+                {
+                    local += static_cast<uint32_t>(PixelGray<IsPlanar, BT>(src, x, y, z, numPlanes, rgbIndices));
+                }
+                idx += BLOCK;
+                x += xStep;
+                y += yStep;
+                if (x >= size.x)
+                {
+                    x -= size.x;
+                    ++y;
+                }
             }
         }
     }
@@ -350,7 +611,9 @@ __global__ void ContrastMeanU8Tensor(SrcWrapper src, int2 size, int numPlanes, i
 template<int BLOCK, bool IsPlanar, class SrcWrapper>
 __global__ void ContrastMeanU8VarShape(SrcWrapper src, int numPlanes, int3 rgbIndices, uint32_t *partials)
 {
-    using BT = cuda::BaseType<std::remove_const_t<typename SrcWrapper::ValueType>>;
+    using ValueT             = std::remove_const_t<typename SrcWrapper::ValueType>;
+    using BT                 = cuda::BaseType<ValueT>;
+    static constexpr int kCh = cuda::NumElements<ValueT>;
     static_assert(std::is_same_v<BT, unsigned char>);
 
     constexpr int64_t chunkPixels = static_cast<int64_t>(BLOCK) * kMeanValuesPerThread;
@@ -358,9 +621,23 @@ __global__ void ContrastMeanU8VarShape(SrcWrapper src, int numPlanes, int3 rgbIn
     const int         w           = src.width(z);
     const int         h           = src.height(z);
     const int64_t     n           = static_cast<int64_t>(w) * h;
-    const int         xStep       = BLOCK % w;
-    const int         yStep       = BLOCK / w;
     uint32_t          local       = 0;
+
+    FlatPixels<IsPlanar, BT, kCh> flatPixels{};
+    if (MakeFlatVarShape<IsPlanar, ValueT>(src, z, rgbIndices, flatPixels))
+    {
+        for (int64_t base = static_cast<int64_t>(blockIdx.x) * chunkPixels + threadIdx.x; base < n;
+             base += static_cast<int64_t>(gridDim.x) * chunkPixels)
+        {
+            local = ChunkSumU8<BLOCK, kMeanValuesPerThread, kMeanPrefetch>(flatPixels, n, base, local);
+        }
+        const size_t flatPartial = (static_cast<size_t>(z) * gridDim.x + blockIdx.x) * BLOCK + threadIdx.x;
+        partials[flatPartial]    = local;
+        return;
+    }
+
+    const int xStep = BLOCK % w;
+    const int yStep = BLOCK / w;
 
     for (int64_t base = static_cast<int64_t>(blockIdx.x) * chunkPixels + threadIdx.x; base < n;
          base += static_cast<int64_t>(gridDim.x) * chunkPixels)
@@ -419,7 +696,7 @@ __global__ void FinalizeMeanU8VarShape(SrcWrapper src, const uint32_t *partials,
 
 // out = clamp(factor * in + (1 - factor) * mean, 0, bound) per channel component.
 template<typename T>
-inline __device__ T AdjustContrastPixel(T pixel, float factor, float mean)
+inline __device__ T AdjustContrastPixel(T pixel, float factor, float mean, bool truncate)
 {
     using BT                         = cuda::BaseType<T>;
     static constexpr int numChannels = cuda::NumElements<T>;
@@ -429,13 +706,101 @@ inline __device__ T AdjustContrastPixel(T pixel, float factor, float mean)
 #pragma unroll
     for (int c = 0; c < numChannels; ++c)
     {
-        cuda::GetElement(out, c) = adjust::Blend<BT>(cuda::GetElement(pixel, c), factor, mean, bound);
+        cuda::GetElement(out, c) = adjust::Blend<BT>(cuda::GetElement(pixel, c), factor, mean, bound, truncate);
     }
     return out;
 }
 
+struct ContrastStreamParam
+{
+    float        factor;
+    const float *means;
+    bool         truncate;
+};
+
+// Tabulate the same Blend over all 256 byte inputs to avoid per-element float/integer conversions.
+struct ContrastLutTable
+{
+    static constexpr int kTables = 1;
+
+    using Param = ContrastStreamParam;
+
+    inline static __device__ unsigned char Entry(const Param &p, int sample, int, int, int value)
+    {
+        const float bound = cvcuda::priv::PhotometricUpperBound<unsigned char, float>();
+        return adjust::Blend<unsigned char>(static_cast<unsigned char>(value), p.factor, p.means[sample], bound,
+                                            p.truncate);
+    }
+};
+
+template<typename BT>
+struct ContrastStreamCarrier
+{
+    static constexpr bool kSupported   = true;
+    static constexpr int  kSharedBytes = 0;
+    static constexpr bool kSplitPlanes = false;
+    static constexpr int  kElems       = elem_stream::kCarrierBytes / static_cast<int>(sizeof(BT));
+
+    using type  = uint4;
+    using Param = ContrastStreamParam;
+
+    struct State
+    {
+        float mean;
+    };
+
+    inline static __device__ State MakeState(const Param &p, int sample, int, void *)
+    {
+        return State{p.means[sample]};
+    }
+
+    inline static __device__ type Apply(type v, const Param &p, const State &st)
+    {
+        const float bound = cvcuda::priv::PhotometricUpperBound<BT, float>();
+        BT          e[kElems];
+        memcpy(e, &v, sizeof(v));
+#pragma unroll
+        for (int i = 0; i < kElems; ++i)
+        {
+            e[i] = adjust::Blend<BT>(e[i], p.factor, st.mean, bound, p.truncate);
+        }
+        memcpy(&v, e, sizeof(v));
+        return v;
+    }
+
+    inline static __device__ void Tail(const unsigned char *s, unsigned char *d, int bytes, const Param &p,
+                                       const State &st)
+    {
+        const float bound = cvcuda::priv::PhotometricUpperBound<BT, float>();
+        elem_stream::TailElementwise<BT>(s, d, bytes,
+                                         [factor = p.factor, mean = st.mean, bound, truncate = p.truncate](BT v)
+                                         { return adjust::Blend<BT>(v, factor, mean, bound, truncate); });
+    }
+};
+
+template<int ElemBytes>
+inline constexpr int kContrastStreamGroups = ElemBytes == 1 ? 8 : (ElemBytes == 2 ? 4 : 2);
+
+template<bool IsPlanar, typename ValueT>
+inline bool TryRunApplyStream(cudaStream_t stream, const nvcv::TensorDataStridedCuda &srcData,
+                              const nvcv::TensorDataStridedCuda              &dstData,
+                              const nvcv::TensorDataAccessStridedImagePlanar &srcAccess,
+                              const nvcv::TensorDataAccessStridedImagePlanar &dstAccess, float factor,
+                              const float *means, bool truncate)
+{
+    using BT = cuda::BaseType<ValueT>;
+
+    using Carrier
+        = std::conditional_t<sizeof(BT) == 1, elem_stream::LutCarrier<ContrastLutTable>, ContrastStreamCarrier<BT>>;
+    constexpr int kGroups = kContrastStreamGroups<static_cast<int>(sizeof(BT))>;
+
+    return elem_stream::TryRun<kGroups, Carrier, IsPlanar, ValueT>(stream, srcData, dstData, srcAccess, dstAccess,
+                                                                   ContrastStreamParam{factor, means, truncate});
+}
+
 template<bool IsPlanar, class SrcWrapper, class DstWrapper>
-__global__ void ApplyTensor(SrcWrapper src, DstWrapper dst, int2 size, int numPlanes, float factor, const float *means)
+__global__ void ApplyTensor(SrcWrapper src, DstWrapper dst, int2 size, int numPlanes, float factor, const float *means,
+                            bool truncate)
 {
     using SrcT                       = std::remove_const_t<typename SrcWrapper::ValueType>;
     using DstT                       = typename DstWrapper::ValueType;
@@ -461,7 +826,7 @@ __global__ void ApplyTensor(SrcWrapper src, DstWrapper dst, int2 size, int numPl
             if (x < size.x)
             {
                 const int3 coord{x, y, z};
-                dst[coord] = AdjustContrastPixel<DstT>(src[coord], factor, mean);
+                dst[coord] = AdjustContrastPixel<DstT>(src[coord], factor, mean, truncate);
             }
         }
     }
@@ -476,7 +841,7 @@ __global__ void ApplyTensor(SrcWrapper src, DstWrapper dst, int2 size, int numPl
                 if (x < size.x)
                 {
                     const int4 coord{x, y, p, z};
-                    dst[coord] = AdjustContrastPixel<DstT>(src[coord], factor, mean);
+                    dst[coord] = AdjustContrastPixel<DstT>(src[coord], factor, mean, truncate);
                 }
             }
         }
@@ -484,7 +849,8 @@ __global__ void ApplyTensor(SrcWrapper src, DstWrapper dst, int2 size, int numPl
 }
 
 template<bool IsPlanar, class SrcWrapper, class DstWrapper>
-__global__ void ApplyVarShape(SrcWrapper src, DstWrapper dst, int numPlanes, float factor, const float *means)
+__global__ void ApplyVarShape(SrcWrapper src, DstWrapper dst, int numPlanes, float factor, const float *means,
+                              bool truncate)
 {
     using SrcT                       = std::remove_const_t<typename SrcWrapper::ValueType>;
     using DstT                       = typename DstWrapper::ValueType;
@@ -512,7 +878,7 @@ __global__ void ApplyVarShape(SrcWrapper src, DstWrapper dst, int numPlanes, flo
             if (x < width)
             {
                 const int3 coord{x, y, z};
-                dst[coord] = AdjustContrastPixel<DstT>(src[coord], factor, mean);
+                dst[coord] = AdjustContrastPixel<DstT>(src[coord], factor, mean, truncate);
             }
         }
     }
@@ -527,7 +893,7 @@ __global__ void ApplyVarShape(SrcWrapper src, DstWrapper dst, int numPlanes, flo
                 if (x < width)
                 {
                     const int4 coord{x, y, p, z};
-                    dst[coord] = AdjustContrastPixel<DstT>(src[coord], factor, mean);
+                    dst[coord] = AdjustContrastPixel<DstT>(src[coord], factor, mean, truncate);
                 }
             }
         }
@@ -626,6 +992,47 @@ inline dim3 GetApplyGrid(int width, int height, int numSamples)
     return {static_cast<unsigned int>(gridX), static_cast<unsigned int>(gridY), static_cast<unsigned int>(numSamples)};
 }
 
+template<bool IsPlanar, typename ValueT>
+inline MeanFlatView<cuda::BaseType<ValueT>> MakeMeanFlatView(const nvcv::TensorDataAccessStridedImagePlanar &access,
+                                                             const void                                     *basePtr)
+{
+    using BT = cuda::BaseType<ValueT>;
+    MeanFlatView<BT> view{static_cast<const BT *>(basePtr), 0, 0, false};
+
+    // GA100's planar F32 regression is in the flat reduction, not the stream apply; gate only the reduction.
+    if constexpr (IsPlanar && sizeof(BT) >= 4)
+    {
+        if (elem_stream::DeviceComputeCapability() == 80)
+        {
+            return view;
+        }
+    }
+
+    constexpr int64_t elemSize  = static_cast<int64_t>(sizeof(BT));
+    const int64_t     rowStride = access.rowStride();
+    if (access.colStride() != static_cast<int64_t>(sizeof(ValueT))
+        || !elem_stream::RowsPacked<IsPlanar, ValueT>(access))
+    {
+        return view;
+    }
+    if constexpr (IsPlanar)
+    {
+        const int64_t planeStride = access.planeStride();
+        if (planeStride != static_cast<int64_t>(access.numRows()) * rowStride || planeStride % elemSize != 0)
+        {
+            return view;
+        }
+        view.planeStride = planeStride / elemSize;
+    }
+    if (access.sampleStride() % elemSize != 0)
+    {
+        return view;
+    }
+    view.sampleStride = access.sampleStride() / elemSize;
+    view.valid        = true;
+    return view;
+}
+
 template<class Workspace>
 inline ReductionWorkspace GetReductionWorkspace(Workspace &ws, cudaStream_t stream, int numSamples, ReductionGrid grid,
                                                 bool isU8)
@@ -704,7 +1111,8 @@ private:
 
 template<bool IsPlanar, typename ValueT, class Workspace>
 inline void RunTensor(cudaStream_t stream, Workspace &ws, const nvcv::TensorDataStridedCuda &srcData,
-                      const nvcv::TensorDataStridedCuda &dstData, float factor, int numPlanes, int3 rgbIndices)
+                      const nvcv::TensorDataStridedCuda &dstData, float factor, int numPlanes, int3 rgbIndices,
+                      bool truncate)
 {
     auto      srcAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(srcData);
     auto      dstAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(dstData);
@@ -734,6 +1142,8 @@ inline void RunTensor(cudaStream_t stream, Workspace &ws, const nvcv::TensorData
     auto                             reduction  = GetReductionWorkspace(ws, stream, numSamples, reduceGrid, isU8);
     WorkspaceReleaseGuard<Workspace> releaseGuard(ws, stream);
 
+    const MeanFlatView<BT> meanFlat = MakeMeanFlatView<IsPlanar, ValueT>(*srcAccess, srcData.basePtr());
+
     dim3 block(kBlockX, kBlockY, 1);
     dim3 meanGrid(1, 1, numSamples);
     dim3 applyGrid = GetApplyGrid(size.x, size.y, numSamples);
@@ -746,15 +1156,15 @@ inline void RunTensor(cudaStream_t stream, Workspace &ws, const nvcv::TensorData
         {
             if (reduceGrid.parallel)
             {
-                ContrastMeanU8Tensor<kMeanBlock, IsPlanar>
-                    <<<reduceGrid.launch, kMeanBlock, 0, stream>>>(src, size, 1, rgbIndices, reduction.partials);
+                ContrastMeanU8Tensor<kMeanBlock, IsPlanar><<<reduceGrid.launch, kMeanBlock, 0, stream>>>(
+                    src, meanFlat, size, 1, rgbIndices, reduction.partials);
                 FinalizeMeanU8Tensor<kMeanBlock><<<meanGrid, kMeanBlock, 0, stream>>>(
                     reduction.partials, reduction.numPartials, pixels, reduction.means);
             }
             else
             {
                 ContrastMeanTensor<kMeanBlock, IsPlanar>
-                    <<<meanGrid, kMeanBlock, 0, stream>>>(src, size, 1, rgbIndices, reduction.means);
+                    <<<meanGrid, kMeanBlock, 0, stream>>>(src, meanFlat, size, 1, rgbIndices, reduction.means);
             }
         }
         else
@@ -766,24 +1176,29 @@ inline void RunTensor(cudaStream_t stream, Workspace &ws, const nvcv::TensorData
                 if (reduceGrid.parallel)
                 {
                     auto *laneSums = reinterpret_cast<float *>(reduction.partials);
-                    ContrastMeanF32Tensor<kMeanBlock, IsPlanar>
-                        <<<reduceGrid.launch, kF32MeanThreads, 0, stream>>>(src, size, 1, rgbIndices, laneSums);
+                    ContrastMeanF32Tensor<kMeanBlock, IsPlanar><<<reduceGrid.launch, kF32MeanThreads, 0, stream>>>(
+                        src, meanFlat, size, 1, rgbIndices, laneSums);
                     FinalizeMeanF32Tensor<kMeanBlock>
                         <<<meanGrid, kMeanBlock, 0, stream>>>(laneSums, pixels, reduction.means);
                 }
                 else
                 {
                     ContrastMeanTensor<kMeanBlock, IsPlanar>
-                        <<<meanGrid, kMeanBlock, 0, stream>>>(src, size, 1, rgbIndices, reduction.means);
+                        <<<meanGrid, kMeanBlock, 0, stream>>>(src, meanFlat, size, 1, rgbIndices, reduction.means);
                 }
             }
             else
             {
                 ContrastMeanTensor<kMeanBlock, IsPlanar>
-                    <<<meanGrid, kMeanBlock, 0, stream>>>(src, size, 1, rgbIndices, reduction.means);
+                    <<<meanGrid, kMeanBlock, 0, stream>>>(src, meanFlat, size, 1, rgbIndices, reduction.means);
             }
         }
-        ApplyTensor<IsPlanar><<<applyGrid, block, 0, stream>>>(src, dst, size, 1, factor, reduction.means);
+        if (TryRunApplyStream<IsPlanar, ValueT>(stream, srcData, dstData, *srcAccess, *dstAccess, factor,
+                                                reduction.means, truncate))
+        {
+            return;
+        }
+        ApplyTensor<IsPlanar><<<applyGrid, block, 0, stream>>>(src, dst, size, 1, factor, reduction.means, truncate);
     }
     else
     {
@@ -798,14 +1213,14 @@ inline void RunTensor(cudaStream_t stream, Workspace &ws, const nvcv::TensorData
             if (reduceGrid.parallel)
             {
                 ContrastMeanU8Tensor<kMeanBlock, IsPlanar><<<reduceGrid.launch, kMeanBlock, 0, stream>>>(
-                    src, size, numPlanes, rgbIndices, reduction.partials);
+                    src, meanFlat, size, numPlanes, rgbIndices, reduction.partials);
                 FinalizeMeanU8Tensor<kMeanBlock><<<meanGrid, kMeanBlock, 0, stream>>>(
                     reduction.partials, reduction.numPartials, pixels, reduction.means);
             }
             else
             {
                 ContrastMeanTensor<kMeanBlock, IsPlanar>
-                    <<<meanGrid, kMeanBlock, 0, stream>>>(src, size, numPlanes, rgbIndices, reduction.means);
+                    <<<meanGrid, kMeanBlock, 0, stream>>>(src, meanFlat, size, numPlanes, rgbIndices, reduction.means);
             }
         }
         else
@@ -817,24 +1232,30 @@ inline void RunTensor(cudaStream_t stream, Workspace &ws, const nvcv::TensorData
                 if (reduceGrid.parallel)
                 {
                     auto *laneSums = reinterpret_cast<float *>(reduction.partials);
-                    ContrastMeanF32Tensor<kMeanBlock, IsPlanar>
-                        <<<reduceGrid.launch, kF32MeanThreads, 0, stream>>>(src, size, numPlanes, rgbIndices, laneSums);
+                    ContrastMeanF32Tensor<kMeanBlock, IsPlanar><<<reduceGrid.launch, kF32MeanThreads, 0, stream>>>(
+                        src, meanFlat, size, numPlanes, rgbIndices, laneSums);
                     FinalizeMeanF32Tensor<kMeanBlock>
                         <<<meanGrid, kMeanBlock, 0, stream>>>(laneSums, pixels, reduction.means);
                 }
                 else
                 {
-                    ContrastMeanTensor<kMeanBlock, IsPlanar>
-                        <<<meanGrid, kMeanBlock, 0, stream>>>(src, size, numPlanes, rgbIndices, reduction.means);
+                    ContrastMeanTensor<kMeanBlock, IsPlanar><<<meanGrid, kMeanBlock, 0, stream>>>(
+                        src, meanFlat, size, numPlanes, rgbIndices, reduction.means);
                 }
             }
             else
             {
                 ContrastMeanTensor<kMeanBlock, IsPlanar>
-                    <<<meanGrid, kMeanBlock, 0, stream>>>(src, size, numPlanes, rgbIndices, reduction.means);
+                    <<<meanGrid, kMeanBlock, 0, stream>>>(src, meanFlat, size, numPlanes, rgbIndices, reduction.means);
             }
         }
-        ApplyTensor<IsPlanar><<<applyGrid, block, 0, stream>>>(src, dst, size, numPlanes, factor, reduction.means);
+        if (TryRunApplyStream<IsPlanar, ValueT>(stream, srcData, dstData, *srcAccess, *dstAccess, factor,
+                                                reduction.means, truncate))
+        {
+            return;
+        }
+        ApplyTensor<IsPlanar>
+            <<<applyGrid, block, 0, stream>>>(src, dst, size, numPlanes, factor, reduction.means, truncate);
     }
     NVCV_CHECK_THROW(cudaGetLastError());
     releaseGuard.finish();
@@ -843,7 +1264,7 @@ inline void RunTensor(cudaStream_t stream, Workspace &ws, const nvcv::TensorData
 template<bool IsPlanar, typename ValueT, class Workspace>
 inline void RunVarShapeBatch(cudaStream_t stream, Workspace &ws, const nvcv::ImageBatchVarShapeDataStridedCuda &srcData,
                              const nvcv::ImageBatchVarShapeDataStridedCuda &dstData, float factor, int numPlanes,
-                             int3 rgbIndices, int64_t maxPixels)
+                             int3 rgbIndices, int64_t maxPixels, bool truncate)
 {
     const int numImages = dstData.numImages();
     if (numImages > 65535)
@@ -908,7 +1329,7 @@ inline void RunVarShapeBatch(cudaStream_t stream, Workspace &ws, const nvcv::Ima
                 <<<meanGrid, kMeanBlock, 0, stream>>>(src, numPlanes, rgbIndices, reduction.means);
         }
     }
-    ApplyVarShape<IsPlanar><<<applyGrid, block, 0, stream>>>(src, dst, numPlanes, factor, reduction.means);
+    ApplyVarShape<IsPlanar><<<applyGrid, block, 0, stream>>>(src, dst, numPlanes, factor, reduction.means, truncate);
     NVCV_CHECK_THROW(cudaGetLastError());
     releaseGuard.finish();
 }
@@ -981,74 +1402,27 @@ inline bool ValidateSrcDstTensors(int &numInterleavedChannels, int &numPlanes, n
                                   const nvcv::Optional<nvcv::TensorDataStridedCuda> &srcData,
                                   const nvcv::Optional<nvcv::TensorDataStridedCuda> &dstData)
 {
-    if (!srcData)
+    const auto info = cvcuda::priv::same_shape::ValidateSrcDstTensors(srcData, dstData);
+
+    if (info.numChannels != 1 && info.numChannels != 3)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
+                              "Invalid number of channels: AdjustContrast supports 1 or 3 channels");
     }
-    if (!dstData)
+    if (info.numPlanes != 1 && info.numPlanes != 3)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-    if (srcData->layout() != dstData->layout())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
-    }
-    if (!(srcData->layout() == nvcv::TENSOR_HWC || srcData->layout() == nvcv::TENSOR_NHWC
-          || srcData->layout() == nvcv::TENSOR_CHW || srcData->layout() == nvcv::TENSOR_NCHW))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have (N)HWC or (N)CHW layout");
-    }
-    if (srcData->dtype() != dstData->dtype())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same data type");
-    }
-    if (srcData->dtype().numChannels() != 1)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Tensor data type must be scalar; use the C dimension for image channels");
+                              "Invalid number of planes: AdjustContrast supports 1 or 3 planes");
     }
 
     auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
     auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
     NVCV_ASSERT(srcAccess && dstAccess);
 
-    if (srcAccess->numSamples() != dstAccess->numSamples())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-
-    int numChannels = srcAccess->numChannels();
-    if (numChannels != dstAccess->numChannels())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of channels");
-    }
-
-    numPlanes = srcAccess->numPlanes();
-    if (numPlanes != dstAccess->numPlanes())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of planes");
-    }
-    if (numChannels != 1 && numChannels != 3)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid number of channels: AdjustContrast supports 1 or 3 channels");
-    }
-    if (numPlanes != 1 && numPlanes != 3)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid number of planes: AdjustContrast supports 1 or 3 planes");
-    }
-
-    if (srcAccess->numCols() != dstAccess->numCols() || srcAccess->numRows() != dstAccess->numRows())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input and output must have matching width and height");
-    }
-
-    const int64_t elementStride     = srcData->dtype().strideBytes();
-    const int64_t expectedColStride = elementStride * (srcAccess->infoLayout().isChannelLast() ? numChannels : 1);
+    // Stricter than the shared column check: the kernels also assume packed channels, and a
+    // one-column image must still be packed.
+    const int64_t elementStride     = info.srcDtype.strideBytes();
+    const int64_t expectedColStride = elementStride * info.numInterleavedChannels;
     if (srcAccess->colStride() != expectedColStride || dstAccess->colStride() != expectedColStride
         || (srcAccess->infoLayout().isChannelLast()
             && (srcAccess->chStride() != elementStride || dstAccess->chStride() != elementStride)))
@@ -1057,9 +1431,10 @@ inline bool ValidateSrcDstTensors(int &numInterleavedChannels, int &numPlanes, n
                               "Tensor pixels must have packed width and channel strides");
     }
 
-    dtype                  = srcData->dtype();
-    numInterleavedChannels = srcAccess->infoLayout().isChannelLast() ? numChannels : 1;
-    return srcAccess->numSamples() == 0 || srcAccess->numCols() == 0 || srcAccess->numRows() == 0;
+    dtype                  = info.srcDtype;
+    numPlanes              = info.numPlanes;
+    numInterleavedChannels = info.numInterleavedChannels;
+    return info.numSamples == 0 || srcAccess->numCols() == 0 || srcAccess->numRows() == 0;
 }
 
 inline auto ValidateSrcDstVarBatch(int &numInterleavedChannels, int &numPlanes, int3 &rgbIndices, nvcv::DataType &dtype,
@@ -1322,10 +1697,11 @@ AdjustContrast::AdjustContrast()
 
 // Tensor input variant
 void AdjustContrast::operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst,
-                                double contrastFactor) const
+                                double contrastFactor, NVCVRoundMode roundMode) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::AdjustContrast::operator()[Tensor]");
     ValidateFactor(contrastFactor);
+    adjust::ValidateRoundMode(roundMode);
     int            numInterleavedChannels;
     int            numPlanes;
     nvcv::DataType dtype;
@@ -1342,27 +1718,32 @@ void AdjustContrast::operator()(cudaStream_t stream, const nvcv::Tensor &src, co
     const float factor = static_cast<float>(contrastFactor);
     const int3  rgbIndices{0, 1, 2};
     const bool  isCapturing = IsStreamCapturing(stream);
+    const bool  truncate    = roundMode == NVCV_ROUND_TRUNCATE;
 
-    RunChannelSwitch(
-        numInterleavedChannels, numPlanes, dtype,
-        [this, &stream, &srcData, &dstData, factor, numPlanes, rgbIndices, isCapturing](auto dummyVal, auto isPlanar)
-        {
-            using ValueT   = decltype(dummyVal);
-            using IsPlanar = decltype(isPlanar);
-            RunWithWorkspace(stream, isCapturing, m_workspace,
-                             [&](auto &workspace) {
-                                 RunTensor<IsPlanar::value, ValueT>(stream, workspace, *srcData, *dstData, factor,
-                                                                    numPlanes, rgbIndices);
-                             });
-        });
+    RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
+                     [this, &stream, &srcData, &dstData, factor, numPlanes, rgbIndices, isCapturing, truncate](
+                         auto dummyVal, auto isPlanar)
+                     {
+                         using ValueT   = decltype(dummyVal);
+                         using IsPlanar = decltype(isPlanar);
+                         RunWithWorkspace(stream, isCapturing, m_workspace,
+                                          [&](auto &workspace)
+                                          {
+                                              RunTensor<IsPlanar::value, ValueT>(stream, workspace, *srcData, *dstData,
+                                                                                 factor, numPlanes, rgbIndices,
+                                                                                 truncate);
+                                          });
+                     });
 }
 
 // VarShape input variant
 void AdjustContrast::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
-                                const nvcv::ImageBatchVarShape &dst, double contrastFactor) const
+                                const nvcv::ImageBatchVarShape &dst, double contrastFactor,
+                                NVCVRoundMode roundMode) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::AdjustContrast::operator()[ImageBatchVarShape]");
     ValidateFactor(contrastFactor);
+    adjust::ValidateRoundMode(roundMode);
     int            numInterleavedChannels;
     int            numPlanes;
     int3           rgbIndices;
@@ -1377,10 +1758,11 @@ void AdjustContrast::operator()(cudaStream_t stream, const nvcv::ImageBatchVarSh
 
     const float factor      = static_cast<float>(contrastFactor);
     const bool  isCapturing = IsStreamCapturing(stream);
+    const bool  truncate    = roundMode == NVCV_ROUND_TRUNCATE;
 
     RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
-                     [this, &stream, &srcDstData, factor, numPlanes, rgbIndices, maxPixels, isCapturing](auto dummyVal,
-                                                                                                         auto isPlanar)
+                     [this, &stream, &srcDstData, factor, numPlanes, rgbIndices, maxPixels, isCapturing, truncate](
+                         auto dummyVal, auto isPlanar)
                      {
                          using ValueT   = decltype(dummyVal);
                          using IsPlanar = decltype(isPlanar);
@@ -1389,7 +1771,7 @@ void AdjustContrast::operator()(cudaStream_t stream, const nvcv::ImageBatchVarSh
                                           {
                                               RunVarShapeBatch<IsPlanar::value, ValueT>(
                                                   stream, workspace, *std::get<0>(srcDstData), *std::get<1>(srcDstData),
-                                                  factor, numPlanes, rgbIndices, maxPixels);
+                                                  factor, numPlanes, rgbIndices, maxPixels, truncate);
                                           });
                      });
 }

@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -36,10 +38,13 @@ from _internal.baselines import (
     BaselineError,
     OperatorConfigFile,
     load_config_index,
+    load_sku_map,
+    load_sku_policies,
+    normalize_operator_names,
     operator_config_paths,
     parse_case_key,
-    sku_stems,
     split_operator_payload,
+    validate_sku_map_cuda_coverage,
     validate_baselines_in_document,
 )
 
@@ -48,23 +53,11 @@ BaselineMetricValue = Tuple[float, Tuple[Tuple[str, str], ...]]
 GIT_COMMAND_TIMEOUT_SECONDS = 30
 
 
-def _parse_list(raw: Optional[Sequence[str]]) -> Optional[Set[str]]:
-    if not raw:
-        return None
-    out: Set[str] = set()
-    for item in raw:
-        for token in str(item).split(","):
-            token = token.strip()
-            if token:
-                out.add(token)
-    return out or None
-
-
 def _selected_paths(args: argparse.Namespace) -> List[Path]:
     operators_dir = args.config_dir / "operators"
     if args.paths:
         return [Path(path) for path in args.paths]
-    operators = _parse_list(args.operator)
+    operators = normalize_operator_names(args.operator)
     if operators is None:
         return operator_config_paths(operators_dir)
     return [operators_dir / f"{operator}.json" for operator in sorted(operators)]
@@ -74,8 +67,8 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _git_command(*args: str) -> List[str]:
-    repo_root = _repo_root()
+def _git_command(*args: str, repo: Optional[Path] = None) -> List[str]:
+    repo_root = repo or _repo_root()
     # The CI runner may check out files under a UID different from the benchmark container's UID.
     return ["git", "-c", f"safe.directory={repo_root}", *args]
 
@@ -90,13 +83,18 @@ def _path_at_git_ref(path: Path, repo_root: Path) -> str:
     return relpath.as_posix()
 
 
-def _verify_git_ref(ref: str) -> None:
+def resolve_git_ref(ref: str, *, repo: Optional[Path] = None) -> str:
+    """Expand a ref to its full commit SHA, failing if it does not exist."""
+
     # The ^{commit} suffix forces annotated tags and other refs to resolve to a commit object.
     try:
         proc = subprocess.run(
-            _git_command("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"),
-            cwd=_repo_root(),
+            _git_command(
+                "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", repo=repo
+            ),
+            cwd=repo or _repo_root(),
             capture_output=True,
+            text=True,
             timeout=GIT_COMMAND_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:
@@ -105,14 +103,46 @@ def _verify_git_ref(ref: str) -> None:
         ) from exc
     if proc.returncode != 0:
         raise BaselineError(f"baseline regression ref does not exist: {ref}")
+    return proc.stdout.strip()
 
 
-def _operator_doc_at_ref(ref: str, path: Path) -> Optional[OperatorConfigFile]:
-    git_path = _path_at_git_ref(path, _repo_root())
+def verify_git_ref(ref: str, *, repo: Optional[Path] = None) -> None:
+    resolve_git_ref(ref, repo=repo)
+
+
+def operator_names_at_ref(ref: str, *, repo: Optional[Path] = None) -> Set[str]:
+    """Operator config stems present at a ref, independent of the checkout."""
+
+    directory = DEFAULT_CONFIG_DIR.name + "/operators"
     try:
         proc = subprocess.run(
-            _git_command("show", f"{ref}:{git_path}"),
-            cwd=_repo_root(),
+            _git_command(
+                "ls-tree", "--name-only", ref, f"bench/{directory}/", repo=repo
+            ),
+            cwd=repo or _repo_root(),
+            capture_output=True,
+            text=True,
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise BaselineError(f"timed out listing operator configs at {ref}") from exc
+    if proc.returncode != 0:
+        return set()
+    return {
+        Path(line.strip()).stem
+        for line in proc.stdout.splitlines()
+        if line.strip().endswith(".json")
+    }
+
+
+def operator_doc_at_ref(
+    ref: str, path: Path, *, repo: Optional[Path] = None
+) -> Optional[OperatorConfigFile]:
+    git_path = _path_at_git_ref(path, repo or _repo_root())
+    try:
+        proc = subprocess.run(
+            _git_command("show", f"{ref}:{git_path}", repo=repo),
+            cwd=repo or _repo_root(),
             capture_output=True,
             text=True,
             timeout=GIT_COMMAND_TIMEOUT_SECONDS,
@@ -130,7 +160,7 @@ def _operator_doc_at_ref(ref: str, path: Path) -> Optional[OperatorConfigFile]:
     return split_operator_payload(path, raw)
 
 
-def _baseline_metrics(
+def baseline_metrics(
     doc: OperatorConfigFile,
     config_key_filter: Optional[Set[str]] = None,
 ) -> Dict[BaselineMetricKey, BaselineMetricValue]:
@@ -171,15 +201,15 @@ def _baseline_regression_errors_against_ref(
     max_regression_pct: float,
     config_key_filter: Optional[Set[str]],
 ) -> List[str]:
-    _verify_git_ref(ref)
+    verify_git_ref(ref)
     errors: List[str] = []
     for path in paths:
         current_doc = docs_by_path[path]
-        base_doc = _operator_doc_at_ref(ref, path)
+        base_doc = operator_doc_at_ref(ref, path)
         if base_doc is None:
             continue
-        base_rows = _baseline_metrics(base_doc, config_key_filter)
-        for key, (current_us, axes) in _baseline_metrics(
+        base_rows = baseline_metrics(base_doc, config_key_filter)
+        for key, (current_us, axes) in baseline_metrics(
             current_doc, config_key_filter
         ).items():
             base_row = base_rows.get(key)
@@ -289,12 +319,63 @@ Exit status:
     return p.parse_args(argv)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def _first_seed_path(scope: str, paths: Sequence[Path]) -> Path:
+    """Fail closed: preparation is local and limited to one uncommitted new operator."""
+    if any(
+        name in {"CI", "CONTINUOUS_INTEGRATION"} or name.startswith("CI_")
+        for name in os.environ
+    ):
+        raise BaselineError("local first-seed preparation is forbidden in CI")
+    if not re.fullmatch(r"bench/config/operators/[a-z][a-z0-9_]*\.json", scope):
+        raise BaselineError("first-seed scope must be one canonical operator JSON path")
+    repo = _repo_root()
+    path = repo / scope
+    if path.resolve() != path.absolute() or path.resolve() not in {
+        selected.resolve() for selected in paths
+    }:
+        raise BaselineError(
+            "first-seed path must be selected and must not be a symlink"
+        )
+    for ref in ("origin/main", "HEAD"):
+        sha = resolve_git_ref(ref)
+        proc = subprocess.run(
+            _git_command("ls-tree", "--name-only", sha, "--", scope),
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
+        if proc.returncode != 0:
+            raise BaselineError(
+                f"cannot verify first-seed absence at {ref}: {proc.stderr}"
+            )
+        if proc.stdout.strip():
+            raise BaselineError(f"first-seed operator already exists at {ref}: {scope}")
+    return path.resolve()
+
+
+def main(
+    argv: Optional[Sequence[str]] = None, *, local_first_seed: Optional[str] = None
+) -> int:
     args = _parse_args(argv)
     sku_map_path = args.sku_map or (args.config_dir / "sku_map.json")
     paths = _selected_paths(args)
 
     try:
+        first_seed = (
+            _first_seed_path(local_first_seed, paths)
+            if local_first_seed is not None
+            else None
+        )
+        if first_seed is not None and (
+            args.config_dir.resolve() != (_repo_root() / "bench/config").resolve()
+            or args.sku_map is not None
+            or args.config_key is not None
+            or args.allow_regressions
+        ):
+            raise BaselineError(
+                "first-seed preparation requires the canonical full validation policy"
+            )
         if args.max_regression_pct < 0:
             raise BaselineError("--max-regression-pct must be >= 0")
         if args.allow_regressions and not args.reject_regressions_from:
@@ -305,8 +386,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if missing:
             raise BaselineError(f"operator JSON file(s) not found: {missing}")
         index = load_config_index(args.config_dir / "operators")
-        stems = sku_stems(sku_map_path, strict=True)
-        config_key_filter = _parse_list(args.config_key)
+        sku_map = load_sku_map(sku_map_path, strict=True)
+        validate_sku_map_cuda_coverage(sku_map)
+        policies = load_sku_policies(sku_map_path, strict=True)
+        stems = set(policies)
+        config_key_filter = normalize_operator_names(args.config_key)
         if config_key_filter is not None:
             unknown = sorted(config_key_filter - set(index.refs_by_key))
             if unknown:
@@ -320,17 +404,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 selected = load_config_index(paths=[path])
                 doc = selected.docs_by_path[path]
             docs_by_path[path] = doc
+            prepare = first_seed is not None and path.resolve() == first_seed
+            if prepare and (doc.benchmark != path.stem or not doc.configs):
+                raise BaselineError(
+                    "first-seed document must declare its own nonempty operator"
+                )
             errors.extend(
                 validate_baselines_in_document(
                     doc,
                     index,
                     stems,
+                    sku_policies=policies,
                     config_key_filter=config_key_filter,
+                    prepare_first_seed=prepare,
                 )
             )
         if not errors and args.reject_regressions_from:
             if args.allow_regressions:
-                _verify_git_ref(args.reject_regressions_from)
+                verify_git_ref(args.reject_regressions_from)
             else:
                 errors.extend(
                     _baseline_regression_errors_against_ref(
@@ -359,7 +450,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
 
     scope = ", ".join(str(path) for path in paths)
-    print(f"JSON baseline validation passed ({len(paths)} file(s)): {scope}")
+    if first_seed is not None:
+        print(
+            f"PREPARATION ONLY: {first_seed}; absent baseline cases deferred. "
+            "Not baseline completion: reference-SKU measurements and strict validation "
+            "are still required. Other selected documents remain strict."
+        )
+    else:
+        print(f"JSON baseline validation passed ({len(paths)} file(s)): {scope}")
     return 0
 
 

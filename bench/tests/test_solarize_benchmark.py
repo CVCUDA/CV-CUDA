@@ -4,6 +4,7 @@
 """Build-free regression coverage for the Solarize benchmark."""
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -16,7 +17,7 @@ BENCH_DIR = Path(__file__).resolve().parent.parent
 
 def _load_solarize_benchmark(monkeypatch):
     fake_cvcuda = types.ModuleType("cvcuda")
-    fake_cvcuda.Type = types.SimpleNamespace(F16="F16", F32="F32", U16="U16")
+    fake_cvcuda.Type = types.SimpleNamespace(F16="F16", F32="F32", F64="F64", U16="U16")
     thresholds = []
     fake_cvcuda.solarize_into = (
         lambda _dst, _src, threshold, **_kwargs: thresholds.append(threshold)
@@ -26,11 +27,15 @@ def _load_solarize_benchmark(monkeypatch):
     dtypes = {
         "float16": (fake_cvcuda.Type.F16, 2, 1),
         "float3": (fake_cvcuda.Type.F32, 12, 3),
+        "float64": (fake_cvcuda.Type.F64, 8, 1),
+        "double3": (fake_cvcuda.Type.F64, 24, 3),
+        "double4": (fake_cvcuda.Type.F64, 32, 4),
         "uint16": (fake_cvcuda.Type.U16, 2, 1),
     }
     base_sizes = {
         fake_cvcuda.Type.F16: 2,
         fake_cvcuda.Type.F32: 4,
+        fake_cvcuda.Type.F64: 8,
         fake_cvcuda.Type.U16: 2,
     }
 
@@ -59,7 +64,14 @@ def _load_solarize_benchmark(monkeypatch):
 
 @pytest.mark.parametrize(
     "dtype_str, expected_threshold",
-    [("float16", 0.5), ("float3", 0.5), ("uint16", 32767.5)],
+    [
+        ("float16", 0.5),
+        ("float3", 0.5),
+        ("float64", 0.5),
+        ("double3", 0.5),
+        ("double4", 0.5),
+        ("uint16", 32767.5),
+    ],
 )
 def test_threshold_matches_cpp_midrange(monkeypatch, dtype_str, expected_threshold):
     bench_solarize, thresholds = _load_solarize_benchmark(monkeypatch)
@@ -86,3 +98,12 @@ def test_threshold_matches_cpp_midrange(monkeypatch, dtype_str, expected_thresho
     run(object())
 
     assert thresholds == [expected_threshold]
+
+
+def test_solarize_f64_alignment_pair():
+    configs = json.loads((BENCH_DIR / "config/operators/solarize.json").read_text())[
+        "configs"
+    ]
+    case = configs["solarize_f64_alignment_advanced"]
+    assert case["dtypes"] == ["float64"]
+    assert case["string_axes"]["shape"] == ["8x1080x1920", "8x1080x1919"]

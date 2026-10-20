@@ -120,7 +120,7 @@ add_to_python_operators() {
     if ! grep -q "$name" "$file"; then
         line_number=$(grep -n 'void ExportOp' "$file" | tail -1 | cut -d ':' -f 1)
         line_number=$((line_number+1))
-        sed -i "$line_number i\void ExportOp$name(py::module &m);" "$file"
+        sed -i "$line_number i\void ExportOp$name(py::module_ &m);" "$file"
 
     fi
     return $?

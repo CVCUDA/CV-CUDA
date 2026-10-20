@@ -1451,6 +1451,84 @@ TEST(OpSIFT, reports_features_beyond_output_capacity)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpSIFT, preserves_nonzero_orientation_peaks)
+{
+    constexpr int width    = 64;
+    constexpr int height   = 64;
+    constexpr int capacity = 128;
+
+    nvcv::Tensor src     = nvcv::util::CreateTensor(1, width, height, kInFormat);
+    auto         srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData);
+
+    std::vector<uint8_t> input(width * height);
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            const bool checker = (((x / 8) + (y / 8)) & 1) != 0;
+            // The diagonal phase prevents every checkerboard feature from selecting the zero-angle bin.
+            const bool diagonal  = ((x + 2 * y) % 11) < 3;
+            input[y * width + x] = static_cast<uint8_t>((checker != diagonal) ? 240 : 16);
+        }
+    }
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), input.data(), input.size(), cudaMemcpyHostToDevice));
+
+    nvcv::Tensor featCoords(
+        {
+            {1, capacity},
+            "NM"
+    },
+        nvcv::TYPE_4F32);
+    nvcv::Tensor featMetadata(
+        {
+            {1, capacity},
+            "NM"
+    },
+        nvcv::TYPE_3F32);
+    nvcv::Tensor featDescriptors(
+        {
+            {1, capacity, 128},
+            "NMD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor numFeatures({{1}, "N"}, nvcv::TYPE_S32);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::SIFT op({width, height, 1}, 3);
+    ASSERT_NO_THROW(op(stream, src, featCoords, featMetadata, featDescriptors, numFeatures, 3, 0.001f, 20.f, 0.5f,
+                       NVCV_SIFT_USE_ORIGINAL_INPUT));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    int  featureCount = 0;
+    auto countData    = numFeatures.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(countData);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(&featureCount, countData->basePtr(), sizeof(featureCount), cudaMemcpyDeviceToHost));
+    ASSERT_GT(featureCount, 0);
+
+    auto metadataData = featMetadata.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(metadataData);
+    RawBufferType metadataBuffer(metadataData->shape(0) * metadataData->stride(0));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(metadataBuffer.data(), metadataData->basePtr(), metadataBuffer.size(),
+                                      cudaMemcpyDeviceToHost));
+
+    const long2 metadataStrides{metadataData->stride(0), metadataData->stride(1)};
+    bool        hasNonZeroOrientation = false;
+    for (int i = 0; i < std::min(featureCount, capacity); ++i)
+    {
+        float3 metadata = util::ValueAt<float3>(metadataBuffer, metadataStrides, long2{0, i});
+        EXPECT_GE(metadata.x, 0.f);
+        EXPECT_LT(metadata.x, 360.f);
+        hasNonZeroOrientation |= metadata.x > 1e-3f;
+    }
+    EXPECT_TRUE(hasNonZeroOrientation);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpSIFT, accepts_scalar_component_output_layouts)
 {
     constexpr int width    = 64;

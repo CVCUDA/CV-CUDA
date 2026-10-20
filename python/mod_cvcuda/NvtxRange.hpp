@@ -18,7 +18,11 @@
 #ifndef CVCUDA_PYTHON_NVTXRANGE_HPP
 #define CVCUDA_PYTHON_NVTXRANGE_HPP
 
+#include "nvcv/BatchLock.hpp"
+
 #include <nvtx3/nvToolsExt.h>
+
+#include <optional>
 
 namespace cvcudapy {
 
@@ -48,7 +52,7 @@ public:
 // Wrap a bound operator function so every Python-side call pushes an NVTX range
 // named `name` for the duration of the call, nesting the C-API submit ranges
 // underneath it. The returned closure keeps the exact parameter signature of
-// `fn`, so pybind11 still introspects the argument types and the argument
+// `fn`, so nanobind still introspects the argument types and the argument
 // annotations / default values on the m.def() site continue to apply unchanged.
 // `name` must have static lifetime (string literals do); only the pointer is
 // captured.
@@ -58,8 +62,15 @@ auto NvtxTrace(const char *name, R (*fn)(Args...))
     return [name, fn](Args... args) -> R
     {
         NvtxRange range(name);
+#ifdef NB_FREE_THREADED
+        auto                                        mutexes = nvcvpy::priv::BatchMutexes(args...);
+        auto                                        end     = std::remove(mutexes.begin(), mutexes.end(), nullptr);
+        std::optional<nvcvpy::priv::BatchLockScope> batchScope;
+        if (end != mutexes.begin())
+            batchScope.emplace(mutexes.data(), end - mutexes.begin());
+#endif
         // The lambda mirrors fn's parameter types (Args, not forwarding
-        // references) so pybind11 keeps the original signature; static_cast<Args&&>
+        // references) so nanobind keeps the original signature; static_cast<Args&&>
         // applies the same value-category cast std::forward would, and stays
         // correct when Args is a reference type.
         return fn(static_cast<Args &&>(args)...);
@@ -67,8 +78,8 @@ auto NvtxTrace(const char *name, R (*fn)(Args...))
 }
 
 // Member-function overload, for bindings registered with `cls.def(...)` on a
-// pybind11 class (e.g. Tensor.cuda / Image.cpu). The closure takes the instance
-// as its first parameter, which is exactly how pybind11 binds a free callable as
+// nanobind class (e.g. Tensor.cuda / Image.cpu). The closure takes the instance
+// as its first parameter, which is exactly how nanobind binds a free callable as
 // an instance method, so the resulting method keeps the original signature. Only
 // const methods are wrapped today; add a non-const overload if that changes.
 template<typename R, typename C, typename... Args>
@@ -78,7 +89,7 @@ auto NvtxTrace(const char *name, R (C::*fn)(Args...) const)
     {
         NvtxRange range(name);
         // See the free-function overload: static_cast<Args&&> reproduces
-        // std::forward's cast while keeping fn's exact signature for pybind11.
+        // std::forward's cast while keeping fn's exact signature for nanobind.
         return (self.*fn)(static_cast<Args &&>(args)...);
     };
 }

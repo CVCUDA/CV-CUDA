@@ -371,10 +371,10 @@ inline void RunTensorSingleChannelLayoutParity(int srcW, int srcH, int dstW, int
 
 // Var-shape counterpart of RunTensorParity. `invoke(stream, batchSrc, batchDst)` performs the
 // operator call on the two image batches.
-template<class OpInvoke>
+template<class OpInvoke, class InputFn, class CompareFn>
 inline void RunVarShapeParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt,
                               const std::vector<nvcv::Size2D> &srcSizes, const std::vector<nvcv::Size2D> &dstSizes,
-                              OpInvoke &&invoke)
+                              OpInvoke &&invoke, InputFn &&makeInput, CompareFn &&compare)
 {
     ASSERT_EQ(srcSizes.size(), dstSizes.size());
     ASSERT_FALSE(srcSizes.empty());
@@ -413,8 +413,8 @@ inline void RunVarShapeParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat int
         const int srcH      = srcSizes[i].h;
         const int srcRowStr = srcW * channels * elemSize;
 
-        std::vector<uint8_t> hwc(srcH * srcRowStr);
-        FillDeterministicValues(hwc, static_cast<size_t>(i) * 101 + 7, planarFmt.planeDataType(0));
+        std::vector<uint8_t> hwc = makeInput(i, srcW, srcH, channels);
+        ASSERT_EQ(hwc.size(), static_cast<size_t>(srcH * srcRowStr));
 
         auto idata = srcI[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(cudaSuccess, cudaMemcpy2D(idata->plane(0).basePtr, idata->plane(0).rowStride, hwc.data(), srcRowStr,
@@ -478,10 +478,30 @@ inline void RunVarShapeParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat int
                                    pdata->plane(c).rowStride, dstW * elemSize, dstH, cudaMemcpyDeviceToHost));
         }
 
-        EXPECT_EQ(gpuInter, InterleaveFromPlanes(planesOut, dstW, dstH, channels, elemSize));
+        compare(gpuInter, InterleaveFromPlanes(planesOut, dstW, dstH, channels, elemSize));
     }
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+template<class OpInvoke>
+inline void RunVarShapeParity(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt,
+                              const std::vector<nvcv::Size2D> &srcSizes, const std::vector<nvcv::Size2D> &dstSizes,
+                              OpInvoke &&invoke)
+{
+    auto makeInput = [dtype = planarFmt.planeDataType(0), elemSize = planarFmt.planePixelStrideBytes(0)](
+                         int sample, int width, int height, int channels)
+    {
+        std::vector<uint8_t> hwc(static_cast<size_t>(width) * height * channels * elemSize);
+        FillDeterministicValues(hwc, static_cast<size_t>(sample) * 101 + 7, dtype);
+        return hwc;
+    };
+    auto compare = [](const std::vector<uint8_t> &interleaved, const std::vector<uint8_t> &planar)
+    {
+        EXPECT_EQ(interleaved, planar);
+    };
+    RunVarShapeParity(planarFmt, interleavedFmt, srcSizes, dstSizes, std::forward<OpInvoke>(invoke), makeInput,
+                      compare);
 }
 
 template<class OpInvoke, class InputFn, class CompareFn>

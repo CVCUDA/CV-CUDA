@@ -56,9 +56,26 @@ CVCUDA_PUBLIC NVCVStatus cvcudaConvertToCreate(NVCVOperatorHandle *handle);
  *  outputs(x,y) = saturate_cast<out_type>(α * inputs(x, y) + β)
  *
  *  When the output type is integral, @p roundMode selects how the floating-point result is rounded
- *  before the saturating cast: NVCV_ROUND_NEAREST (round to nearest, ties to even — the default and
- *  historical behavior) or NVCV_ROUND_TRUNCATE (truncate toward zero). The mode has no effect when
- *  the output type is floating-point.
+ *  before the output is stored.  The mode has no effect when the output type is floating-point.
+ *
+ *  Saturating modes (clamp to destination range):
+ *   - NVCV_ROUND_NEAREST  — round to nearest, ties to even (default and historical behavior).
+ *   - NVCV_ROUND_TRUNCATE — truncate toward zero.
+ *
+ *  Wrapping modes (reduce modulo destination range instead of saturating):
+ *   - NVCV_ROUND_NEAREST_WRAP  — round to nearest (ties to even), then wrap.
+ *   - NVCV_ROUND_TRUNCATE_WRAP — truncate toward zero, then wrap.
+ *
+ *  Wrapping is supported for 8- and 16-bit integer destinations only.  32-bit integer
+ *  destinations are rejected with NVCV_ERROR_INVALID_ARGUMENT because the float32 working
+ *  arithmetic (used for all non-F64 type pairs) cannot represent the 2^31 wrap period
+ *  without quantization error — the same input perturbation that is harmless under
+ *  saturation produces a full-range output error under modular reduction.
+ *
+ *  For unsigned destinations, negative intermediate values map to zero rather than wrapping
+ *  (unsigned asymmetry).  For 8- and 16-bit destinations, wrapping is exact when the
+ *  pre-wrap intermediate magnitude is below 2^24 (the float32 integer precision limit);
+ *  beyond that, results may be off by the local float32 ULP.
  *
  *  Limitations:
  *

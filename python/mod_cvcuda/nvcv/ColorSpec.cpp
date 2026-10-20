@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,12 +21,15 @@
 
 namespace nvcvpy::priv {
 
-void ExportColorSpec(py::module &m)
+void ExportColorSpec(py::module_ &m)
 {
-    py::enum_<NVCVColorSpec>(m, "ColorSpec")
+    py::enum_compat<NVCVColorSpec>(m, "ColorSpec")
         .value("BT601", NVCV_COLOR_SPEC_BT601, "Color spec defining ITU-R BT.601 standard.")
-        .value("BT709", NVCV_COLOR_SPEC_BT709, "Color spec defining ITU-R BT.709 standard. ")
-        .value("BT2020", NVCV_COLOR_SPEC_BT2020, "Color spec defining ITU-R BT.2020 standard.");
+        .value("BT601_ER", NVCV_COLOR_SPEC_BT601_ER, "Color spec defining full-range ITU-R BT.601.")
+        .value("BT709", NVCV_COLOR_SPEC_BT709, "Color spec defining ITU-R BT.709 standard.")
+        .value("BT709_ER", NVCV_COLOR_SPEC_BT709_ER, "Color spec defining full-range ITU-R BT.709.")
+        .value("BT2020", NVCV_COLOR_SPEC_BT2020, "Color spec defining ITU-R BT.2020 standard.")
+        .value("BT2020_ER", NVCV_COLOR_SPEC_BT2020_ER, "Color spec defining full-range ITU-R BT.2020.");
 }
 
 } // namespace  nvcvpy::priv

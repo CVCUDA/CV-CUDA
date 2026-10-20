@@ -22,8 +22,29 @@
 
 namespace cvcuda::priv {
 
-// Returns the current device's SM compute-capability encoding (major * 10 + minor),
+// Returns the device's SM compute-capability encoding (major * 10 + minor),
 // not its number of streaming multiprocessors.
+inline cudaError_t GetDeviceSM(int device, int &sm) noexcept
+{
+    sm = 0;
+
+    int major = 0;
+    int minor = 0;
+
+    cudaError_t status = cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device);
+    if (status != cudaSuccess)
+        return status;
+
+    status = cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device);
+    if (status != cudaSuccess)
+        return status;
+
+    sm = major * 10 + minor;
+    return cudaSuccess;
+}
+
+// As above for the active device, caching per thread and device so the query happens once per
+// device rather than once per operator call.
 inline cudaError_t GetCurrentDeviceSM(int &sm) noexcept
 {
     sm = 0;
@@ -37,23 +58,26 @@ inline cudaError_t GetCurrentDeviceSM(int &sm) noexcept
     static thread_local int cachedSM     = 0;
     if (cachedDevice != device)
     {
-        int major = 0;
-        int minor = 0;
+        int queried = 0;
 
-        status = cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device);
-        if (status != cudaSuccess)
-            return status;
-
-        status = cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device);
+        status = GetDeviceSM(device, queried);
         if (status != cudaSuccess)
             return status;
 
         cachedDevice = device;
-        cachedSM     = major * 10 + minor;
+        cachedSM     = queried;
     }
 
     sm = cachedSM;
     return cudaSuccess;
+}
+
+// Ada, i.e. SM 8.9.  Several operators pick a different code path here: the variant that is a large
+// win on A100/H100 measurably regresses on every Ada part tested (L4 and L40S), across batch sizes.
+// The choice turns on the architecture, not on any one product.
+constexpr bool IsAdaDevice(int sm)
+{
+    return sm == 89;
 }
 
 } // namespace cvcuda::priv

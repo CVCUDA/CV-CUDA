@@ -99,6 +99,16 @@ CVCUDA_PUBLIC NVCVStatus cvcudaResizeCreate(NVCVOperatorHandle *handle);
  *       Width         | No
  *       Height        | No
  *
+ *  Interpolation:
+ *
+ *       Method                    | Allowed
+ *       ------------------------- | -------------
+ *       NVCV_INTERP_NEAREST       | Yes
+ *       NVCV_INTERP_NEAREST_FLOOR | Yes
+ *       NVCV_INTERP_LINEAR        | Yes
+ *       NVCV_INTERP_CUBIC         | Yes
+ *       NVCV_INTERP_AREA          | Yes
+ *
  * @param [in] handle Handle to the operator.
  *                    + Must not be NULL.
  * @param [in] stream Handle to a valid CUDA stream.

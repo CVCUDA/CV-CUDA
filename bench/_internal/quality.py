@@ -25,8 +25,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple
 
-
 _FLOAT_TOLERANCE = 1e-9
+
+# Acceptance policy for repeated reference-baseline measurements.
+BASELINE_RUNS_PER_SKU = 10
+BASELINE_MIN_CLUSTER_SIZE = 5
+MAX_BASELINE_RANGE_PCT = 2.0
+MIN_BASELINE_BIAS_PCT = 1.0
+BASELINE_REFRESH_INCOMPLETE_FIELD = "baseline_refresh_incomplete"
 
 
 def exceeds_limit(value: float, limit: float) -> bool:

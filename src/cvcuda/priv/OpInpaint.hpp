@@ -26,8 +26,8 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 
@@ -44,10 +44,29 @@ public:
                     const nvcv::ImageBatchVarShape &out, double inpaintRadius) const;
 
 private:
-    int32_t                                                           m_maxBatchSize;
-    nvcv::Size2D                                                      m_maxShape;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::Inpaint>         m_legacyOp;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::InpaintVarShape> m_legacyOpVarShape;
+    // Persistent device scratch, sized once from (maxBatchSize, maxShape): the 3x3 cross used to
+    // dilate the mask into the narrow band, and the fast-marching workspace holding the reduction
+    // buffers plus the t/f/band/mask planes.  The cross is uploaded on the first submit, which is
+    // what initDilate tracks.
+    struct DeviceBuffers
+    {
+        DeviceBuffers(int maxBatchSize, nvcv::Size2D maxShape);
+        ~DeviceBuffers();
+
+        DeviceBuffers(const DeviceBuffers &)            = delete;
+        DeviceBuffers &operator=(const DeviceBuffers &) = delete;
+
+        unsigned char *kernel     = nullptr;
+        void          *workspace  = nullptr;
+        bool           initDilate = false;
+    };
+
+    int32_t      m_maxBatchSize;
+    nvcv::Size2D m_maxShape;
+
+    // The Tensor and VarShape paths keep separate buffer sets, as the two legacy operators did.
+    mutable PerDeviceResource<DeviceBuffers> m_buffers;
+    mutable PerDeviceResource<DeviceBuffers> m_buffersVarShape;
 };
 
 } // namespace cvcuda::priv

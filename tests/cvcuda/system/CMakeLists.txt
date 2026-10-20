@@ -16,6 +16,13 @@
 # system core -------------------------------------------------
 
 set(CVCUDA_TEST_SOURCES
+    TestOpMerge.cpp
+    TestOpSplit.cpp
+    TestOpTvResize.cpp
+    TestOpConstantCoverage.cpp
+    TestCAPIEnum.cpp
+    TestCAPIEnum.c
+    TestTypes.cpp
     TestOpJpegCompressionDistortion.cpp
     TestOpAdjustHue.cpp
     TestOpAdjustSaturation.cpp
@@ -48,6 +55,7 @@ set(CVCUDA_TEST_SOURCES
     TestOpNormalize.cpp
     TestOpPadAndStack.cpp
     TestOpConvertTo.cpp
+    TestOpConvertToLifetime.cpp
     TestOpCopyMakeBorder.cpp
     TestOpCenterCrop.cpp
     TestOpRotate.cpp
@@ -63,6 +71,8 @@ set(CVCUDA_TEST_SOURCES
     TestOpBilateralFilter.cpp
     TestOpJointBilateralFilter.cpp
     TestOpWarpPerspective.cpp
+    TestOpWarpPerspectiveAlignment.cpp
+    TestOpWarpPerspectiveCubicGold.cpp
     TestOpComposite.cpp
     TestOpChannelReorder.cpp
     TestOpFlip.cpp
@@ -77,6 +87,7 @@ set(CVCUDA_TEST_SOURCES
     TestOpFindHomography.cpp
     TestOpHQResize.cpp
     TestOpOSD.cpp
+    TestOsdMemory.cpp
     TestOpBndBox.cpp
     TestOpBoxBlur.cpp
     TestOpCLAHE.cpp
@@ -119,6 +130,8 @@ target_link_libraries(cvcuda_test_system
     PUBLIC
         cvcuda
         nvcv_test_common_system
+    PRIVATE
+        CUDA::cuda_driver
 )
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0)
@@ -126,6 +139,21 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_L
 endif()
 
 nvcv_add_test(cvcuda_test_system cvcuda cpp)
+
+set(HQRESIZE_LANE_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/hqresize-lane-reference.bin")
+if(UNIX)
+    configure_file(RunHQResizeEnvTests.sh.in
+                   "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/cvcuda_test_system_hqresize_env"
+                   @ONLY)
+    nvcv_add_test("${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/cvcuda_test_system_hqresize_env" cvcuda cpp)
+else()
+    add_test(NAME cvcuda_test_system_hqresize_env
+        COMMAND ${CMAKE_COMMAND}
+            -DTEST_EXECUTABLE=$<TARGET_FILE:cvcuda_test_system>
+            -DREFERENCE_FILE=${HQRESIZE_LANE_REFERENCE}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/RunHQResizeEnvTests.cmake)
+    set_tests_properties(cvcuda_test_system_hqresize_env PROPERTIES TIMEOUT 620)
+endif()
 
 # header compatibility tests ---------------------------------------------
 

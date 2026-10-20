@@ -14,13 +14,37 @@
 # limitations under the License.
 
 import numpy as np
+import pytest
+import warnings
 
 import cvcuda
 import cvcuda_util as util
 import cupy
+from cvcuda_test_utils import as_cupy_stream
 
 
 RNG = np.random.default_rng(0)
+
+
+@pytest.mark.parametrize("handle_kind", ["owned", "null", "legacy", "ptds"])
+def test_as_cupy_stream_is_warning_free_and_non_owning(handle_kind):
+    owner = cvcuda.Stream()
+    handle = {"owned": owner.handle, "null": 0, "legacy": 1, "ptds": 2}[handle_kind]
+    previous = cupy.cuda.get_current_stream().ptr
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        external = as_cupy_stream(handle)
+        assert external.ptr == handle
+        with external:
+            assert cupy.cuda.get_current_stream().ptr == handle
+            values = cupy.full((4,), 37, dtype=cupy.uint8)
+        assert cupy.cuda.get_current_stream().ptr == previous
+        external.synchronize()
+        del external
+
+    cupy.cuda.runtime.streamSynchronize(handle)
+    np.testing.assert_array_equal(values.get(), np.full((4,), 37, dtype=np.uint8))
 
 
 def test_create_tensor_uint16():

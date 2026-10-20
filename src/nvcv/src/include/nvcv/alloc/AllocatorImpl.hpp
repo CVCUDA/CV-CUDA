@@ -134,8 +134,17 @@ void CustomMemAllocator<AllocatorType>::Construct(AllocFunction &&alloc, FreeFun
     };
 
     m_data.cleanup = nullptr;
+    m_data.ctx     = nullptr;
 
-    if NVCV_IF_CONSTEXPR (!std::is_empty<T>::value)
+    // T aggregates the two callables, so it has data members and is never
+    // std::is_empty -- not even when both callables are stateless. Testing T
+    // therefore copied its indeterminate padding into ctx, publishing a garbage
+    // context pointer for capture-less lambdas. Test the callables themselves:
+    // when neither carries state there is nothing to embed.
+    // AllocFunction/FreeFunction are forwarding references, so strip the
+    // reference before asking: std::is_empty is false for any reference type.
+    if NVCV_IF_CONSTEXPR (!std::is_empty<typename std::remove_reference<AllocFunction>::type>::value
+                          || !std::is_empty<typename std::remove_reference<FreeFunction>::type>::value)
         std::memcpy(&m_data.ctx, &ctx, DataSize<T>());
 }
 

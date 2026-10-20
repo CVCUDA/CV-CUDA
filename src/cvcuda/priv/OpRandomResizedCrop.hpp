@@ -26,10 +26,15 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <cvcuda/Types.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <random>
 
 namespace cvcuda::priv {
 
@@ -46,8 +51,37 @@ public:
                     const NVCVInterpolationType interpolation) const;
 
 private:
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::RandomResizedCrop>         m_legacyOp;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::RandomResizedCropVarShape> m_legacyOpVarShape;
+    // Crop windows are drawn on the host and staged through a host buffer into device memory, both
+    // sized once from maxBatchSize.  Every submit advances the generator, so its running state --
+    // not just the seed it started from -- selects the pixels the operator produces.
+    //
+    // A submit mutates this without holding a lock, so concurrent submits on one device against one
+    // operator handle race on both the generator and the staging buffer.  That matches the legacy
+    // operator, whose state this replaces one-for-one.
+    struct CropState
+    {
+        CropState(int32_t maxBatchSize, uint32_t seed);
+        ~CropState();
+
+        CropState(const CropState &)            = delete;
+        CropState &operator=(const CropState &) = delete;
+
+        std::mt19937 generator;
+        std::byte   *hostParams   = nullptr;
+        std::byte   *deviceParams = nullptr;
+    };
+
+    double  m_minScale;
+    double  m_maxScale;
+    double  m_minRatio;
+    double  m_maxRatio;
+    int32_t m_maxBatchSize;
+
+    // The tensor and var-shape paths keep independent generators, matching the two legacy operator
+    // objects they replace: with the same seed, each path restarts the same draw sequence.
+    // PerDeviceResource gives every CUDA device its own state and its own device allocation.
+    mutable PerDeviceResource<CropState> m_state;
+    mutable PerDeviceResource<CropState> m_stateVarShape;
 };
 
 } // namespace cvcuda::priv

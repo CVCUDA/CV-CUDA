@@ -25,6 +25,8 @@
 #include <cvcuda/cuda_tools/MathWrappers.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
+#include <cvcuda/priv/OpHQResizeConfig.hpp>
+#include <nvcv/Exception.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
@@ -34,10 +36,22 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <future>
 #include <iostream>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <random>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace cuda  = nvcv::cuda;
@@ -410,19 +424,16 @@ void RunLinear(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample
 }
 
 template<typename OutBT, typename InBT, typename FilterT, int kSpatialNDim>
-void RunFilter(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InBT, kSpatialNDim> &inTensorCpu,
-               const FilterT &filter, Roi<kSpatialNDim> roi)
+void RunFilterMapped(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InBT, kSpatialNDim> &inTensorCpu,
+                     const FilterT &filter, float axisOrigin, float axisScale, Roi<kSpatialNDim> roi)
 {
     const int   numSamples    = inTensorCpu.numSamples();
     const int   numChannels   = inTensorCpu.numChannels();
     const auto  inShape       = inTensorCpu.shape();
-    const auto  outShape      = outTensorCpu.shape();
     const int   inSize        = cuda::GetElement(inShape, axis);
-    const int   outSize       = cuda::GetElement(outShape, axis);
     const int   filterSupport = filter.support();
     const float filterStep    = filter.scale();
-    const auto  axisScale     = static_cast<float>(inSize) / static_cast<float>(outSize);
-    const float axisOrigin    = 0.5f * axisScale - 0.5f - filter.anchor();
+    axisOrigin += 0.5f * axisScale - 0.5f - filter.anchor();
 
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
@@ -453,6 +464,17 @@ void RunFilter(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample
                         }
                     });
     }
+}
+
+template<typename OutBT, typename InBT, typename FilterT, int kSpatialNDim>
+void RunFilter(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InBT, kSpatialNDim> &inTensorCpu,
+               const FilterT &filter, Roi<kSpatialNDim> roi)
+{
+    const auto inShape  = inTensorCpu.shape();
+    const auto outShape = outTensorCpu.shape();
+    const auto axisScale
+        = static_cast<float>(cuda::GetElement(inShape, axis)) / static_cast<float>(cuda::GetElement(outShape, axis));
+    RunFilterMapped(axis, outTensorCpu, inTensorCpu, filter, 0.f, axisScale, roi);
 }
 
 template<typename OutBT, typename InBT, int kSpatialNDim>
@@ -554,6 +576,23 @@ void Resize(CpuSample<OutBT, 2> &refTensorCpu, CpuSample<InBT, 2> &inTensorCpu,
     auto intermediateTensor = GetIntermediate(numSamples, interShape, numChannels);
     RunPass(0, intermediateTensor, inTensorCpu, minInterpolation, magInterpolation, antialias, interRoi);
     RunPass(1, refTensorCpu, intermediateTensor, minInterpolation, magInterpolation, antialias, outRoi);
+}
+
+template<typename OutBT, typename InBT>
+void ResizeCubicAntialiasRoi(CpuSample<OutBT, 2> &refTensorCpu, CpuSample<InBT, 2> &inTensorCpu,
+                             const HQResizeRoiF &roi)
+{
+    const int2  inShape  = inTensorCpu.shape();
+    const int2  outShape = refTensorCpu.shape();
+    const float scaleX   = (roi.hi[1] - roi.lo[1]) / static_cast<float>(outShape.x);
+    const float scaleY   = (roi.hi[0] - roi.lo[0]) / static_cast<float>(outShape.y);
+
+    auto intermediate
+        = GetIntermediate(inTensorCpu.numSamples(), int2{outShape.x, inShape.y}, inTensorCpu.numChannels());
+    const Filter<FilterCubic> filterX{std::max(4.f, 4.f * std::abs(scaleX))};
+    const Filter<FilterCubic> filterY{std::max(4.f, 4.f * std::abs(scaleY))};
+    RunFilterMapped(0, intermediate, inTensorCpu, filterX, roi.lo[1], scaleX, FullRoi<2>(intermediate.shape()));
+    RunFilterMapped(1, refTensorCpu, intermediate, filterY, roi.lo[0], scaleY, FullRoi<2>(outShape));
 }
 
 template<typename OutBT, typename InBT>
@@ -1190,16 +1229,35 @@ using HQResizeF32CubicMagnifyAnisoC1
     = NVCV_TEST_ROW(2, NVCV_SHAPE2D(37, 41), NVCV_SHAPE2D(92, 123), 1, float, float, NVCV_INTERP_CUBIC);
 using HQResizeF32CubicMagnifyAnisoC3
     = NVCV_TEST_ROW(2, NVCV_SHAPE2D(37, 41), NVCV_SHAPE2D(92, 123), 3, float, float, NVCV_INTERP_CUBIC);
+using HQResizeF32LinearMagnifyAnisoC1
+    = NVCV_TEST_ROW(4, NVCV_SHAPE2D(129, 137), NVCV_SHAPE2D(323, 411), 1, float, float, NVCV_INTERP_LINEAR);
+using HQResizeF32LinearMagnifyAnisoC3
+    = NVCV_TEST_ROW(2, NVCV_SHAPE2D(129, 137), NVCV_SHAPE2D(323, 411), 3, float, float, NVCV_INTERP_LINEAR);
+using HQResizeF16CubicExpandC1
+    = NVCV_TEST_ROW(2, NVCV_SHAPE2D(129, 137), NVCV_SHAPE2D(258, 274), 1, __half, __half, NVCV_INTERP_CUBIC);
+using HQResizeF16CubicExpandC3
+    = NVCV_TEST_ROW(2, NVCV_SHAPE2D(129, 137), NVCV_SHAPE2D(258, 274), 3, __half, __half, NVCV_INTERP_CUBIC);
+using HQResizeF16CubicMagnifyAnisoC1
+    = NVCV_TEST_ROW(2, NVCV_SHAPE2D(129, 137), NVCV_SHAPE2D(323, 411), 1, __half, __half, NVCV_INTERP_CUBIC);
+using HQResizeF16CubicMagnifyAnisoC3
+    = NVCV_TEST_ROW(2, NVCV_SHAPE2D(129, 137), NVCV_SHAPE2D(323, 411), 3, __half, __half, NVCV_INTERP_CUBIC);
+using HQResizeF16LinearExpandC1
+    = NVCV_TEST_ROW(2, NVCV_SHAPE2D(129, 137), NVCV_SHAPE2D(258, 274), 1, __half, __half, NVCV_INTERP_LINEAR);
+using HQResizeF16LinearExpandC3
+    = NVCV_TEST_ROW(2, NVCV_SHAPE2D(129, 137), NVCV_SHAPE2D(258, 274), 3, __half, __half, NVCV_INTERP_LINEAR);
 
 NVCV_TYPED_TEST_SUITE(
     OpHQResizeTensor2DOptimizedReferencePaths,
-    ttype::Types<
-        HQResizeU8CubicExpandC1, HQResizeU8CubicContractC1, HQResizeF32CubicExpandC1, HQResizeU8LinearContractC1,
-        HQResizeU8LinearExpandC1, HQResizeF32LinearContractC1, HQResizeF32LinearExpandC1, HQResizeU8LinearContractC3,
-        HQResizeU8LinearExpandC3, HQResizeF32LinearContractC3, HQResizeF32LinearExpandC3, HQResizeU8CubicContractC3,
-        HQResizeF32CubicExpandC3, HQResizeF32CubicContractC3, HQResizeF32CubicContractC1, HQResizeU8CubicExpandC3,
-        HQResizeU8CubicContract2xC1, HQResizeF32CubicContract2xC1, HQResizeU8CubicMagnifyAnisoC1,
-        HQResizeU8CubicMagnifyAnisoC3, HQResizeF32CubicMagnifyAnisoC1, HQResizeF32CubicMagnifyAnisoC3>);
+    ttype::Types<HQResizeU8CubicExpandC1, HQResizeU8CubicContractC1, HQResizeF32CubicExpandC1,
+                 HQResizeU8LinearContractC1, HQResizeU8LinearExpandC1, HQResizeF32LinearContractC1,
+                 HQResizeF32LinearExpandC1, HQResizeU8LinearContractC3, HQResizeU8LinearExpandC3,
+                 HQResizeF32LinearContractC3, HQResizeF32LinearExpandC3, HQResizeU8CubicContractC3,
+                 HQResizeF32CubicExpandC3, HQResizeF32CubicContractC3, HQResizeF32CubicContractC1,
+                 HQResizeU8CubicExpandC3, HQResizeU8CubicContract2xC1, HQResizeF32CubicContract2xC1,
+                 HQResizeU8CubicMagnifyAnisoC1, HQResizeU8CubicMagnifyAnisoC3, HQResizeF32CubicMagnifyAnisoC1,
+                 HQResizeF32CubicMagnifyAnisoC3, HQResizeF16CubicExpandC1, HQResizeF16CubicExpandC3,
+                 HQResizeF16CubicMagnifyAnisoC1, HQResizeF16CubicMagnifyAnisoC3, HQResizeF32LinearMagnifyAnisoC1,
+                 HQResizeF32LinearMagnifyAnisoC3, HQResizeF16LinearExpandC1, HQResizeF16LinearExpandC3>);
 
 TYPED_TEST(OpHQResizeTensor2DOptimizedReferencePaths, matches_reference)
 {
@@ -1235,16 +1293,16 @@ void VerticalFlip(baseline::CpuSample<BT, 2> &outTensorCpu, baseline::CpuSample<
     }
 }
 
-static void TestTensorFlippedRoiReference(NVCVInterpolationType interpolation, bool antialias)
+template<typename BT = uchar>
+static void TestTensorFlippedRoiReference(NVCVInterpolationType interpolation, bool antialias,
+                                          const int2 inShape = {129, 95}, const int2 outShape = {65, 47})
 {
     constexpr int numSamples  = 2;
     constexpr int numChannels = 1;
-    using InBT                = uchar;
-    using OutBT               = uchar;
-    const int2 inShape{129, 95};
-    const int2 outShape{65, 47};
-    const auto inDtype  = TypeAsFormat<InBT>();
-    const auto outDtype = TypeAsFormat<OutBT>();
+    using InBT                = BT;
+    using OutBT               = BT;
+    const auto inDtype        = TypeAsFormat<InBT>();
+    const auto outDtype       = TypeAsFormat<OutBT>();
 
     nvcv::Tensor inTensor  = CreateTensorHelper(inDtype, "NHWC", numSamples, inShape.y, inShape.x, numChannels);
     nvcv::Tensor outTensor = CreateTensorHelper(outDtype, "NHWC", numSamples, outShape.y, outShape.x, numChannels);
@@ -1266,7 +1324,15 @@ static void TestTensorFlippedRoiReference(NVCVInterpolationType interpolation, b
                                   h ^= static_cast<uint64_t>(idx.x + 1) * 0x94d049bb133111ebULL;
                                   h ^= static_cast<uint64_t>(idx.y + 1) * 0xd2b74407b1ce6e93ULL;
                                   h ^= h >> 31;
-                                  samples.inCpu.get(sampleIdx, idx, 0) = static_cast<InBT>(h);
+                                  if constexpr (std::is_same_v<BT, __half>)
+                                  {
+                                      samples.inCpu.get(sampleIdx, idx, 0)
+                                          = __float2half(static_cast<float>(h & 0xFFFF) / 65535.f);
+                                  }
+                                  else
+                                  {
+                                      samples.inCpu.get(sampleIdx, idx, 0) = static_cast<InBT>(h);
+                                  }
                               });
     }
 
@@ -1313,6 +1379,94 @@ TEST(OpHQResizeTensor2DOptimizedReferencePaths, flipped_roi_contract_matches_ref
     TestTensorFlippedRoiReference(NVCV_INTERP_LINEAR, true);
     TestTensorFlippedRoiReference(NVCV_INTERP_CUBIC, false);
     TestTensorFlippedRoiReference(NVCV_INTERP_CUBIC, true);
+}
+
+TEST(OpHQResizeTensor2DOptimizedReferencePaths, flipped_roi_half_expand_matches_reference)
+{
+    for (bool antialias : {false, true})
+    {
+        TestTensorFlippedRoiReference<__half>(NVCV_INTERP_CUBIC, antialias, int2{137, 129}, int2{274, 258});
+    }
+}
+
+TEST(OpHQResizeTensor2DOptimizedReferencePaths, half_cubic_unused_extent1_stride_matches_int32)
+{
+    constexpr int64_t   hugeStride = int64_t{4} * 1000 * 1000 * 1000;
+    constexpr int2      inShape{137, 129};
+    std::vector<__half> hostInput(inShape.x * inShape.y);
+    planar_parity::FillPattern(hostInput, 27415);
+    for (bool planar : {false, true})
+    {
+        for (int2 outShape : {
+                 int2{274, 258},
+                 int2{411, 323}
+        })
+        {
+            SCOPED_TRACE(testing::Message() << "planar=" << planar << " output=" << outShape.x << 'x' << outShape.y);
+            auto makeTensor = [planar](int2 shape)
+            {
+                nvcv::TensorShape tensorShape{
+                    {1, shape.y, shape.x, 1},
+                    "NHWC"
+                };
+                if (planar)
+                    tensorShape = nvcv::TensorShape{
+                        {1, 1, shape.y, shape.x},
+                        "NCHW"
+                    };
+                return nvcv::Tensor{tensorShape, nvcv::TYPE_F16};
+            };
+            nvcv::Tensor input    = makeTensor(inShape);
+            nvcv::Tensor output32 = makeTensor(outShape);
+            nvcv::Tensor output64 = makeTensor(outShape);
+            auto         inData   = input.exportData<nvcv::TensorDataStridedCuda>();
+            auto         outData  = output64.exportData<nvcv::TensorDataStridedCuda>();
+            ASSERT_TRUE(inData && outData);
+            auto wrapWide = [planar](const nvcv::Tensor &tensor, const nvcv::TensorDataStridedCuda &data)
+            {
+                nvcv::TensorDataStridedCuda::Buffer buffer{};
+                buffer.basePtr = reinterpret_cast<NVCVByte *>(data.basePtr());
+                for (int axis = 0; axis < 4; axis++) buffer.strides[axis] = data.stride(axis);
+                // HQResize uses stride(0)*shape(0) to select its int64 wrappers.
+                // N and planar C have extent one, so these strides form no addresses.
+                buffer.strides[0] = hugeStride;
+                if (planar)
+                    buffer.strides[1] = hugeStride;
+                return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{tensor.shape(), tensor.dtype(), buffer});
+            };
+            nvcv::Tensor input64         = wrapWide(input, *inData);
+            nvcv::Tensor wrappedOutput64 = wrapWide(output64, *outData);
+            planar_parity::UploadTensor(input, planar, 1, inShape, 1, hostInput);
+            cvcuda::HQResize     op;
+            HQResizeTensorShapeI inDesc{
+                {inShape.y, inShape.x},
+                2,
+                1
+            };
+            HQResizeTensorShapeI outDesc{
+                {outShape.y, outShape.x},
+                2,
+                1
+            };
+            cudaStream_t stream;
+            ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+            for (bool antialias : {false, true})
+            {
+                SCOPED_TRACE(testing::Message() << "antialias=" << antialias);
+                auto ws = cvcuda::AllocateWorkspace(
+                    op.getWorkspaceRequirements(1, inDesc, outDesc, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, antialias));
+                ASSERT_NO_THROW(op(stream, ws.get(), input, output32, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, antialias));
+                ASSERT_NO_THROW(
+                    op(stream, ws.get(), input64, wrappedOutput64, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, antialias));
+                ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+                auto expected = planar_parity::DownloadTensor<__half>(output32, planar, 1, outShape, 1);
+                auto actual   = planar_parity::DownloadTensor<__half>(output64, planar, 1, outShape, 1);
+                ASSERT_EQ(expected.size(), actual.size());
+                EXPECT_EQ(0, std::memcmp(expected.data(), actual.data(), expected.size() * sizeof(__half)));
+            }
+            ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+        }
+    }
 }
 
 // The fused u8 kernels read the source window as aligned-down 32-bit words; a sample
@@ -1419,9 +1573,110 @@ TEST(OpHQResizeTensor2DOptimizedReferencePaths, unaligned_base_u8_matches_refere
     TestTensorUnalignedBaseReference(NVCV_INTERP_LINEAR, int2{129, 95}, int2{65, 47});
 }
 
-NVCV_TYPED_TEST_SUITE(OpHQResizeTensor2DOptimizedPlanarPaths,
-                      ttype::Types<HQResizeU8CubicExpandC3, HQResizeF32CubicExpandC3, HQResizeU8CubicContractC3,
-                                   HQResizeF32CubicContractC3>);
+TEST(OpHQResizeTensor2DOptimizedReferencePaths, exact2x_f32_unaligned_rows_match_bitwise_gold)
+{
+    constexpr int outWidth  = 129;
+    constexpr int outHeight = 2041;
+    constexpr int inWidth   = 2 * outWidth;
+    constexpr int inHeight  = 2 * outHeight;
+    for (const auto [padding, offset] : {
+             std::array{0, 0},
+             std::array{0, 1},
+             std::array{1, 0},
+             std::array{1, 1}
+    })
+    {
+        SCOPED_TRACE(::testing::Message() << "padding=" << padding << " offset=" << offset);
+        const int          inPitch  = inWidth + padding;
+        const int          outPitch = outWidth + padding;
+        std::vector<float> input(static_cast<size_t>(inPitch) * inHeight);
+        std::vector<float> output(static_cast<size_t>(outPitch) * outHeight);
+        for (size_t index = 0; index < input.size(); ++index)
+        {
+            const uint32_t bits = static_cast<uint32_t>(index) * 1664525u + 1013904223u;
+            input[index]        = static_cast<float>(static_cast<int>(bits & 65535u) - 32768) / 32768.f;
+        }
+        constexpr std::array witnesses{
+            std::array{            1.f,        0x1p-24f,            -1.f,             0.f},
+            std::array{0x1.0d1328p-11f, -0x1.11cfc6p-3f, -0x1.e457ccp-2f, -0x1.5da41ap-3f}
+        };
+        for (int column : {0, 1, outWidth - 2, outWidth - 1})
+        {
+            const auto &witness             = witnesses[column % 2];
+            input[2 * column]               = witness[0];
+            input[2 * column + 1]           = witness[1];
+            input[inPitch + 2 * column]     = witness[2];
+            input[inPitch + 2 * column + 1] = witness[3];
+        }
+        float *inAllocation  = nullptr;
+        float *outAllocation = nullptr;
+        ASSERT_EQ(cudaSuccess,
+                  cudaMalloc(reinterpret_cast<void **>(&inAllocation), (input.size() + offset) * sizeof(float)));
+        ASSERT_EQ(cudaSuccess,
+                  cudaMalloc(reinterpret_cast<void **>(&outAllocation), (output.size() + offset) * sizeof(float)));
+        auto wrap = [](float *base, int width, int height, int pitch)
+        {
+            nvcv::TensorDataStridedCuda::Buffer buffer{};
+            buffer.basePtr    = reinterpret_cast<NVCVByte *>(base);
+            buffer.strides[0] = static_cast<int64_t>(pitch) * sizeof(float);
+            buffer.strides[1] = sizeof(float);
+            buffer.strides[2] = sizeof(float);
+            return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{height, width, 1}, "HWC"},
+                nvcv::TYPE_F32, buffer
+            });
+        };
+        auto                 inTensor  = wrap(inAllocation + offset, inWidth, inHeight, inPitch);
+        auto                 outTensor = wrap(outAllocation + offset, outWidth, outHeight, outPitch);
+        cvcuda::HQResize     op;
+        HQResizeTensorShapeI inDesc{
+            {inHeight, inWidth},
+            2,
+            1
+        };
+        HQResizeTensorShapeI outDesc{
+            {outHeight, outWidth},
+            2,
+            1
+        };
+        auto workspace = cvcuda::AllocateWorkspace(
+            op.getWorkspaceRequirements(1, inDesc, outDesc, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR, false));
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(inAllocation + offset, input.data(), input.size() * sizeof(float),
+                                               cudaMemcpyHostToDevice, stream));
+        op(stream, workspace.get(), inTensor, outTensor, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR, false);
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(output.data(), outAllocation + offset, output.size() * sizeof(float),
+                                               cudaMemcpyDeviceToHost, stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+        ASSERT_EQ(cudaSuccess, cudaFree(inAllocation));
+        ASSERT_EQ(cudaSuccess, cudaFree(outAllocation));
+        for (int row = 0; row < outHeight; ++row)
+        {
+            for (int column = 0; column < outWidth; ++column)
+            {
+                const float *top      = input.data() + 2 * row * inPitch + 2 * column;
+                const float *bottom   = top + inPitch;
+                const float  upper    = std::fma(top[1] - top[0], 0.5f, top[0]);
+                const float  lower    = std::fma(bottom[1] - bottom[0], 0.5f, bottom[0]);
+                const float  expected = std::fma(lower - upper, 0.5f, upper);
+                ASSERT_EQ(0, std::memcmp(&expected, &output[row * outPitch + column], sizeof(float)));
+            }
+        }
+    }
+}
+
+NVCV_TYPED_TEST_SUITE(
+    OpHQResizeTensor2DOptimizedPlanarPaths,
+    ttype::Types<HQResizeU8CubicExpandC3, HQResizeF32CubicExpandC3, HQResizeU8CubicContractC3,
+                 HQResizeF32CubicContractC3, HQResizeF16CubicExpandC3, HQResizeF16CubicMagnifyAnisoC3,
+                 HQResizeF32LinearMagnifyAnisoC3, HQResizeF16LinearExpandC3,
+                 NVCV_TEST_ROW(3, NVCV_SHAPE2D(898, 254), NVCV_SHAPE2D(449, 127), 3, float, float, NVCV_INTERP_LINEAR),
+                 NVCV_TEST_ROW(3, NVCV_SHAPE2D(896, 256), NVCV_SHAPE2D(448, 128), 3, float, float, NVCV_INTERP_LINEAR),
+                 NVCV_TEST_ROW(3, NVCV_SHAPE2D(898, 256), NVCV_SHAPE2D(449, 128), 3, float, float, NVCV_INTERP_LINEAR),
+                 NVCV_TEST_ROW(3, NVCV_SHAPE2D(898, 258), NVCV_SHAPE2D(449, 129), 3, float, float,
+                               NVCV_INTERP_LINEAR)>);
 
 TYPED_TEST(OpHQResizeTensor2DOptimizedPlanarPaths, planar_matches_interleaved)
 {
@@ -1539,6 +1794,35 @@ TYPED_TEST(OpHQResizeTensor3D, correct_output_with_antialias)
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     baseline::Compare<InBT>(outTensorCpu, refTensorCpu, antialias, {outRoi});
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHQResizeTensor3D, max_workspace_requirements)
+{
+    cvcuda::HQResize           op;
+    const HQResizeTensorShapeI maxShape{
+        {64, 48, 32},
+        3,
+        3
+    };
+
+    const auto req = op.getWorkspaceRequirements(2, maxShape);
+    EXPECT_GT(req.pinnedMem.size, 0);
+    EXPECT_GT(req.cudaMem.size, 0);
+}
+
+TEST(OpHQResize3D_Negative, rejects_image_batch_varshape)
+{
+    cvcuda::HQResize         op;
+    cvcuda::Workspace        workspace{};
+    nvcv::ImageBatchVarShape input(1);
+    nvcv::ImageBatchVarShape output(1);
+    const nvcv::ImageFormat  twoPlaneFormat{NVCV_DETAIL_MAKE_NONCOLOR_FMT2(PL, UNSIGNED, XY00, ASSOCIATED, X8, X8)};
+    input.pushBack(nvcv::Image(nvcv::Size2D{4, 4}, twoPlaneFormat));
+    output.pushBack(nvcv::Image(nvcv::Size2D{2, 2}, twoPlaneFormat));
+
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall([&] { op(nullptr, workspace, input, output, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR); }));
 }
 
 #define NVCV_TEST_ROW_TB(NumChannels, InT, OutT, Antialias, MinInterpolation, MagInterpolation, LargeSample)    \
@@ -1899,9 +2183,32 @@ NVCV_TYPED_TEST_SUITE(
                                   NVCV_INTERP_LANCZOS, NVCV_INTERP_LINEAR)>);
 
 template<typename TypeParam>
+using ImageBatchOutput = std::vector<cuda::BaseType<ttype::GetType<TypeParam, 3>>>;
+
+template<typename TypeParam, typename Batch>
+ImageBatchOutput<TypeParam> FlattenImageBatchOutput(Batch &batch, int numSamples, int numChannels)
+{
+    ImageBatchOutput<TypeParam> output;
+    for (int sampleIdx = 0; sampleIdx < numSamples; ++sampleIdx)
+    {
+        const int2 shape = batch[sampleIdx].shape();
+        output.reserve(output.size() + static_cast<size_t>(shape.x) * shape.y * numChannels);
+        for (int y = 0; y < shape.y; ++y)
+        {
+            for (int xc = 0; xc < shape.x * numChannels; ++xc)
+            {
+                output.push_back(batch[sampleIdx].get(0, int2{xc / numChannels, y}, xc % numChannels));
+            }
+        }
+    }
+    return output;
+}
+
+template<typename TypeParam>
 void TestImageBatch(int numSamples, std::vector<HQResizeTensorShapeI> &inShapes,
                     std::vector<HQResizeTensorShapeI> &outShapes, cvcuda::UniqueWorkspace &ws,
-                    bool allocateWorkspace = true)
+                    bool allocateWorkspace = true, const std::vector<HQResizeRoiF> &roiData = {},
+                    ImageBatchOutput<TypeParam> *exactOutput = nullptr)
 {
     const int numChannels = ttype::GetValue<TypeParam, 0>;
     using InT             = ttype::GetType<TypeParam, 1>;
@@ -1921,6 +2228,7 @@ void TestImageBatch(int numSamples, std::vector<HQResizeTensorShapeI> &inShapes,
 
     ASSERT_EQ(numSamples, inShapes.size());
     ASSERT_EQ(numSamples, outShapes.size());
+    ASSERT_TRUE(roiData.empty() || roiData.size() == static_cast<size_t>(numSamples));
 
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -1980,15 +2288,17 @@ void TestImageBatch(int numSamples, std::vector<HQResizeTensorShapeI> &inShapes,
     batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
     batchDst.pushBack(imgDst.begin(), imgDst.end());
 
-    cvcuda::HQResize op;
+    const HQResizeRoisF rois = roiData.empty() ? HQResizeRoisF{} : HQResizeRoisF{numSamples, 2, roiData.data()};
+    cvcuda::HQResize    op;
     if (allocateWorkspace)
     {
         HQResizeTensorShapesI inShapeDesc{inShapes.data(), numSamples, 2, numChannels};
         HQResizeTensorShapesI outShapeDesc{outShapes.data(), numSamples, 2, numChannels};
-        ASSERT_NO_THROW(ws = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(
-                            numSamples, inShapeDesc, outShapeDesc, minInterpolation, magInterpolation, antialias)));
+        ASSERT_NO_THROW(
+            ws = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(
+                numSamples, inShapeDesc, outShapeDesc, minInterpolation, magInterpolation, antialias, rois)));
     }
-    ASSERT_NO_THROW(op(stream, ws.get(), batchSrc, batchDst, minInterpolation, magInterpolation, antialias));
+    ASSERT_NO_THROW(op(stream, ws.get(), batchSrc, batchDst, minInterpolation, magInterpolation, antialias, rois));
 
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
@@ -2003,8 +2313,31 @@ void TestImageBatch(int numSamples, std::vector<HQResizeTensorShapeI> &inShapes,
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
         SCOPED_TRACE(sampleIdx);
-        baseline::Resize(refBatchCpu[sampleIdx], inBatchCpu[sampleIdx], minInterpolation, magInterpolation, antialias);
+        if (roiData.empty())
+        {
+            baseline::Resize(refBatchCpu[sampleIdx], inBatchCpu[sampleIdx], minInterpolation, magInterpolation,
+                             antialias);
+        }
+        else
+        {
+            ASSERT_EQ(minInterpolation, NVCV_INTERP_CUBIC);
+            ASSERT_EQ(magInterpolation, NVCV_INTERP_CUBIC);
+            ASSERT_TRUE(antialias);
+            baseline::ResizeCubicAntialiasRoi(refBatchCpu[sampleIdx], inBatchCpu[sampleIdx], roiData[sampleIdx]);
+        }
         baseline::Compare<InBT>(outBatchCpu[sampleIdx], refBatchCpu[sampleIdx], antialias);
+    }
+    if (exactOutput != nullptr)
+    {
+        auto observed = FlattenImageBatchOutput<TypeParam>(outBatchCpu, numSamples, numChannels);
+        if (exactOutput->empty())
+        {
+            *exactOutput = std::move(observed);
+        }
+        else
+        {
+            EXPECT_EQ(*exactOutput, observed);
+        }
     }
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
@@ -2016,6 +2349,134 @@ TYPED_TEST(OpHQResizeImageBatch, varbatch_2d_correct_output)
     std::vector<HQResizeTensorShapeI> outShapes  = {{{128, 256}}, {{512, 512}}, {{245, 245}}, {{243, 128}}};
     cvcuda::UniqueWorkspace           ws;
     TestImageBatch<TypeParam>(numSamples, inShapes, outShapes, ws);
+}
+
+using HQResizeRGB8CubicAntialias = NVCV_TEST_ROW_IB(3, uchar3, NVCV_IMAGE_FORMAT_RGB8, uchar3, NVCV_IMAGE_FORMAT_RGB8,
+                                                    true, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC);
+
+TEST(OpHQResizeImageBatch, block_lane_count_preserves_center_crop_output_bit_exact)
+{
+    const char *referencePath = std::getenv("CVCUDA_TEST_BLOCK_LANES_REFERENCE_FILE");
+    const char *expectedLanes = std::getenv("CVCUDA_TEST_EXPECTED_BLOCK_LANES");
+    const char *markerPath    = std::getenv("CVCUDA_TEST_BLOCK_LANES_MARKER_FILE");
+    if (referencePath == nullptr || expectedLanes == nullptr || markerPath == nullptr)
+    {
+        GTEST_SKIP() << "requires the separately registered lane-parity invocation";
+    }
+    const auto &config = cvcuda::priv::hq_resize::GetResizeBlockLanesConfig();
+    ASSERT_TRUE(config.overridden);
+    ASSERT_EQ(expectedLanes, std::to_string(config.lanes));
+    {
+        std::ofstream marker{markerPath}; // NOSONAR: isolated test-generated path.
+        ASSERT_TRUE(marker);
+    }
+    const bool writesReference = std::string_view{expectedLanes} == "8";
+
+    constexpr int kNumSamples   = 2;
+    constexpr int kInputHeight  = 1080;
+    constexpr int kInputWidth   = 1920;
+    constexpr int kOutputHeight = 224;
+    constexpr int kOutputWidth  = 224;
+
+    // Keep this oracle independent of the benchmark helper so shared geometry
+    // code cannot make both the workload and its correctness test wrong alike.
+    const double resizeScale
+        = std::max(static_cast<double>(kOutputHeight) / kInputHeight, static_cast<double>(kOutputWidth) / kInputWidth);
+    const auto         resizeHeight = static_cast<int>(static_cast<double>(kInputHeight) * resizeScale + 0.5);
+    const auto         resizeWidth  = static_cast<int>(static_cast<double>(kInputWidth) * resizeScale + 0.5);
+    const int          cropY        = (resizeHeight - kOutputHeight) / 2;
+    const int          cropX        = (resizeWidth - kOutputWidth) / 2;
+    const float        scaleY       = static_cast<float>(kInputHeight) / resizeHeight;
+    const float        scaleX       = static_cast<float>(kInputWidth) / resizeWidth;
+    const HQResizeRoiF roi{
+        {                static_cast<float>(cropY) * scaleY,                static_cast<float>(cropX) * scaleX},
+        {static_cast<float>(cropY + kOutputHeight) * scaleY, static_cast<float>(cropX + kOutputWidth) * scaleX}
+    };
+
+    std::vector<HQResizeTensorShapeI>            inShapes(kNumSamples, HQResizeTensorShapeI{
+                                                                {kInputHeight, kInputWidth},
+                                                                2,
+                                                                3
+    });
+    std::vector<HQResizeTensorShapeI>            outShapes(kNumSamples, HQResizeTensorShapeI{
+                                                                 {kOutputHeight, kOutputWidth},
+                                                                 2,
+                                                                 3
+    });
+    std::vector<HQResizeRoiF>                    rois(kNumSamples, roi);
+    ImageBatchOutput<HQResizeRGB8CubicAntialias> exactOutput;
+    if (!writesReference)
+    {
+        std::ifstream reference{referencePath, std::ios::binary};
+        ASSERT_TRUE(reference);
+        reference.seekg(0, std::ios::end);
+        const std::streamsize size = reference.tellg();
+        ASSERT_GT(size, 0);
+        reference.seekg(0);
+        exactOutput.resize(static_cast<size_t>(size));
+        reference.read(reinterpret_cast<char *>(exactOutput.data()), size);
+        ASSERT_TRUE(reference);
+    }
+
+    cvcuda::UniqueWorkspace ws;
+    TestImageBatch<HQResizeRGB8CubicAntialias>(kNumSamples, inShapes, outShapes, ws, true, rois, &exactOutput);
+    if (writesReference)
+    {
+        std::ofstream reference{referencePath, std::ios::binary}; // NOSONAR: isolated test-generated path.
+        ASSERT_TRUE(reference);
+        reference.write(reinterpret_cast<const char *>(exactOutput.data()), exactOutput.size());
+        ASSERT_TRUE(reference);
+    }
+}
+
+TEST(OpHQResizeImageBatch, adaptive_layout_matches_cpu_reference)
+{
+    if (std::getenv(cvcuda::priv::hq_resize::kResizeBlockLanesEnvVar) != nullptr)
+    {
+        GTEST_SKIP() << "adaptive geometry requires no explicit block-lane override";
+    }
+
+    int device = 0;
+    ASSERT_EQ(cudaSuccess, cudaGetDevice(&device));
+    int major               = 0;
+    int minor               = 0;
+    int multiprocessorCount = 0;
+    ASSERT_EQ(cudaSuccess, cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device));
+    ASSERT_EQ(cudaSuccess, cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
+    ASSERT_EQ(cudaSuccess, cudaDeviceGetAttribute(&multiprocessorCount, cudaDevAttrMultiProcessorCount, device));
+    if (!cvcuda::priv::hq_resize::IsValidatedAdaptiveHorizontalDevice(10 * major + minor, multiprocessorCount))
+    {
+        // block_lane_count_preserves_center_crop_output_bit_exact is the cross-device kernel proxy;
+        // this case additionally covers the device-gated production dispatch when that hardware is available.
+        GTEST_SKIP() << "requires the validated adaptive-layout device profile";
+    }
+
+    constexpr int      kNumSamples   = 64;
+    constexpr int      kInputHeight  = 1080;
+    constexpr int      kInputWidth   = 1920;
+    constexpr int      kOutputHeight = 224;
+    constexpr int      kOutputWidth  = 224;
+    constexpr int      kResizeWidth  = 398;
+    constexpr int      kCropX        = (kResizeWidth - kOutputWidth) / 2;
+    constexpr float    kScaleX       = static_cast<float>(kInputWidth) / kResizeWidth;
+    const HQResizeRoiF kRoi{
+        {                             0.f,                static_cast<float>(kCropX) * kScaleX},
+        {static_cast<float>(kInputHeight), static_cast<float>(kCropX + kOutputWidth) * kScaleX}
+    };
+
+    std::vector<HQResizeTensorShapeI> inShapes(kNumSamples, HQResizeTensorShapeI{
+                                                                {kInputHeight, kInputWidth},
+                                                                2,
+                                                                3
+    });
+    std::vector<HQResizeTensorShapeI> outShapes(kNumSamples, HQResizeTensorShapeI{
+                                                                 {kOutputHeight, kOutputWidth},
+                                                                 2,
+                                                                 3
+    });
+    std::vector<HQResizeRoiF>         rois(kNumSamples, kRoi);
+    cvcuda::UniqueWorkspace           ws;
+    TestImageBatch<HQResizeRGB8CubicAntialias>(kNumSamples, inShapes, outShapes, ws, true, rois);
 }
 
 // =============================================================================
@@ -2132,18 +2593,10 @@ std::vector<std::vector<OutT>> Run(bool planar, nvcv::ImageFormat inFmt, nvcv::I
 
 template<typename InT, typename OutT>
 void Check(nvcv::ImageFormat inFmt, nvcv::ImageFormat inFmtP, nvcv::ImageFormat outFmt, nvcv::ImageFormat outFmtP,
-           int C, NVCVInterpolationType interp)
+           int C, NVCVInterpolationType interp,
+           std::vector<int2> inWH  = {{64, 48}, {31, 97}, {128, 33}},
+           std::vector<int2> outWH = {{40, 40}, {120, 50}, {33, 128}})
 {
-    const std::vector<int2> inWH{
-        { 64, 48},
-        { 31, 97},
-        {128, 33}
-    };
-    const std::vector<int2> outWH{
-        { 40,  40},
-        {120,  50},
-        { 33, 128}
-    };
     std::vector<std::vector<InT>> in(inWH.size());
     for (size_t i = 0; i < inWH.size(); ++i)
     {
@@ -2172,6 +2625,11 @@ TEST(OpHQResizeImageBatch, planar_matches_interleaved)
         Check<float, float>(nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p, 3, interp);
         Check<__half, __half>(nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p, 3, interp);
     }
+    Check<uchar, uchar>(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 3, NVCV_INTERP_CUBIC,
+                        std::vector<int2>{
+                            {1404, 896}
+    },
+                        std::vector<int2>{{351, 224}});
 }
 
 // =============================================================================
@@ -2183,19 +2641,46 @@ namespace planar_parity_tb {
 template<typename InT, typename OutT>
 std::vector<std::vector<OutT>> Run(bool planar, int C, const std::vector<int2> &inWH, const std::vector<int2> &outWH,
                                    NVCVInterpolationType interp, bool antialias,
-                                   const std::vector<std::vector<InT>> &in)
+                                   const std::vector<std::vector<InT>> &in, const std::vector<HQResizeRoiF> &rois = {},
+                                   bool explicitSampleDim = false)
 {
+    if (!rois.empty() && rois.size() != inWH.size())
+    {
+        throw std::invalid_argument("Planar parity ROIs must match the tensor batch size");
+    }
     const auto                N     = static_cast<int>(inWH.size());
     const nvcv::DataType      inDt  = TypeAsFormat<InT>();
     const nvcv::DataType      outDt = TypeAsFormat<OutT>();
     std::vector<nvcv::Tensor> srcTs;
     std::vector<nvcv::Tensor> dstTs;
+    const auto                planarLayout   = explicitSampleDim ? nvcv::TENSOR_NCHW : nvcv::TENSOR_CHW;
+    const auto                expectedLayout = planar ? planarLayout : nvcv::TENSOR_HWC;
     for (int i = 0; i < N; ++i)
     {
-        srcTs.push_back(planar ? CreateTensorHelper(inDt, "NCHW", 1, C, inWH[i].y, inWH[i].x)
-                               : CreateTensorHelper(inDt, "HWC", 1, inWH[i].y, inWH[i].x, C));
-        dstTs.push_back(planar ? CreateTensorHelper(outDt, "NCHW", 1, C, outWH[i].y, outWH[i].x)
-                               : CreateTensorHelper(outDt, "HWC", 1, outWH[i].y, outWH[i].x, C));
+        // CreateTensorHelper drops N when N=1; use an explicit shape to exercise
+        // the NCHW metadata branch without changing the existing CHW callers.
+        if (planar && explicitSampleDim)
+        {
+            nvcv::TensorShape inShape{
+                {1, C, inWH[i].y, inWH[i].x},
+                nvcv::TENSOR_NCHW
+            };
+            nvcv::TensorShape outShape{
+                {1, C, outWH[i].y, outWH[i].x},
+                nvcv::TENSOR_NCHW
+            };
+            srcTs.emplace_back(inShape, inDt);
+            dstTs.emplace_back(outShape, outDt);
+        }
+        else
+        {
+            srcTs.push_back(planar ? CreateTensorHelper(inDt, "CHW", 1, C, inWH[i].y, inWH[i].x)
+                                   : CreateTensorHelper(inDt, "HWC", 1, inWH[i].y, inWH[i].x, C));
+            dstTs.push_back(planar ? CreateTensorHelper(outDt, "CHW", 1, C, outWH[i].y, outWH[i].x)
+                                   : CreateTensorHelper(outDt, "HWC", 1, outWH[i].y, outWH[i].x, C));
+        }
+        EXPECT_EQ(srcTs.back().layout(), expectedLayout);
+        EXPECT_EQ(dstTs.back().layout(), expectedLayout);
         planar_parity::UploadTensor<InT>(srcTs[i], planar, 1, inWH[i], C, in[i]);
     }
     nvcv::TensorBatch sb(N);
@@ -2206,6 +2691,7 @@ std::vector<std::vector<OutT>> Run(bool planar, int C, const std::vector<int2> &
     // Planar workspace is sized from expanded (N*C single-channel) shapes; interleaved from C-channel.
     std::vector<HQResizeTensorShapeI> inShapes;
     std::vector<HQResizeTensorShapeI> outShapes;
+    std::vector<HQResizeRoiF>         runRois;
     const int                         wsCh = planar ? 1 : C;
     const int                         reps = planar ? C : 1;
     for (int i = 0; i < N; ++i)
@@ -2221,16 +2707,19 @@ std::vector<std::vector<OutT>> Run(bool planar, int C, const std::vector<int2> &
                 2,
                 wsCh
             });
+            if (!rois.empty())
+                runRois.push_back(rois[i]);
         }
     const int               wsN = N * reps;
     cvcuda::HQResize        op;
     HQResizeTensorShapesI   inDesc{inShapes.data(), wsN, 2, wsCh};
     HQResizeTensorShapesI   outDesc{outShapes.data(), wsN, 2, wsCh};
-    cvcuda::UniqueWorkspace ws
-        = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(wsN, inDesc, outDesc, interp, interp, antialias));
+    HQResizeRoisF           roiDesc{static_cast<int>(runRois.size()), 2, runRois.data()};
+    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+        op.getWorkspaceRequirements(wsN, inDesc, outDesc, interp, interp, antialias, roiDesc));
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
-    EXPECT_NO_THROW(op(stream, ws.get(), sb, db, interp, interp, antialias));
+    EXPECT_NO_THROW(op(stream, ws.get(), sb, db, interp, interp, antialias, roiDesc));
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 
@@ -2261,6 +2750,90 @@ static void Check(int C, const std::vector<int2> &inWH, const std::vector<int2> 
 
 } // namespace planar_parity_tb
 
+TEST(OpHQResizeTensorBatch, parity_helper_rejects_extra_rois)
+{
+    const std::vector<int2> shape{
+        {1, 1}
+    };
+    const std::vector<std::vector<uchar>> input{{42}};
+    const std::vector<HQResizeRoiF>       rois(2, HQResizeRoiF{
+                                                {0.f, 0.f},
+                                                {1.f, 1.f}
+    });
+    EXPECT_THROW((planar_parity_tb::Run<uchar, uchar>(false, 1, shape, shape, NVCV_INTERP_NEAREST, false, input, rois)),
+                 std::invalid_argument);
+}
+
+TEST(OpHQResizeTensorBatch, parity_helper_rejects_short_rois)
+{
+    const std::vector<int2> shape{
+        {1, 1},
+        {1, 1}
+    };
+    const std::vector<std::vector<uchar>> input{{42}, {42}};
+    const std::vector<HQResizeRoiF>       rois(1, HQResizeRoiF{
+                                                {0.f, 0.f},
+                                                {1.f, 1.f}
+    });
+    EXPECT_THROW((planar_parity_tb::Run<uchar, uchar>(true, 1, shape, shape, NVCV_INTERP_NEAREST, false, input, rois)),
+                 std::invalid_argument);
+}
+
+NVCV_TYPED_TEST_SUITE(
+    OpHQResizeTensorBatchDTypeParity,
+    ttype::Types<ttype::Types<uchar, uchar>, ttype::Types<uchar, float>, ttype::Types<ushort, ushort>,
+                 ttype::Types<ushort, float>, ttype::Types<short, short>, ttype::Types<short, float>,
+                 ttype::Types<__half, __half>, ttype::Types<__half, float>, ttype::Types<float, float>>);
+
+TYPED_TEST(OpHQResizeTensorBatchDTypeParity, planar_metadata_matches_interleaved_reference)
+{
+    using InT  = ttype::GetType<TypeParam, 0>;
+    using OutT = ttype::GetType<TypeParam, 1>;
+    const std::vector<int2> inWH{
+        {31, 97},
+        {64, 48},
+        {50, 50}
+    };
+    const std::vector<int2> outWH{
+        { 61, 33},
+        { 40, 40},
+        {127, 20}
+    };
+    const std::vector<HQResizeRoiF> rois{
+        {  {3.f, 2.f}, {93.f, 29.f}},
+        {{43.f, 59.f},   {4.f, 3.f}},
+        {  {1.f, 2.f}, {47.f, 48.f}}
+    };
+    for (int channels : {1, 3, 7})
+    {
+        std::vector<std::vector<InT>> input(inWH.size());
+        for (size_t i = 0; i < inWH.size(); ++i)
+        {
+            input[i].resize(static_cast<size_t>(inWH[i].x) * inWH[i].y * channels);
+            planar_parity::FillPattern(input[i], 7171 + i);
+        }
+        for (auto interp :
+             {NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, NVCV_INTERP_GAUSSIAN, NVCV_INTERP_LANCZOS})
+            for (bool antialias : {false, true})
+            {
+                // The interleaved path does not use the changed planar metadata emitter.
+                const auto reference
+                    = planar_parity_tb::Run<InT, OutT>(false, channels, inWH, outWH, interp, antialias, input, rois);
+                auto checkLayout = [&](bool explicitSampleDim)
+                {
+                    SCOPED_TRACE(::testing::Message()
+                                 << "channels=" << channels << " interp=" << interp << " antialias=" << antialias
+                                 << " layout=" << (explicitSampleDim ? "NCHW" : "CHW"));
+                    const auto output = planar_parity_tb::Run<InT, OutT>(true, channels, inWH, outWH, interp, antialias,
+                                                                         input, rois, explicitSampleDim);
+                    EXPECT_EQ(reference, output);
+                };
+                checkLayout(false);
+                checkLayout(true);
+            }
+    }
+}
+
 TEST(OpHQResizeTensorBatch, planar_matches_interleaved)
 {
     using namespace planar_parity_tb;
@@ -2278,6 +2851,246 @@ TEST(OpHQResizeTensorBatch, planar_matches_interleaved)
         for (int C : {1, 3, 4}) Check(C, inWH, outWH, interp);
 }
 
+TEST(OpHQResizeTensorBatch, chw_more_than_256_tensors_matches_interleaved)
+{
+    using namespace planar_parity_tb;
+    constexpr int                   numTensors = 257;
+    constexpr int                   channels   = 3;
+    std::vector<int2>               inWH(numTensors);
+    std::vector<int2>               outWH(numTensors);
+    std::vector<std::vector<uchar>> input(numTensors);
+    for (int i = 0; i < numTensors; ++i)
+    {
+        inWH[i]  = int2{8 + i % 3, 7 + i % 5};
+        outWH[i] = int2{5 + i % 2, 4 + i % 3};
+        input[i].resize(static_cast<size_t>(inWH[i].x) * inWH[i].y * channels);
+        planar_parity::FillPattern(input[i], 9191 + i);
+    }
+
+    const auto interleaved
+        = planar_parity_tb::Run<uchar, float>(false, channels, inWH, outWH, NVCV_INTERP_CUBIC, true, input);
+    const auto planar
+        = planar_parity_tb::Run<uchar, float>(true, channels, inWH, outWH, NVCV_INTERP_CUBIC, true, input);
+    EXPECT_EQ(interleaved, planar);
+}
+
+TEST(OpHQResizeTensorBatch, nchw_inner_samples_repeated_async_matches_tensor)
+{
+    constexpr int numSamples           = 257;
+    constexpr int channels             = 3;
+    constexpr int numBackToBackSubmits = 3;
+    const int2    inWH{64, 48};
+    const int2    outWH{35, 27};
+
+    std::vector<uchar> input(static_cast<size_t>(numSamples) * inWH.x * inWH.y * channels);
+    planar_parity::FillPattern(input, 8181);
+    const auto expected
+        = planar_parity::Run<uchar, uchar>(true, numSamples, inWH, outWH, channels, NVCV_INTERP_CUBIC, true, input);
+
+    nvcv::Tensor src = CreateTensorHelper(nvcv::TYPE_U8, "NCHW", numSamples, channels, inWH.y, inWH.x);
+    nvcv::Tensor dst = CreateTensorHelper(nvcv::TYPE_U8, "NCHW", numSamples, channels, outWH.y, outWH.x);
+    planar_parity::UploadTensor(src, true, numSamples, inWH, channels, input);
+    nvcv::TensorBatch srcBatch(1);
+    nvcv::TensorBatch dstBatch(1);
+    srcBatch.pushBack(src);
+    dstBatch.pushBack(dst);
+
+    constexpr int                     expandedSamples = numSamples * channels;
+    std::vector<HQResizeTensorShapeI> inShapes(expandedSamples, HQResizeTensorShapeI{
+                                                                    {inWH.y, inWH.x},
+                                                                    2,
+                                                                    1
+    });
+    std::vector<HQResizeTensorShapeI> outShapes(expandedSamples, HQResizeTensorShapeI{
+                                                                     {outWH.y, outWH.x},
+                                                                     2,
+                                                                     1
+    });
+    HQResizeTensorShapesI             inDesc{inShapes.data(), expandedSamples, 2, 1};
+    HQResizeTensorShapesI             outDesc{outShapes.data(), expandedSamples, 2, 1};
+
+    cvcuda::HQResize        op;
+    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+        op.getWorkspaceRequirements(expandedSamples, inDesc, outDesc, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true));
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    for (int i = 0; i < numBackToBackSubmits; ++i)
+    {
+        op(stream, ws.get(), srcBatch, dstBatch, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true);
+    }
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    EXPECT_EQ(expected, planar_parity::DownloadTensor<uchar>(dst, true, numSamples, outWH, channels));
+}
+
+TEST(OpHQResizeTensorBatch, nchw_inner_sample_and_channel_rois_match_reference)
+{
+    constexpr int             channels = 3;
+    const std::array<int, 2>  innerN{2, 3};
+    const std::array<int2, 2> inWH{
+        int2{37, 29},
+        int2{29, 41}
+    };
+    const std::array<int2, 2> outWH{
+        int2{19, 13},
+        int2{43, 53}
+    };
+    nvcv::TensorBatch                 srcBatch(2);
+    nvcv::TensorBatch                 dstBatch(2);
+    std::array<std::vector<uchar>, 2> input;
+    std::vector<HQResizeTensorShapeI> inShapes;
+    std::vector<HQResizeTensorShapeI> outShapes;
+    std::vector<HQResizeRoiF>         roiData;
+    for (int t = 0; t < 2; ++t)
+    {
+        input[t].resize(static_cast<size_t>(innerN[t]) * inWH[t].x * inWH[t].y * channels);
+        planar_parity::FillPattern(input[t], 6161 + t);
+        auto src = CreateTensorHelper(nvcv::TYPE_U8, "NCHW", innerN[t], channels, inWH[t].y, inWH[t].x);
+        auto dst = CreateTensorHelper(nvcv::TYPE_F32, "NCHW", innerN[t], channels, outWH[t].y, outWH[t].x);
+        planar_parity::UploadTensor(src, true, innerN[t], inWH[t], channels, input[t]);
+        srcBatch.pushBack(src);
+        dstBatch.pushBack(dst);
+        for (int n = 0; n < innerN[t]; ++n)
+            for (int c = 0; c < channels; ++c)
+            {
+                const auto plane = static_cast<int>(roiData.size());
+                const bool flipX = plane % 2 != 0;
+                const bool flipY = plane % 3 != 0;
+                inShapes.push_back(HQResizeTensorShapeI{
+                    {inWH[t].y, inWH[t].x},
+                    2,
+                    1
+                });
+                outShapes.push_back(HQResizeTensorShapeI{
+                    {outWH[t].y, outWH[t].x},
+                    2,
+                    1
+                });
+                roiData.push_back(HQResizeRoiF{
+                    {flipY ? static_cast<float>(inWH[t].y) : 0.f, flipX ? static_cast<float>(inWH[t].x) : 0.f},
+                    {flipY ? 0.f : static_cast<float>(inWH[t].y), flipX ? 0.f : static_cast<float>(inWH[t].x)}
+                });
+            }
+    }
+    const auto            expandedN = static_cast<int>(roiData.size());
+    HQResizeTensorShapesI inDesc{inShapes.data(), expandedN, 2, 1};
+    HQResizeTensorShapesI outDesc{outShapes.data(), expandedN, 2, 1};
+    HQResizeRoisF         rois{expandedN, 2, roiData.data()};
+    cvcuda::HQResize      op;
+    cudaStream_t          stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    auto checkTensor
+        = [&](int t, const std::vector<float> &output, int firstPlane, NVCVInterpolationType interp, bool antialias)
+    {
+        const int64_t inBytes     = static_cast<int64_t>(inWH[t].x) * inWH[t].y;
+        const int64_t outRowBytes = static_cast<int64_t>(outWH[t].x) * sizeof(float);
+        const int64_t outBytes    = outRowBytes * outWH[t].y;
+        for (int p = 0; p < innerN[t] * channels; ++p)
+        {
+            const int n     = p / channels;
+            const int c     = p % channels;
+            const int plane = firstPlane + p;
+            SCOPED_TRACE(::testing::Message() << "tensor=" << t << " sample=" << n << " channel=" << c);
+            baseline::CpuSample<uchar, 2> inCpu(inBytes, long3{1, inWH[t].x, inBytes}, 1, inWH[t], 1);
+            baseline::CpuSample<float, 2> refCpu(outBytes, long3{sizeof(float), outRowBytes, outBytes}, 1, outWH[t], 1);
+            baseline::CpuSample<float, 2> outCpu(outBytes, long3{sizeof(float), outRowBytes, outBytes}, 1, outWH[t], 1);
+            // Build an independently flipped CPU plane so the gold resize never shares
+            // the candidate's tensor/sample/channel descriptor or ROI-indexing logic.
+            for (int y = 0; y < inWH[t].y; ++y)
+                for (int x = 0; x < inWH[t].x; ++x)
+                {
+                    const int srcX = plane % 2 != 0 ? inWH[t].x - 1 - x : x;
+                    const int srcY = plane % 3 != 0 ? inWH[t].y - 1 - y : y;
+                    inCpu.get(0, int2{x, y}, 0)
+                        = input[t][((static_cast<size_t>(n) * inWH[t].y + srcY) * inWH[t].x + srcX) * channels + c];
+                }
+            baseline::Resize(refCpu, inCpu, interp, interp, antialias);
+            for (int y = 0; y < outWH[t].y; ++y)
+                for (int x = 0; x < outWH[t].x; ++x)
+                    outCpu.get(0, int2{x, y}, 0)
+                        = output[((static_cast<size_t>(n) * outWH[t].y + y) * outWH[t].x + x) * channels + c];
+            if (interp == NVCV_INTERP_NEAREST)
+                baseline::CompareExact(outCpu, refCpu);
+            else
+                baseline::Compare<uchar>(outCpu, refCpu, antialias);
+        }
+    };
+    for (auto interp :
+         {NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, NVCV_INTERP_LANCZOS, NVCV_INTERP_GAUSSIAN})
+        for (bool antialias : {false, true})
+        {
+            SCOPED_TRACE(::testing::Message() << "interp=" << interp << " antialias=" << antialias);
+            auto ws = cvcuda::AllocateWorkspace(
+                op.getWorkspaceRequirements(expandedN, inDesc, outDesc, interp, interp, antialias, rois));
+            op(stream, ws.get(), srcBatch, dstBatch, interp, interp, antialias, rois);
+            ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+            int firstPlane = 0;
+            for (int t = 0; t < 2; ++t)
+            {
+                const auto output
+                    = planar_parity::DownloadTensor<float>(dstBatch[t], true, innerN[t], outWH[t], channels);
+                checkTensor(t, output, firstPlane, interp, antialias);
+                firstPlane += innerN[t] * channels;
+            }
+        }
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHQResizeTensorBatch, rejects_non_image_tensor_batch)
+{
+    nvcv::Tensor inputTensor(
+        {
+            {1, 3},
+            "NC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor      outputTensor(inputTensor.shape(), nvcv::TYPE_U8);
+    nvcv::TensorBatch input(1);
+    nvcv::TensorBatch output(1);
+    input.pushBack(inputTensor);
+    output.pushBack(outputTensor);
+
+    cvcuda::HQResize  op;
+    cvcuda::Workspace workspace{};
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall([&] { op(nullptr, workspace, input, output, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR); }));
+}
+
+TEST(OpHQResizeTensorBatch, planar_rejects_unexportable_and_nonplanar_data)
+{
+    cvcuda::HQResize  op;
+    cvcuda::Workspace workspace{};
+    const auto        expectInvalidArgument = [&](const nvcv::Tensor &inputTensor, const nvcv::Tensor &outputTensor)
+    {
+        nvcv::TensorBatch input(1);
+        input.pushBack(inputTensor);
+
+        nvcv::TensorBatch output(1);
+        output.pushBack(outputTensor);
+
+        EXPECT_EQ(
+            NVCV_ERROR_INVALID_ARGUMENT,
+            nvcv::ProtectCall([&] { op(nullptr, workspace, input, output, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR); }));
+    };
+
+    expectInvalidArgument(nvcv::Tensor(
+                              {
+                                  {1, 3},
+                                  "NC"
+    },
+                              nvcv::TYPE_U8),
+                          nvcv::Tensor({{1, 3}, "NC"}, nvcv::TYPE_U8));
+    expectInvalidArgument(nvcv::Tensor(
+                              {
+                                  {1, 3, 4, 4},
+                                  "NCHW"
+    },
+                              nvcv::TYPE_3U8),
+                          nvcv::Tensor({{1, 3, 4, 4}, "NCHW"}, nvcv::TYPE_3U8));
+}
+
 // =============================================================================
 // Uniform-shape batches where one sample resizes through a flipped (lo > hi) ROI:
 // the sample shapes match, but the mapping does not, so batch fast paths that share
@@ -2289,7 +3102,7 @@ namespace batch_roi_mapping {
 static void Check(const int2 inWH, const int2 outWH, const NVCVInterpolationType interp)
 {
     constexpr int numChannels = 3;
-    constexpr int numSamples  = 2;
+    constexpr int numSamples  = 3;
     using BT                  = float;
     const auto dtype          = TypeAsFormat<BT>();
 
@@ -2310,8 +3123,8 @@ static void Check(const int2 inWH, const int2 outWH, const NVCVInterpolationType
     std::array<HQResizeRoiF, numSamples> roiData{};
     for (int s = 0; s < numSamples; s++)
     {
-        roiData[s].lo[0] = s == 0 ? 0.f : static_cast<float>(inWH.y);
-        roiData[s].hi[0] = s == 0 ? static_cast<float>(inWH.y) : 0.f;
+        roiData[s].lo[0] = s < 2 ? 0.f : static_cast<float>(inWH.y);
+        roiData[s].hi[0] = s < 2 ? static_cast<float>(inWH.y) : 0.f;
         roiData[s].hi[1] = static_cast<float>(inWH.x);
     }
     HQResizeRoisF rois{numSamples, 2, roiData.data()};
@@ -2351,7 +3164,7 @@ static void Check(const int2 inWH, const int2 outWH, const NVCVInterpolationType
         baseline::ForAllInRoi(baseline::FullRoi<2>(inWH),
                               [s, inWH, &inCpu, &inData](int2 idx)
                               {
-                                  const int srcY = s == 0 ? idx.y : inWH.y - 1 - idx.y;
+                                  const int srcY = s < 2 ? idx.y : inWH.y - 1 - idx.y;
                                   for (int c = 0; c < numChannels; c++)
                                   {
                                       inCpu.get(0, idx, c)
@@ -2420,9 +3233,321 @@ TEST(OpHQResizeImageBatch, test_multi_run_single_workspace)
     TestImageBatch<SecondRun>(numSamples1, inShapes1, outShapes1, ws, false);
 }
 
+namespace workspace_ready {
+
+class ProducerGate
+{
+public:
+    ProducerGate(cudaStream_t producer, cudaStream_t consumer)
+        : m_producer(producer)
+        , m_consumer(consumer)
+        , m_release(m_promise.get_future())
+    {
+    }
+
+    ~ProducerGate()
+    {
+        Release();
+        (void)cudaStreamSynchronize(m_producer);
+        (void)cudaStreamSynchronize(m_consumer);
+    }
+
+    static void CUDART_CB Wait(void *context)
+    {
+        auto &gate = *static_cast<ProducerGate *>(context);
+        // A blocked submit must fail without leaving a CUDA callback waiting forever.
+        gate.m_expired = gate.m_release.wait_for(std::chrono::seconds(5)) != std::future_status::ready;
+    }
+
+    void Release()
+    {
+        if (!m_released)
+        {
+            m_promise.set_value();
+            m_released = true;
+        }
+    }
+
+    bool expired() const
+    {
+        return m_expired;
+    }
+
+private:
+    cudaStream_t       m_producer;
+    cudaStream_t       m_consumer;
+    std::promise<void> m_promise;
+    std::future<void>  m_release;
+    std::atomic_bool   m_expired{false};
+    bool               m_released = false;
+};
+
+template<typename Byte, typename Submit>
+void Check(cvcuda::Workspace ws, Byte *input, int64_t pitch, Submit submit)
+{
+    cudaStream_t rawProducer{};
+    cudaStream_t rawConsumer{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&rawProducer, cudaStreamNonBlocking));
+    std::unique_ptr<std::remove_pointer_t<cudaStream_t>, decltype(&cudaStreamDestroy)> producer(rawProducer,
+                                                                                                &cudaStreamDestroy);
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&rawConsumer, cudaStreamNonBlocking));
+    std::unique_ptr<std::remove_pointer_t<cudaStream_t>, decltype(&cudaStreamDestroy)> consumer(rawConsumer,
+                                                                                                &cudaStreamDestroy);
+    cudaEvent_t                                                                        rawReady{};
+    cudaEvent_t                                                                        rawDone{};
+    ASSERT_EQ(cudaSuccess, cudaEventCreateWithFlags(&rawReady, cudaEventDisableTiming));
+    std::unique_ptr<std::remove_pointer_t<cudaEvent_t>, decltype(&cudaEventDestroy)> ready(rawReady, &cudaEventDestroy);
+    ASSERT_EQ(cudaSuccess, cudaEventCreateWithFlags(&rawDone, cudaEventDisableTiming));
+    std::unique_ptr<std::remove_pointer_t<cudaEvent_t>, decltype(&cudaEventDestroy)> done(rawDone, &cudaEventDestroy);
+
+    ASSERT_GT(ws.cudaMem.req.size, 0u);
+    ASSERT_EQ(cudaSuccess, cudaMemset2DAsync(input, pitch, 17, 31, 23, consumer.get()));
+    ASSERT_EQ(cudaSuccess, cudaMemsetAsync(ws.cudaMem.data, 0xA5, ws.cudaMem.req.size, consumer.get()));
+    ASSERT_NO_THROW(submit(consumer.get(), ws));
+    ASSERT_EQ(cudaSuccess, cudaEventRecord(ready.get(), consumer.get()));
+    ASSERT_EQ(cudaSuccess, cudaEventRecord(done.get(), consumer.get()));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(consumer.get()));
+
+    ProducerGate gate(producer.get(), consumer.get());
+    ASSERT_EQ(cudaSuccess, cudaLaunchHostFunc(producer.get(), ProducerGate::Wait, &gate));
+    ASSERT_EQ(cudaSuccess, cudaMemset2DAsync(input, pitch, 91, 31, 23, producer.get()));
+    ASSERT_EQ(cudaSuccess, cudaMemsetAsync(ws.cudaMem.data, 0xA5, ws.cudaMem.req.size, producer.get()));
+    ASSERT_EQ(cudaSuccess, cudaEventRecord(ready.get(), producer.get()));
+    ws.cudaMem.ready = ready.get();
+    ASSERT_EQ(cudaErrorNotReady, cudaEventQuery(ready.get()));
+
+    ASSERT_NO_THROW(submit(consumer.get(), ws));
+    EXPECT_FALSE(gate.expired()) << "Submit waited on the host for CUDA workspace readiness";
+    ASSERT_EQ(cudaSuccess, cudaEventRecord(done.get(), consumer.get()));
+    EXPECT_EQ(cudaErrorNotReady, cudaEventQuery(done.get())) << "Consumer must remain pending while the gate is held";
+    gate.Release();
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(consumer.get()));
+    ASSERT_EQ(cudaSuccess, cudaEventQuery(ready.get()));
+}
+
+} // namespace workspace_ready
+
+TEST(OpHQResize, cuda_workspace_ready_does_not_block_host)
+{
+    auto src     = CreateTensorHelper(nvcv::TYPE_U8, "NHWC", 1, 23, 31, 1);
+    auto dst     = CreateTensorHelper(nvcv::TYPE_U8, "NHWC", 1, 11, 13, 1);
+    auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData);
+    auto access = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    ASSERT_TRUE(access);
+    cvcuda::HQResize     op;
+    HQResizeTensorShapeI inShape{
+        {23, 31},
+        2,
+        1
+    };
+    HQResizeTensorShapeI outShape{
+        {11, 13},
+        2,
+        1
+    };
+    auto storage = cvcuda::AllocateWorkspace(
+        op.getWorkspaceRequirements(1, inShape, outShape, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true));
+    ASSERT_NO_FATAL_FAILURE(
+        workspace_ready::Check(storage.get(), access->sampleData(0), access->rowStride(),
+                               [&op, &src, &dst](cudaStream_t stream, const cvcuda::Workspace &ws)
+                               { op(stream, ws, src, dst, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true); }));
+    std::vector<uchar> actual;
+    nvcv::util::GetImageVectorFromTensor<uchar>(dst.exportData(), 0, actual);
+    EXPECT_EQ(actual, std::vector<uchar>(11 * 13, 91));
+}
+
+TEST(OpHQResizeImageBatch, cuda_workspace_ready_does_not_block_host)
+{
+    nvcv::Image              src({31, 23}, nvcv::FMT_U8);
+    nvcv::Image              dst({13, 11}, nvcv::FMT_U8);
+    nvcv::ImageBatchVarShape srcBatch(1);
+    nvcv::ImageBatchVarShape dstBatch(1);
+    srcBatch.pushBack(src);
+    dstBatch.pushBack(dst);
+    auto srcData = src.exportData<nvcv::ImageDataStridedCuda>();
+    ASSERT_TRUE(srcData);
+    cvcuda::HQResize     op;
+    HQResizeTensorShapeI inShape{
+        {23, 31},
+        2,
+        1
+    };
+    HQResizeTensorShapeI outShape{
+        {11, 13},
+        2,
+        1
+    };
+    auto storage = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(1, HQResizeTensorShapesI{&inShape, 1, 2, 1},
+                                                                         HQResizeTensorShapesI{&outShape, 1, 2, 1},
+                                                                         NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true));
+    ASSERT_NO_FATAL_FAILURE(
+        workspace_ready::Check(storage.get(), srcData->plane(0).basePtr, srcData->plane(0).rowStride,
+                               [&op, &srcBatch, &dstBatch](cudaStream_t stream, const cvcuda::Workspace &ws)
+                               { op(stream, ws, srcBatch, dstBatch, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true); }));
+    EXPECT_EQ(planar_parity_vs::DownloadImage<uchar>(dst, false, 13, 11, 1), std::vector<uchar>(11 * 13, 91));
+}
+
+namespace host_workspace {
+
+static void Check(int ndim, bool upperBound)
+{
+    constexpr int                           count = 2;
+    std::array<HQResizeTensorShapeI, count> inShapes{
+        {{{23, 31}, 2, 1}, {{17, 19}, 2, 1}}
+    };
+    std::array<HQResizeTensorShapeI, count> outShapes{
+        {{{11, 13}, 2, 1}, {{29, 37}, 2, 1}}
+    };
+    if (ndim == 3)
+    {
+        inShapes = {
+            {{{5, 23, 31}, 3, 1}, {{7, 17, 19}, 3, 1}}
+        };
+        outShapes = {
+            {{{3, 11, 13}, 3, 1}, {{9, 29, 37}, 3, 1}}
+        };
+    }
+    auto makeTensor = [ndim](const HQResizeTensorShapeI &shape)
+    {
+        return ndim == 2
+                 ? CreateTensorHelper(nvcv::TYPE_U8, "NHWC", 1, shape.extent[0], shape.extent[1], 1)
+                 : CreateTensorHelper(nvcv::TYPE_U8, "NDHWC", 1, shape.extent[0], shape.extent[1], shape.extent[2], 1);
+    };
+    nvcv::TensorBatch                src(count);
+    std::array<nvcv::TensorBatch, 2> dst{nvcv::TensorBatch(count), nvcv::TensorBatch(count)};
+    for (int s = 0; s < count; ++s)
+    {
+        auto tensor = makeTensor(inShapes[s]);
+        nvcv::util::SetTensorToRandomValue<uchar>(tensor.exportData(), 0, 255);
+        src.pushBack(tensor);
+        for (auto &batch : dst)
+        {
+            auto output = makeTensor(outShapes[s]);
+            nvcv::util::SetTensorTo<uchar>(output.exportData(), 0);
+            batch.pushBack(output);
+        }
+    }
+    cvcuda::HQResize      op;
+    HQResizeTensorShapesI inDesc{inShapes.data(), count, ndim, 1};
+    HQResizeTensorShapesI outDesc{outShapes.data(), count, ndim, 1};
+    const auto exact = op.getWorkspaceRequirements(count, inDesc, outDesc, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true);
+    HQResizeTensorShapeI maxShape{};
+    GetMaxShape(maxShape, inShapes.data(), count);
+    GetMaxShape(maxShape, outShapes.data(), count);
+    const auto maximum = op.getWorkspaceRequirements(count, maxShape);
+    ASSERT_GT(exact.hostMem.size, 0u);
+    ASSERT_EQ(exact.hostMem.size, maximum.hostMem.size);
+    ASSERT_EQ(exact.hostMem.alignment, maximum.hostMem.alignment);
+    const auto   req     = upperBound ? maximum : exact;
+    auto         storage = cvcuda::AllocateWorkspace(req);
+    auto         ws      = storage.get();
+    // Substitute only plain host storage; both guards lie outside the advertised capacity.
+    const size_t guard = sizeof(std::max_align_t);
+    ASSERT_LE(req.hostMem.alignment, alignof(std::max_align_t));
+    std::vector<std::max_align_t> guarded((req.hostMem.size + 2 * guard + guard - 1) / guard);
+    auto                         *bytes = reinterpret_cast<std::byte *>(guarded.data());
+    std::memset(bytes, 0xA5, guarded.size() * guard);
+    ws.hostMem.data = bytes + guard;
+    std::array<cudaStream_t, 2> streams{};
+    for (auto &stream : streams) ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    for (auto *mem : {&ws.hostMem, &ws.pinnedMem, &ws.cudaMem})
+    {
+        ASSERT_EQ(cudaSuccess, cudaEventCreateWithFlags(&mem->ready, cudaEventDisableTiming));
+        ASSERT_EQ(cudaSuccess, cudaEventRecord(mem->ready, streams[0]));
+    }
+    std::array<std::array<HQResizeRoiF, count>, 2>       rois{};
+    std::array<std::array<std::vector<uchar>, count>, 2> expected;
+    for (int s = 0; s < count; ++s)
+        for (int d = 0; d < ndim; ++d)
+        {
+            const auto extent = static_cast<float>(inShapes[s].extent[d]);
+            rois[0][s].hi[d]  = extent;
+            rois[1][s].lo[d]  = extent;
+        }
+    for (int run = 0; run < 2; ++run)
+        for (int s = 0; s < count; ++s)
+        {
+            auto reference = makeTensor(outShapes[s]);
+            nvcv::util::SetTensorTo<uchar>(reference.exportData(), 0);
+            auto refStorage = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(
+                1, inShapes[s], outShapes[s], NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true, &rois[run][s]));
+            op(streams[0], refStorage.get(), src[s], reference, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true,
+               &rois[run][s]);
+            ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(streams[0]));
+            nvcv::util::GetVectorFromTensor<uchar>(reference.exportData(), 0, expected[run][s]);
+        }
+    ws.hostMem.req.size = 0;
+    EXPECT_EQ(NVCV_ERROR_OUT_OF_MEMORY, cvcudaHQResizeTensorBatchSubmit(
+                                            op.handle(), streams[0], &ws, src.handle(), dst[0].handle(),
+                                            NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true, {count, ndim, rois[0].data()}));
+    ws.hostMem.req = req.hostMem;
+    // Different streams and flipped descriptors must reuse staging only after its ready event.
+    for (int run = 0; run < 2; ++run)
+        op(streams[run], ws, src, dst[run], NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true,
+           HQResizeRoisF{count, ndim, rois[run].data()});
+    for (auto stream : streams) ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    for (int run = 0; run < 2; ++run)
+        for (int s = 0; s < count; ++s)
+        {
+            std::vector<uchar> actual;
+            nvcv::util::GetVectorFromTensor<uchar>(dst[run][s].exportData(), 0, actual);
+            EXPECT_EQ(actual, expected[run][s]);
+        }
+    EXPECT_TRUE(std::all_of(bytes, bytes + guard, [](std::byte v) { return v == std::byte{0xA5}; }));
+    EXPECT_TRUE(std::all_of(bytes + guard + req.hostMem.size, bytes + guarded.size() * guard,
+                            [](std::byte v) { return v == std::byte{0xA5}; }));
+    for (auto *mem : {&ws.hostMem, &ws.pinnedMem, &ws.cudaMem}) ASSERT_EQ(cudaSuccess, cudaEventDestroy(mem->ready));
+    for (auto stream : streams) ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+} // namespace host_workspace
+
+TEST(OpHQResizeTensorBatch, host_workspace_capacity_and_async_descriptor_reuse)
+{
+    for (int ndim : {2, 3})
+        for (bool upperBound : {false, true})
+        {
+            SCOPED_TRACE(::testing::Message() << "ndim=" << ndim << " upperBound=" << upperBound);
+            host_workspace::Check(ndim, upperBound);
+        }
+}
+
 TEST(OpHQResizeNegative, createWithNullHandle)
 {
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaHQResizeCreate(nullptr));
+}
+
+TEST(OpHQResizeNegative, invalid_block_lane_override_returns_invalid_argument)
+{
+    const char *markerPath = std::getenv("CVCUDA_TEST_INVALID_LANE_MARKER_FILE");
+    if (const char *lanes = std::getenv(cvcuda::priv::hq_resize::kResizeBlockLanesEnvVar);
+        lanes == nullptr || std::string_view{lanes} != "0" || markerPath == nullptr)
+    {
+        GTEST_SKIP() << "requires the separately registered invalid-lane invocation";
+    }
+    {
+        std::ofstream marker{markerPath}; // NOSONAR: isolated test-generated path.
+        ASSERT_TRUE(marker);
+    }
+    constexpr int numSamples  = 1;
+    constexpr int numChannels = 3;
+    nvcv::Tensor  inTensor    = CreateTensorHelper(nvcv::TYPE_U8, "NHWC", numSamples, 8, 8, numChannels);
+    nvcv::Tensor  outTensor   = CreateTensorHelper(nvcv::TYPE_U8, "NHWC", numSamples, 4, 4, numChannels);
+
+    cvcuda::HQResize     op;
+    HQResizeTensorShapeI maxShape{
+        {8, 8},
+        2,
+        numChannels
+    };
+    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(numSamples, maxShape));
+    cudaStream_t            stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaHQResizeSubmit(op.handle(), stream, &ws.get(), inTensor.handle(), outTensor.handle(),
+                                   NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, true, nullptr));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 TEST(OpHQResizeNegative, getWorkspaceRequirementsWithNullReqOut)

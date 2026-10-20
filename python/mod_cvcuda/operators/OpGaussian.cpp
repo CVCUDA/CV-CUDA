@@ -15,30 +15,28 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpGaussian.hpp>
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 namespace cvcudapy {
 
 namespace {
-Tensor GaussianInto(Tensor &output, Tensor &input, const std::tuple<int, int> &kernel_size,
-                    const std::tuple<double, double> &sigma, NVCVBorderType border, std::optional<Stream> pstream)
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
+Tensor &GaussianInto(Tensor &output, Tensor &input, const std::tuple<int, int> &kernel_size,
+                     const std::tuple<double, double> &sigma, NVCVBorderType border, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     double2 sigmaArg{std::get<0>(sigma), std::get<1>(sigma)};
 
@@ -46,62 +44,64 @@ Tensor GaussianInto(Tensor &output, Tensor &input, const std::tuple<int, int> &k
 
     auto gaussian = CreateOperator<cvcuda::Gaussian>(kernelSizeArg, 0);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussian});
 
-    guard.run([&gaussian, &pstream, &input, &output, &kernelSizeArg, &sigmaArg, &border]()
-              { gaussian->submit(pstream->cudaHandle(), input, output, kernelSizeArg, sigmaArg, border); });
+    guard.run([&gaussian, &stream, &input, &output, &kernelSizeArg, &sigmaArg, &border]()
+              { gaussian->submit(stream.handle(), input.impl(), output.impl(), kernelSizeArg, sigmaArg, border); });
 
     return output;
 }
 
-Tensor Gaussian(Tensor &input, const std::tuple<int, int> &kernel_size, const std::tuple<double, double> &sigma,
-                NVCVBorderType border, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Gaussian(Tensor &input, const std::tuple<int, int> &kernel_size,
+                                 const std::tuple<double, double> &sigma, NVCVBorderType border,
+                                 std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return GaussianInto(output, input, kernel_size, sigma, border, pstream);
+    GaussianInto(*output, input, kernel_size, sigma, border, pstream);
+    return output;
 }
 
-ImageBatchVarShape VarShapeGaussianInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                        const std::tuple<int, int> &max_kernel_size, Tensor &ksize, Tensor &sigma,
-                                        NVCVBorderType border, std::optional<Stream> pstream)
+ImageBatchVarShape &VarShapeGaussianInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                         const std::tuple<int, int> &max_kernel_size, Tensor &ksize, Tensor &sigma,
+                                         NVCVBorderType border, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     nvcv::Size2D maxKernelSizeArg{std::get<0>(max_kernel_size), std::get<1>(max_kernel_size)};
 
     auto gaussian = CreateOperator<cvcuda::Gaussian>(maxKernelSizeArg, input.capacity());
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, ksize, sigma});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussian});
 
-    guard.run([&gaussian, &pstream, &input, &output, &ksize, &sigma, &border]()
-              { gaussian->submit(pstream->cudaHandle(), input, output, ksize, sigma, border); });
+    guard.run([&gaussian, &stream, &input, &output, &ksize, &sigma, &border]()
+              { gaussian->submit(stream.handle(), input.impl(), output.impl(), ksize.impl(), sigma.impl(), border); });
 
     return output;
 }
 
-ImageBatchVarShape VarShapeGaussian(ImageBatchVarShape &input, const std::tuple<int, int> &max_kernel_size,
-                                    Tensor &ksize, Tensor &sigma, NVCVBorderType border, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> VarShapeGaussian(ImageBatchVarShape         &input,
+                                                     const std::tuple<int, int> &max_kernel_size, Tensor &ksize,
+                                                     Tensor &sigma, NVCVBorderType border,
+                                                     std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return VarShapeGaussianInto(output, input, max_kernel_size, ksize, sigma, border, pstream);
+    VarShapeGaussianInto(*output, input, max_kernel_size, ksize, sigma, border, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpGaussian(py::module &m)
+void ExportOpGaussian(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("gaussian", NvtxTrace("cvcuda.gaussian", &Gaussian), "src"_a, "kernel_size"_a, "sigma"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -121,7 +121,8 @@ void ExportOpGaussian(py::module &m)
     )pbdoc");
 
     m.def("gaussian_into", NvtxTrace("cvcuda.gaussian_into", &GaussianInto), "dst"_a, "src"_a, "kernel_size"_a,
-          "sigma"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "sigma"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Gaussian operation on the given cuda stream.
 
 
@@ -156,7 +157,7 @@ void ExportOpGaussian(py::module &m)
 
     m.def("gaussian_into", NvtxTrace("cvcuda.gaussian_into", &VarShapeGaussianInto), "dst"_a, "src"_a,
           "max_kernel_size"_a, "kernel_size"_a, "sigma"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Gaussian operation on the given cuda stream.
 
 

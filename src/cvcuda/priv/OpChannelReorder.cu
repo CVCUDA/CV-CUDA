@@ -18,8 +18,10 @@
  */
 
 #include "Assert.h"
+#include "LegacyFormatClassify.hpp"
 #include "Nvtx.hpp"
 #include "OpChannelReorder.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/TensorWrap.hpp>
@@ -428,89 +430,8 @@ inline void ReorderVarShapeU8(const nvcv::ImageBatchVarShapeDataStridedCuda &inD
     NVCV_CHECK_THROW(cudaGetLastError());
 }
 
-// Classification is by bits-per-channel plus data kind, never by data-type identity: the var-shape
-// path classifies ImageFormat plane types, which are packed (FMT_RGB8's is TYPE_3U8, not TYPE_U8),
-// so an exact-dtype test would reject every multi-channel interleaved format this operator accepts.
-enum class SampleType
-{
-    U8,
-    S8,
-    U16,
-    S16,
-    S32,
-    F32,
-    F64,
-    F16,
-};
-
-inline SampleType GetSampleType(int32_t bitsPerChannel, nvcv::DataKind kind)
-{
-    switch (kind)
-    {
-    case nvcv::DataKind::FLOAT:
-        if (bitsPerChannel == 64)
-            return SampleType::F64;
-        if (bitsPerChannel == 32)
-            return SampleType::F32;
-        if (bitsPerChannel == 16)
-            return SampleType::F16;
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for float cuda op type ",
-                              bitsPerChannel);
-
-    case nvcv::DataKind::SIGNED:
-        if (bitsPerChannel == 8)
-            return SampleType::S8;
-        if (bitsPerChannel == 16)
-            return SampleType::S16;
-        if (bitsPerChannel == 32)
-            return SampleType::S32;
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for signed cuda op type ",
-                              bitsPerChannel);
-
-    case nvcv::DataKind::UNSIGNED:
-        if (bitsPerChannel == 8)
-            return SampleType::U8;
-        if (bitsPerChannel == 16)
-            return SampleType::U16;
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for unsigned cuda op type ",
-                              bitsPerChannel);
-
-    case nvcv::DataKind::COMPLEX:
-    case nvcv::DataKind::UNSPECIFIED:
-        break;
-    }
-
-    throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                          "Only floating-point, signed integer and unsigned integer data kinds are supported ");
-}
-
-inline SampleType GetSampleType(nvcv::DataType dtype)
-{
-    const std::array<int32_t, 4> bpc = dtype.bitsPerChannel();
-
-    for (int i = 1; i < dtype.numChannels(); ++i)
-    {
-        if (bpc[i] != bpc[0])
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All channels must have same bit-depth");
-        }
-    }
-
-    return GetSampleType(bpc[0], dtype.dataKind());
-}
-
-inline SampleType GetSampleType(nvcv::ImageFormat fmt)
-{
-    for (int i = 1; i < fmt.numPlanes(); ++i)
-    {
-        if (fmt.planeDataType(i) != fmt.planeDataType(0))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All planes must have the same data type");
-        }
-    }
-
-    return GetSampleType(fmt.planeDataType(0));
-}
+using cvcuda::priv::legacy_format::ClassifyDataType;
+using cvcuda::priv::legacy_format::DataTypeCode;
 
 // The legacy DataFormat enum also distinguished batched from single-image layouts (kNHWC from
 // kHWC), but that distinction is a function of the batch size alone, which is common to every
@@ -558,7 +479,7 @@ inline void RunChannelReorderVarShape(const nvcv::ImageBatchVarShapeDataStridedC
     const nvcv::ImageFormat fmt(inData.hostFormatList()[0]);
     const nvcv::ImageFormat outFmt(outData.hostFormatList()[0]);
 
-    const SampleType     sampleType  = GetSampleType(fmt);
+    const DataTypeCode   sampleType  = ClassifyDataType(fmt);
     const VarShapeLayout inLayout    = GetVarShapeLayout(fmt, numImages);
     const VarShapeLayout outLayout   = GetVarShapeLayout(outFmt, numImages);
     const int            channels    = fmt.numChannels();
@@ -572,8 +493,8 @@ inline void RunChannelReorderVarShape(const nvcv::ImageBatchVarShapeDataStridedC
 
     const bool isPlanar = inLayout == VarShapeLayout::Planar;
 
-    if (!(sampleType == SampleType::U8 || sampleType == SampleType::U16 || sampleType == SampleType::S16
-          || sampleType == SampleType::S32 || sampleType == SampleType::F32 || sampleType == SampleType::F16))
+    if (!(sampleType == DataTypeCode::kU8 || sampleType == DataTypeCode::kU16 || sampleType == DataTypeCode::kS16
+          || sampleType == DataTypeCode::kS32 || sampleType == DataTypeCode::kF32 || sampleType == DataTypeCode::kF16))
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid DataType");
     }
@@ -584,7 +505,7 @@ inline void RunChannelReorderVarShape(const nvcv::ImageBatchVarShapeDataStridedC
                               orderData.rank());
     }
 
-    if (GetSampleType(orderData.dtype()) != SampleType::S32)
+    if (ClassifyDataType(orderData.dtype()) != DataTypeCode::kS32)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid Order tensor DataType");
     }
@@ -607,7 +528,10 @@ inline void RunChannelReorderVarShape(const nvcv::ImageBatchVarShapeDataStridedC
                               "Second dimension of order tensor must be at most 4, not %ld", orderData.shape(1));
     }
 
-    for (int i = 0; i < numImages; ++i)
+    // Exact unique formats make image 0 representative; mixed batches retain the per-image validation path.
+    const int32_t numFormatsToValidate = inData.uniqueFormat() && outData.uniqueFormat() ? 1 : numImages;
+
+    for (int i = 0; i < numFormatsToValidate; ++i)
     {
         const nvcv::ImageFormat inFmt(inData.hostFormatList()[i]);
         const nvcv::ImageFormat imageOutFmt(outData.hostFormatList()[i]);
@@ -663,13 +587,13 @@ inline void RunChannelReorderVarShape(const nvcv::ImageBatchVarShapeDataStridedC
         // device, so checking it would cost a copy back. The kernels assert instead, which only
         // fires in debug builds and is unrecoverable (CUDA kernel errors are sticky).
 
-        if (GetSampleType(inFmt) != sampleType)
+        if (ClassifyDataType(inFmt) != sampleType)
         {
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                                   "Format of input images must all have the same data type");
         }
 
-        if (GetSampleType(imageOutFmt) != sampleType)
+        if (ClassifyDataType(imageOutFmt) != sampleType)
         {
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                                   "Format of output images must all have the same data type");
@@ -683,7 +607,7 @@ inline void RunChannelReorderVarShape(const nvcv::ImageBatchVarShapeDataStridedC
     }
 
     // Vectorized 4-pixel-at-a-time path; note the different grid width it needs.
-    if (sampleType == SampleType::U8 && channels == outChannels)
+    if (sampleType == DataTypeCode::kU8 && channels == outChannels)
     {
         if (channels == 3)
         {
@@ -704,29 +628,29 @@ inline void RunChannelReorderVarShape(const nvcv::ImageBatchVarShapeDataStridedC
     // channel reorder moves values without arithmetic, so that copy is bit-exact.
     switch (sampleType)
     {
-    case SampleType::U8:
+    case DataTypeCode::kU8:
         ReorderVarShape<unsigned char>(isPlanar, inData, outData, orderData, channels, outChannels, stream);
         return;
 
-    case SampleType::U16:
-    case SampleType::F16:
+    case DataTypeCode::kU16:
+    case DataTypeCode::kF16:
         ReorderVarShape<unsigned short>(isPlanar, inData, outData, orderData, channels, outChannels, stream);
         return;
 
-    case SampleType::S16:
+    case DataTypeCode::kS16:
         ReorderVarShape<short>(isPlanar, inData, outData, orderData, channels, outChannels, stream);
         return;
 
-    case SampleType::S32:
+    case DataTypeCode::kS32:
         ReorderVarShape<int>(isPlanar, inData, outData, orderData, channels, outChannels, stream);
         return;
 
-    case SampleType::F32:
+    case DataTypeCode::kF32:
         ReorderVarShape<float>(isPlanar, inData, outData, orderData, channels, outChannels, stream);
         return;
 
-    case SampleType::S8:
-    case SampleType::F64:
+    case DataTypeCode::kS8:
+    case DataTypeCode::kF64:
         break;
     }
 
@@ -806,26 +730,9 @@ void ChannelReorder::operator()(cudaStream_t stream, const nvcv::ImageBatchVarSh
                                 const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &orders) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::ChannelReorder::operator()[ImageBatchVarShape]");
-    auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    auto outData = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    auto ordersData = orders.exportData<nvcv::TensorDataStridedCuda>();
-    if (!ordersData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input channel order tensor must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData     = RequireCudaVarShape(in, stream, "Input");
+    auto outData    = RequireCudaVarShape(out, stream, "Output");
+    auto ordersData = RequireCudaTensor(orders, "Input channel order tensor");
 
     RunChannelReorderVarShape(*inData, *outData, *ordersData, stream);
 }

@@ -21,14 +21,13 @@
  * @brief Solarizes an image — inverts every pixel at or above a threshold, per element.
  *
  * Solarize computes, element-wise, @f$ out = (in \ge threshold) ? (bound - in) : in @f$, where
- * @p bound is the maximum representable value of the data type (255 for 8-bit unsigned, 65535 for
- * 16-bit unsigned, and 1.0 for 16- and 32-bit float). The above-threshold branch is the photometric
- * negative; the below-threshold branch passes the pixel through unchanged. The operation is
- * channel-independent.
+ * @p bound is the maximum representable value for unsigned integer types and 1.0 for 16-, 32-,
+ * and 64-bit float. The above-threshold branch is the photometric negative; the below-threshold
+ * branch passes the pixel through unchanged. Unsigned integer subtraction is exact; floating-point
+ * subtraction is rounded to the output type. The operation is channel-independent.
  *
  * Reference: mimics torchvision.transforms.v2.functional.solarize
- * (out = where(x >= threshold, invert(x), x)). The mapping is exactly representable, so the result
- * is bit-exact with no rounding.
+ * (out = where(x >= threshold, invert(x), x)).
  *
  * @defgroup NVCV_C_ALGORITHM__SOLARIZE Solarize
  * @{
@@ -80,7 +79,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaSolarizeCreate(NVCVOperatorHandle *handle);
  *       32bit Signed   | No
  *       16bit Float    | Yes
  *       32bit Float    | Yes
- *       64bit Float    | No
+ *       64bit Float    | Yes
  *
  *  Output:
  *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
@@ -96,7 +95,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaSolarizeCreate(NVCVOperatorHandle *handle);
  *       32bit Signed   | No
  *       16bit Float    | Yes
  *       32bit Float    | Yes
- *       64bit Float    | No
+ *       64bit Float    | Yes
  *
  *  Input/Output dependency
  *

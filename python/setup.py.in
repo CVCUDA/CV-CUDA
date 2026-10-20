@@ -51,10 +51,12 @@ setup(
     author_email='support@nvidia.com',
     url='https://cvcuda.github.io',
     license='Apache-2.0',
-    packages=find_packages(include=["cvcuda"]),
+    # Include the cvcuda package and its pure-Python subpackages (e.g. cvcuda.tv).
+    # Keep in sync with pyproject.toml.in [tool.setuptools.packages.find] (cvcuda*).
+    packages=find_packages(include=["cvcuda", "cvcuda.*"]),
     package_data={
         # Keep in sync with pyproject.toml.in [tool.setuptools.package-data]
-        # and MANIFEST.in: ship the pybind11-stubgen .pyi stubs and the
+        # and MANIFEST.in: ship the nanobind.stubgen .pyi stubs and the
         # PEP 561 py.typed marker so this legacy bdist_wheel fallback path
         # produces wheels with the same inline typing as `python -m build`.
         'cvcuda': [

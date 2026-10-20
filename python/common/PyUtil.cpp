@@ -39,7 +39,7 @@ public:
         // Functions registered with python's atexit will be executed after
         // the script ends without fatal errors, but before python interpreter is torn down.
         // That's a good place for our cleanup.
-        auto py_atexit = py::module_::import("atexit");
+        auto py_atexit = py::module_::import_("atexit");
         py_atexit.attr("register")(py::cpp_function(&doCleanup));
     }
 
@@ -80,7 +80,7 @@ private:
 Cleanup *Cleanup::m_instance = nullptr;
 } // namespace
 
-void RegisterCleanup(py::module &, std::function<void()> fn)
+void RegisterCleanup(py::module_ &, std::function<void()> fn)
 {
     static Cleanup cleanup;
     cleanup.addHandler(std::move(fn));
@@ -88,16 +88,16 @@ void RegisterCleanup(py::module &, std::function<void()> fn)
 
 std::string GetFullyQualifiedName(py::handle h)
 {
-    py::handle type = py::type::of(h);
+    py::handle type = h.type();
 
     std::ostringstream ss;
-    ss << type.attr("__module__").cast<std::string>() << '.' << type.attr("__qualname__").cast<std::string>();
+    ss << py::cast<std::string>(type.attr("__module__")) << '.' << py::cast<std::string>(type.attr("__qualname__"));
     return ss.str();
 }
 
 static std::string ProcessBufferInfoFormat(const std::string &fmt)
 {
-    // pybind11 (as of v2.6.2) doesn't recognize formats 'l' and 'L',
+    // nanobind (as of v2.6.2) doesn't recognize formats 'l' and 'L',
     // which according to https://docs.python.org/3/library/struct.html#format-characters
     // are equal to 'i' and 'I', respectively.
     if (fmt == "l")
@@ -108,34 +108,74 @@ static std::string ProcessBufferInfoFormat(const std::string &fmt)
     {
         return "I";
     }
+    else if (fmt == "Zf")
+    {
+        return "F";
+    }
+    else if (fmt == "Zd")
+    {
+        return "D";
+    }
     else
     {
         return fmt;
     }
 }
 
-py::dtype ToDType(const py::buffer_info &info)
+py::numpy_dtype ToDType(const py::buffer_info &info)
 {
     std::string fmt = ProcessBufferInfoFormat(info.format);
-
-    PyObject *ptr = nullptr;
-    if ((py::detail::npy_api::get().PyArray_DescrConverter_(py::str(fmt).ptr(), &ptr) == 0) || !ptr)
-    {
-        PyErr_Clear();
-        return py::dtype(info);
-    }
-    else
-    {
-        return py::dtype(fmt);
-    }
+    return py::numpy_dtype(fmt);
 }
 
-py::dtype ToDType(const std::string &fmt)
+py::numpy_dtype ToDType(const std::string &fmt)
 {
-    py::buffer_info buf;
-    buf.format = ProcessBufferInfoFormat(fmt);
+    return py::numpy_dtype(ProcessBufferInfoFormat(fmt));
+}
 
-    return ToDType(buf);
+py::object MakeNumpyArray(const py::buffer_info &info, py::object owner)
+{
+    py::numpy_dtype dtype = ToDType(info);
+
+    py::dlpack::dtype arrayType;
+    switch (dtype.kind())
+    {
+    case 'b':
+        arrayType.code = static_cast<uint8_t>(py::dlpack::dtype_code::Bool);
+        break;
+    case 'i':
+        arrayType.code = static_cast<uint8_t>(py::dlpack::dtype_code::Int);
+        break;
+    case 'u':
+        arrayType.code = static_cast<uint8_t>(py::dlpack::dtype_code::UInt);
+        break;
+    case 'f':
+        arrayType.code = static_cast<uint8_t>(py::dlpack::dtype_code::Float);
+        break;
+    case 'c':
+        arrayType.code = static_cast<uint8_t>(py::dlpack::dtype_code::Complex);
+        break;
+    default:
+        throw std::invalid_argument("Unsupported NumPy dtype kind");
+    }
+    arrayType.bits  = static_cast<uint8_t>(info.itemsize * 8);
+    arrayType.lanes = 1;
+
+    std::vector<size_t>  shape(info.shape.begin(), info.shape.end());
+    std::vector<int64_t> strides;
+    strides.reserve(info.strides.size());
+    for (ssize_t stride : info.strides)
+    {
+        if (stride % info.itemsize != 0)
+        {
+            throw std::invalid_argument("Array stride must be a multiple of its item size");
+        }
+        strides.push_back(stride / info.itemsize);
+    }
+
+    py::ndarray<py::numpy> array(info.ptr, shape.size(), shape.data(), owner, strides.data(), arrayType,
+                                 py::device::cpu::value);
+    return array.cast();
 }
 
 } // namespace nvcvpy::util
@@ -154,7 +194,11 @@ public:
 
 float4 GetFloat4FromPyArray(const pyarray &array)
 {
-    if (array.ndim() == 0)
+    if (!array.is_valid())
+    {
+        return nvcv::cuda::SetAll<float4>(0.f);
+    }
+    else if (array.ndim() == 0)
     {
         return nvcv::cuda::SetAll<float4>(*array.data());
     }
@@ -171,7 +215,7 @@ float4 GetFloat4FromPyArray(const pyarray &array)
 
         for (int i = 0; i < static_cast<int>(array.size()); i++)
         {
-            nvcv::cuda::GetElement(value, i) = *array.data(i);
+            nvcv::cuda::GetElement(value, i) = array.data()[i];
         }
 
         return value;

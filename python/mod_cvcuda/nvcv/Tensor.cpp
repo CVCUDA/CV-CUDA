@@ -18,34 +18,27 @@
 #include "Tensor.hpp"
 
 #include "../NvtxRange.hpp"
+#include "BufferAllocator.hpp"
+#include "CastUtils.hpp"
 #include "DataType.hpp"
 #include "ExternalBuffer.hpp"
 #include "Image.hpp"
 #include "ImageFormat.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <common/CheckError.hpp>
 #include <common/Hash.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <nvcv/TensorShapeInfo.hpp>
-#include <pybind11/operators.h>
-#include <pybind11/stl.h>
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-
-namespace nvcv {
-
-static size_t ComputeHash(const nvcv::TensorShape &shape)
-{
-    using nvcvpy::util::ComputeHash;
-    return ComputeHash(shape.shape(), shape.layout());
-}
-
-} // namespace nvcv
+#include <variant>
 
 namespace nvcvpy::priv {
 
@@ -63,13 +56,13 @@ std::shared_ptr<Tensor> Tensor::CreateForImageBatch(int numImages, const Size2D 
                                                     int rowalign)
 {
     nvcv::Tensor::Requirements reqs
-        = nvcv::Tensor::CalcRequirements(numImages, nvcv::Size2D{std::get<0>(size), std::get<1>(size)}, fmt,
+        = nvcv::Tensor::CalcRequirements(numImages, nvcv::Size2D{size.width, size.height}, fmt,
                                          rowalign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowalign));
     return CreateFromReqs(reqs);
 }
 
 std::shared_ptr<Tensor> Tensor::Create(Shape shape, nvcv::DataType dtype, std::optional<nvcv::TensorLayout> layout,
-                                       int rowalign)
+                                       int rowalign, Stream *consumer)
 {
     if (!layout)
     {
@@ -79,27 +72,70 @@ std::shared_ptr<Tensor> Tensor::Create(Shape shape, nvcv::DataType dtype, std::o
     nvcv::Tensor::Requirements reqs
         = nvcv::Tensor::CalcRequirements(CreateNVCVTensorShape(shape, *layout), dtype,
                                          rowalign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowalign));
-    return CreateFromReqs(reqs);
+    return CreateFromReqs(reqs, consumer);
 }
 
-std::shared_ptr<Tensor> Tensor::CreateFromReqs(const nvcv::Tensor::Requirements &reqs)
+std::shared_ptr<Tensor> Tensor::CreateFromReqs(const nvcv::Tensor::Requirements &reqs, Stream *consumer)
 {
-    std::vector<std::shared_ptr<CacheItem>> vcont = Cache::Instance().fetch(Key{reqs});
+    const Key              requested{reqs};
+    std::optional<int64_t> requiredBytes;
+    auto                   getRequiredBytes = [&requiredBytes, &reqs]
+    {
+        if (!requiredBytes.has_value())
+            requiredBytes = doComputeSizeInBytes(reqs);
+        return *requiredBytes;
+    };
+    const auto exact = [](const CacheItem &item, const IKey &requestedKey)
+    {
+        const auto &tensor = static_cast<const Tensor &>(*item.cachedResource());
+        const auto &key    = static_cast<const Key &>(requestedKey);
+        return tensor.m_key->matchesDescriptor(key)
+            && reinterpret_cast<uintptr_t>(tensor.m_buffer->data.get()) % key.alignment() == 0;
+    };
+    auto findExact = [&]() -> std::shared_ptr<Tensor>
+    {
+        if (auto item = Cache::Instance().fetchOne(requested, exact, consumer, {}, getRequiredBytes))
+            return std::static_pointer_cast<Tensor>(item->acquireClaimedObject());
+        return {};
+    };
+    if (auto tensor = findExact())
+        return tensor;
 
-    // None found?
-    if (vcont.empty())
+    auto fits = [&reqs, &getRequiredBytes](Resource &resource, bool pending)
     {
-        std::shared_ptr<Tensor> tensor(new Tensor(reqs)); // NOSONAR: constructor is private.
-        Cache::Instance().add(*tensor);
-        return tensor;
-    }
-    else
+        const auto &tensor = static_cast<const Tensor &>(resource);
+        return tensor.allowsCacheReuse(pending) && !pending && tensor.m_size_inbytes >= getRequiredBytes()
+            && reinterpret_cast<uintptr_t>(tensor.m_buffer->data.get()) % reqs.alignBytes == 0;
+    };
+    auto findFit = [&]() -> std::shared_ptr<Tensor>
     {
-        // Get the first one
-        auto tensor = std::static_pointer_cast<Tensor>(vcont[0]);
-        NVCV_ASSERT(tensor->dtype() == reqs.dtype);
+        auto smaller = [](const CacheItem &a, const CacheItem &b)
+        {
+            return a.GetSizeInBytes() < b.GetSizeInBytes();
+        };
+        if (auto item = Cache::Instance().fetchOne(requested, {}, nullptr, fits, getRequiredBytes, smaller))
+        {
+            auto tensor    = std::static_pointer_cast<Tensor>(item->acquireClaimedObject());
+            auto impl      = nvcv::Tensor(reqs, CreateBufferAllocator(tensor->m_buffer));
+            tensor->m_impl = std::move(impl);
+            tensor->m_key->setDescriptor(reqs);
+            return tensor;
+        }
+        return {};
+    };
+    if (auto tensor = findFit())
         return tensor;
-    }
+
+    // An idle reshape wrapper can be the last native alias of an allocation.
+    Cache::Instance().removeAllNotInUseMatching(WrapperKey{});
+    if (auto tensor = findExact())
+        return tensor;
+    if (auto tensor = findFit())
+        return tensor;
+
+    std::shared_ptr<Tensor> tensor(new Tensor(reqs)); // NOSONAR: constructor is private.
+    Cache::Instance().add(*tensor);
+    return tensor;
 }
 
 namespace {
@@ -168,6 +204,25 @@ NVCVTensorData FillNVCVTensorDataCUDA(const DLTensor &tensor, std::optional<nvcv
     return FillNVCVTensorData(tensor, std::move(layout), NVCV_TENSOR_BUFFER_STRIDED_CUDA);
 }
 
+// Accept a string layout in the first overload pass. Falling back to the
+// registered str -> TensorLayout conversion probes the buffer argument again,
+// including another potentially expensive __cuda_array_interface__ parse.
+using LayoutArg = std::variant<nvcv::TensorLayout, py::str>;
+
+std::optional<nvcv::TensorLayout> ToTensorLayout(std::optional<LayoutArg> layout)
+{
+    if (!layout)
+    {
+        return std::nullopt;
+    }
+    if (const auto *name = std::get_if<py::str>(&*layout))
+    {
+        std::string nameString = py::cast<std::string>(*name);
+        return nvcv::TensorLayout(nameString.c_str());
+    }
+    return std::get<nvcv::TensorLayout>(*layout);
+}
+
 } // namespace
 
 std::shared_ptr<Tensor> Tensor::Wrap(ExternalBuffer &buffer, std::optional<nvcv::TensorLayout> layout)
@@ -178,13 +233,17 @@ std::shared_ptr<Tensor> Tensor::Wrap(ExternalBuffer &buffer, std::optional<nvcv:
 
     // This is the key of a tensor wrapper.
     // All tensor wrappers have the same key.
-    Tensor::Key key;
+    Tensor::WrapperKey key;
     // We take this opportunity to remove from cache all wrappers that aren't
     // being used. They aren't reusable anyway.
     Cache::Instance().removeAllNotInUseMatching(key);
 
     auto tensor = std::shared_ptr<Tensor>( // NOSONAR: constructor is private.
         new Tensor(data, py::cast(buffer.shared_from_this())));
+#ifdef NB_FREE_THREADED
+    tensor->setReadOnly(buffer.readOnly());
+    tensor->setSubmissionStates(buffer.submissionStates());
+#endif
 
     // Seed the tensor's Resource state with the producer's CUDA stream so the
     // first cvcuda op that reads this tensor inserts the necessary
@@ -209,7 +268,7 @@ std::shared_ptr<Tensor> Tensor::Wrap(ExternalBuffer &buffer, std::optional<nvcv:
 
 std::shared_ptr<Tensor> Tensor::WrapImage(Image &img)
 {
-    Tensor::Key key;
+    Tensor::WrapperKey key{img.key()};
     Cache::Instance().removeAllNotInUseMatching(key);
 
     auto tensor = std::shared_ptr<Tensor>(new Tensor(img)); // NOSONAR: constructor is private.
@@ -220,14 +279,17 @@ std::shared_ptr<Tensor> Tensor::WrapImage(Image &img)
 
 std::shared_ptr<Tensor> Tensor::ReshapeTensor(Tensor &tensor, Shape shape, std::optional<nvcv::TensorLayout> layout)
 {
-    Tensor::Key key;
+    Tensor::WrapperKey key{tensor.key()};
     Cache::Instance().removeAllNotInUseMatching(key);
 
     nvcv::Tensor tensor_impl      = tensor.impl();
     auto         new_tensor_shape = CreateNVCVTensorShape(shape, layout ? *layout : tensor_impl.layout());
     nvcv::Tensor new_tensor_impl  = tensor_impl.reshape(new_tensor_shape);
-    auto         new_tensor
-        = std::shared_ptr<Tensor>(new Tensor(std::move(new_tensor_impl))); // NOSONAR: constructor is private.
+    auto         new_tensor       = std::shared_ptr<Tensor>( // NOSONAR: constructor is private.
+        new Tensor(std::move(new_tensor_impl), tensor.key()));
+#ifdef NB_FREE_THREADED
+    new_tensor->shareSubmissionStates(tensor);
+#endif
 
     // Need to add wrappers to cache so that they don't get destroyed by
     // the cuda stream when they're last used, and python script isn't
@@ -242,33 +304,47 @@ std::shared_ptr<Tensor> Tensor::Reshape(Shape shape, std::optional<nvcv::TensorL
 }
 
 Tensor::Tensor(const nvcv::Tensor::Requirements &reqs)
-    : m_impl{reqs}
-    , m_key{reqs}
+    : Container(false)
+    , m_buffer{AllocateBuffer(doComputeSizeInBytes(reqs))}
+    , m_impl{reqs, CreateBufferAllocator(m_buffer)}
+    , m_key{std::make_unique<Key>(reqs)}
+    , m_wrapperKey{*m_key}
     , m_size_inbytes{doComputeSizeInBytes(reqs)}
 {
+#ifdef NB_FREE_THREADED
+    setSubmissionStates({AllocationSubmissionState(m_impl.exportData<nvcv::TensorDataStridedCuda>()->basePtr())});
+#endif
 }
 
 Tensor::Tensor(const nvcv::TensorData &data, py::object wrappedObject)
-    : m_impl{nvcv::TensorWrapData(data)}
-    , m_size_inbytes{doComputeSizeInBytes(nvcv::Tensor::Requirements())}
+    : Container(false)
+    , m_impl{nvcv::TensorWrapData(data)}
+    , m_size_inbytes{0}
     , m_wrappedObject(wrappedObject)
 {
 }
 
 Tensor::Tensor(Image &img)
-    : m_impl{nvcv::TensorWrapImage(img.impl())}
-    , m_size_inbytes{doComputeSizeInBytes(nvcv::Tensor::Requirements())}
-    , m_wrappedObject(py::cast(img))
+    : Container(false)
+    , m_impl{nvcv::TensorWrapImage(img.impl())}
+    , m_wrapperKey{img.key()}
+    , m_size_inbytes{0}
+    , m_wrappedObject(py::cast(&img, py::rv_policy::reference))
+{
+#ifdef NB_FREE_THREADED
+    shareSubmissionStates(img);
+#endif
+}
+
+Tensor::Tensor(nvcv::Tensor &&tensor, const IKey &deviceKey)
+    : Container(false)
+    , m_impl{std::move(tensor)}
+    , m_wrapperKey{deviceKey}
+    , m_size_inbytes{0}
 {
 }
 
-Tensor::Tensor(nvcv::Tensor &&tensor)
-    : m_impl{std::move(tensor)}
-    , m_size_inbytes{doComputeSizeInBytes(nvcv::Tensor::Requirements())}
-{
-}
-
-int64_t Tensor::doComputeSizeInBytes(const nvcv::Tensor::Requirements &reqs) const
+int64_t Tensor::doComputeSizeInBytes(const nvcv::Tensor::Requirements &reqs)
 {
     int64_t size_inbytes;
     util::CheckThrow(nvcvMemRequirementsCalcTotalSizeBytes(&(reqs.mem.cudaMem), &size_inbytes));
@@ -281,6 +357,16 @@ int64_t Tensor::GetSizeInBytes() const
     NVCV_ASSERT(m_size_inbytes != -1
                 && "Tensor has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
     return m_size_inbytes;
+}
+
+RetainedMemory Tensor::retainedMemory() const
+{
+    return m_wrappedObject ? RetainedMemory{0, 1} : Container::retainedMemory();
+}
+
+bool Tensor::allowsCacheReuse([[maybe_unused]] bool pendingRelease) const
+{
+    return m_impl.refCount() == 1;
 }
 
 nvcv::Tensor &Tensor::impl()
@@ -322,62 +408,47 @@ int Tensor::rank() const
 }
 
 Tensor::Key::Key(const nvcv::Tensor::Requirements &reqs)
-    : Key(nvcv::TensorShape(reqs.shape, reqs.rank, nvcv::TensorLayout{reqs.layout}),
-          static_cast<nvcv::DataType>(reqs.dtype))
+    : m_layout(reqs.layout)
+    , m_dtype(reqs.dtype)
 {
+    setDescriptor(reqs);
 }
 
-Tensor::Key::Key(const nvcv::TensorShape &shape, nvcv::DataType dtype)
-    : m_shape(shape)
-    , m_dtype(dtype)
-    , m_wrapper(false)
+bool Tensor::Key::matchesDescriptor(const Key &requested) const noexcept
 {
+    return m_rank == requested.m_rank
+        && std::equal(m_shape.begin(), m_shape.begin() + m_rank, requested.m_shape.begin())
+        && std::equal(m_strides.begin(), m_strides.begin() + m_rank, requested.m_strides.begin());
+}
+
+void Tensor::Key::setDescriptor(const nvcv::Tensor::Requirements &reqs) noexcept
+{
+    m_rank       = reqs.rank;
+    m_alignBytes = reqs.alignBytes;
+    std::copy_n(reqs.shape, m_rank, m_shape.begin());
+    std::copy_n(reqs.strides, m_rank, m_strides.begin());
 }
 
 size_t Tensor::Key::doGetHash() const
 {
-    if (m_wrapper)
-    {
-        return 0; // all wrappers are equal wrt. the cache
-    }
-    else
-    {
-        using util::ComputeHash;
-        return ComputeHash(m_shape, m_dtype);
-    }
+    using util::ComputeHash;
+    return ComputeHash(m_layout, m_dtype);
 }
 
 bool Tensor::Key::doIsCompatible(const IKey &that_) const
 {
     const auto &that = static_cast<const Key &>(that_);
-
-    // Wrapper key's all compare equal, are they can't be used
-    // and whenever we query the cache for wrappers, we really
-    // want to get them all (as long as they aren't being used).
-    if (m_wrapper && that.m_wrapper)
-    {
-        return true;
-    }
-    else if (m_wrapper || that.m_wrapper) // xor
-    {
-        return false;
-    }
-    else
-    {
-        return std::tie(m_shape, m_dtype) == std::tie(that.m_shape, that.m_dtype);
-    }
+    return std::tie(m_layout, m_dtype) == std::tie(that.m_layout, that.m_dtype);
 }
 
-auto Tensor::key() const -> const Key &
+auto Tensor::key() const -> const IKey &
 {
-    return m_key;
+    return m_key ? static_cast<const IKey &>(*m_key) : static_cast<const IKey &>(m_wrapperKey);
 }
 
-static py::object ToPython(const nvcv::TensorData &tensorData, py::object owner, cudaStream_t exportStream,
-                           bool setExportStream)
+static py::object ToPython(const nvcv::TensorData &tensorData, py::object owner,
+                           Resource::ExportStreamState exportStream)
 {
-    py::object out;
-
     auto stridedData = tensorData.cast<nvcv::TensorDataStrided>();
     if (!stridedData)
     {
@@ -385,7 +456,8 @@ static py::object ToPython(const nvcv::TensorData &tensorData, py::object owner,
     }
 
     DLPackTensor dlTensor(*stridedData);
-    return ExternalBuffer::Create(std::move(dlTensor), owner, exportStream, setExportStream);
+    return ExternalBuffer::Create(std::move(dlTensor), std::move(owner), std::move(exportStream.handle),
+                                  std::move(exportStream.owner));
 }
 
 py::object Tensor::cuda() const
@@ -394,21 +466,17 @@ py::object Tensor::cuda() const
 
     // Advertise the stream the tensor's data was last written on via the
     // CAI `stream` field so downstream consumers (cupy/torch) can sync.
-    // If the tensor has never been used by a cvcuda op, getLastStreamHandle()
-    // returns 0 -- in which case we fall back to the default "stream: 1"
-    // (legacy default) by not populating the export stream.
-    cudaStream_t lastStream = this->getLastStreamHandle();
-    bool         setStream  = lastStream != nullptr;
+    ExportStreamState exportStream = this->exportStreamState();
 
     // Note: we can't cache the returned ExternalBuffer because it is holding
     // a reference to us. Doing so would lead to mem leaks.
-    return ToPython(tensorData, py::cast(SharedContainerFrom(*this)), lastStream, setStream);
+    return ToPython(tensorData, py::cast(SharedContainerFrom(*this)), std::move(exportStream));
 }
 
 std::ostream &operator<<(std::ostream &out, const Tensor &tensor)
 {
-    return out << "<nvcv.Tensor shape=" << tensor.shape()
-               << " dtype=" << py::str(py::cast(tensor.dtype())).cast<std::string>() << '>';
+    return out << "<nvcv.Tensor shape=" << py::cast<std::string>(py::str(tensor.shape()))
+               << " dtype=" << py::cast<std::string>(py::str(py::cast(tensor.dtype()))) << '>';
 }
 
 static std::string TensorLayoutToString(const nvcv::TensorLayout &layout)
@@ -484,9 +552,9 @@ static Py_hash_t TensorLayoutTpHash(PyObject *self)
     }
 }
 
-void ExportTensorLayout(py::module &m)
+void ExportTensorLayout(py::module_ &m)
 {
-    auto cls = py::class_<nvcv::TensorLayout>(m, "TensorLayout");
+    auto cls = py::class_<nvcv::TensorLayout>(m, "TensorLayout", py::is_weak_referenceable());
     cls.def(py::init<const char *>())
         .def(
             "__eq__", [](const nvcv::TensorLayout &a, const nvcv::TensorLayout &b) { return a == b; },
@@ -495,7 +563,7 @@ void ExportTensorLayout(py::module &m)
             "__ne__", [](const nvcv::TensorLayout &a, const nvcv::TensorLayout &b) { return a != b; },
             py::is_operator(), "Check if two TensorLayout objects are not equal.")
         // Kept alongside the tp_hash slot so TensorLayout.__hash__ resolves to
-        // the same value; without a def, pybind11 nulls __hash__ once __eq__
+        // the same value; without a def, nanobind nulls __hash__ once __eq__
         // is defined, leaving TensorLayout unhashable.
         .def(
             "__hash__", [](const nvcv::TensorLayout &l) { return TensorLayoutHashValue(l); },
@@ -515,7 +583,7 @@ void ExportTensorLayout(py::module &m)
 #include <nvcv/TensorLayoutDef.inc> // NOSONAR: this include expands TensorLayout constants inside the binding chain.
 #undef NVCV_DETAIL_DEF_TLAYOUT
 
-    // Override last: pybind's def("__hash__") above set tp_hash to CPython's
+    // Override last: def("__hash__") above set tp_hash to CPython's
     // slot dispatcher; replace it with the direct C implementation.
     auto *tp    = reinterpret_cast<PyTypeObject *>(cls.ptr());
     tp->tp_hash = &TensorLayoutTpHash;
@@ -524,36 +592,50 @@ void ExportTensorLayout(py::module &m)
     py::implicitly_convertible<py::str, nvcv::TensorLayout>();
 }
 
-void Tensor::Export(py::module &m)
+void Tensor::Export(py::module_ &m)
 {
     using namespace py::literals;
 
-    py::class_<Tensor, std::shared_ptr<Tensor>, Container>(m, "Tensor", "Tensor")
-        .def(py::init(&Tensor::CreateForImageBatch), "nimages"_a, "imgsize"_a, "format"_a, "rowalign"_a = 0,
+    py::class_<Tensor, Container>(m, "Tensor", "Tensor", py::is_weak_referenceable())
+        .def(py::new_(&Tensor::CreateForImageBatch), "nimages"_a, "imgsize"_a, "format"_a, "rowalign"_a = 0,
              "Create a Tensor object for an ImageBatch.")
-        .def(py::init(&Tensor::Create), "shape"_a, "dtype"_a, "layout"_a = std::nullopt, "rowalign"_a = 0,
+        .def(py::new_(+[](Shape shape, nvcv::DataType dtype, std::optional<LayoutArg> layout, int rowalign)
+                      { return Tensor::Create(std::move(shape), dtype, ToTensorLayout(std::move(layout)), rowalign); }),
+             "shape"_a, "dtype"_a, "layout"_a = std::nullopt, "rowalign"_a = 0,
              "Create a Tensor object with the given shape, data type and layout.")
-        .def_property_readonly(
+        .def_prop_ro(
             "layout", [](const Tensor &self) { return PyTensorLayout(self.layout()); },
             "The TensorLayout of the Tensor.")
-        .def_property_readonly("shape", &Tensor::shape, "The shape of the Tensor.")
-        .def_property_readonly("dtype", &Tensor::dtype, "The data type of the Tensor.")
+        .def_prop_ro("shape", &Tensor::shape, "The shape of the Tensor.")
+        .def_prop_ro("dtype", &Tensor::dtype, "The data type of the Tensor.")
         // numpy and others use ndim, let's be consistent with them in python.
         // It's not a requirement to be consistent between NVCV Python and C/C++.
         // Each language use whatever is appropriate (and expected) in their environment.
-        .def_property_readonly("ndim", &Tensor::rank, "The number of dimensions of the Tensor.")
+        .def_prop_ro("ndim", &Tensor::rank, "The number of dimensions of the Tensor.")
         .def("cuda", ::cvcudapy::NvtxTrace("cvcuda.Tensor.cuda", &Tensor::cuda),
              "Reference to the Tensor on the CUDA device.")
-        .def("reshape", &Tensor::Reshape, "shape"_a, "layout"_a = std::nullopt,
-             "Produces a tensor pointing to the same data but with a new shape and layout.")
+        .def(
+            "reshape",
+            [](Tensor &self, Shape shape, std::optional<LayoutArg> layout)
+            { return self.Reshape(std::move(shape), ToTensorLayout(std::move(layout))); },
+            "shape"_a, "layout"_a = std::nullopt,
+            "Produces a tensor pointing to the same data but with a new shape and layout.")
         .def("__repr__", &util::ToString<Tensor>, "Return the string representation of the Tensor object.");
 
-    m.def("as_tensor", ::cvcudapy::NvtxTrace("cvcuda.as_tensor", &Tensor::Wrap), "buffer"_a, "layout"_a = std::nullopt,
-          "Wrap an existing buffer into a Tensor object with the given layout.");
+    m.def("as_tensor",
+          ::cvcudapy::NvtxTrace(
+              "cvcuda.as_tensor", +[](ExternalBuffer &buffer, std::optional<LayoutArg> layout)
+                                  { return Tensor::Wrap(buffer, ToTensorLayout(std::move(layout))); }),
+          "buffer"_a, "layout"_a = std::nullopt, "Wrap an existing buffer into a Tensor object with the given layout.");
     m.def("as_tensor", ::cvcudapy::NvtxTrace("cvcuda.as_tensor", &Tensor::WrapImage), "image"_a,
           "Wrap an existing image into a Tensor object.");
-    m.def("reshape", ::cvcudapy::NvtxTrace("cvcuda.reshape", &Tensor::ReshapeTensor), "tensor"_a, "shape"_a,
-          "layout"_a = std::nullopt, "Produces a tensor pointing to the same data but with a new shape and layout.");
+    m.def("reshape",
+          ::cvcudapy::NvtxTrace(
+              "cvcuda.reshape",
+              +[](Tensor &self, Shape shape, std::optional<LayoutArg> layout)
+              { return Tensor::ReshapeTensor(self, std::move(shape), ToTensorLayout(std::move(layout))); }),
+          "tensor"_a, "shape"_a, "layout"_a = std::nullopt,
+          "Produces a tensor pointing to the same data but with a new shape and layout.");
 }
 
 } // namespace nvcvpy::priv

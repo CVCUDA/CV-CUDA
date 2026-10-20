@@ -124,7 +124,7 @@ def test_declared_tables_reference_real_operators_and_files(ops):
 @pytest.mark.parametrize(
     "path",
     [
-        "src/cvcuda/priv/legacy/CvCudaUtils.cuh",
+        "src/cvcuda/priv/Types.hpp",
         # Whole trees every operator compiles against. These previously attributed to nothing,
         # so a change to the shared device utilities produced an empty scope and a green no-op.
         "src/cvcuda/include/cvcuda/cuda_tools/TypeTraits.hpp",
@@ -138,18 +138,39 @@ def test_broad_source_expands_to_every_operator(path, ops):
     assert operators_for_path(path, ops) == ops
 
 
-def test_legacy_umbrella_header_attributes_to_no_operator(ops):
-    """CvCudaLegacy.h is declarations only, so it must not drive the scope on its own.
+def test_declarations_only_header_attributes_to_no_operator(ops):
+    """A header carrying only prototypes must not drive the scope on its own.
 
-    Every legacy-layer removal deletes one operator's `class <Op>` block from this header. While
-    it was broad, that one-operator diff resolved to all 61 operators and ran the advanced sweep
-    for every one of them. The operator's own translation unit is what attributes.
+    This guarded CvCudaLegacy.h until the legacy layer was deleted; Operators.hpp is the
+    surviving header of that shape. Adding one operator edits one `ExportOp<Name>` prototype,
+    and the operator's own translation unit is what attributes - so if this header were broad,
+    that one-operator diff would resolve to every operator and run the advanced sweep for all
+    of them. Contrast a shared header that carries inlined device code, which stays broad.
     """
-    path = "src/cvcuda/priv/legacy/CvCudaLegacy.h"
+    path = "python/mod_cvcuda/operators/Operators.hpp"
     assert not is_broad_source(path)
     assert operators_for_path(path, ops) == set()
-    # The shared legacy utilities stay broad: they carry inlined device code, not declarations.
-    assert operators_for_path("src/cvcuda/priv/legacy/CvCudaUtils.cuh", ops) == ops
+    assert operators_for_path("src/cvcuda/priv/Types.hpp", ops) == ops
+
+
+def test_unowned_wins_over_a_broad_prefix(ops):
+    """A scheduling gate inside a broad tree attributes to nothing, not to everything."""
+    path = "bench/_internal/check_bench_sku.py"
+    assert any(path.startswith(prefix) for prefix in BROAD_PREFIXES)
+    assert not is_broad_source(path)
+    assert operators_for_path(path, ops) == set()
+
+
+def test_measuring_siblings_of_an_unowned_bench_file_stay_broad(ops):
+    """Only the listed file is exempt; the rest of bench/_internal/ still sweeps."""
+    for path in ("bench/_internal/warmup.py", "bench/_internal/axes.py"):
+        assert is_broad_source(path)
+        assert operators_for_path(path, ops) == ops
+
+
+def test_unowned_sources_are_never_reported_broad():
+    """is_broad_source and operators_for_path must agree on every declared exemption."""
+    assert [p for p in UNOWNED_SOURCES if is_broad_source(p)] == []
 
 
 def test_broad_prefixes_do_not_swallow_per_operator_artifacts(ops):
@@ -200,26 +221,23 @@ def test_paths_outside_the_operator_tree_attribute_to_nothing(ops):
         ("src/cvcuda/priv/InvertPolicy.hpp", {"invert"}),
         # Shared kernels fan out to every consumer.
         (
-            "src/cvcuda/priv/legacy/filter.cu",
-            {"gaussian", "averageblur", "laplacian"},
+            "src/cvcuda/priv/FilterCommon.cuh",
+            # AdaptiveThreshold joined the cluster when it stopped carrying its own copy of the
+            # gaussian coefficient helper, so a change here now moves its benchmarks too.
+            {"gaussian", "averageblur", "laplacian", "conv2d", "adaptivethreshold"},
         ),
         (
-            "src/cvcuda/priv/legacy/warp.cu",
+            "src/cvcuda/priv/WarpCommon.cuh",
             {"warpaffine", "warpperspective"},
         ),
         (
-            "src/cvcuda/priv/legacy/warp_cubic.cuh",
-            {"rotate", "warpaffine", "warpperspective"},
-        ),
-        ("src/cvcuda/priv/legacy/calc_hist.cu", {"histogram"}),
-        ("src/cvcuda/priv/legacy/reduce_kernel_utils.cuh", {"inpaint"}),
-        (
             "src/cvcuda/priv/AdjustColorCommon.cuh",
-            {"adjustcontrast", "adjustsharpness"},
+            # Both operators share rounding and output-conversion policy in this header.
+            {"adjustcontrast", "brightnesscontrast"},
         ),
         (
-            "src/cvcuda/priv/legacy/textbackend/backend.cpp",
-            {"bndbox", "boxblur", "osd"},
+            "src/cvcuda/priv/textbackend/backend.cpp",
+            {"bndbox", "osd"},
         ),
         # The rest of an operator's surface.
         ("src/cvcuda/Op MedianBlur.cpp".replace(" ", ""), {"medianblur"}),
@@ -230,10 +248,19 @@ def test_paths_outside_the_operator_tree_attribute_to_nothing(ops):
         ("bench/config/operators/medianblur.json", {"medianblur"}),
         ("bench/cpp/ops/BenchGaussian.cpp", {"gaussian"}),
         ("bench/cpp/ops/BenchGaussianNoise.cpp", {"gaussiannoise"}),
+        ("bench/cpp/ops/BenchChannelCopy.hpp", {"split", "merge"}),
     ],
 )
 def test_known_attributions(path, expected, ops):
     assert operators_for_path(path, ops) == expected
+
+
+@pytest.mark.parametrize("suffix", ["cu", "hpp"])
+def test_channel_copy_attribution(suffix, ops):
+    assert operators_for_path(f"src/cvcuda/priv/ChannelCopy.{suffix}", ops) == {
+        "split",
+        "merge",
+    }
 
 
 def test_attribution_is_exact_rather_than_a_prefix_search(ops):
@@ -265,6 +292,7 @@ def test_attribution_is_exact_rather_than_a_prefix_search(ops):
         ("src/cvcuda/priv/legacy/EraseCopyPolicy.hpp", {"erase"}),
         ("src/cvcuda/priv/legacy/ReformatCopyPolicy.hpp", {"reformat"}),
         ("src/cvcuda/priv/OpHQResizePolicy.hpp", {"hqresize"}),
+        ("src/cvcuda/priv/OpHQResizeConfig.hpp", {"hqresize"}),
     ],
 )
 def test_declared_suffixes_strip_to_an_exact_operator_name(path, expected, ops):
@@ -272,17 +300,19 @@ def test_declared_suffixes_strip_to_an_exact_operator_name(path, expected, ops):
 
 
 def test_the_motivating_merge_request_scope(ops):
-    """An MR touching Gaussian and MedianBlur kernels benches both, plus filter.cu's peers."""
+    """An MR touching Gaussian and MedianBlur kernels benches both, plus the filter cluster."""
     changed = [
-        "src/cvcuda/priv/OpGaussian.cpp",
-        "src/cvcuda/priv/legacy/filter.cu",
+        "src/cvcuda/priv/OpGaussian.cu",
+        "src/cvcuda/priv/FilterCommon.cuh",
         "src/cvcuda/priv/legacy/median_blur.cu",
         "docs/sphinx/operator_list.rst",
     ]
     assert set().union(*attribute_paths(changed, ops).values(), set()) == {
         "gaussian",
         "averageblur",
+        "conv2d",
         "laplacian",
+        "adaptivethreshold",
         "medianblur",
     }
     per_path = attribute_paths(changed, ops)
@@ -353,16 +383,21 @@ def test_the_two_attribution_rules_do_not_contradict_each_other(ops):
     assert disagreements == []
 
 
-# CvCudaOSD.hpp's only includer is legacy/CvCudaLegacy.h, which attributes to no operator, so
-# the closure stops there and the graph cannot reach its consumers. Its two operators come from
-# what the OSD kernels draw, not from who includes the header.
-_UNDERIVABLE_HEADERS = frozenset({"src/cvcuda/priv/legacy/CvCudaOSD.hpp"})
+# Headers whose declared consumer set the include graph cannot reach. OsdContext.hpp used to be
+# listed here because its declared set included boxblur, which was only reachable through
+# legacy/box_blur.cu; BoxBlur's migration dropped that dependency, so the declared and derived
+# sets now agree and nothing needs the exemption.
+_UNDERIVABLE_HEADERS: frozenset[str] = frozenset()
 
 
 def _include_graph():
     """file -> set of basenames it #includes, over the operator source roots."""
     graph = {}
-    for root in (REPO / "src/cvcuda", REPO / "python/mod_cvcuda"):
+    for root in (
+        REPO / "src/cvcuda",
+        REPO / "python/mod_cvcuda",
+        REPO / "bench/cpp/ops",
+    ):
         for path in root.rglob("*"):
             if path.suffix not in (".cu", ".cuh", ".hpp", ".cpp", ".h"):
                 continue
@@ -458,7 +493,7 @@ def test_header_derivation_terminates_on_an_include_cycle(ops):
 
     _derived_header_owners resolves consumers, and operators_for_path routes an unclaimed
     header back into _derived_header_owners, so a cycle would recurse until the stack blew.
-    src/cvcuda/priv/legacy/textbackend/stb_truetype.h is self-reachable in the real graph today
+    src/cvcuda/priv/textbackend/stb_truetype.h is self-reachable in the real graph today
     and survives only because a MULTI_OP_SOURCES prefix claims it first.
     """
     import operator_source_map as osm
@@ -477,5 +512,5 @@ def test_the_real_graph_has_a_self_reachable_header(ops):
     comment explaining why the guard exists would go stale."""
     import operator_source_map as osm
 
-    header = "src/cvcuda/priv/legacy/textbackend/stb_truetype.h"
+    header = "src/cvcuda/priv/textbackend/stb_truetype.h"
     assert header in osm._transitive_includers(header)

@@ -64,14 +64,16 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCopyMakeBorderCreate(NVCVOperatorHandle *handle);
  *       Data Type      | Allowed
  *       -------------- | -------------
  *       8bit  Unsigned | Yes
- *       8bit  Signed   | No
+ *       8bit  Signed   | Yes
  *       16bit Unsigned | Yes
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
- *       32bit Signed   | No
+ *       32bit Signed   | Yes
+ *       64bit Unsigned | No
+ *       64bit Signed   | Yes
  *       16bit Float    | Yes
  *       32bit Float    | Yes
- *       64bit Float    | No
+ *       64bit Float    | Yes
  *
  *       Note: 2 channels can only support 8bit Unsigned data type and interleaved layout.
  *
@@ -82,14 +84,16 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCopyMakeBorderCreate(NVCVOperatorHandle *handle);
  *       Data Type      | Allowed
  *       -------------- | -------------
  *       8bit  Unsigned | Yes
- *       8bit  Signed   | No
+ *       8bit  Signed   | Yes
  *       16bit Unsigned | Yes
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
- *       32bit Signed   | No
+ *       32bit Signed   | Yes
+ *       64bit Unsigned | No
+ *       64bit Signed   | Yes
  *       16bit Float    | Yes
  *       32bit Float    | Yes
- *       64bit Float    | No
+ *       64bit Float    | Yes
  *
  *  Input/Output dependency
  *

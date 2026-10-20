@@ -42,6 +42,8 @@ import time
 import cupy
 import numpy as np
 
+from cvcuda_test_utils import as_cupy_stream
+
 
 # ----------------------------------------------------------------------
 # GPU-side busy-wait kernel.  Used to hold a stream in a measurable
@@ -69,7 +71,7 @@ def _enqueue_gpu_delay(stream_handle: int, cycles: int = 200_000_000) -> None:
     never involved.  The stream does not complete work after this point
     until the kernel retires (~100-200 ms on recent GPUs).
     """
-    ext = cupy.cuda.ExternalStream(stream_handle)
+    ext = as_cupy_stream(stream_handle)
     with ext:
         _DELAY_KERNEL((1,), (1,), (cycles,))
 

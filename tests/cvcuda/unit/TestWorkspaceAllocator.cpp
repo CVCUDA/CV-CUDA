@@ -18,11 +18,78 @@
 #include "Definitions.hpp"
 
 #include <cvcuda/priv/WorkspaceAllocator.hpp>
+#include <nvcv/util/CheckError.hpp>
 
 #include <array>
+#include <chrono>
 #include <cstddef>
+#include <future>
 
 #define EXPECT_PTR_EQ(a, b) EXPECT_EQ((const void *)(a), (const void *)(b))
+
+namespace {
+
+class BlockedCudaStream
+{
+public:
+    BlockedCudaStream()
+        : m_release(m_releasePromise.get_future().share())
+        , m_started(m_startedPromise.get_future())
+    {
+        NVCV_CHECK_THROW(cudaStreamCreateWithFlags(&m_stream, cudaStreamNonBlocking));
+        try
+        {
+            NVCV_CHECK_THROW(cudaLaunchHostFunc(m_stream, Wait, this));
+            m_started.wait();
+        }
+        catch (...)
+        {
+            (void)cudaStreamDestroy(m_stream);
+            throw;
+        }
+    }
+
+    ~BlockedCudaStream()
+    {
+        release();
+        (void)cudaStreamSynchronize(m_stream);
+        (void)cudaStreamDestroy(m_stream);
+    }
+
+    BlockedCudaStream(const BlockedCudaStream &)            = delete;
+    BlockedCudaStream &operator=(const BlockedCudaStream &) = delete;
+
+    cudaStream_t get() const
+    {
+        return m_stream;
+    }
+
+    void release()
+    {
+        if (!m_released)
+        {
+            m_releasePromise.set_value();
+            m_released = true;
+        }
+    }
+
+private:
+    static void CUDART_CB Wait(void *context)
+    {
+        auto &gate = *static_cast<BlockedCudaStream *>(context);
+        gate.m_startedPromise.set_value();
+        gate.m_release.wait();
+    }
+
+    cudaStream_t             m_stream{};
+    std::promise<void>       m_releasePromise;
+    std::shared_future<void> m_release;
+    std::promise<void>       m_startedPromise;
+    std::future<void>        m_started;
+    bool                     m_released = false;
+};
+
+} // namespace
 
 TEST(AllocateWorkspaceTest, AllocationFailureUsesPublicException)
 {
@@ -163,58 +230,44 @@ TEST(WorkspaceMemAllocatorTest, AcquireRelease)
 
 TEST(WorkspaceMemAllocatorTest, Sync)
 {
-    std::byte *junk_ptr  = nullptr;
-    size_t     junk_size = 100 << 20;
-    ASSERT_EQ(cudaMalloc(reinterpret_cast<void **>(&junk_ptr), junk_size), cudaSuccess);
-    std::unique_ptr<std::byte, void (*)(std::byte *)> junk(junk_ptr,
-                                                           [](std::byte *p) { EXPECT_EQ(cudaFree(p), cudaSuccess); });
-
     alignas(64) std::array<char, 64> base;
     cvcuda::WorkspaceMem             wm{};
     wm.req  = {64, 64};
     wm.data = base.data();
     ASSERT_EQ(cudaEventCreateWithFlags(&wm.ready, cudaEventDisableTiming), cudaSuccess);
 
-    // this is supposed to last long enough to be reliably "not ready"
-    auto hog = [&junk, &junk_size]()
-    {
-        for (int i = 0; i < 256; i++)
-        {
-            ASSERT_EQ(cudaMemset(junk.get(), i, junk_size), cudaSuccess);
-        }
-    };
-
     EXPECT_NO_THROW({
-        hog();
-        ASSERT_EQ(cudaEventRecord(wm.ready, 0), cudaSuccess);
+        BlockedCudaStream gate;
+        ASSERT_EQ(cudaEventRecord(wm.ready, gate.get()), cudaSuccess);
         {
-            cvcuda::WorkspaceMemAllocator wa(wm, cudaStream_t(0));
+            cvcuda::WorkspaceMemAllocator wa(wm, gate.get());
             EXPECT_EQ(cudaEventQuery(wm.ready), cudaErrorNotReady); // no sync yet
         }
         EXPECT_EQ(cudaEventQuery(wm.ready), cudaErrorNotReady); // no sync necessary
     }) << "No memory was requested, no sync is necessary, no error expected";
 
-    ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
-
     EXPECT_NO_THROW({
         ASSERT_EQ(cudaEventRecord(wm.ready, 0), cudaSuccess);
+        ASSERT_EQ(cudaEventSynchronize(wm.ready), cudaSuccess);
+        BlockedCudaStream gate;
         {
-            cvcuda::WorkspaceMemAllocator wa(wm, cudaStream_t(0));
+            cvcuda::WorkspaceMemAllocator wa(wm, gate.get());
             EXPECT_PTR_EQ(wa.get(32), base.data());
-            hog();
         }
         EXPECT_EQ(cudaEventQuery(wm.ready), cudaErrorNotReady); // device sync only
     }) << "Acquire and release properly called, no exception should be raised";
 
-    ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
-
     EXPECT_NO_THROW({
-        hog();
-        ASSERT_EQ(cudaEventRecord(wm.ready, 0), cudaSuccess);
+        std::future<char *> sync;
+        BlockedCudaStream   gate;
+        ASSERT_EQ(cudaEventRecord(wm.ready, gate.get()), cudaSuccess);
         {
             cvcuda::WorkspaceMemAllocator wa(wm, std::nullopt, std::nullopt);
             EXPECT_EQ(cudaEventQuery(wm.ready), cudaErrorNotReady); // no sync yet
-            EXPECT_PTR_EQ(wa.get(32), base.data());
+            sync = std::async(std::launch::async, [&wa] { return wa.get(32); });
+            EXPECT_EQ(sync.wait_for(std::chrono::milliseconds(100)), std::future_status::timeout);
+            gate.release();
+            EXPECT_PTR_EQ(sync.get(), base.data());
             EXPECT_EQ(cudaEventQuery(wm.ready), cudaSuccess); // sync in get
         }
     }) << "Acquire and release properly called, no exception should be raised";

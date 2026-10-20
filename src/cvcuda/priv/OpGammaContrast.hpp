@@ -26,13 +26,38 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
+#include <nvcv/RoundMode.h>
 #include <nvcv/Tensor.hpp>
+
+#include <cstdint>
 
 // Use the public nvcv API
 namespace cvcuda::priv {
+
+// Device scratch holding the dense [maxBatchSize * maxChannelCount] gamma array that the two
+// gamma-tensor paths stage into. It is allocated once per operator instance per CUDA device and
+// freed with the operator -- not per call, and not through the workspace API -- which is the
+// allocation strategy the operator has always had.
+class GammaContrastScratch
+{
+public:
+    GammaContrastScratch(int32_t maxBatchSize, int32_t maxChannelCount);
+    ~GammaContrastScratch();
+
+    GammaContrastScratch(const GammaContrastScratch &)            = delete;
+    GammaContrastScratch &operator=(const GammaContrastScratch &) = delete;
+
+    float *data() const
+    {
+        return m_gammaArray;
+    }
+
+private:
+    float *m_gammaArray = nullptr;
+};
 
 class GammaContrast final : public IOperator
 {
@@ -49,8 +74,13 @@ public:
                     const nvcv::Tensor &gamma) const;
 
 private:
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::GammaContrast>         m_legacyOp;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::GammaContrastVarShape> m_legacyOpVarShape;
+    int32_t m_maxBatchSize;
+    int32_t m_maxChannelCount;
+
+    // The same max batch/channel limits bound both the tensor and var-shape paths' gamma scratch,
+    // which stay separate buffers as they were when each path owned its own legacy operator.
+    mutable PerDeviceResource<GammaContrastScratch> m_gammaScratch;
+    mutable PerDeviceResource<GammaContrastScratch> m_gammaScratchVarShape;
 };
 
 } // namespace cvcuda::priv

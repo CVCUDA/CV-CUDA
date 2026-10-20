@@ -29,8 +29,11 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <random>
+#include <string>
 
 namespace gt   = ::testing;
 namespace test = nvcv::test;
@@ -341,6 +344,111 @@ TEST_P(OpOSDPlanar, tensor_output_matches_interleaved)
 
 // clang-format on
 
+TEST(OpOSD, planar_chw_shape_bridge)
+{
+    constexpr int channels = 3;
+    constexpr int height   = 5;
+    constexpr int width    = 7;
+
+    NVCVPoint point;
+    point.centerPos.x = width / 2;
+    point.centerPos.y = height / 2;
+    point.radius      = 1;
+    point.color       = {255, 128, 0, 255};
+
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_POINT, &point)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    const nvcv::TensorShape chwShape{
+        {channels, height, width},
+        nvcv::TENSOR_CHW
+    };
+    nvcv::Tensor imgIn(chwShape, nvcv::TYPE_U8);
+    nvcv::Tensor imgOut(chwShape, nvcv::TYPE_U8);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::OSD op;
+    EXPECT_NO_THROW(op(stream, imgIn, imgOut, reinterpret_cast<NVCVElements>(ctx.get())));
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpOSD, planar_nchw_shape_bridge)
+{
+    constexpr int batch    = 1;
+    constexpr int channels = 3;
+    constexpr int height   = 5;
+    constexpr int width    = 7;
+
+    NVCVPoint point;
+    point.centerPos.x = width / 2;
+    point.centerPos.y = height / 2;
+    point.radius      = 1;
+    point.color       = {255, 128, 0, 255};
+
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_POINT, &point)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    const nvcv::TensorShape nchwShape{
+        {batch, channels, height, width},
+        nvcv::TENSOR_NCHW
+    };
+    nvcv::Tensor imgIn(nchwShape, nvcv::TYPE_U8);
+    nvcv::Tensor imgOut(nchwShape, nvcv::TYPE_U8);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::OSD op;
+    EXPECT_NO_THROW(op(stream, imgIn, imgOut, reinterpret_cast<NVCVElements>(ctx.get())));
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpOSD, planar_shape_bridge_switches_layouts)
+{
+    constexpr int batch    = 1;
+    constexpr int channels = 3;
+    constexpr int height   = 5;
+    constexpr int width    = 7;
+
+    NVCVPoint point;
+    point.centerPos.x = width / 2;
+    point.centerPos.y = height / 2;
+    point.radius      = 1;
+    point.color       = {255, 128, 0, 255};
+
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_POINT, &point)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    const nvcv::TensorShape chwShape{
+        {channels, height, width},
+        nvcv::TENSOR_CHW
+    };
+    const nvcv::TensorShape nchwShape{
+        {batch, channels, height, width},
+        nvcv::TENSOR_NCHW
+    };
+    nvcv::Tensor chwIn(chwShape, nvcv::TYPE_U8);
+    nvcv::Tensor chwOut(chwShape, nvcv::TYPE_U8);
+    nvcv::Tensor nchwIn(nchwShape, nvcv::TYPE_U8);
+    nvcv::Tensor nchwOut(nchwShape, nvcv::TYPE_U8);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::OSD op;
+    EXPECT_NO_THROW(op(stream, chwIn, chwOut, reinterpret_cast<NVCVElements>(ctx.get())));
+    EXPECT_NO_THROW(op(stream, nchwIn, nchwOut, reinterpret_cast<NVCVElements>(ctx.get())));
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpOSD, OSD_memory)
 {
     cudaStream_t stream;
@@ -453,9 +561,83 @@ TEST(OpOSD, stb_backend)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+static void runOSDOperation(const nvcv::Tensor &imgIn, const nvcv::Tensor &imgOut,
+                            std::shared_ptr<NVCVElementsImpl> ctx, bool isNegativeTest = false);
+
+TEST(OpOSD, text_backend_type_name_and_factory_paths)
+{
+    constexpr int width  = 64;
+    constexpr int height = 64;
+
+    NVCVText text("A", 20, DEFAULT_OSD_FONT, NVCVPointI({4, 4}), NVCVColorRGBA({255, 255, 255, 255}),
+                  NVCVColorRGBA({0, 0, 0, 0}));
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &text)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    runOSDOperation(imgIn, imgOut, ctx);
+}
+
 TEST(OpOSD_Negative, create_with_null_handle)
 {
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaOSDCreate(nullptr));
+}
+
+TEST(OpOSD_Negative, planar_bridge_rejects_non_image_output_data)
+{
+    const nvcv::TensorShape inputShape{
+        {1, 3, 5, 7},
+        "NCHW"
+    };
+    nvcv::Tensor            input(inputShape, nvcv::TYPE_U8);
+    const nvcv::TensorShape outputShape{{1}, "N"};
+    nvcv::Tensor            output(outputShape, nvcv::TYPE_U8);
+
+    NVCVPoint point;
+    point.centerPos = {2, 2};
+    point.radius    = 1;
+    point.color     = {255, 128, 0, 255};
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_POINT, &point)}};
+    auto        ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+    cvcuda::OSD op;
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, input, output, reinterpret_cast<NVCVElements>(ctx.get())); }));
+}
+
+TEST(OpOSD_Negative, rejects_non_image_tensor_data)
+{
+    const nvcv::TensorShape shape{{1}, "N"};
+    nvcv::Tensor            input(shape, nvcv::TYPE_U8);
+    nvcv::Tensor            output(shape, nvcv::TYPE_U8);
+    cvcuda::OSD             op;
+
+    auto inputData = input.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inputData);
+    ASSERT_FALSE(nvcv::TensorDataAccessStridedImagePlanar::IsCompatible(*inputData));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, input, output, static_cast<NVCVElements>(nullptr)); }));
+}
+
+// Regression: pre-fix, RunOSD cast null elements through reinterpret_cast<NVCVElementsImpl *>
+// and immediately dereferenced the result, causing a segfault. The null guard added in
+// fix(osd) e080574d9 (RunOSD, OpOSD.cu) pins the observable outcome to
+// NVCV_ERROR_INVALID_ARGUMENT for any caller that passes a null handle.
+TEST(OpOSD_Negative, rejects_null_elements)
+{
+    const nvcv::TensorShape shape{
+        {1, 12, 16, 3},
+        "NHWC"
+    };
+    nvcv::Tensor src(shape, nvcv::TYPE_U8);
+    nvcv::Tensor dst(shape, nvcv::TYPE_U8);
+
+    cvcuda::OSD op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, src, dst, static_cast<NVCVElements>(nullptr)); }));
 }
 
 TEST(OpOSD_Negative, rejects_hwc_to_nhwc_layout_mismatch)
@@ -499,7 +681,7 @@ TEST(OpOSD_Negative, rejects_hwc_to_nhwc_layout_mismatch)
 }
 
 static void runOSDOperation(const nvcv::Tensor &imgIn, const nvcv::Tensor &imgOut,
-                            std::shared_ptr<NVCVElementsImpl> ctx, bool isNegativeTest = false)
+                            std::shared_ptr<NVCVElementsImpl> ctx, bool isNegativeTest)
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -512,11 +694,14 @@ static void runOSDOperation(const nvcv::Tensor &imgIn, const nvcv::Tensor &imgOu
 
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*input);
     ASSERT_TRUE(inAccess);
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*output);
+    ASSERT_TRUE(outAccess);
 
-    long inSampleStride = inAccess->numRows() * inAccess->rowStride();
+    long inSampleStride  = inAccess->numRows() * inAccess->rowStride();
+    long outSampleStride = outAccess->numRows() * outAccess->rowStride();
 
     EXPECT_EQ(cudaSuccess, cudaMemset(input->basePtr(), 0, inSampleStride));
-    EXPECT_EQ(cudaSuccess, cudaMemset(output->basePtr(), 0, inSampleStride));
+    EXPECT_EQ(cudaSuccess, cudaMemset(output->basePtr(), 0, outSampleStride));
 
     cvcuda::OSD op;
     if (isNegativeTest)
@@ -530,6 +715,226 @@ static void runOSDOperation(const nvcv::Tensor &imgIn, const nvcv::Tensor &imgOu
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpOSD, planar_bridge_accepts_padded_nchw)
+{
+    constexpr int     samples            = 2;
+    constexpr int     channels           = 3;
+    constexpr int     height             = 5;
+    constexpr int     width              = 7;
+    constexpr int64_t inputRowStride     = width + 3;
+    constexpr int64_t inputChStride      = inputRowStride * height + 5;
+    constexpr int64_t inputSampleStride  = inputChStride * channels + 7;
+    constexpr int64_t outputRowStride    = width + 5;
+    constexpr int64_t outputChStride     = outputRowStride * height + 9;
+    constexpr int64_t outputSampleStride = outputChStride * channels + 11;
+
+    const nvcv::TensorShape shape{
+        {samples, channels, height, width},
+        nvcv::TENSOR_NCHW
+    };
+
+    NVCVByte *inputBuffer{};
+    ASSERT_EQ(cudaSuccess,
+              cudaMalloc(reinterpret_cast<void **>(&inputBuffer), static_cast<size_t>(inputSampleStride * samples)));
+    nvcv::TensorDataStridedCuda::Buffer inputDesc{};
+    inputDesc.basePtr    = inputBuffer;
+    inputDesc.strides[0] = inputSampleStride;
+    inputDesc.strides[1] = inputChStride;
+    inputDesc.strides[2] = inputRowStride;
+    inputDesc.strides[3] = 1;
+    nvcv::Tensor input
+        = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, inputDesc},
+                               nvcv::TensorDataCleanupCallback{[inputBuffer](const nvcv::TensorData &)
+                                                               {
+                                                                   EXPECT_EQ(cudaSuccess, cudaFree(inputBuffer));
+                                                               }});
+
+    NVCVByte *outputBuffer{};
+    ASSERT_EQ(cudaSuccess,
+              cudaMalloc(reinterpret_cast<void **>(&outputBuffer), static_cast<size_t>(outputSampleStride * samples)));
+    nvcv::TensorDataStridedCuda::Buffer outputDesc{};
+    outputDesc.basePtr    = outputBuffer;
+    outputDesc.strides[0] = outputSampleStride;
+    outputDesc.strides[1] = outputChStride;
+    outputDesc.strides[2] = outputRowStride;
+    outputDesc.strides[3] = 1;
+    nvcv::Tensor output
+        = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, outputDesc},
+                               nvcv::TensorDataCleanupCallback{[outputBuffer](const nvcv::TensorData &)
+                                                               {
+                                                                   EXPECT_EQ(cudaSuccess, cudaFree(outputBuffer));
+                                                               }});
+
+    ASSERT_EQ(cudaSuccess, cudaMemset(inputBuffer, 0, static_cast<size_t>(inputSampleStride * samples)));
+    ASSERT_EQ(cudaSuccess, cudaMemset(outputBuffer, 0, static_cast<size_t>(outputSampleStride * samples)));
+
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec;
+    for (int sample = 0; sample < samples; ++sample)
+    {
+        NVCVPoint point;
+        point.centerPos.x = width / 2;
+        point.centerPos.y = height / 2;
+        point.radius      = 1;
+        point.color       = {255, 128, 0, 255};
+        elementVec.push_back({std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_POINT, &point)});
+    }
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::OSD op;
+    EXPECT_NO_THROW(op(stream, input, output, reinterpret_cast<NVCVElements>(ctx.get())));
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpOSD_Negative, planar_float_layouts_exercise_shape_bridge)
+{
+    constexpr int batch    = 1;
+    constexpr int channels = 3;
+    constexpr int height   = 5;
+    constexpr int width    = 7;
+
+    NVCVPoint point;
+    point.centerPos.x = width / 2;
+    point.centerPos.y = height / 2;
+    point.radius      = 1;
+    point.color       = {255, 128, 0, 255};
+
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_POINT, &point)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    const nvcv::TensorShape nchwShape{
+        {batch, channels, height, width},
+        nvcv::TENSOR_NCHW
+    };
+    const nvcv::TensorShape chwShape{
+        {channels, height, width},
+        nvcv::TENSOR_CHW
+    };
+    nvcv::Tensor nchwIn(nchwShape, nvcv::TYPE_F32);
+    nvcv::Tensor nchwOut(nchwShape, nvcv::TYPE_F32);
+    nvcv::Tensor chwIn(chwShape, nvcv::TYPE_F32);
+    nvcv::Tensor chwOut(chwShape, nvcv::TYPE_F32);
+
+    runOSDOperation(nchwIn, nchwOut, ctx, true);
+    runOSDOperation(chwIn, chwOut, ctx, true);
+}
+
+TEST(OpOSD, stb_backend_font_resolution_edges)
+{
+    // The executable is an existing non-font file outside the trusted font directories.
+    const auto untrustedFont = std::filesystem::canonical("/proc/self/exe");
+    ASSERT_TRUE(std::filesystem::is_regular_file(untrustedFont));
+
+    constexpr int width  = 64;
+    constexpr int height = 64;
+
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec;
+    std::vector<std::shared_ptr<NVCVElement>>              elements;
+
+    NVCVText defaultFontText("A", 20, DEFAULT_OSD_FONT, NVCVPointI({4, 4}), NVCVColorRGBA({255, 255, 255, 255}),
+                             NVCVColorRGBA({0, 0, 0, 0}));
+    elements.push_back(std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &defaultFontText));
+
+    NVCVText fallbackFontText("A ", 20, "cvcuda_missing_font_family", NVCVPointI({4, 28}),
+                              NVCVColorRGBA({255, 255, 255, 255}), NVCVColorRGBA({0, 0, 0, 0}));
+    elements.push_back(std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &fallbackFontText));
+
+    NVCVText untrustedFontText("B", 20, untrustedFont.c_str(), NVCVPointI({32, 4}), NVCVColorRGBA({255, 255, 255, 255}),
+                               NVCVColorRGBA({0, 0, 0, 0}));
+    elements.push_back(std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &untrustedFontText));
+
+    elementVec.push_back(std::move(elements));
+    auto ctx = std::make_shared<NVCVElementsImpl>(std::move(elementVec));
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    runOSDOperation(imgIn, imgOut, ctx);
+}
+
+TEST(OpOSD, stb_backend_empty_font_family)
+{
+    constexpr int width  = 64;
+    constexpr int height = 64;
+
+    NVCVText text("A", 20, "", NVCVPointI({4, 4}), NVCVColorRGBA({255, 255, 255, 255}), NVCVColorRGBA({0, 0, 0, 0}));
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &text)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    runOSDOperation(imgIn, imgOut, ctx);
+}
+
+TEST(OpOSD, text_backend_fallback_handles_unknown_font_family)
+{
+    constexpr int width  = 64;
+    constexpr int height = 64;
+
+    NVCVText text("A", 20, "cvcuda_missing_font_family", NVCVPointI({4, 4}), NVCVColorRGBA({255, 255, 255, 255}),
+                  NVCVColorRGBA({0, 0, 0, 0}));
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &text)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    runOSDOperation(imgIn, imgOut, ctx);
+}
+
+TEST(OpOSD, stb_backend_font_family_exact_filename)
+{
+    constexpr int width  = 64;
+    constexpr int height = 64;
+
+    NVCVText text("A", 20, "DejaVuSansMono.ttf", NVCVPointI({4, 4}), NVCVColorRGBA({255, 255, 255, 255}),
+                  NVCVColorRGBA({0, 0, 0, 0}));
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &text)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    runOSDOperation(imgIn, imgOut, ctx);
+}
+
+TEST(OpOSD, stb_backend_trusted_directory_font_path)
+{
+    constexpr int width  = 64;
+    constexpr int height = 64;
+
+    NVCVText text("A", 20, "/usr/share/fonts", NVCVPointI({4, 4}), NVCVColorRGBA({255, 255, 255, 255}),
+                  NVCVColorRGBA({0, 0, 0, 0}));
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &text)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    runOSDOperation(imgIn, imgOut, ctx);
+}
+
+TEST(OpOSD, stb_backend_trusted_font_file_path)
+{
+    constexpr int width  = 64;
+    constexpr int height = 64;
+
+    constexpr char trustedFont[] = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf";
+    NVCVText       text("A", 20, trustedFont, NVCVPointI({4, 4}), NVCVColorRGBA({255, 255, 255, 255}),
+                        NVCVColorRGBA({0, 0, 0, 0}));
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec{
+        {std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &text)}};
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    runOSDOperation(imgIn, imgOut, ctx);
 }
 
 TEST(OpOSD, test_polyLine_cornor_tests)
@@ -1769,4 +2174,52 @@ TEST(OpOSD_Pixel, inplace_equals_outofplace)
     auto         inp = runOSDAndGetOutput(img, img, makeCtx(), 128);
 
     EXPECT_EQ(oop, inp) << "in-place and out-of-place results must be byte-identical";
+}
+
+TEST(OpOSD_Pixel, rgba_partial_tile_copies_transparent_pixels_and_blends_circle)
+{
+    constexpr int width  = 17;
+    constexpr int height = 16;
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBA8);
+
+    NVCVCircle circle;
+    circle.centerPos.x = width - 1;
+    circle.centerPos.y = height - 4;
+    circle.radius      = 1;
+    circle.thickness   = 1;
+    circle.borderColor = {200, 100, 50, 128};
+    circle.bgColor     = {0, 0, 0, 0};
+
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec;
+    std::vector<std::shared_ptr<NVCVElement>>              elements;
+    elements.push_back(std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_CIRCLE, &circle));
+    elementVec.push_back(elements);
+    auto ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    constexpr uint8_t bgFill    = 32;
+    auto              outData   = runOSDAndGetOutput(imgIn, imgOut, ctx, bgFill);
+    long              rowStride = getRowStride(imgOut);
+
+    auto px = [&outData, rowStride](int x, int y, int c)
+    {
+        return outData[y * rowStride + x * 4 + c];
+    };
+
+    // An untouched interior tile takes the full RGBA copy arm; the untouched right edge takes the partial copy arm.
+    for (int c = 0; c < 4; ++c)
+    {
+        EXPECT_EQ(px(0, 0, c), bgFill);
+        EXPECT_EQ(px(width - 1, 0, c), bgFill);
+    }
+
+    // The odd width makes x=width-1 a one-pixel partial tile. At its last two rows, the circle has
+    // alpha 128 at y=height-2 and alpha 0 at y=height-1.
+    constexpr std::array<uint8_t, 4> expectedBlend = {182, 93, 48, 143};
+    for (int c = 0; c < 4; ++c)
+    {
+        EXPECT_EQ(px(width - 1, height - 2, c), expectedBlend[c]);
+        EXPECT_EQ(px(width - 1, height - 1, c), bgFill);
+    }
 }

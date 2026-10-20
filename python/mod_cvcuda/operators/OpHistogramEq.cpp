@@ -15,15 +15,13 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpHistogramEq.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
+#include <cvcuda/Types.h>
 
 #include <stdexcept>
 
@@ -31,86 +29,94 @@ namespace cvcudapy {
 
 namespace {
 
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
 class HistogramEqError : public std::runtime_error
 {
 public:
     using std::runtime_error::runtime_error;
 };
 
-Tensor HistogramEqInto(Tensor &output, Tensor &input, std::optional<Stream> pstream)
+Tensor &HistogramEqInto(Tensor &output, Tensor &input, NVCVHistogramEqMethod method, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream                  &stream = native::GetStream(pstream);
     // HWC inputs (rank 3) have no N dim, so shape[0] is H — fall back to 1.
-    uint32_t batchSize = (input.shape().size() == 4) ? (uint32_t)input.shape()[0] : 1u;
-    auto     op        = CreateOperator<cvcuda::HistogramEq>(batchSize);
+    const nvcv::TensorShape &inputShape = input.impl().shape();
+    uint32_t                 batchSize  = inputShape.rank() == 4 ? static_cast<uint32_t>(inputShape[0]) : 1u;
+    auto                     op         = CreateOperator<cvcuda::HistogramEq>(batchSize);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
 
-    guard.run([&op, &pstream, &input, &output]() { op->submit(pstream->cudaHandle(), input, output); });
-
-    return std::move(output);
-}
-
-Tensor HistogramEq(Tensor &input, nvcv::DataType dtype, std::optional<Stream> pstream)
-{
-    Tensor output = Tensor::Create(input.shape(), dtype);
-
-    return HistogramEqInto(output, input, pstream);
-}
-
-ImageBatchVarShape HistogramEqVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                           std::optional<Stream> pstream)
-{
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
-
-    auto op = CreateOperator<cvcuda::HistogramEq>((uint32_t)input.numImages());
-
-    ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_MODE_READ, {input});
-    guard.add(LockMode::LOCK_MODE_WRITE, {output});
-    guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
-
-    guard.run([&op, &pstream, &input, &output]() { op->submit(pstream->cudaHandle(), input, output); });
+    guard.run([&op, &stream, &input, &output, method]()
+              { op->submit(stream.handle(), input.impl(), output.impl(), method); });
 
     return output;
 }
 
-ImageBatchVarShape HistogramEqVarShape(ImageBatchVarShape &input, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> HistogramEq(Tensor &input, nvcv::DataType dtype, NVCVHistogramEqMethod method,
+                                    std::optional<Stream *> pstream)
 {
-    auto format = input.uniqueFormat();
+    auto output = native::CreateTensor(input.impl().shape(), dtype);
+
+    HistogramEqInto(*output, input, method, pstream);
+    return output;
+}
+
+ImageBatchVarShape &HistogramEqVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                            NVCVHistogramEqMethod method, std::optional<Stream *> pstream)
+{
+    Stream &stream = native::GetStream(pstream);
+
+    auto op = CreateOperator<cvcuda::HistogramEq>((uint32_t)input.numImages());
+
+    ResourceGuard guard(stream);
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
+
+    guard.run([&op, &stream, &input, &output, method]()
+              { op->submit(stream.handle(), input.impl(), output.impl(), method); });
+
+    return output;
+}
+
+std::shared_ptr<ImageBatchVarShape> HistogramEqVarShape(ImageBatchVarShape &input, NVCVHistogramEqMethod method,
+                                                        std::optional<Stream *> pstream)
+{
+    auto format = GetUniqueFormat(input);
     if (!format)
     {
         throw HistogramEqError("All images in input must have the same format.");
     }
 
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input, format, input.numImages());
+    auto output = CreateSameShapeImageBatch(input, *format, input.numImages());
 
-    return HistogramEqVarShapeInto(output, input, pstream);
+    HistogramEqVarShapeInto(*output, input, method, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpHistogramEq(py::module &m)
+void ExportOpHistogramEq(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("histogrameq", NvtxTrace("cvcuda.histogrameq", &HistogramEq), "src"_a, "dtype"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "method"_a = NVCV_HISTOGRAM_EQ_OPENCV, "stream"_a = nullptr, R"pbdoc(
         Executes the histogram equalization operation on the given cuda stream.
 
 
         Args:
             src (cvcuda.Tensor): Input image batch containing one or more images.
             dtype (numpy.dtype): The data type of the output.
+            method (cvcuda.HistogramEq, optional): Lookup-table construction. Defaults to
+                cvcuda.HistogramEq.OPENCV; use cvcuda.HistogramEq.PILLOW to match Pillow and
+                torchvision.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -119,13 +125,16 @@ void ExportOpHistogramEq(py::module &m)
     )pbdoc");
 
     m.def("histogrameq_into", NvtxTrace("cvcuda.histogrameq_into", &HistogramEqInto), "dst"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "method"_a = NVCV_HISTOGRAM_EQ_OPENCV, "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the histogram equalization operation on the given cuda stream.
 
 
         Args:
             dst (cvcuda.Tensor): Output image batch containing the result of the operation.
             src (cvcuda.Tensor): Input image batch containing one or more images.
+            method (cvcuda.HistogramEq, optional): Lookup-table construction. Defaults to
+                cvcuda.HistogramEq.OPENCV; use cvcuda.HistogramEq.PILLOW to match Pillow and
+                torchvision.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -133,12 +142,15 @@ void ExportOpHistogramEq(py::module &m)
     )pbdoc");
 
     m.def("histogrameq", NvtxTrace("cvcuda.histogrameq", &HistogramEqVarShape), "src"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "method"_a = NVCV_HISTOGRAM_EQ_OPENCV, "stream"_a = nullptr, R"pbdoc(
         Executes the histogram equalization operation on the given cuda stream.
 
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
+            method (cvcuda.HistogramEq, optional): Lookup-table construction. Defaults to
+                cvcuda.HistogramEq.OPENCV; use cvcuda.HistogramEq.PILLOW to match Pillow and
+                torchvision.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -147,13 +159,17 @@ void ExportOpHistogramEq(py::module &m)
     )pbdoc");
 
     m.def("histogrameq_into", NvtxTrace("cvcuda.histogrameq_into", &HistogramEqVarShapeInto), "dst"_a, "src"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          py::kw_only(), "method"_a = NVCV_HISTOGRAM_EQ_OPENCV, "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the histogram equalization operation on the given cuda stream.
 
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch containing the result of the operation.
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
+            method (cvcuda.HistogramEq, optional): Lookup-table construction. Defaults to
+                cvcuda.HistogramEq.OPENCV; use cvcuda.HistogramEq.PILLOW to match Pillow and
+                torchvision.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:

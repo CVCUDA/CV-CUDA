@@ -643,6 +643,26 @@ def generate_axis_args(operator_name: str, config: Dict[str, Any]) -> List[str]:
 
     op_config = config[operator_name]
     args = []
+    # The generated C++ axis is a union; old Invert cases must not also run the mixed-input variant.
+    if op_config.get(
+        "benchmark", operator_name
+    ) == "invert" and "inputRange" not in op_config.get("string_axes", {}):
+        args.extend(["--axis", "inputRange=nonnegative"])
+    # Normalize's optional axes are also registered globally by the C++ generator.
+    # Pin absent axes without adding them to the historical case identities.
+    if op_config.get("benchmark", operator_name) == "normalize":
+        for axis, default in (
+            ("paramKind", "PerSample"),
+            ("scaleMode", "stddev"),
+            ("storage", "Native"),
+        ):
+            if axis not in op_config.get("string_axes", {}):
+                args.extend(["--axis", f"{axis}={default}"])
+
+    if op_config.get(
+        "benchmark", operator_name
+    ) == "histogrameq" and "method" not in op_config.get("string_axes", {}):
+        args.extend(["--axis", "method=OPENCV"])
 
     # Add dtype filter if specified in config
     # This ensures C++ runs only the dtypes specified in this config entry

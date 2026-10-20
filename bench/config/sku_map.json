@@ -2,31 +2,51 @@
     "entries": [
         {
             "gpu_name": "NVIDIA H100 PCIe",
-            "power_cap_w": 350,
-            "locked_sm_clock_mhz": 1095,
+            "power_cap_w": null,
+            "locked_sm_clock_mhz": 1005,
             "cuda_major": 13,
-            "stem": "H100_PCIe_350W_1095MHz"
+            "stem": "H100_PCIe_350W_1005MHz",
+            "display_name": "H100 PCIe (CUDA 13, C++, Python)",
+            "baseline": {"languages": ["cpp", "python"]}
         },
         {
             "gpu_name": "NVIDIA H100 PCIe",
-            "power_cap_w": 350,
-            "locked_sm_clock_mhz": 1095,
+            "power_cap_w": null,
+            "locked_sm_clock_mhz": 1005,
             "cuda_major": 12,
-            "stem": "H100_PCIe_350W_1095MHz_CUDA12"
+            "stem": "H100_PCIe_350W_1005MHz_CUDA12",
+            "display_name": "H100 PCIe (CUDA 12, C++, Python)",
+            "baseline": {"languages": ["cpp", "python"]}
         },
         {
             "gpu_name": "NVIDIA A100-PCIE-40GB",
             "power_cap_w": 250,
-            "locked_sm_clock_mhz": 1095,
+            "locked_sm_clock_mhz": 1005,
             "cuda_major": 13,
-            "stem": "A100_PCIE_40GB_250W_1095MHz"
+            "stem": "A100_PCIE_40GB_250W_1005MHz",
+            "display_name": "A100 PCIe 40GB (CUDA 13, C++, Python)",
+            "baseline": {"languages": ["cpp", "python"]}
         },
         {
             "gpu_name": "NVIDIA A100-PCIE-40GB",
             "power_cap_w": 250,
-            "locked_sm_clock_mhz": 1095,
+            "locked_sm_clock_mhz": 1005,
             "cuda_major": 12,
-            "stem": "A100_PCIE_40GB_250W_1095MHz_CUDA12"
+            "stem": "A100_PCIE_40GB_250W_1005MHz_CUDA12",
+            "display_name": "A100 PCIe 40GB (CUDA 12, C++, Python)",
+            "baseline": {"languages": ["cpp", "python"]}
+        },
+        {
+            "routing": "explicit",
+            "cuda_major": 12,
+            "stem": "Jetson_Orin_R36_2_MAXN_CUDA12",
+            "display_name": "Jetson Orin (CUDA 12, C++, Python)",
+            "baseline": {
+                "languages": ["cpp", "python"],
+                "required": true,
+                "tiers": ["basic"],
+                "max_perf_diff_us": 1500
+            }
         }
     ]
 }

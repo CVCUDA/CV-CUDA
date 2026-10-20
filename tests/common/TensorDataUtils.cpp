@@ -360,6 +360,8 @@ static void SetImageTensorFromByteVectorPlanar(const TensorData &tensorData, std
         }
     else
         copyToGpu(sample);
+
+    WaitForHostToDeviceCopies();
 }
 
 void SetImageTensorFromByteVector(const TensorData &tensorData, std::vector<nvcv::Byte> &data, int sample)
@@ -403,6 +405,8 @@ void SetImageTensorFromByteVector(const TensorData &tensorData, std::vector<nvcv
         }
     else
         copyToGpu(sample);
+
+    WaitForHostToDeviceCopies();
 }
 
 } // namespace nvcv::util

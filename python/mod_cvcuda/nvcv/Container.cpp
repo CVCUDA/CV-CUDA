@@ -17,14 +17,17 @@
 
 #include "Container.hpp"
 
+#include "Definitions.hpp"
+
 namespace nvcvpy::priv {
 
-void Container::Export(py::module &m)
+void Container::Export(py::module_ &m)
 {
-    py::class_<Container, std::shared_ptr<Container>, Resource, CacheItem> cont(m, "Container");
+    py::class_<Container, Resource> cont(m, "Container");
 
-    py::class_<ExternalContainer, Container, std::shared_ptr<ExternalContainer>, Resource> extcont(
-        nullptr, "ExternalContainer", py::module_local());
+    py::module_                              internal = m.attr(INTERNAL_SUBMODULE_NAME);
+    py::class_<ExternalContainer, Container> extcont(internal, "_ExternalContainer");
+    internal.def("nbytes_in_cache", [](const Container &container) { return container.GetSizeInBytes(); });
 }
 
 } // namespace nvcvpy::priv

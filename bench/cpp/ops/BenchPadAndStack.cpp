@@ -92,21 +92,25 @@ try
               benchutils::GetDataType<BT>())
                    : nvcv::Tensor({{numBatches, dstHeight, dstWidth, channels}, "NHWC"}, benchutils::GetDataType<BT>());
 
-    // Create top/left padding tensors (OLD style - 4D NHWC)
+    // The kernels read these as ptr(0, 0, sample), so the per-sample values run along the width
+    // axis - a 1 x numBatches row, the same spelling TestOpPadAndStack and the Python benchmark
+    // use. Spelling them {numBatches, 1, 1, 1} instead rounds each sample's row up to the 32-byte
+    // pitch alignment while the kernel keeps reading at 4-byte spacing, so every sample but the
+    // first read zeroed padding rather than its own offset.
     nvcv::Tensor top(
         {
-            {numBatches, 1, 1, 1},
+            {1, 1, numBatches, 1},
             "NHWC"
     },
         nvcv::TYPE_S32);
     nvcv::Tensor left(
         {
-            {numBatches, 1, 1, 1},
+            {1, 1, numBatches, 1},
             "NHWC"
     },
         nvcv::TYPE_S32);
 
-    // Fill top/left using FillTensor (OLD style)
+    // Fill top/left using FillTensor
     benchutils::FillTensor<int>(top, [dstHeight, srcHeight](const long4_16a &) { return (dstHeight - srcHeight) / 2; });
     benchutils::FillTensor<int>(left, [dstWidth, srcWidth](const long4_16a &) { return (dstWidth - srcWidth) / 2; });
 

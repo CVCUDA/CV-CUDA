@@ -53,7 +53,14 @@ NVCV_TYPED_TEST_SUITE(
     ttype::Types<float, ttype::Value<ushort3{0, 123, 456}>, ttype::Value<float3{0.f, 123.f, 456.f}>>,
     ttype::Types<double2, ttype::Value<uchar2{0, 255}>, ttype::Value<double2{0, 255.0}>>,
     ttype::Types<double, ttype::Value<int2{-1234, 1234}>, ttype::Value<double2{-1234.0, 1234.0}>>,
-    // float -> int
+    // float -> int: powers of two just outside the range must return integer bounds directly.
+    ttype::Types<long long, ttype::Value<double2{0x1p63, 0x1.fffffffffffffp62}>,
+                 ttype::Value<longlong2{max<long long>, max<long long> - 1023}>>,
+    ttype::Types<long long, ttype::Value<double2{-0x1p63, 0x1p64}>,
+                 ttype::Value<longlong2{min<long long>, max<long long>}>>,
+    ttype::Types<unsigned long long, ttype::Value<double3{0x1p64, 0x1.fffffffffffffp63, -1.0}>,
+                 ttype::Value<ulonglong3{max<unsigned long long>, max<unsigned long long> - 2047, 0}>>,
+    ttype::Types<int, ttype::Value<float2{0x1p31f, -0x1p31f}>, ttype::Value<int2{max<int>, min<int>}>>,
     ttype::Types<signed char, ttype::Value<float2{-345.67f, 456.78f}>, ttype::Value<char2{min<signed char>, max<signed char>}>>,
     ttype::Types<unsigned short, ttype::Value<float2{-0.1f, 1.6f}>, ttype::Value<ushort2{0, 2}>>,
     ttype::Types<int2, ttype::Value<float2{-1.1f, 0.6f}>, ttype::Value<int2{-1, 1}>>,

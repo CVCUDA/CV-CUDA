@@ -24,6 +24,7 @@
 #include <nvcv/TensorDataAccess.hpp>
 #include <stdint.h>
 
+#include <algorithm>
 #include <iostream>
 #include <random>
 
@@ -322,6 +323,54 @@ TEST_P(TensorDataUtils, SetGetTensorFromImageVector)
 
         break;
     }
+}
+
+// The setters upload with a pageable cudaMemcpy, which returns once the host source buffer has been
+// consumed while the transfer itself finishes asynchronously on the default stream. Streams created
+// with cudaStreamNonBlocking are not ordered against the default stream, so a setter that returns
+// early lets the next submission on such a stream read the tensor's previous contents. The tall
+// shape makes the transfer long enough that an unsynchronized setter loses that race every round.
+TEST(TensorDataUtils, SetImageTensorFromVectorCompletesBeforeReturning)
+{
+    constexpr int width  = 31;
+    constexpr int height = 16384;
+
+    cudaStream_t stream{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+
+    nvcv::Tensor src(1, {width, height}, nvcv::FMT_U8);
+    nvcv::Tensor dst(1, {width, height}, nvcv::FMT_U8);
+    auto         srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto         dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData && dstData);
+    auto srcAccess = nvcv::TensorDataAccessStridedImage::Create(*srcData);
+    ASSERT_TRUE(srcAccess);
+
+    std::vector<uint8_t> input(width * height);
+    std::vector<uint8_t> got;
+
+    // One round per lambda call so the loop itself has a single exit; ASSERT_NO_FATAL_FAILURE
+    // still stops the test on the first failing round.
+    auto runRound = [&](int round)
+    {
+        std::ranges::fill(input, static_cast<uint8_t>(11 + round));
+        ASSERT_NO_THROW(util::SetImageTensorFromVector<uint8_t>(*srcData, input, 0));
+
+        // Consume the tensor from the non-blocking stream the way an operator submission would.
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dstData->basePtr(), srcData->basePtr(), srcAccess->sampleStride(),
+                                               cudaMemcpyDeviceToDevice, stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        ASSERT_NO_THROW(util::GetImageVectorFromTensor<uint8_t>(*dstData, 0, got));
+        EXPECT_EQ(input, got) << "round " << round;
+    };
+
+    for (int round = 0; round < 4; ++round)
+    {
+        ASSERT_NO_FATAL_FAILURE(runRound(round));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 TEST(TensorDataUtils, SanityCvImageData)

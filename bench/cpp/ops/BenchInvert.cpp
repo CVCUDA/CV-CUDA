@@ -47,7 +47,11 @@ try
         return;
     }
 
-    using BT = typename nvcv::cuda::BaseType<T>;
+    using BT              = typename nvcv::cuda::BaseType<T>;
+    const auto inputRange = benchutils::GetStringParam(state, "inputRange", "nonnegative");
+    if (inputRange != "nonnegative" && inputRange != "mixed")
+        throw std::invalid_argument("Invalid inputRange = " + inputRange);
+    const BT low = inputRange == "mixed" ? static_cast<BT>(-1) : static_cast<BT>(0);
 
     int ch = nvcv::cuda::NumElements<T>;
 
@@ -96,7 +100,7 @@ try
                              ? nvcv::Tensor({{shape.x, ch, shape.y, shape.z}, "NCHW"}, benchutils::GetDataType<BT>())
                              : nvcv::Tensor({{shape.x, shape.y, shape.z, ch}, "NHWC"}, benchutils::GetDataType<BT>());
 
-        benchutils::FillTensor<BT>(src, benchutils::CheckerboardValues<BT>());
+        benchutils::FillTensor<BT>(src, benchutils::CheckerboardValues<BT>(benchutils::DefaultRangeMax<BT>(), low));
 
         benchutils::warmup_and_exec(state, BENCH_INVERT_WARMUP_ITERATIONS,
             [&op, &src, &dst](cudaStream_t s) { op(s, src, dst); });

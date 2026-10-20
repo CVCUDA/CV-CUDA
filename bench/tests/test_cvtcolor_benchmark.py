@@ -75,6 +75,18 @@ def _load_cvtcolor_benchmark(monkeypatch):
 
     tensor_calls = []
     image_calls = []
+    allocation_events = []
+
+    class FakeImageBatchVarShape:
+        def __init__(self, capacity):
+            self.capacity = capacity
+            allocation_events.append(("batch", self))
+
+        def __len__(self):
+            return 0
+
+    fake_cvcuda.ImageBatchVarShape = FakeImageBatchVarShape
+
     fake_utils = types.ModuleType("python_bench_utils")
     fake_utils.get_input_kind = lambda value: value
     fake_utils.parse_shape = lambda _shape: (2, 3, 4)
@@ -94,9 +106,15 @@ def _load_cvtcolor_benchmark(monkeypatch):
     fake_utils.create_tensor = lambda *args, **kwargs: tensor_calls.append(
         (args, kwargs)
     )
-    fake_utils.create_image_batch_varshape = lambda *args, **kwargs: image_calls.append(
-        (args, kwargs)
-    )
+
+    def create_image_batch_varshape(*args, **kwargs):
+        image_calls.append((args, kwargs))
+        allocation_events.append(
+            ("images", kwargs.get("fill_mode"), kwargs.get("batch"))
+        )
+        return kwargs.get("batch")
+
+    fake_utils.create_image_batch_varshape = create_image_batch_varshape
     fake_utils.create_stream_cache = lambda: lambda _launch: None
     fake_utils.run_benchmark = lambda *_args, **_kwargs: None
     monkeypatch.setitem(sys.modules, "python_bench_utils", fake_utils)
@@ -106,11 +124,13 @@ def _load_cvtcolor_benchmark(monkeypatch):
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module, tensor_calls, image_calls
+    return module, tensor_calls, image_calls, allocation_events
 
 
 def test_f16_allocation_formats_channels_and_accounting(monkeypatch):
-    bench_cvtcolor, tensor_calls, image_calls = _load_cvtcolor_benchmark(monkeypatch)
+    bench_cvtcolor, tensor_calls, image_calls, allocation_events = (
+        _load_cvtcolor_benchmark(monkeypatch)
+    )
 
     class State:
         def __init__(self, code, input_kind, dtype="float16", layout="NHWC"):
@@ -152,6 +172,18 @@ def test_f16_allocation_formats_channels_and_accounting(monkeypatch):
     assert [(args[0], args[2], args[3]) for args, _kwargs in image_calls] == [
         ((2, 3, 4, 3), "F16_C3", "F16"),
         ((2, 3, 4, 4), "F16_C4", "F16"),
+    ]
+    assert [event[0] for event in allocation_events] == [
+        "batch",
+        "batch",
+        "images",
+        "images",
+    ]
+    src_batch = allocation_events[0][1]
+    dst_batch = allocation_events[1][1]
+    assert allocation_events[2:] == [
+        ("images", "checkerboard", src_batch),
+        ("images", 0, dst_batch),
     ]
     assert (varshape_state.reads, varshape_state.writes) == ([144], [192])
 

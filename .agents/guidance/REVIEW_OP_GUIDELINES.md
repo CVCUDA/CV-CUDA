@@ -5,11 +5,8 @@
 
 The single source of truth for the per-operator review harness. It is **implemented by**
 `tools/review_op.py` (the deterministic checker) and **cited by** the thin skill
-wrappers (`.agents/skills/review-op*/SKILL.md`). The checklist substance lives here
-once; every tool's skill delegates to it — no duplication.
-
-This document does not restate house policy; it *cites* the authoritative docs and turns
-their requirements into concrete, machine-checkable items: `AGENTS.md`,
+dispatchers (`.agents/skills/op-tools/skills/review-op*/SKILL.md`). It turns these docs into
+machine-checkable items: `AGENTS.md`,
 `docs/sphinx/advanced/make_operator.rst`, and `OPTIMIZATION_GUIDELINES.md`.
 
 ## How to use
@@ -75,6 +72,7 @@ cross-surface consistency. Does **not** verify tests (that's the test domain).
 | SUP-9 | Enforcement present | guards in `src/cvcuda/priv/**` reject unsupported layout/dtype/channel with `ERROR_INVALID_ARGUMENT`; **declared == enforced** | guards found & consistent | report (often MANUAL — needs a code guard) |
 | SUP-10 | Default image-layout policy | header layout set plus optional `Planar image layouts: Not applicable` and required `Reason` beside the Limitations table | `NCHW`/`CHW` declared; or a well-formed operator-local inapplicability declaration; never both | author |
 | SUP-11 | Cross-surface consistency | diff parsed sets across header ↔ `.hpp` ↔ python | agree | report |
+| SUP-12 | Declared dtypes match instantiated dispatch cells | compare the header `Data Type` set against the dtype cells the dispatch arms in `src/cvcuda/priv/**` actually instantiate | both sets equal → PASS; disagreement → **MANUAL**; no recognisable dispatch table → **N-A** | reconcile the Limitations table with the dispatch arms (the scan cannot distinguish an image dtype from an auxiliary parameter-tensor dtype, so confirm each cell first) |
 
 SUP-6/7/8 use a **full structured parse with MANUAL fallback** (emit MANUAL + the table
 location if a Doxygen table doesn't parse cleanly).

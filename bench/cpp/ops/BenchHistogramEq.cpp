@@ -30,6 +30,18 @@ try
     int3                        shape     = benchutils::GetShape<3, int3>(state.get_string("shape"));
     auto                        layout    = benchutils::GetStringParam(state, "layout", "NHWC");
     const benchutils::InputKind inputKind = benchutils::GetInputKind(state.get_string("inputKind"));
+    auto                        methodStr = benchutils::GetStringParam(state, "method", "OPENCV");
+
+    NVCVHistogramEqMethod method = NVCV_HISTOGRAM_EQ_OPENCV;
+    if (methodStr == "PILLOW")
+    {
+        method = NVCV_HISTOGRAM_EQ_PILLOW;
+    }
+    else if (methodStr != "OPENCV")
+    {
+        state.skip("HistogramEq benchmark supports only OPENCV and PILLOW methods");
+        return;
+    }
 
     using BT = typename nvcv::cuda::BaseType<T>;
     int ch   = nvcv::cuda::NumElements<T>;
@@ -72,9 +84,9 @@ try
         cvcuda::Reformat reformatOp;
 
         benchutils::warmup_and_exec(state, BENCH_HISTOGRAMEQ_WARMUP_ITERATIONS,
-            [&op, &reformatOp, &src, &interSrc, &interDst, &dst](cudaStream_t s) {
+            [&op, &reformatOp, &src, &interSrc, &interDst, &dst, method](cudaStream_t s) {
                 reformatOp(s, src, interSrc);
-                op(s, interSrc, interDst);
+                op(s, interSrc, interDst, method);
                 reformatOp(s, interDst, dst);
             });
     }
@@ -90,7 +102,7 @@ try
         benchutils::FillTensor<BT>(src, benchutils::LcgValues<BT>());
 
         benchutils::warmup_and_exec(state, BENCH_HISTOGRAMEQ_WARMUP_ITERATIONS,
-            [&op, &src, &dst](cudaStream_t s) { op(s, src, dst); });
+            [&op, &src, &dst, method](cudaStream_t s) { op(s, src, dst, method); });
     }
     else // zero and positive var shape means use ImageBatchVarShape
     {
@@ -111,7 +123,7 @@ try
         }
 
         benchutils::warmup_and_exec(state, BENCH_HISTOGRAMEQ_WARMUP_ITERATIONS,
-            [&op, &src, &dst](cudaStream_t s) { op(s, src, dst); });
+            [&op, &src, &dst, method](cudaStream_t s) { op(s, src, dst, method); });
     }
 }
 CVCUDA_BENCH_SKIP_ERRORS(state)

@@ -69,7 +69,14 @@ NVCV_TEST_SUITE_P(OpAverageBlur, test::ValueList<int, int, int, NVCVImageFormat,
     {    123,     33,       3,    NVCV_IMAGE_FORMAT_RGB8,      3,      3,        2,        2, NVCV_BORDER_WRAP},
     {     42,     53,       4,   NVCV_IMAGE_FORMAT_RGBA8,      7,      7,        5,        5, NVCV_BORDER_REPLICATE},
     {     13,     42,       3,    NVCV_IMAGE_FORMAT_RGB8,      3,      3,        1,        1, NVCV_BORDER_REFLECT},
-    {     62,    111,       4,   NVCV_IMAGE_FORMAT_RGBA8,      9,      9,        8,        8, NVCV_BORDER_REFLECT101}
+    {     62,    111,       4,   NVCV_IMAGE_FORMAT_RGBA8,      9,      9,        8,        8, NVCV_BORDER_REFLECT101},
+    {    129,     19,       2,    NVCV_IMAGE_FORMAT_RGB8,      5,      5,        2,        2, NVCV_BORDER_CONSTANT},
+    {     17,     13,       2,    NVCV_IMAGE_FORMAT_RGB8,      5,      5,       -1,       -1, NVCV_BORDER_REPLICATE},
+    {    131,     21,       2,    NVCV_IMAGE_FORMAT_RGB8,      5,      5,        2,        2, NVCV_BORDER_WRAP},
+    {    133,     23,       2,    NVCV_IMAGE_FORMAT_RGB8,      5,      5,        2,        2, NVCV_BORDER_REFLECT},
+    {    135,     25,       2,    NVCV_IMAGE_FORMAT_RGB8,      5,      5,        0,        4, NVCV_BORDER_REFLECT101},
+    {      5,      5,       2,    NVCV_IMAGE_FORMAT_RGB8,      5,      5,        2,        2, NVCV_BORDER_REFLECT101},
+    {     65,     19,       2,      NVCV_IMAGE_FORMAT_U8,      5,      5,        2,        2, NVCV_BORDER_REPLICATE}
 });
 
 // clang-format on
@@ -411,10 +418,10 @@ TEST_P(OpAverageBlurF16, tensor_correct_output)
     const size_t        numValues = static_cast<size_t>(batches) * height * width * channels;
     for (size_t i = 0; i < numValues; ++i)
     {
-        const int c = i % channels;
-        const int x = (i / channels) % width;
-        const int y = (i / channels / width) % height;
-        const int b = i / channels / width / height;
+        const auto c = static_cast<int>(i % channels);
+        const auto x = static_cast<int>((i / channels) % width);
+        const auto y = static_cast<int>((i / channels / width) % height);
+        const auto b = static_cast<int>(i / channels / width / height);
         goldVals.push_back(*reinterpret_cast<const float *>(
             &goldVecF[b * outStridesF.x + y * outStridesF.y + x * outStridesF.z + c * sizeof(float)]));
         testVals.push_back(*reinterpret_cast<const __half *>(
@@ -557,6 +564,7 @@ NVCV_TEST_SUITE_P(OpAverageBlurPlanar,
     // taps in the same order, so the single half store rounding matches.
     { 64, 48, 3, 3,  NVCV_BORDER_CONSTANT, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
     { 50, 40, 7, 7, NVCV_BORDER_REPLICATE, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
+    { 65, 19, 5, 5, NVCV_BORDER_REPLICATE, 2, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
 });
 
 // clang-format on
@@ -596,6 +604,191 @@ TEST_P(OpAverageBlurPlanar, varshape_matches_interleaved)
         {
             cvcuda::AverageBlur op(kernelSize, numImages);
             EXPECT_NO_THROW(op(s, src, dst, kernelSizeTensor, kernelAnchorTensor, borderMode));
+        });
+}
+
+TEST(OpAverageBlurPlanar, varshape_rgbf32_direct_schedule_matches_interleaved)
+{
+    constexpr int      numImages = 2;
+    const nvcv::Size2D kernelSize{5, 5};
+    auto               kernelSizeTensor
+        = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2S32, int2{kernelSize.w, kernelSize.h});
+    auto kernelAnchorTensor = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2S32, int2{-1, -1});
+    const std::vector<nvcv::Size2D> sizes{
+        {35, 27},
+        {67, 51}
+    };
+
+    test::planar::RunVarShapeParity(
+        nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, sizes, sizes,
+        [&kernelSizeTensor, &kernelAnchorTensor, kernelSize](cudaStream_t s, const nvcv::ImageBatchVarShape &src,
+                                                             const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+        {
+            cvcuda::AverageBlur op(kernelSize, numImages);
+            EXPECT_NO_THROW(op(s, src, dst, kernelSizeTensor, kernelAnchorTensor, NVCV_BORDER_REPLICATE));
+        });
+}
+
+TEST(OpAverageBlurPlanar, varshape_rgbf16_dynamic_kernel_fallback_matches_interleaved)
+{
+    constexpr int      numImages = 2;
+    const nvcv::Size2D kernelSize{9, 9};
+    auto               kernelSizeTensor
+        = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2S32, int2{kernelSize.w, kernelSize.h});
+    auto kernelAnchorTensor = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2S32, int2{-1, -1});
+    const std::vector<nvcv::Size2D> sizes{
+        {35, 27},
+        {67, 51}
+    };
+
+    test::planar::RunVarShapeParity(
+        nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16, sizes, sizes,
+        [&kernelSizeTensor, &kernelAnchorTensor, kernelSize](cudaStream_t s, const nvcv::ImageBatchVarShape &src,
+                                                             const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+        {
+            cvcuda::AverageBlur op(kernelSize, numImages);
+            EXPECT_NO_THROW(op(s, src, dst, kernelSizeTensor, kernelAnchorTensor, NVCV_BORDER_REFLECT101));
+        });
+}
+
+// RGBA F32 uses the wide interleaved var-shape dispatch on SM89. Keep one centered and one
+// non-centered per-image window so the direct kernel exercises both its 5x5 specialization and
+// its ordinary window path while tensor parity covers the interior raw-wrapper fast path.
+TEST(OpAverageBlurPlanar, rgba_f32_tensor_and_varshape_window_specializations)
+{
+    constexpr int      numImages = 2;
+    const nvcv::Size2D kernelSize{5, 5};
+
+    test::planar::RunTensorParity(
+        nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32, 35, 27, 35, 27, numImages,
+        [kernelSize](cudaStream_t s, const nvcv::Tensor &src, const nvcv::Tensor &dst, nvcv::ImageFormat)
+        {
+            cvcuda::AverageBlur op(kernelSize, numImages);
+            EXPECT_NO_THROW(op(s, src, dst, kernelSize, int2{2, 2}, NVCV_BORDER_REPLICATE));
+        });
+
+    nvcv::Tensor kernelSizes({{numImages}, "N"}, nvcv::TYPE_2S32);
+    nvcv::Tensor kernelAnchors({{numImages}, "N"}, nvcv::TYPE_2S32);
+    test::planar::UploadTensorValues(kernelSizes, std::vector<int2>{
+                                                      int2{5, 5},
+                                                      int2{3, 3}
+    });
+    test::planar::UploadTensorValues(kernelAnchors, std::vector<int2>{
+                                                        int2{2, 2},
+                                                        int2{1, 1}
+    });
+
+    const std::vector<nvcv::Size2D> sizes{
+        {35, 27},
+        {67, 51}
+    };
+    test::planar::RunVarShapeParity(
+        nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32, sizes, sizes,
+        [&kernelSizes, &kernelAnchors, kernelSize](cudaStream_t s, const nvcv::ImageBatchVarShape &src,
+                                                   const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+        {
+            cvcuda::AverageBlur op(kernelSize, numImages);
+            EXPECT_NO_THROW(op(s, src, dst, kernelSizes, kernelAnchors, NVCV_BORDER_REPLICATE));
+        });
+}
+
+// Keep a centered window and a non-centered dynamic window in one batch so the direct planar
+// kernel sees both BoxTaps template modes, with the first image supplying interior and border pixels.
+TEST(OpAverageBlurPlanar, varshape_bgra_f32_box_taps_interior_and_border)
+{
+    constexpr int      numImages = 2;
+    const nvcv::Size2D maxKernelSize{7, 7};
+
+    nvcv::Tensor kernelSizes({{numImages}, "N"}, nvcv::TYPE_2S32);
+    nvcv::Tensor kernelAnchors({{numImages}, "N"}, nvcv::TYPE_2S32);
+    test::planar::UploadTensorValues(kernelSizes, std::vector<int2>{
+                                                      int2{5, 5},
+                                                      int2{7, 5}
+    });
+    test::planar::UploadTensorValues(kernelAnchors, std::vector<int2>{
+                                                        int2{2, 2},
+                                                        int2{3, 2}
+    });
+
+    const std::vector<nvcv::Size2D> sizes{
+        { 9,  9},
+        {17, 13}
+    };
+    test::planar::RunVarShapeParity(
+        nvcv::FMT_BGRAf32p, nvcv::FMT_BGRAf32, sizes, sizes,
+        [&kernelSizes, &kernelAnchors, maxKernelSize](cudaStream_t s, const nvcv::ImageBatchVarShape &src,
+                                                      const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+        {
+            cvcuda::AverageBlur op(maxKernelSize, numImages);
+            EXPECT_NO_THROW(op(s, src, dst, kernelSizes, kernelAnchors, NVCV_BORDER_REPLICATE));
+        });
+}
+
+// S16 forces the scalar planar tiled schedule while the common maximum window keeps the fixed
+// tile launch active for both centered and non-centered per-image boxes.
+TEST(OpAverageBlurPlanar, varshape_rgbs16_common_tiled_dispatch_matches_interleaved)
+{
+    const nvcv::ImageFormat interleavedFmt{nvcv::ColorModel::RGB,  nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                           nvcv::DataKind::SIGNED, nvcv::Swizzle::S_XYZ1, nvcv::Packing::X16_Y16_Z16};
+    const nvcv::ImageFormat planarFmt{nvcv::ColorModel::RGB,  nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                      nvcv::DataKind::SIGNED, nvcv::Swizzle::S_XYZ0, nvcv::Packing::X16,
+                                      nvcv::Packing::X16,     nvcv::Packing::X16};
+    constexpr int           numImages = 2;
+    const nvcv::Size2D      maxKernelSize{7, 7};
+
+    nvcv::Tensor kernelSizes({{numImages}, "N"}, nvcv::TYPE_2S32);
+    nvcv::Tensor kernelAnchors({{numImages}, "N"}, nvcv::TYPE_2S32);
+    test::planar::UploadTensorValues(kernelSizes, std::vector<int2>{
+                                                      int2{5, 5},
+                                                      int2{7, 5}
+    });
+    test::planar::UploadTensorValues(kernelAnchors, std::vector<int2>{
+                                                        int2{2, 2},
+                                                        int2{3, 2}
+    });
+    const std::vector<nvcv::Size2D> sizes{
+        {35, 27},
+        {67, 51}
+    };
+
+    test::planar::RunVarShapeParity(
+        planarFmt, interleavedFmt, sizes, sizes,
+        [&kernelSizes, &kernelAnchors, maxKernelSize](cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                                      const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+        {
+            cvcuda::AverageBlur op(maxKernelSize, numImages);
+            EXPECT_NO_THROW(op(stream, src, dst, kernelSizes, kernelAnchors, NVCV_BORDER_REFLECT101));
+        });
+}
+
+// An asymmetric maximum window bypasses square tiled specializations. A centered and a dynamic
+// per-image window then instantiate both BoxTaps InteriorFastPath modes on the direct planar path.
+TEST(OpAverageBlurPlanar, varshape_rgba_f32_dynamic_box_taps_matches_interleaved)
+{
+    constexpr int      numImages = 2;
+    const nvcv::Size2D maxKernelSize{7, 5};
+    nvcv::Tensor       kernelSizeTensor({{numImages}, "N"}, nvcv::TYPE_2S32);
+    nvcv::Tensor       kernelAnchorTensor({{numImages}, "N"}, nvcv::TYPE_2S32);
+    test::planar::UploadTensorValues(kernelSizeTensor, std::vector<int2>{
+                                                           int2{5, 5},
+                                                           int2{7, 5}
+    });
+    test::planar::UploadTensorValues(kernelAnchorTensor, std::vector<int2>{
+                                                             int2{2, 2},
+                                                             int2{3, 2}
+    });
+    const std::vector<nvcv::Size2D> sizes{
+        {35, 27},
+        {67, 51}
+    };
+
+    test::planar::RunVarShapeParity(
+        nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32, sizes, sizes,
+        [&kernelSizeTensor, &kernelAnchorTensor, maxKernelSize](cudaStream_t s, const nvcv::ImageBatchVarShape &src,
+                                                                const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+        {
+            cvcuda::AverageBlur op(maxKernelSize, numImages);
+            EXPECT_NO_THROW(op(s, src, dst, kernelSizeTensor, kernelAnchorTensor, NVCV_BORDER_REFLECT101));
         });
 }
 
@@ -669,7 +862,156 @@ TEST_P(OpAverageBlurVarshape_Negative, varshape_hasDifferentFormat)
     test::planar::ExpectVarShapeMixedFormatRejected(InvokeAverageBlurVarShapeNegative);
 }
 
+// Equal batch maxima do not imply that the corresponding images have equal sizes.
+NVCV_TEST_SUITE_P(OpAverageBlurVarshape_SizeMismatch, test::ValueList<int, int, int, int, int>{
+                                                          {24, 20, 24, 20, 2},
+                                                          {24, 20, 16, 12, 2},
+                                                          {16, 12, 24, 20, 1}
+});
+
+TEST_P(OpAverageBlurVarshape_SizeMismatch, rejects_unpaired_output_images)
+{
+    for (auto format : {nvcv::FMT_U8, nvcv::FMT_RGB8p, nvcv::FMT_RGBAf32})
+    {
+        SCOPED_TRACE(format);
+        nvcv::ImageBatchVarShape input(2);
+        nvcv::ImageBatchVarShape output(2);
+        input.pushBack(nvcv::Image(nvcv::Size2D{16, 12}, format));
+        input.pushBack(nvcv::Image(nvcv::Size2D{24, 20}, format));
+        output.pushBack(nvcv::Image(nvcv::Size2D{GetParamValue<0>(), GetParamValue<1>()}, format));
+        if (GetParamValue<4>() == 2)
+            output.pushBack(nvcv::Image(nvcv::Size2D{GetParamValue<2>(), GetParamValue<3>()}, format));
+        auto sizes   = test::planar::MakePerImageTensor(2, nvcv::TYPE_2S32, int2{5, 5});
+        auto anchors = test::planar::MakePerImageTensor(2, nvcv::TYPE_2S32, int2{-1, -1});
+        ASSERT_FALSE(::testing::Test::HasFatalFailure());
+        cvcuda::AverageBlur op({5, 5}, 2);
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { op(nullptr, input, output, sizes, anchors, NVCV_BORDER_CONSTANT); }));
+        ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    }
+}
+
+// Regression: the var-shape channel guard read `channels > 4 || (isPlanar && channels == 2)`, so an
+// interleaved 2-channel batch passed validation -- unlike the Tensor overload and unlike Conv2D,
+// which both rejected `channels == 2` outright, and unlike the public header, which documents
+// channels [1, 3, 4]. The accepted batch then indexed the [dtype][channels] dispatch table at column
+// 1, which is null in every row because no 2-component vector type is ever instantiated, and called
+// through that null pointer; the NVCV_ASSERT meant to catch it compiles away in release builds. This
+// test submits exactly such a batch, so before the fix it faults instead of reporting
+// NVCV_ERROR_INVALID_ARGUMENT.
+TEST(OpAverageBlurVarshape_Negative, rejects_two_channel_interleaved_batch)
+{
+    test::planar::ExpectVarShapeUniformFormatRejected(nvcv::FMT_2F32, nvcv::FMT_2F32, 2, 2, NVCV_BORDER_CONSTANT,
+                                                      InvokeAverageBlurVarShapeNegative);
+}
+
 TEST(OpAverageBlur_Negative, create_null_handle)
 {
     EXPECT_EQ(cvcudaAverageBlurCreate(nullptr, 224, 224, 10), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+// The var-shape overload wraps kernelSize and kernelAnchor as int2 and indexes them per image, so a
+// wrong dtype reinterprets the bits and a short tensor reads past the allocation.
+TEST(OpAverageBlurVarshape_Negative, rejects_mistyped_kernel_size_tensor)
+{
+    constexpr int numImages = 2;
+
+    nvcv::ImageBatchVarShape src(numImages);
+    nvcv::ImageBatchVarShape dst(numImages);
+    std::vector<nvcv::Image> srcImages;
+    std::vector<nvcv::Image> dstImages;
+    for (int i = 0; i < numImages; ++i)
+    {
+        srcImages.emplace_back(nvcv::Size2D{16, 16}, nvcv::FMT_U8);
+        dstImages.emplace_back(nvcv::Size2D{16, 16}, nvcv::FMT_U8);
+    }
+    src.pushBack(srcImages.begin(), srcImages.end());
+    dst.pushBack(dstImages.begin(), dstImages.end());
+
+    nvcv::Tensor mistypedSize({{numImages}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor anchor({{numImages}, "N"}, nvcv::TYPE_2S32);
+
+    cvcuda::AverageBlur op(nvcv::Size2D{7, 7}, numImages);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, src, dst, mistypedSize, anchor, NVCV_BORDER_CONSTANT); }));
+}
+
+TEST(OpAverageBlurVarshape_Negative, rejects_short_kernel_anchor_tensor)
+{
+    constexpr int numImages = 3;
+
+    nvcv::ImageBatchVarShape src(numImages);
+    nvcv::ImageBatchVarShape dst(numImages);
+    std::vector<nvcv::Image> srcImages;
+    std::vector<nvcv::Image> dstImages;
+    for (int i = 0; i < numImages; ++i)
+    {
+        srcImages.emplace_back(nvcv::Size2D{16, 16}, nvcv::FMT_U8);
+        dstImages.emplace_back(nvcv::Size2D{16, 16}, nvcv::FMT_U8);
+    }
+    src.pushBack(srcImages.begin(), srcImages.end());
+    dst.pushBack(dstImages.begin(), dstImages.end());
+
+    nvcv::Tensor size({{numImages}, "N"}, nvcv::TYPE_2S32);
+    nvcv::Tensor shortAnchor({{numImages - 1}, "N"}, nvcv::TYPE_2S32);
+
+    cvcuda::AverageBlur op(nvcv::Size2D{7, 7}, numImages);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, src, dst, size, shortAnchor, NVCV_BORDER_CONSTANT); }));
+}
+
+// The tensor path always takes the raw-source interior shortcut, so a larger output would sample
+// past the input extent instead of clamping through the border wrap.
+TEST(OpAverageBlur_Negative, rejects_tensor_shape_mismatch)
+{
+    nvcv::Tensor in(1, {16, 16}, nvcv::FMT_U8);
+    nvcv::Tensor out(1, {24, 24}, nvcv::FMT_U8);
+
+    cvcuda::AverageBlur op(nvcv::Size2D{7, 7}, 1);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&] {
+                      op(nullptr, in, out, nvcv::Size2D{3, 3}, int2{-1, -1}, NVCV_BORDER_CONSTANT);
+                  }));
+}
+
+// The Python bindings build per-image int2 parameters as a rank-2 (N, 2) S32 "NC" tensor, while the
+// C++ callers use a rank-1 2S32 tensor. Both are byte-identical to the Tensor1DWrap the kernels use,
+// so validation must accept either. Rejecting the rank-2 form failed every Python var-shape test for
+// AverageBlur, Conv2D, Gaussian and Morphology while the C++ suite stayed green.
+TEST(OpAverageBlurVarshape_Negative, accepts_split_per_image_parameter_tensors)
+{
+    constexpr int numImages = 2;
+
+    nvcv::ImageBatchVarShape src(numImages);
+    nvcv::ImageBatchVarShape dst(numImages);
+    std::vector<nvcv::Image> srcImages;
+    std::vector<nvcv::Image> dstImages;
+    for (int i = 0; i < numImages; ++i)
+    {
+        srcImages.emplace_back(nvcv::Size2D{16, 16}, nvcv::FMT_U8);
+        dstImages.emplace_back(nvcv::Size2D{16, 16}, nvcv::FMT_U8);
+    }
+    src.pushBack(srcImages.begin(), srcImages.end());
+    dst.pushBack(dstImages.begin(), dstImages.end());
+
+    nvcv::Tensor size(nvcv::TensorShape({numImages, 2}, "NC"), nvcv::TYPE_S32);
+    nvcv::Tensor anchor(nvcv::TensorShape({numImages, 2}, "NC"), nvcv::TYPE_S32);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    std::vector<int2> sizeVec(numImages, int2{3, 3});
+    std::vector<int2> anchorVec(numImages, int2{-1, -1});
+    auto              sizeData   = size.exportData<nvcv::TensorDataStridedCuda>();
+    auto              anchorData = anchor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(sizeData->basePtr(), sizeVec.data(), sizeVec.size() * sizeof(int2),
+                                           cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(anchorData->basePtr(), anchorVec.data(), anchorVec.size() * sizeof(int2),
+                                           cudaMemcpyHostToDevice, stream));
+
+    cvcuda::AverageBlur op(nvcv::Size2D{7, 7}, numImages);
+    EXPECT_NO_THROW(op(stream, src, dst, size, anchor, NVCV_BORDER_CONSTANT));
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

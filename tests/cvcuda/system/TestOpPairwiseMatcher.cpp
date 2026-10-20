@@ -298,7 +298,8 @@ NVCV_TYPED_TEST_SUITE(OpPairwiseMatcher, type::Types<
     NVCV_TEST_ROW(3, 87, 98, 19, 2, false, true, NVCV_BRUTE_FORCE, NVCV_NORM_L2, uint8_t),
     NVCV_TEST_ROW(4, 43, 32, 26, 1, true, true, NVCV_BRUTE_FORCE, NVCV_NORM_L2, float),
     NVCV_TEST_ROW(3, 67, 58, 32, 3, false, true, NVCV_BRUTE_FORCE, NVCV_NORM_L2, uint8_t),
-    NVCV_TEST_ROW(2, 73, 62, 8, 1, true, false, NVCV_BRUTE_FORCE, NVCV_NORM_L2, float)
+    NVCV_TEST_ROW(2, 73, 62, 8, 1, true, false, NVCV_BRUTE_FORCE, NVCV_NORM_L2, float),
+    NVCV_TEST_ROW(1, 3, 4, 128, 1, false, false, NVCV_BRUTE_FORCE, NVCV_NORM_HAMMING, uint8_t)
 >);
 
 // clang-format on
@@ -466,6 +467,535 @@ TYPED_TEST(OpPairwiseMatcher, CorrectOutput)
     EXPECT_EQ(testIdsDist, goldIdsDist);
 }
 
+TEST(OpPairwiseMatcher, optional_counts_and_output_capacity)
+{
+    constexpr int numSamples      = 1;
+    constexpr int set1Capacity    = 2;
+    constexpr int set2Capacity    = 3;
+    constexpr int numDim          = 7;
+    constexpr int matchesPerPoint = 1;
+    constexpr int outCapacity     = 1;
+
+    // clang-format off
+    nvcv::Tensor set1({{numSamples, set1Capacity, numDim}, "NMD"}, nvcv::TYPE_U8);
+    nvcv::Tensor set2({{numSamples, set2Capacity, numDim}, "NMD"}, nvcv::TYPE_U8);
+    // Null count tensors force the kernels to use the input capacities.
+    nvcv::Tensor numSet1;
+    nvcv::Tensor numSet2;
+    nvcv::Tensor matches({{numSamples, outCapacity, 2}, "NMD"}, nvcv::TYPE_S32);
+    nvcv::Tensor numMatches({{numSamples}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor distances;
+    // clang-format on
+
+    auto set1Data = set1.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(set1Data);
+    auto set2Data = set2.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(set2Data);
+    auto mchData = matches.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(mchData);
+    auto nmData = numMatches.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(nmData);
+
+    long3 set1Strides{set1Data->stride(0), set1Data->stride(1), set1Data->stride(2)};
+    long3 set2Strides{set2Data->stride(0), set2Data->stride(1), set2Data->stride(2)};
+    long3 mchStrides{mchData->stride(0), mchData->stride(1), mchData->stride(2)};
+    long1 nmStrides{nmData->stride(0)};
+    long2 noDistanceStrides{0, 0};
+
+    long set1BufSize = set1Strides.x * numSamples;
+    long set2BufSize = set2Strides.x * numSamples;
+    long mchBufSize  = mchStrides.x * numSamples;
+    long nmBufSize   = nmStrides.x * numSamples;
+
+    RawBufferType set1Vec(set1BufSize, 0);
+    RawBufferType set2Vec(set2BufSize, 0);
+
+    for (int i = 0; i < numDim; ++i)
+    {
+        util::ValueAt<uint8_t>(set1Vec, set1Strides, long3{0, 0, i}) = 0;
+        util::ValueAt<uint8_t>(set1Vec, set1Strides, long3{0, 1, i}) = 100;
+        util::ValueAt<uint8_t>(set2Vec, set2Strides, long3{0, 0, i}) = 0;
+        util::ValueAt<uint8_t>(set2Vec, set2Strides, long3{0, 1, i}) = 100;
+        util::ValueAt<uint8_t>(set2Vec, set2Strides, long3{0, 2, i}) = 200;
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(set1Data->basePtr(), set1Vec.data(), set1BufSize, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(set2Data->basePtr(), set2Vec.data(), set2BufSize, cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::PairwiseMatcher op(NVCV_BRUTE_FORCE);
+    op(stream, set1, set2, numSet1, numSet2, matches, numMatches, distances, false, matchesPerPoint, NVCV_NORM_L1);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    RawBufferType mchTestVec(mchBufSize, 0);
+    RawBufferType nmTestVec(nmBufSize, 0);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(mchTestVec.data(), mchData->basePtr(), mchBufSize, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(nmTestVec.data(), nmData->basePtr(), nmBufSize, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    // Keep the reference at full capacity so the device output limit is modeled explicitly.
+    const long3   goldMchStrides{set1Capacity * 2 * sizeof(int), 2 * sizeof(int), sizeof(int)};
+    const long1   goldNmStrides{sizeof(int)};
+    RawBufferType goldMchVec(goldMchStrides.x * numSamples, 0);
+    RawBufferType goldNmVec(goldNmStrides.x * numSamples, 0);
+    RawBufferType noDistanceVec;
+
+    ref::PairwiseMatcher<uint8_t>(NVCV_BRUTE_FORCE, goldMchVec, goldNmVec, noDistanceVec, set1Vec, set2Vec,
+                                  goldMchStrides, goldNmStrides, noDistanceStrides, set1Strides, set2Strides,
+                                  numSamples, numDim, set1Capacity, set2Capacity, false, matchesPerPoint, NVCV_NORM_L1);
+
+    std::vector<std::tuple<int, int, int, float>> testIdsDist;
+    std::vector<std::tuple<int, int, int, float>> goldIdsDist;
+    ref::SortOutput(testIdsDist, mchTestVec, nmTestVec, noDistanceVec, mchStrides, nmStrides, noDistanceStrides,
+                    numSamples, set1Capacity, matchesPerPoint, outCapacity);
+    ref::SortOutput(goldIdsDist, goldMchVec, goldNmVec, noDistanceVec, goldMchStrides, goldNmStrides, noDistanceStrides,
+                    numSamples, set1Capacity, matchesPerPoint, outCapacity);
+
+    EXPECT_EQ(testIdsDist, goldIdsDist);
+    EXPECT_EQ(set1Capacity * matchesPerPoint, util::ValueAt<int>(nmTestVec, nmStrides, long1{0}));
+}
+
+TEST(OpPairwiseMatcher, rank_two_optional_shapes)
+{
+    constexpr int numSamples      = 2;
+    constexpr int set1Size        = 2;
+    constexpr int set2Size        = 3;
+    constexpr int set1Capacity    = 3;
+    constexpr int set2Capacity    = 4;
+    constexpr int numDim          = 5;
+    constexpr int matchesPerPoint = 1;
+    constexpr int outCapacity     = set1Size * matchesPerPoint;
+
+    // clang-format off
+    nvcv::Tensor set1({{numSamples, set1Capacity, numDim}, "NMD"}, nvcv::TYPE_U8);
+    nvcv::Tensor set2({{numSamples, set2Capacity, numDim}, "NMD"}, nvcv::TYPE_U8);
+    nvcv::Tensor numSet1({{numSamples, 1}, "NC"}, nvcv::TYPE_S32);
+    nvcv::Tensor numSet2({{numSamples, 1}, "NC"}, nvcv::TYPE_S32);
+    nvcv::Tensor matches({{numSamples, outCapacity, 2}, "NMD"}, nvcv::TYPE_S32);
+    nvcv::Tensor numMatches({{numSamples, 1}, "NC"}, nvcv::TYPE_S32);
+    nvcv::Tensor distances({{numSamples, outCapacity, 1}, "NMC"}, nvcv::TYPE_F32);
+    // clang-format on
+
+    auto set1Data       = set1.exportData<nvcv::TensorDataStridedCuda>();
+    auto set2Data       = set2.exportData<nvcv::TensorDataStridedCuda>();
+    auto numSet1Data    = numSet1.exportData<nvcv::TensorDataStridedCuda>();
+    auto numSet2Data    = numSet2.exportData<nvcv::TensorDataStridedCuda>();
+    auto matchesData    = matches.exportData<nvcv::TensorDataStridedCuda>();
+    auto numMatchesData = numMatches.exportData<nvcv::TensorDataStridedCuda>();
+    auto distancesData  = distances.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(set1Data && set2Data && numSet1Data && numSet2Data && matchesData && numMatchesData && distancesData);
+
+    long3 set1Strides{set1Data->stride(0), set1Data->stride(1), set1Data->stride(2)};
+    long3 set2Strides{set2Data->stride(0), set2Data->stride(1), set2Data->stride(2)};
+    long1 numSet1Strides{numSet1Data->stride(0)};
+    long1 numSet2Strides{numSet2Data->stride(0)};
+    long3 mchStrides{matchesData->stride(0), matchesData->stride(1), matchesData->stride(2)};
+    long1 nmStrides{numMatchesData->stride(0)};
+    long2 dStrides{distancesData->stride(0), distancesData->stride(1)};
+
+    RawBufferType set1Vec(set1Strides.x * numSamples, 0);
+    RawBufferType set2Vec(set2Strides.x * numSamples, 0);
+    for (int sampleIdx = 0; sampleIdx < numSamples; ++sampleIdx)
+    {
+        for (int set1Idx = 0; set1Idx < set1Size; ++set1Idx)
+        {
+            for (int dimIdx = 0; dimIdx < numDim; ++dimIdx)
+            {
+                util::ValueAt<uint8_t>(set1Vec, set1Strides, long3{sampleIdx, set1Idx, dimIdx})
+                    = static_cast<uint8_t>(10 * sampleIdx + 7 * set1Idx + dimIdx);
+            }
+        }
+        for (int set2Idx = 0; set2Idx < set2Size; ++set2Idx)
+        {
+            for (int dimIdx = 0; dimIdx < numDim; ++dimIdx)
+            {
+                util::ValueAt<uint8_t>(set2Vec, set2Strides, long3{sampleIdx, set2Idx, dimIdx})
+                    = static_cast<uint8_t>(10 * sampleIdx + 7 * set2Idx + dimIdx + (set2Idx == 0 ? 0 : 3));
+            }
+        }
+    }
+
+    RawBufferType numSet1Vec(numSet1Strides.x * numSamples, 0);
+    RawBufferType numSet2Vec(numSet2Strides.x * numSamples, 0);
+    for (int sampleIdx = 0; sampleIdx < numSamples; ++sampleIdx)
+    {
+        util::ValueAt<int>(numSet1Vec, numSet1Strides, long1{sampleIdx}) = set1Size;
+        util::ValueAt<int>(numSet2Vec, numSet2Strides, long1{sampleIdx}) = set2Size;
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(set1Data->basePtr(), set1Vec.data(), set1Vec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(set2Data->basePtr(), set2Vec.data(), set2Vec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(numSet1Data->basePtr(), numSet1Vec.data(), numSet1Vec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(numSet2Data->basePtr(), numSet2Vec.data(), numSet2Vec.size(), cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::PairwiseMatcher op(NVCV_BRUTE_FORCE);
+    op(stream, set1, set2, numSet1, numSet2, matches, numMatches, distances, false, matchesPerPoint, NVCV_NORM_L1);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    long          mchBufSize = mchStrides.x * numSamples;
+    long          nmBufSize  = nmStrides.x * numSamples;
+    long          dBufSize   = dStrides.x * numSamples;
+    RawBufferType mchTestVec(mchBufSize, 0);
+    RawBufferType nmTestVec(nmBufSize, 0);
+    RawBufferType dTestVec(dBufSize, 0);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(mchTestVec.data(), matchesData->basePtr(), mchBufSize, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(nmTestVec.data(), numMatchesData->basePtr(), nmBufSize, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dTestVec.data(), distancesData->basePtr(), dBufSize, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    RawBufferType mchGoldVec(mchBufSize, 0);
+    RawBufferType nmGoldVec(nmBufSize, 0);
+    RawBufferType dGoldVec(dBufSize, 0);
+    ref::PairwiseMatcher<uint8_t>(NVCV_BRUTE_FORCE, mchGoldVec, nmGoldVec, dGoldVec, set1Vec, set2Vec, mchStrides,
+                                  nmStrides, dStrides, set1Strides, set2Strides, numSamples, numDim, set1Size, set2Size,
+                                  false, matchesPerPoint, NVCV_NORM_L1);
+
+    std::vector<std::tuple<int, int, int, float>> testIdsDist;
+    std::vector<std::tuple<int, int, int, float>> goldIdsDist;
+    ref::SortOutput(testIdsDist, mchTestVec, nmTestVec, dTestVec, mchStrides, nmStrides, dStrides, numSamples, set1Size,
+                    matchesPerPoint, outCapacity);
+    ref::SortOutput(goldIdsDist, mchGoldVec, nmGoldVec, dGoldVec, mchStrides, nmStrides, dStrides, numSamples, set1Size,
+                    matchesPerPoint, outCapacity);
+
+    EXPECT_EQ(testIdsDist, goldIdsDist);
+}
+
+TEST(OpPairwiseMatcher, padded_optional_tensor_strides_regression)
+{
+    auto runCrossCheck = [&](bool crossCheck)
+    {
+        SCOPED_TRACE(crossCheck);
+        constexpr int numSamples      = 2;
+        constexpr int set1Size        = 2;
+        constexpr int set2Size        = 3;
+        constexpr int set1Capacity    = 3;
+        constexpr int set2Capacity    = 4;
+        constexpr int numDim          = 5;
+        constexpr int matchesPerPoint = 1;
+        constexpr int outCapacity     = set1Size * matchesPerPoint;
+
+        // clang-format off
+        nvcv::Tensor set1({{numSamples, set1Capacity, numDim}, "NMD"}, nvcv::TYPE_U8);
+        nvcv::Tensor set2({{numSamples, set2Capacity, numDim}, "NMD"}, nvcv::TYPE_U8);
+        nvcv::Tensor numSet1({{numSamples, 1}, "NC"}, nvcv::TYPE_S32);
+        nvcv::Tensor numSet2({{numSamples, 1}, "NC"}, nvcv::TYPE_S32);
+        nvcv::Tensor matches({{numSamples, outCapacity, 2}, "NMD"}, nvcv::TYPE_S32);
+        nvcv::Tensor numMatches({{numSamples, 1}, "NC"}, nvcv::TYPE_S32);
+        nvcv::Tensor distances({{numSamples, outCapacity, 1}, "NMC"}, nvcv::TYPE_F32);
+        // clang-format on
+
+        auto set1Data       = set1.exportData<nvcv::TensorDataStridedCuda>();
+        auto set2Data       = set2.exportData<nvcv::TensorDataStridedCuda>();
+        auto numSet1Data    = numSet1.exportData<nvcv::TensorDataStridedCuda>();
+        auto numSet2Data    = numSet2.exportData<nvcv::TensorDataStridedCuda>();
+        auto matchesData    = matches.exportData<nvcv::TensorDataStridedCuda>();
+        auto numMatchesData = numMatches.exportData<nvcv::TensorDataStridedCuda>();
+        auto distancesData  = distances.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(set1Data && set2Data && numSet1Data && numSet2Data && matchesData && numMatchesData
+                    && distancesData);
+
+        long3 set1Strides{set1Data->stride(0), set1Data->stride(1), set1Data->stride(2)};
+        long3 set2Strides{set2Data->stride(0), set2Data->stride(1), set2Data->stride(2)};
+        long1 numSet1Strides{numSet1Data->stride(0)};
+        long1 numSet2Strides{numSet2Data->stride(0)};
+        long3 mchStrides{matchesData->stride(0), matchesData->stride(1), matchesData->stride(2)};
+        long1 nmStrides{numMatchesData->stride(0)};
+        long2 dStrides{distancesData->stride(0), distancesData->stride(1)};
+
+        RawBufferType set1Vec(set1Strides.x * numSamples, 0);
+        RawBufferType set2Vec(set2Strides.x * numSamples, 0);
+        for (int sampleIdx = 0; sampleIdx < numSamples; ++sampleIdx)
+        {
+            for (int set1Idx = 0; set1Idx < set1Size; ++set1Idx)
+            {
+                for (int dimIdx = 0; dimIdx < numDim; ++dimIdx)
+                {
+                    util::ValueAt<uint8_t>(set1Vec, set1Strides, long3{sampleIdx, set1Idx, dimIdx})
+                        = static_cast<uint8_t>(10 * sampleIdx + 7 * set1Idx + dimIdx);
+                }
+            }
+            for (int set2Idx = 0; set2Idx < set2Size; ++set2Idx)
+            {
+                for (int dimIdx = 0; dimIdx < numDim; ++dimIdx)
+                {
+                    util::ValueAt<uint8_t>(set2Vec, set2Strides, long3{sampleIdx, set2Idx, dimIdx})
+                        = static_cast<uint8_t>(10 * sampleIdx + 7 * set2Idx + dimIdx + (set2Idx == 0 ? 0 : 3));
+                }
+            }
+        }
+
+        RawBufferType numSet1Vec(numSet1Strides.x * numSamples, 0);
+        RawBufferType numSet2Vec(numSet2Strides.x * numSamples, 0);
+        for (int sampleIdx = 0; sampleIdx < numSamples; ++sampleIdx)
+        {
+            util::ValueAt<int>(numSet1Vec, numSet1Strides, long1{sampleIdx}) = set1Size;
+            util::ValueAt<int>(numSet2Vec, numSet2Strides, long1{sampleIdx}) = set2Size;
+        }
+
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(set1Data->basePtr(), set1Vec.data(), set1Vec.size(), cudaMemcpyHostToDevice));
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(set2Data->basePtr(), set2Vec.data(), set2Vec.size(), cudaMemcpyHostToDevice));
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(numSet1Data->basePtr(), numSet1Vec.data(), numSet1Vec.size(), cudaMemcpyHostToDevice));
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(numSet2Data->basePtr(), numSet2Vec.data(), numSet2Vec.size(), cudaMemcpyHostToDevice));
+
+        // Seed counts so cross-check must reset every sample through its actual stride.
+        RawBufferType initialCounts(nmStrides.x * numSamples, 0);
+        for (int sampleIdx = 0; sampleIdx < numSamples; ++sampleIdx)
+        {
+            util::ValueAt<int>(initialCounts, nmStrides, long1{sampleIdx}) = 1;
+        }
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(numMatchesData->basePtr(), initialCounts.data(), initialCounts.size(),
+                                          cudaMemcpyHostToDevice));
+        ASSERT_EQ(cudaSuccess, cudaMemset(matchesData->basePtr(), 0, mchStrides.x * numSamples));
+        ASSERT_EQ(cudaSuccess, cudaMemset(distancesData->basePtr(), 0, dStrides.x * numSamples));
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+        cvcuda::PairwiseMatcher op(NVCV_BRUTE_FORCE);
+        op(stream, set1, set2, numSet1, numSet2, matches, numMatches, distances, crossCheck, matchesPerPoint,
+           NVCV_NORM_L1);
+
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        long          mchBufSize = mchStrides.x * numSamples;
+        long          nmBufSize  = nmStrides.x * numSamples;
+        long          dBufSize   = dStrides.x * numSamples;
+        RawBufferType mchTestVec(mchBufSize, 0);
+        RawBufferType nmTestVec(nmBufSize, 0);
+        RawBufferType dTestVec(dBufSize, 0);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(mchTestVec.data(), matchesData->basePtr(), mchBufSize, cudaMemcpyDeviceToHost));
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(nmTestVec.data(), numMatchesData->basePtr(), nmBufSize, cudaMemcpyDeviceToHost));
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(dTestVec.data(), distancesData->basePtr(), dBufSize, cudaMemcpyDeviceToHost));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+        std::vector<std::tuple<int, int, int, float>>       testIdsDist;
+        const std::vector<std::tuple<int, int, int, float>> goldIdsDist{
+            {0, 0, 0,  0.f},
+            {0, 1, 1, 15.f},
+            {1, 0, 0,  0.f},
+            {1, 1, 1, 15.f}
+        };
+        for (int sampleIdx = 0; sampleIdx < numSamples; ++sampleIdx)
+        {
+            EXPECT_EQ(util::ValueAt<int>(nmTestVec, nmStrides, long1{sampleIdx}), 2);
+        }
+        ref::SortOutput(testIdsDist, mchTestVec, nmTestVec, dTestVec, mchStrides, nmStrides, dStrides, numSamples,
+                        set1Size, matchesPerPoint, outCapacity);
+        EXPECT_EQ(testIdsDist, goldIdsDist);
+    };
+
+    for (bool crossCheck : {false, true})
+    {
+        ASSERT_NO_FATAL_FAILURE(runCrossCheck(crossCheck));
+    }
+}
+
+TEST(OpPairwiseMatcher, packed_hamming_and_cached_loop_edges)
+{
+    constexpr int numSamples      = 1;
+    constexpr int set1Capacity    = 1;
+    constexpr int set2Capacity    = 2;
+    constexpr int matchesPerPoint = 1;
+    constexpr int outCapacity     = 1;
+
+    auto runCase = [&]<typename SrcT>(SrcT, int numDim)
+    {
+        nvcv::Tensor set1(
+            {
+                {numSamples, set1Capacity, numDim},
+                "NMD"
+        },
+            ToDataType<SrcT>());
+        nvcv::Tensor set2(
+            {
+                {numSamples, set2Capacity, numDim},
+                "NMD"
+        },
+            ToDataType<SrcT>());
+        nvcv::Tensor matches(
+            {
+                {numSamples, outCapacity, 2},
+                "NMD"
+        },
+            nvcv::TYPE_S32);
+        nvcv::Tensor numMatches({{numSamples}, "N"}, nvcv::TYPE_S32);
+        nvcv::Tensor numSet1;
+        nvcv::Tensor numSet2;
+        nvcv::Tensor distances;
+
+        auto set1Data = set1.exportData<nvcv::TensorDataStridedCuda>();
+        auto set2Data = set2.exportData<nvcv::TensorDataStridedCuda>();
+        auto mchData  = matches.exportData<nvcv::TensorDataStridedCuda>();
+        auto nmData   = numMatches.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(set1Data);
+        ASSERT_TRUE(set2Data);
+        ASSERT_TRUE(mchData);
+        ASSERT_TRUE(nmData);
+
+        long3 set1Strides{set1Data->stride(0), set1Data->stride(1), set1Data->stride(2)};
+        long3 set2Strides{set2Data->stride(0), set2Data->stride(1), set2Data->stride(2)};
+        long3 mchStrides{mchData->stride(0), mchData->stride(1), mchData->stride(2)};
+        long1 nmStrides{nmData->stride(0)};
+
+        RawBufferType set1Vec(set1Strides.x * numSamples, 0);
+        RawBufferType set2Vec(set2Strides.x * numSamples, 0);
+        for (int i = 0; i < numDim; ++i)
+        {
+            util::ValueAt<SrcT>(set1Vec, set1Strides, long3{0, 0, i}) = 0;
+            util::ValueAt<SrcT>(set2Vec, set2Strides, long3{0, 0, i}) = 0;
+            util::ValueAt<SrcT>(set2Vec, set2Strides, long3{0, 1, i}) = 1;
+        }
+
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(set1Data->basePtr(), set1Vec.data(), set1Vec.size(), cudaMemcpyHostToDevice));
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(set2Data->basePtr(), set2Vec.data(), set2Vec.size(), cudaMemcpyHostToDevice));
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+        cvcuda::PairwiseMatcher op(NVCV_BRUTE_FORCE);
+        op(stream, set1, set2, numSet1, numSet2, matches, numMatches, distances, false, matchesPerPoint,
+           NVCV_NORM_HAMMING);
+
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        RawBufferType matchesVec(mchStrides.x * numSamples, 0);
+        RawBufferType numMatchesVec(nmStrides.x * numSamples, 0);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(matchesVec.data(), mchData->basePtr(), matchesVec.size(), cudaMemcpyDeviceToHost));
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(numMatchesVec.data(), nmData->basePtr(), numMatchesVec.size(), cudaMemcpyDeviceToHost));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+        EXPECT_EQ(0, util::ValueAt<int>(matchesVec, mchStrides, long3{0, 0, 0}));
+        EXPECT_EQ(0, util::ValueAt<int>(matchesVec, mchStrides, long3{0, 0, 1}));
+        EXPECT_EQ(1, util::ValueAt<int>(numMatchesVec, nmStrides, long1{0}));
+    };
+
+    runCase(uint8_t{}, 32);
+    runCase(uint32_t{}, 8);
+}
+
+TEST(OpPairwiseMatcher, packed_and_cached_hamming_full_outputs)
+{
+    constexpr int numSamples      = 2;
+    constexpr int set1Capacity    = 2;
+    constexpr int set2Capacity    = 3;
+    constexpr int numDim          = 32;
+    constexpr int matchesPerPoint = 1;
+    constexpr int outCapacity     = set1Capacity * matchesPerPoint;
+
+    auto runCase = [&]<typename SrcT>(SrcT, int descriptorDims)
+    {
+        nvcv::Tensor set1(
+            {
+                {numSamples, set1Capacity, descriptorDims},
+                "NMD"
+        },
+            ToDataType<SrcT>());
+        nvcv::Tensor set2(
+            {
+                {numSamples, set2Capacity, descriptorDims},
+                "NMD"
+        },
+            ToDataType<SrcT>());
+        nvcv::Tensor matches(
+            {
+                {numSamples, outCapacity, 2},
+                "NMD"
+        },
+            nvcv::TYPE_S32);
+        nvcv::Tensor numMatches({{numSamples}, "N"}, nvcv::TYPE_S32);
+        nvcv::Tensor distances(
+            {
+                {numSamples, outCapacity},
+                "NM"
+        },
+            nvcv::TYPE_F32);
+        nvcv::Tensor numSet1;
+        nvcv::Tensor numSet2;
+
+        auto set1Data       = set1.exportData<nvcv::TensorDataStridedCuda>();
+        auto set2Data       = set2.exportData<nvcv::TensorDataStridedCuda>();
+        auto matchesData    = matches.exportData<nvcv::TensorDataStridedCuda>();
+        auto numMatchesData = numMatches.exportData<nvcv::TensorDataStridedCuda>();
+        auto distancesData  = distances.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(set1Data && set2Data && matchesData && numMatchesData && distancesData);
+
+        long3 set1Strides{set1Data->stride(0), set1Data->stride(1), set1Data->stride(2)};
+        long3 set2Strides{set2Data->stride(0), set2Data->stride(1), set2Data->stride(2)};
+        long3 mchStrides{matchesData->stride(0), matchesData->stride(1), matchesData->stride(2)};
+        long1 nmStrides{numMatchesData->stride(0)};
+        long2 dStrides{distancesData->stride(0), distancesData->stride(1)};
+
+        RawBufferType set1Vec(set1Strides.x * numSamples, 0);
+        RawBufferType set2Vec(set2Strides.x * numSamples, 0);
+        for (int sampleIdx = 0; sampleIdx < numSamples; ++sampleIdx)
+        {
+            for (int dimIdx = 0; dimIdx < descriptorDims; ++dimIdx)
+            {
+                const auto first  = static_cast<SrcT>(1 + sampleIdx * 3 + dimIdx);
+                const auto second = static_cast<SrcT>(80 + sampleIdx * 5 + dimIdx);
+
+                util::ValueAt<SrcT>(set1Vec, set1Strides, long3{sampleIdx, 0, dimIdx}) = first;
+                util::ValueAt<SrcT>(set1Vec, set1Strides, long3{sampleIdx, 1, dimIdx}) = second;
+                util::ValueAt<SrcT>(set2Vec, set2Strides, long3{sampleIdx, 0, dimIdx}) = first;
+                util::ValueAt<SrcT>(set2Vec, set2Strides, long3{sampleIdx, 1, dimIdx}) = second;
+                util::ValueAt<SrcT>(set2Vec, set2Strides, long3{sampleIdx, 2, dimIdx}) = static_cast<SrcT>(-1);
+            }
+        }
+
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(set1Data->basePtr(), set1Vec.data(), set1Vec.size(), cudaMemcpyHostToDevice));
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(set2Data->basePtr(), set2Vec.data(), set2Vec.size(), cudaMemcpyHostToDevice));
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+        cvcuda::PairwiseMatcher op(NVCV_BRUTE_FORCE);
+        op(stream, set1, set2, numSet1, numSet2, matches, numMatches, distances, false, matchesPerPoint,
+           NVCV_NORM_HAMMING);
+
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        RawBufferType matchesVec(mchStrides.x * numSamples, 0);
+        RawBufferType numMatchesVec(nmStrides.x * numSamples, 0);
+        RawBufferType distancesVec(dStrides.x * numSamples, 0);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(matchesVec.data(), matchesData->basePtr(), matchesVec.size(), cudaMemcpyDeviceToHost));
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(numMatchesVec.data(), numMatchesData->basePtr(), numMatchesVec.size(),
+                                          cudaMemcpyDeviceToHost));
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(distancesVec.data(), distancesData->basePtr(), distancesVec.size(),
+                                          cudaMemcpyDeviceToHost));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+        for (int sampleIdx = 0; sampleIdx < numSamples; ++sampleIdx)
+        {
+            EXPECT_EQ(set1Capacity * matchesPerPoint, util::ValueAt<int>(numMatchesVec, nmStrides, long1{sampleIdx}));
+            for (int set1Idx = 0; set1Idx < set1Capacity; ++set1Idx)
+            {
+                EXPECT_EQ(set1Idx, util::ValueAt<int>(matchesVec, mchStrides, long3{sampleIdx, set1Idx, 0}));
+                EXPECT_EQ(set1Idx, util::ValueAt<int>(matchesVec, mchStrides, long3{sampleIdx, set1Idx, 1}));
+                EXPECT_EQ(0.f, util::ValueAt<float>(distancesVec, dStrides, long2{sampleIdx, set1Idx}));
+            }
+        }
+    };
+
+    runCase(uint8_t{}, numDim);
+    runCase(uint32_t{}, 8);
+}
+
 static void pairwiseMatcherNegative(const nvcv::Tensor &set1, const nvcv::Tensor &set2, const nvcv::Tensor &numSet1,
                                     const nvcv::Tensor &numSet2, const nvcv::Tensor &matches,
                                     const nvcv::Tensor &numMatches, const nvcv::Tensor &distances, bool crossCheck,
@@ -485,6 +1015,52 @@ static void pairwiseMatcherNegative(const nvcv::Tensor &set1, const nvcv::Tensor
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpPairwiseMatcher_Negative, shape_operand_short_circuits)
+{
+    constexpr int numSamples   = 2;
+    constexpr int set1Capacity = 2;
+    constexpr int set2Capacity = 3;
+    constexpr int numDim       = 4;
+    constexpr int maxMatches   = set1Capacity;
+
+    nvcv::Tensor set1(
+        {
+            {numSamples, set1Capacity, numDim},
+            "NMD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor validSet2(
+        {
+            {numSamples, set2Capacity, numDim},
+            "NMD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor invalidSet2Width(
+        {
+            {numSamples, set2Capacity, numDim + 1},
+            "NMD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor validMatches(
+        {
+            {numSamples, maxMatches, 2},
+            "NMD"
+    },
+        nvcv::TYPE_S32);
+    nvcv::Tensor invalidMatchesAttribute(
+        {
+            {numSamples, maxMatches, 3},
+            "NMD"
+    },
+        nvcv::TYPE_S32);
+    nvcv::Tensor nullTensor;
+
+    pairwiseMatcherNegative(set1, invalidSet2Width, nullTensor, nullTensor, validMatches, nullTensor, nullTensor, false,
+                            1, NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, validSet2, nullTensor, nullTensor, invalidMatchesAttribute, nullTensor, nullTensor,
+                            false, 1, NVCV_NORM_L1, NVCV_BRUTE_FORCE);
 }
 
 TEST(OpPairwiseMatcher_Negative, invalid_inputs)

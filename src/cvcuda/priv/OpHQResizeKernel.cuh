@@ -18,6 +18,7 @@
 #define CVCUDA_PRIV_HQ_RESIZE_KERNEL_CUH
 
 #include "OpHQResize.hpp"
+#include "OpHQResizeConfig.hpp"
 #include "OpHQResizePolicy.hpp"
 #include "WorkspaceUtil.hpp"
 #include "cvcuda/Workspace.hpp"
@@ -46,6 +47,7 @@
 #include <nvcv/util/Math.hpp>
 
 #include <cstdint>
+#include <cstring>
 #include <numeric>
 #include <stdexcept>
 #include <tuple>
@@ -186,54 +188,6 @@ __forceinline__ __device__ void WithChannels(const int dynamicChannels, Cb &&cb)
         cb(NumChannels<kNumStaticChannels>{});
     }
 }
-
-/**
- * @brief Each threadblock will cover `lanes * volume(blockDim)`
- * elements of the output sample. More lanes result in:
- * 1. smaller grid launched (possibly reducing parallelism for small images),
- * 2. better resuing of the filter's coefficients
- *    (they are computed once for all lanes).
- *
- * @return int - the number of lanes for a single threadblock
- * to cover in the output image
- */
-inline int GetResizeBlockLanesEnv()
-{
-    char *env = getenv("CVCUDA_HQ_RESIZE_BLOCK_LANES");
-    if (env)
-    {
-        int lanes = atoi(env);
-        if (lanes < 1)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "The CVCUDA_HQ_RESIZE_BLOCK_LANES must be a positive integer");
-        }
-        return lanes;
-    }
-    else
-    {
-        return 8;
-    }
-}
-
-inline int GetResizeBlockLanes()
-{
-    static int lanes = GetResizeBlockLanesEnv();
-    return lanes;
-}
-
-inline constexpr int GetF32CubicMagnificationBlockLanes(int computeCapability)
-{
-    // The wider tile wins on the measured SM80/SM86/SM90 devices, but regresses SM89.
-    // Keep the current behavior everywhere else to avoid changing unmeasured architectures.
-    return computeCapability == 89 ? 8 : 16;
-}
-
-static_assert(GetF32CubicMagnificationBlockLanes(80) == 16);
-static_assert(GetF32CubicMagnificationBlockLanes(86) == 16);
-static_assert(GetF32CubicMagnificationBlockLanes(89) == 8);
-static_assert(GetF32CubicMagnificationBlockLanes(90) == 16);
-static_assert(GetF32CubicMagnificationBlockLanes(100) == 16);
 
 template<int kSpatialNDim>
 struct GridHelperDevice
@@ -910,7 +864,7 @@ void __forceinline__ __device__ ForAllOrthogonalToVert(const VecI<3> lo, const V
  * there's also a local temporary storage for a tap sum for each channel. This is faster,
  * but requires extra registers for the intermediate sums.
  */
-template<int kSpatialNDim, typename PassOutWrap, typename PassInWrap, typename NumChannelsT>
+template<int kSpatialNDim, typename PassOutWrap, typename PassInWrap, typename NumChannelsT, int kStaticSupport = 0>
 void __forceinline__ __device__ ResampleHorz(const PassOutWrap outWrap, const PassInWrap inWrap,
                                              const VecI<kSpatialNDim> lo, const VecI<kSpatialNDim> hi, float srcX0,
                                              const float scale, const VecI<kSpatialNDim> inShape,
@@ -928,15 +882,15 @@ void __forceinline__ __device__ ResampleHorz(const PassOutWrap outWrap, const Pa
     static_assert(PassOutWrap::kNumDimensions == kNDim);
     static_assert(PassInWrap::kNumDimensions == kNDim);
 
-    const int   support    = filter.support();
+    const int   support    = kStaticSupport > 0 ? kStaticSupport : filter.support();
     const float filterStep = filter.scale;
     // If the support is small enough (for blockDim.x = 32 and kMaxGPUFilterSupport = 8192, it's 256),
     // we can fit `support` x `blockDim.x` elements into shm, so that for each output_x mapped to input_x,
     // we take into account the exact error that comes from rounding the input_x from float to integer.
     // For larger supports, we just compute `support` elements common for all threads.
-    const bool  hugeSupport = !CanComputeCoefPerThread(support, blockDim.x);
+    const bool  hugeSupport = kStaticSupport > 0 ? false : !CanComputeCoefPerThread(support, blockDim.x);
     const int   coeffBase   = hugeSupport ? 0 : threadIdx.x;
-    const int   coeffStride = hugeSupport ? 1 : blockDim.x;
+    const int   coeffStride = kStaticSupport > 0 ? kResizeBlockDimX : (hugeSupport ? 1 : blockDim.x);
 
     srcX0 += 0.5f * scale - 0.5f - filter.anchor;
 
@@ -1039,7 +993,7 @@ void __forceinline__ __device__ ResampleHorz(const PassOutWrap outWrap, const Pa
  * recalculating them for each column, and stored in a shared memory block.
  */
 template<int  kSpatialNDim, typename PassOutWrap, typename PassInWrap, typename NumChannelsT,
-         bool kEnableVertXVec = false>
+         bool kEnableVertXVec = false, int kStaticSupport = 0>
 void __forceinline__ __device__ ResampleVert(const PassOutWrap outWrap, const PassInWrap inWrap,
                                              const VecI<kSpatialNDim> lo, const VecI<kSpatialNDim> hi, float srcY0,
                                              const float scale, const VecI<kSpatialNDim> inShape,
@@ -1052,23 +1006,24 @@ void __forceinline__ __device__ ResampleVert(const PassOutWrap outWrap, const Pa
     using InBT  = cuda::BaseType<InT>;
     using OutBT = cuda::BaseType<OutT>;
     // spatial extents and optional channels extent
-    constexpr int  kNDim        = kSpatialNDim + !NumChannelsT::kHasStaticChannels;
-    constexpr bool kUseVertXVec = kEnableVertXVec && kSpatialNDim == 2 && NumChannelsT::kHasStaticChannels
-                               && NumChannelsT::kStaticChannels == 1
-                               && std::is_same_v<InBT, unsigned char> && std::is_same_v<OutBT, float>;
+    constexpr int  kNDim = kSpatialNDim + !NumChannelsT::kHasStaticChannels;
+    constexpr bool kUseVertXVec
+        = kEnableVertXVec && kSpatialNDim == 2 && NumChannelsT::kHasStaticChannels && NumChannelsT::kStaticChannels == 1
+       && ((std::is_same_v<InBT, unsigned char> && std::is_same_v<OutBT, float>)
+           || (kStaticSupport == 4 && std::is_same_v<InBT, float> && std::is_same_v<OutBT, __half>));
 
     static_assert(!NumChannelsT::kHasStaticChannels || NumChannelsT::kStaticChannels == cuda::NumElements<InT>);
     static_assert(cuda::NumElements<OutT> == cuda::NumElements<InT>);
     static_assert(PassOutWrap::kNumDimensions == kNDim);
     static_assert(PassInWrap::kNumDimensions == kNDim);
 
-    const int   support    = filter.support();
+    const int   support    = kStaticSupport > 0 ? kStaticSupport : filter.support();
     const float filterStep = filter.scale;
     // If the support is small enough, we can fit `blockDim.y` x `support` elements into shm, so that
     // for each output_y mapped to input_y, we take into account the exact error that comes from
     // rounding the input_y from float to integer. For larger supports, we just compute `support`
     // elements common for all threads.
-    const bool  hugeSupport = !CanComputeCoefPerThread(support, blockDim.y);
+    const bool  hugeSupport = kStaticSupport > 0 ? false : !CanComputeCoefPerThread(support, blockDim.y);
     const int   coeffBase   = hugeSupport ? 0 : support * threadIdx.y;
 
     srcY0 += 0.5f * scale - 0.5f - filter.anchor;
@@ -1113,7 +1068,8 @@ void __forceinline__ __device__ ResampleVert(const PassOutWrap outWrap, const Pa
         if constexpr (kUseVertXVec)
         {
             const bool canUseXVec
-                = !hugeSupport && scale >= 1.0f && scale <= kVertXVecMaxScale && support <= kVertXVecMaxSupport;
+                = kStaticSupport == 4
+               || (!hugeSupport && scale >= 1.0f && scale <= kVertXVecMaxScale && support <= kVertXVecMaxSupport);
             if (canUseXVec)
             {
                 using InVec    = Vec<InBT, kVertXVec>;
@@ -1148,7 +1104,14 @@ void __forceinline__ __device__ ResampleVert(const PassOutWrap outWrap, const Pa
                             const int   inY = cuda::clamp(sy0 + k, 0, inShape.y - 1);
                             const float flt = coeffs[coeffBase + k];
                             const InVec px  = *reinterpret_cast<const InVec *>(GetWrapPtr(inWrap, VecI<2>{x0, inY}));
-                            tmp             = tmp + flt * cuda::StaticCast<float>(px);
+                            if constexpr (kStaticSupport == 4 && std::is_same_v<OutBT, __half>)
+                            {
+                                FmaPerChannel(tmp, px, flt);
+                            }
+                            else
+                            {
+                                tmp = tmp + flt * cuda::StaticCast<float>(px);
+                            }
                         }
 
                         *reinterpret_cast<OutVec *>(GetWrapPtr(outWrap, VecI<2>{x0, y}))
@@ -1387,8 +1350,8 @@ void __forceinline__ __device__ RunLinear(const PassOutWrap outWrap, const PassI
     }
 }
 
-template<int kSpatialNDim, bool kEnableVertXVec = false, typename PassOutWrap, typename PassInWrap,
-         typename NumChannelsT>
+template<int kSpatialNDim, bool kEnableVertXVec = false, int kStaticSupport = 0, typename PassOutWrap,
+         typename PassInWrap, typename NumChannelsT>
 void __forceinline__ __device__ RunFilter(const PassOutWrap outWrap, const PassInWrap inWrap,
                                           const VecI<kSpatialNDim> lo, const VecI<kSpatialNDim> hi, int axis,
                                           const VecI<kSpatialNDim> inShape, const float origin, const float scale,
@@ -1396,13 +1359,14 @@ void __forceinline__ __device__ RunFilter(const PassOutWrap outWrap, const PassI
 {
     if (axis == 0)
     {
-        filter_support::ResampleHorz<kSpatialNDim>(outWrap, inWrap, lo, hi, origin, scale, inShape, filter,
-                                                   numChannels);
+        filter_support::ResampleHorz<kSpatialNDim, PassOutWrap, PassInWrap, NumChannelsT, kStaticSupport>(
+            outWrap, inWrap, lo, hi, origin, scale, inShape, filter, numChannels);
     }
     else if (axis == 1)
     {
-        filter_support::ResampleVert<kSpatialNDim, PassOutWrap, PassInWrap, NumChannelsT, kEnableVertXVec>(
-            outWrap, inWrap, lo, hi, origin, scale, inShape, filter, numChannels);
+        filter_support::ResampleVert<kSpatialNDim, PassOutWrap, PassInWrap, NumChannelsT, kEnableVertXVec,
+                                     kStaticSupport>(outWrap, inWrap, lo, hi, origin, scale, inShape, filter,
+                                                     numChannels);
     }
     else if (axis == 2)
     {
@@ -1414,8 +1378,8 @@ void __forceinline__ __device__ RunFilter(const PassOutWrap outWrap, const PassI
 }
 } // namespace interpolate
 
-template<int kWhichPass, bool kEnableVertXVec, typename PassOutWrap, typename PassInWrap, int kSpatialNDim,
-         typename NumChannelsT>
+template<int kWhichPass, bool kEnableVertXVec, int kStaticSupport = 0, typename PassOutWrap, typename PassInWrap,
+         int kSpatialNDim, typename NumChannelsT>
 void __forceinline__ __device__ RunResamplingPass(const SampleDesc<kSpatialNDim> sampleDesc, const PassOutWrap outWrap,
                                                   const PassInWrap inWrap, const VecI<kSpatialNDim> lo,
                                                   const VecI<kSpatialNDim> hi, const NumChannelsT numChannels)
@@ -1425,30 +1389,39 @@ void __forceinline__ __device__ RunResamplingPass(const SampleDesc<kSpatialNDim>
     const float origin = cuda::GetElement(sampleDesc.origin, kWhichPass);
     const float scale  = cuda::GetElement(sampleDesc.scale, kWhichPass);
 
-    switch (sampleDesc.filterKind[kWhichPass])
+    if constexpr (kStaticSupport > 0)
     {
-    case filter::FilterTypeKind::Nearest:
-        interpolate::RunNN<kSpatialNDim>(outWrap, inWrap, lo, hi, axis, inShape, origin, scale, numChannels);
-        break;
-    case filter::FilterTypeKind::Linear:
-        interpolate::RunLinear<kSpatialNDim, kEnableVertXVec>(outWrap, inWrap, lo, hi, axis, inShape, origin, scale,
-                                                              numChannels);
-        break;
-    default:
-        interpolate::RunFilter<kSpatialNDim, kEnableVertXVec>(outWrap, inWrap, lo, hi, axis, inShape, origin, scale,
-                                                              sampleDesc.filter[kWhichPass], numChannels);
-        break;
+        interpolate::RunFilter<kSpatialNDim, kEnableVertXVec, kStaticSupport>(
+            outWrap, inWrap, lo, hi, axis, inShape, origin, scale, sampleDesc.filter[kWhichPass], numChannels);
+    }
+    else
+    {
+        switch (sampleDesc.filterKind[kWhichPass])
+        {
+        case filter::FilterTypeKind::Nearest:
+            interpolate::RunNN<kSpatialNDim>(outWrap, inWrap, lo, hi, axis, inShape, origin, scale, numChannels);
+            break;
+        case filter::FilterTypeKind::Linear:
+            interpolate::RunLinear<kSpatialNDim, kEnableVertXVec>(outWrap, inWrap, lo, hi, axis, inShape, origin, scale,
+                                                                  numChannels);
+            break;
+        default:
+            interpolate::RunFilter<kSpatialNDim, kEnableVertXVec>(outWrap, inWrap, lo, hi, axis, inShape, origin, scale,
+                                                                  sampleDesc.filter[kWhichPass], numChannels);
+            break;
+        }
     }
 }
 
 // Tensor variant (unfirom batch)
-template<int kNumStaticChannels, int kWhichPass, bool kEnableVertXVec = false, typename PassOutWrap,
-         typename PassInWrap, int kSpatialNDim>
+template<int kNumStaticChannels, int kWhichPass, bool kEnableVertXVec = false, int kStaticSupport = 0,
+         typename PassOutWrap, typename PassInWrap, int kSpatialNDim>
 __global__ void SeparableResamplingKernel(const SampleDesc<kSpatialNDim> sampleDesc, const PassOutWrap outWrap,
                                           const PassInWrap inWrap, const GridHelperDevice<kSpatialNDim> gridHelper)
 
 {
     constexpr bool kHasDynamicChannels = kNumStaticChannels == -1;
+    static_assert(kStaticSupport == 0 || kStaticSupport == 4);
     static_assert(PassInWrap::kNumDimensions == 1 + kSpatialNDim + kHasDynamicChannels);
     static_assert(PassOutWrap::kNumDimensions == 1 + kSpatialNDim + kHasDynamicChannels);
     // Get sample idx and the region of the output image that
@@ -1461,8 +1434,9 @@ __global__ void SeparableResamplingKernel(const SampleDesc<kSpatialNDim> sampleD
     const auto outSampleView = batch_wrapper::tensor::GetSampleView(outWrap, sampleIdx);
     const auto inSampleView  = batch_wrapper::tensor::GetSampleView(inWrap, sampleIdx);
     WithChannels<kNumStaticChannels>(sampleDesc.channels,
-                                     [=](const NumChannels<kNumStaticChannels> numChannels) {
-                                         RunResamplingPass<kWhichPass, kEnableVertXVec>(
+                                     [=](const NumChannels<kNumStaticChannels> numChannels)
+                                     {
+                                         RunResamplingPass<kWhichPass, kEnableVertXVec, kStaticSupport>(
                                              sampleDesc, outSampleView, inSampleView, lo, hi, numChannels);
                                      });
 }
@@ -1569,24 +1543,48 @@ void __forceinline__ __device__ StoreRowVectorized(OutT *ptr, const OutT (&vals)
 /**
  * @brief Number of consecutive output columns each DirectLinear2DKernel thread produces.
  *
- * The u8 kernel is issue-bound on per-pixel coordinate math and single-byte stores,
- * so each thread produces several output pixels and merges them into one vector store.
+ * Scalar u8 and f32 kernels reuse coordinate math across several output pixels
+ * and merge their results into one vector store.
  */
 template<int kNumStaticChannels, typename InBT, typename OutBT>
 inline constexpr int kDirectLinear2DLanes
-    = kNumStaticChannels == 1 && std::is_same_v<InBT, unsigned char> &&std::is_same_v<OutBT, unsigned char> ? 4 : 1;
+    = kNumStaticChannels == 1
+           && std::is_same_v<InBT, OutBT> && (std::is_same_v<InBT, unsigned char> || std::is_same_v<InBT, float>)
+        ? 4
+        : 1;
 
 inline __device__ float DirectLinearLerp(float a, float b, float q)
 {
     return fmaf(b - a, q, a);
 }
 
-template<typename FloatT, typename InSampleView, typename NumChannelsT>
+template<typename FloatT, bool kExact2xContract = false, typename InSampleView, typename NumChannelsT>
 FloatT __forceinline__ __device__ DirectLinearPixel(const InSampleView inSampleView, const NumChannelsT numChannels,
                                                     const int x, const int y, const VecF<2> origin, const VecF<2> scale,
                                                     const int2 inShape)
 {
     constexpr int kNumStaticChannels = NumChannelsT::kStaticChannels;
+
+    if constexpr (kExact2xContract)
+    {
+        static_assert(std::is_same_v<FloatT, float> && kNumStaticChannels == 1);
+        const float *top    = interpolate::GetWrapPtr(inSampleView, VecI<2>{2 * x, 2 * y});
+        const float *bottom = interpolate::GetWrapPtr(inSampleView, VecI<2>{2 * x, 2 * y + 1});
+        float2       upper;
+        float2       lower;
+        if (((reinterpret_cast<uintptr_t>(top) | reinterpret_cast<uintptr_t>(bottom)) & (alignof(float2) - 1)) == 0)
+        {
+            upper = __ldg(reinterpret_cast<const float2 *>(top));
+            lower = __ldg(reinterpret_cast<const float2 *>(bottom));
+        }
+        else
+        {
+            upper = {__ldg(top), __ldg(top + 1)};
+            lower = {__ldg(bottom), __ldg(bottom + 1)};
+        }
+        return DirectLinearLerp(DirectLinearLerp(upper.x, upper.y, 0.5f), DirectLinearLerp(lower.x, lower.y, 0.5f),
+                                0.5f);
+    }
 
     const float sx0f = static_cast<float>(x) * scale.x + origin.x + 0.5f * scale.x - 0.5f;
     const float sy0f = static_cast<float>(y) * scale.y + origin.y + 0.5f * scale.y - 0.5f;
@@ -1615,7 +1613,8 @@ FloatT __forceinline__ __device__ DirectLinearPixel(const InSampleView inSampleV
     return row0;
 }
 
-template<int kNumStaticChannels, typename PassOutWrap, typename PassInWrap>
+template<int kNumStaticChannels, bool kVectorize = true, bool kExact2xContract = false, typename PassOutWrap,
+         typename PassInWrap>
 __global__ void DirectLinear2DKernel(const SampleDesc<2> sampleDesc, const PassOutWrap outWrap, const PassInWrap inWrap)
 {
     static_assert(kNumStaticChannels > 0);
@@ -1631,7 +1630,9 @@ __global__ void DirectLinear2DKernel(const SampleDesc<2> sampleDesc, const PassO
     static_assert(kNumStaticChannels == cuda::NumElements<InT>);
     static_assert(cuda::NumElements<OutT> == cuda::NumElements<InT>);
 
-    constexpr int kLanes = kDirectLinear2DLanes<kNumStaticChannels, InBT, OutBT>;
+    constexpr int kLanes = kExact2xContract ? 2
+                         : kVectorize       ? kDirectLinear2DLanes<kNumStaticChannels, InBT, OutBT>
+                                            : 1;
 
     const int  sampleIdx = blockIdx.z;
     const int  x0        = (blockIdx.x * blockDim.x + threadIdx.x) * kLanes;
@@ -1661,16 +1662,17 @@ __global__ void DirectLinear2DKernel(const SampleDesc<2> sampleDesc, const PassO
     }
     else if constexpr (kLanes > 1)
     {
-        OutT *outPtr = interpolate::GetWrapPtr(outSampleView, VecI<2>{x0, y});
-        if (x0 + kLanes <= outShape.x)
+        OutT      *outPtr = interpolate::GetWrapPtr(outSampleView, VecI<2>{x0, y});
+        const bool full   = std::is_same_v<InBT, float> ? kLanes <= outShape.x - x0 : x0 + kLanes <= outShape.x;
+        if (full)
         {
             OutT vals[kLanes];
 #pragma unroll
             for (int l = 0; l < kLanes; l++)
             {
-                const FloatT px
-                    = DirectLinearPixel<FloatT>(inSampleView, numChannels, x0 + l, y, origin, scale, inShape);
-                vals[l] = cuda::SaturateCast<OutT>(px);
+                const FloatT px = DirectLinearPixel<FloatT, kExact2xContract>(inSampleView, numChannels, x0 + l, y,
+                                                                              origin, scale, inShape);
+                vals[l]         = cuda::SaturateCast<OutT>(px);
             }
             StoreRowVectorized<kLanes>(outPtr, vals);
         }
@@ -1678,9 +1680,9 @@ __global__ void DirectLinear2DKernel(const SampleDesc<2> sampleDesc, const PassO
         {
             for (int l = 0; l < kLanes && x0 + l < outShape.x; l++)
             {
-                const FloatT px
-                    = DirectLinearPixel<FloatT>(inSampleView, numChannels, x0 + l, y, origin, scale, inShape);
-                outPtr[l] = cuda::SaturateCast<OutT>(px);
+                const FloatT px = DirectLinearPixel<FloatT, kExact2xContract>(inSampleView, numChannels, x0 + l, y,
+                                                                              origin, scale, inShape);
+                outPtr[l]       = cuda::SaturateCast<OutT>(px);
             }
         }
     }
@@ -1793,8 +1795,13 @@ FloatT __forceinline__ __device__ DirectFilterSample(const InSampleView inSample
 #pragma unroll
                     for (int c = 0; c < kNumStaticChannels; c++)
                     {
-                        const int   j                    = k1 * kNumStaticChannels + c;
-                        const float b                    = static_cast<float>((v[j / 4] >> ((j % 4) * 8)) & 0xFFu);
+                        const int   j = k1 * kNumStaticChannels + c;
+                        // At exponent 23, the low mantissa byte represents an exact integer.
+                        // RGB byte permutation moves conversion work off the integer-to-float pipe.
+                        const float b
+                            = kNumStaticChannels == 3
+                                ? __uint_as_float(__byte_perm(v[j / 4], 0x4b000000u, 0x7650u + j % 4)) - 0x1p23f
+                                : static_cast<float>((v[j / 4] >> ((j % 4) * 8)) & 0xFFu);
                         cuda::GetElement(passSum[k1], c) = fmaf(b, flt, cuda::GetElement(passSum[k1], c));
                     }
                 }
@@ -2716,10 +2723,11 @@ inline void srcDst(int &numSamples, int &uniqueNumChannels, nvcv::DataType &srcD
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output layouts");
     }
 
-    if (src.layout() != nvcv::TENSOR_HW && src.layout() != nvcv::TENSOR_HWC && src.layout() != nvcv::TENSOR_DHW
-        && src.layout() != nvcv::TENSOR_DHWC)
+    if (src.layout() != nvcv::TENSOR_HW && src.layout() != nvcv::TENSOR_HWC && src.layout() != nvcv::TENSOR_CHW
+        && src.layout() != nvcv::TENSOR_NCHW && src.layout() != nvcv::TENSOR_DHW && src.layout() != nvcv::TENSOR_DHWC)
     {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "The tensor batch must contain [D]HW[C] samples");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "The tensor batch must contain HW, HWC, CHW, NCHW, DHW, or DHWC samples");
     }
 }
 
@@ -2906,6 +2914,14 @@ inline int64_t TensorByteSize(const nvcv::Tensor &tensor)
     return data->stride(0) * data->shape(0);
 }
 
+inline int64_t PlanarTensorPlaneByteSize(const nvcv::Tensor &tensor)
+{
+    auto data = tensor.exportData().cast<nvcv::TensorDataStrided>();
+    assert(data);
+    const int heightAxis = tensor.layout().find('H');
+    return data->stride(heightAxis) * data->shape(heightAxis);
+}
+
 inline int64_t ImageByteSize(const nvcv::Image &image)
 {
     auto data = image.exportData<nvcv::ImageDataStrided>();
@@ -2928,6 +2944,42 @@ inline int SampleNumChannels(const nvcv::TensorBatch &src, const nvcv::TensorBat
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Number of channels must be positive");
     }
     return numChannels;
+}
+
+inline int64_t TensorNumSamples(const nvcv::Tensor &tensor)
+{
+    const int sampleAxis = tensor.layout().find('N');
+    if (sampleAxis < 0)
+    {
+        return 1;
+    }
+    const int64_t numSamples = tensor.shape()[sampleAxis];
+    if (numSamples <= 0)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Number of samples must be positive");
+    }
+    return numSamples;
+}
+
+inline int64_t PlanarTensorBatchNumSamples(const nvcv::TensorBatch &src, const nvcv::TensorBatch &dst)
+{
+    constexpr int64_t kMaxGridZ = 65535;
+    int64_t           total     = 0;
+    for (int tensorIdx = 0; tensorIdx < src.numTensors(); ++tensorIdx)
+    {
+        const int64_t numSamples = TensorNumSamples(src[tensorIdx]);
+        if (numSamples != TensorNumSamples(dst[tensorIdx]))
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
+        }
+        const int numChannels = SampleNumChannels(src, dst, tensorIdx);
+        if (numSamples > (kMaxGridZ - total) / numChannels)
+        {
+            return kMaxGridZ + 1;
+        }
+        total += numSamples * numChannels;
+    }
+    return total;
 }
 } // namespace shape
 
@@ -3105,16 +3157,17 @@ public:
     static_assert(_kSpatialNDim == 2 || _kSpatialNDim == 3,
                   "Currently, the resampling operator supports only 2 or 3 spatial dimensions");
 
-    HQResizeRun(const filter::ResamplingFiltersFactory &filtersFactory)
+    explicit HQResizeRun(const filter::ResamplingFiltersFactory &filtersFactory)
         : m_filtersFactory{filtersFactory}
     {
     }
 
     using SampleDescT = resampling::SampleDesc<_kSpatialNDim>;
     static_assert(std::is_trivially_copyable_v<SampleDescT>);
-    using DynamicBatchWrapMeta = batch_wrapper::dynamic::DynamicBatchWrapMeta;
+    using DynamicBatchWrapMeta     = batch_wrapper::dynamic::DynamicBatchWrapMeta;
+    using PlanarTensorBatchElement = batch_wrapper::tensor::PlanarTensorBatchElement;
 
-    static constexpr VecI<3> kBlockDim    = {32, 8, 1};
+    static constexpr VecI<3> kBlockDim    = {kResizeBlockDimX, kResizeBlockDimY, kResizeBlockDimZ};
     static constexpr int     kSpatialNDim = _kSpatialNDim;
     // the number of buffers for intermediate results
     static constexpr int     kNumTmpBuffers = kSpatialNDim - 1;
@@ -3184,8 +3237,17 @@ public:
         }
 
         cvcuda::WorkspaceEstimator est;
+        est.addHost<SampleDescT>(numSamples);
         est.addPinned<SampleDescT>(numSamples);
         est.addCuda<SampleDescT>(numSamples);
+
+        if constexpr (kSpatialNDim == 2)
+        {
+            // The requirements API does not carry the eventual batch container/layout, so reserve
+            // compact planar TensorBatch metadata conservatively for every 2D batch request.
+            est.addCuda<PlanarTensorBatchElement>(numSamples);
+            est.addCuda<PlanarTensorBatchElement>(numSamples);
+        }
 
         // reserve space for pointers and strides for intermediate wrappers
         for (int t = 0; t < kNumTmpBuffers; t++)
@@ -3216,8 +3278,15 @@ public:
         validate::inOutNumberOfChannels(maxShape, maxShape);
 
         cvcuda::WorkspaceEstimator est;
+        est.addHost<SampleDescT>(maxNumSamples);
         est.addPinned<SampleDescT>(maxNumSamples);
         est.addCuda<SampleDescT>(maxNumSamples);
+
+        if constexpr (kSpatialNDim == 2)
+        {
+            est.addCuda<PlanarTensorBatchElement>(maxNumSamples);
+            est.addCuda<PlanarTensorBatchElement>(maxNumSamples);
+        }
 
         // reserve space for pointers and strides for intermediate wrappers
         for (int t = 0; t < kNumTmpBuffers; t++)
@@ -3281,10 +3350,7 @@ public:
         SetupSampleDesc(sampleDesc, srcShape, dstShape, numChannels, roi, minFilter, magFilter);
 
         cvcuda::WorkspaceAllocator allocator(ws);
-        if (ws.cudaMem.ready != nullptr)
-        {
-            NVCV_CHECK_THROW(cudaStreamWaitEvent(stream, ws.cudaMem.ready));
-        }
+        allocator.cudaMem.acquire(stream);
         IntermediateBaseT *intermediate[kNumTmpBuffers];
         // Get intermediate buffers
         for (int t = 0; t < kNumTmpBuffers; t++)
@@ -3333,7 +3399,6 @@ public:
         int            uniqueNumChannels; // numChannels for ImageBatchVarShape, -1 for TensorBatch
         nvcv::DataType srcDtype, dstDtype;
         validate::srcDst(numSamples, uniqueNumChannels, srcDtype, dstDtype, src, dst);
-        validate::roiBatch(numSamples, kSpatialNDim, rois);
 
         // Planar (multi-plane, e.g. RGB8p) var-shape input: process each of the numImages*channels
         // planes as an independent single-channel image. The kernel runs over the expanded sample
@@ -3350,66 +3415,183 @@ public:
                 planarChannels = fmt.numPlanes();
             }
         }
-        const bool    isPlanar           = planarChannels > 1;
-        const int     kernelChannels     = isPlanar ? 1 : uniqueNumChannels;
-        const int64_t numKernelSamples64 = static_cast<int64_t>(numSamples) * planarChannels;
+        bool isPlanarTensorBatch = false;
+        if constexpr (std::is_same_v<BatchContainer, nvcv::TensorBatch>)
+        {
+            isPlanarTensorBatch = src.layout() == nvcv::TENSOR_NCHW || src.layout() == nvcv::TENSOR_CHW;
+        }
+        const bool isPlanar       = planarChannels > 1 || isPlanarTensorBatch;
+        const int  kernelChannels = isPlanar ? 1 : uniqueNumChannels;
+        int64_t    numKernelSamples64;
+        if constexpr (std::is_same_v<BatchContainer, nvcv::TensorBatch>)
+        {
+            numKernelSamples64 = isPlanarTensorBatch ? shape::PlanarTensorBatchNumSamples(src, dst) : numSamples;
+        }
+        else
+        {
+            numKernelSamples64 = static_cast<int64_t>(numSamples) * planarChannels;
+        }
         if (isPlanar && numKernelSamples64 > 65535)
         {
             throw nvcv::Exception(
                 nvcv::Status::ERROR_INVALID_ARGUMENT,
-                "Planar HQResize launch exceeds the CUDA grid limit: numImages*channels must not exceed 65535");
+                "HQResize batch launch exceeds the CUDA grid limit: expanded sample count must not exceed 65535");
         }
         const int numKernelSamples = static_cast<int>(numKernelSamples64);
+        if constexpr (std::is_same_v<BatchContainer, nvcv::ImageBatchVarShape>)
+        {
+            validate::roiBatch(numSamples, kSpatialNDim, rois);
+        }
+        else
+        {
+            validate::roiBatch(numKernelSamples, kSpatialNDim, rois);
+        }
 
-        const auto [minFilter, magFilter] = filter::GetFilterModes(minInterpolation, magInterpolation, antialias);
+        const auto                 filterModes = filter::GetFilterModes(minInterpolation, magInterpolation, antialias);
+        const auto                 minFilter   = std::get<0>(filterModes);
+        const auto                 magFilter   = std::get<1>(filterModes);
         cvcuda::WorkspaceAllocator allocator(ws);
-        if (ws.pinnedMem.ready != nullptr)
+        allocator.pinnedMem.acquire(std::nullopt);
+        allocator.cudaMem.acquire(stream);
+        SampleDescT              *sampleDescsCpu    = allocator.getHost<SampleDescT>(numKernelSamples);
+        SampleDescT              *sampleDescsPinned = allocator.getPinned<SampleDescT>(numKernelSamples);
+        SampleDescT              *sampleDescsGpu    = allocator.getCuda<SampleDescT>(numKernelSamples);
+        PlanarTensorBatchElement *planarSrcElements = nullptr;
+        PlanarTensorBatchElement *planarDstElements = nullptr;
+        if (isPlanarTensorBatch)
         {
-            NVCV_CHECK_THROW(cudaEventSynchronize(ws.pinnedMem.ready));
+            planarSrcElements = allocator.getCuda<PlanarTensorBatchElement>(numKernelSamples);
+            planarDstElements = allocator.getCuda<PlanarTensorBatchElement>(numKernelSamples);
         }
-        if (ws.cudaMem.ready != nullptr)
+        size_t                      intermediateSizes[kNumTmpBuffers]{};
+        AdaptiveHorizontalBatchWork adaptiveHorizontalWork;
+        int                         multiprocessorCount   = 0;
+        bool                        useAdaptiveHorizontal = false;
+        constexpr bool              kAdaptiveHorizontalCandidate
+            = kSpatialNDim == 2 && std::is_same_v<BatchContainer, nvcv::ImageBatchVarShape>;
+        if constexpr (kAdaptiveHorizontalCandidate)
         {
-            NVCV_CHECK_THROW(cudaStreamWaitEvent(stream, ws.cudaMem.ready));
+            // TensorBatch and planar var-shape images were not part of the
+            // measured sweep and retain the default layout until characterized.
+            const auto &config            = GetResizeBlockLanesConfig();
+            const int   computeCapability = m_filtersFactory.GetDeviceComputeCapability();
+            multiprocessorCount           = m_filtersFactory.GetDeviceMultiprocessorCount();
+            const bool packedRgb8         = !isPlanar && srcDtype == nvcv::TYPE_3U8 && dstDtype == nvcv::TYPE_3U8;
+            const bool lanesPinned        = config.overridden;
+            useAdaptiveHorizontal         = CanUseAdaptiveHorizontalLayout(antialias, lanesPinned, packedRgb8,
+                                                                           computeCapability, multiprocessorCount);
         }
-        SampleDescT *sampleDescsCpu = allocator.getPinned<SampleDescT>(numKernelSamples);
-        SampleDescT *sampleDescsGpu = allocator.getCuda<SampleDescT>(numKernelSamples);
-        size_t       intermediateSizes[kNumTmpBuffers]{};
 
-        int64_t inMaxStride  = 0;
-        int64_t outMaxStride = 0;
-        for (int sampleIdx = 0; sampleIdx < numKernelSamples; sampleIdx++)
+        int64_t             inMaxStride  = 0;
+        int64_t             outMaxStride = 0;
+        VecI<kSpatialNDim>  previousSrcShape{}, previousDstShape{};
+        const HQResizeRoiF *previousRoi = nullptr;
+        auto addKernelSample = [&](int sampleIdx, int roiIdx, int numChannels, const VecI<kSpatialNDim> &srcShape,
+                                   const VecI<kSpatialNDim> &dstShape, int64_t inStride, int64_t outStride)
         {
-            // For planar, every channel plane of an image shares the image's spatial shape/ROI.
-            const int                imageIdx  = isPlanar ? sampleIdx / planarChannels : sampleIdx;
-            const VecI<kSpatialNDim> srcShape  = shape::SampleShape<kSpatialNDim>(src, imageIdx);
-            const VecI<kSpatialNDim> dstShape  = shape::SampleShape<kSpatialNDim>(dst, imageIdx);
-            const HQResizeRoiF      *sampleRoi = shape::SampleRoi(rois, imageIdx);
-            int                      numChannels;
-            if constexpr (std::is_same_v<BatchContainer, nvcv::ImageBatchVarShape>)
+            const HQResizeRoiF *sampleRoi = shape::SampleRoi(rois, roiIdx);
+            inMaxStride                   = std::max(inMaxStride, inStride);
+            outMaxStride                  = std::max(outMaxStride, outStride);
+            SampleDescT &sampleDesc       = sampleDescsCpu[sampleIdx];
+            const bool   sameRoi          = sampleRoi == previousRoi
+                              || (sampleRoi && previousRoi
+                                  && std::memcmp(sampleRoi->lo, previousRoi->lo, kSpatialNDim * sizeof(float)) == 0
+                                  && std::memcmp(sampleRoi->hi, previousRoi->hi, kSpatialNDim * sizeof(float)) == 0);
+            // Equal sample parameters share filters, processing order and block layout.
+            if (sampleIdx > 0 && srcShape == previousSrcShape && dstShape == previousDstShape && sameRoi
+                && numChannels == sampleDescsCpu[sampleIdx - 1].channels)
             {
-                numChannels  = kernelChannels;
-                inMaxStride  = std::max(inMaxStride, shape::ImageByteSize(src[imageIdx]));
-                outMaxStride = std::max(outMaxStride, shape::ImageByteSize(dst[imageIdx]));
+                sampleDesc = sampleDescsCpu[sampleIdx - 1];
             }
             else
             {
-                static_assert(std::is_same_v<BatchContainer, nvcv::TensorBatch>);
-                numChannels  = shape::SampleNumChannels(src, dst, imageIdx);
-                inMaxStride  = std::max(inMaxStride, shape::TensorByteSize(src[imageIdx]));
-                outMaxStride = std::max(outMaxStride, shape::TensorByteSize(dst[imageIdx]));
+                SetupSampleDesc(sampleDesc, srcShape, dstShape, numChannels, sampleRoi, minFilter, magFilter);
             }
-            SampleDescT &sampleDesc = sampleDescsCpu[sampleIdx];
-            SetupSampleDesc(sampleDesc, srcShape, dstShape, numChannels, sampleRoi, minFilter, magFilter);
+            previousSrcShape = srcShape;
+            previousDstShape = dstShape;
+            previousRoi      = sampleRoi;
+            if constexpr (kAdaptiveHorizontalCandidate)
+            {
+                if (useAdaptiveHorizontal)
+                {
+                    AddAdaptiveHorizontalWork(
+                        adaptiveHorizontalWork,
+                        DescribeAdaptiveHorizontalSample(sampleDesc, [](filter::FilterTypeKind kind)
+                                                         { return kind == filter::FilterTypeKind::ShmFilter; }));
+                }
+            }
             for (int t = 0; t < kNumTmpBuffers; t++)
             {
                 intermediateSizes[t] += GetPassOutputVolume(sampleDesc, t);
             }
+        };
+
+        if constexpr (std::is_same_v<BatchContainer, nvcv::TensorBatch>)
+        {
+            if (isPlanarTensorBatch)
+            {
+                int sampleIdx = 0;
+                for (int tensorIdx = 0; tensorIdx < numSamples; ++tensorIdx)
+                {
+                    const nvcv::Tensor srcTensor      = src[tensorIdx];
+                    const nvcv::Tensor dstTensor      = dst[tensorIdx];
+                    const int64_t      tensorSamples  = shape::TensorNumSamples(srcTensor);
+                    const int          tensorChannels = shape::SampleNumChannels(src, dst, tensorIdx);
+                    const auto         srcShape       = shape::TensorShape<kSpatialNDim>(srcTensor);
+                    const auto         dstShape       = shape::TensorShape<kSpatialNDim>(dstTensor);
+                    const int64_t      inStride       = shape::PlanarTensorPlaneByteSize(srcTensor);
+                    const int64_t      outStride      = shape::PlanarTensorPlaneByteSize(dstTensor);
+                    for (int64_t plane = 0; plane < tensorSamples * tensorChannels; ++plane)
+                    {
+                        addKernelSample(sampleIdx, sampleIdx, 1, srcShape, dstShape, inStride, outStride);
+                        ++sampleIdx;
+                    }
+                }
+            }
+            else
+            {
+                for (int sampleIdx = 0; sampleIdx < numKernelSamples; sampleIdx++)
+                {
+                    const int numChannels = shape::SampleNumChannels(src, dst, sampleIdx);
+                    addKernelSample(sampleIdx, sampleIdx, numChannels, shape::SampleShape<kSpatialNDim>(src, sampleIdx),
+                                    shape::SampleShape<kSpatialNDim>(dst, sampleIdx),
+                                    shape::TensorByteSize(src[sampleIdx]), shape::TensorByteSize(dst[sampleIdx]));
+                }
+            }
+        }
+        else
+        {
+            int sampleIdx = 0;
+            for (int imageIdx = 0; imageIdx < numSamples; imageIdx++)
+            {
+                const auto    srcShape  = shape::SampleShape<kSpatialNDim>(src, imageIdx);
+                const auto    dstShape  = shape::SampleShape<kSpatialNDim>(dst, imageIdx);
+                const int64_t inStride  = shape::ImageByteSize(src[imageIdx]);
+                const int64_t outStride = shape::ImageByteSize(dst[imageIdx]);
+                for (int plane = 0; plane < planarChannels; ++plane, ++sampleIdx)
+                {
+                    addKernelSample(sampleIdx, imageIdx, kernelChannels, srcShape, dstShape, inStride, outStride);
+                }
+            }
         }
         bool wideStride = std::max(inMaxStride, outMaxStride) > cuda::TypeTraits<int32_t>::max;
-
-        NVCV_CHECK_THROW(cudaMemcpyAsync(sampleDescsGpu, sampleDescsCpu, numKernelSamples * sizeof(SampleDescT),
-                                         cudaMemcpyHostToDevice, stream));
-
+        if constexpr (kAdaptiveHorizontalCandidate)
+        {
+            if (useAdaptiveHorizontal)
+            {
+                ::cvcuda::priv::hq_resize::SetupAdaptiveHorizontalBlockLayout(
+                    sampleDescsCpu, adaptiveHorizontalWork, wideStride, multiprocessorCount,
+                    [this](SampleDescT &sampleDesc, int pass, int lanes)
+                    { SetupBlockLayoutPass(sampleDesc, pass, lanes); });
+            }
+        }
+        // CPU preparation and launch decisions must not read write-combined pinned memory.
+        if (numKernelSamples > 0)
+        {
+            std::memcpy(sampleDescsPinned, sampleDescsCpu, numKernelSamples * sizeof(SampleDescT));
+            NVCV_CHECK_THROW(cudaMemcpyAsync(sampleDescsGpu, sampleDescsPinned, numKernelSamples * sizeof(SampleDescT),
+                                             cudaMemcpyHostToDevice, stream));
+        }
         // allocate space for pointers and strides for intermediate wrappers
         DynamicBatchWrapMeta intermediateMeta[kNumTmpBuffers];
         IntermediateBaseT   *intermediate[kNumTmpBuffers];
@@ -3424,8 +3606,17 @@ public:
             intermediate[t] = allocator.getCuda<IntermediateBaseT>(intermediateSizes[t], kIntermediateAlignment);
         }
 
-        Run(sampleDescsCpu, sampleDescsGpu, src, dst, intermediate, intermediateMeta, numKernelSamples, srcDtype,
-            dstDtype, kernelChannels, wideStride, ws, stream, planarChannels);
+        if constexpr (std::is_same_v<BatchContainer, nvcv::ImageBatchVarShape>)
+        {
+            Run(sampleDescsCpu, sampleDescsGpu, src, dst, intermediate, intermediateMeta, numKernelSamples, srcDtype,
+                dstDtype, kernelChannels, wideStride, ws, stream, planarChannels);
+        }
+        else
+        {
+            Run(sampleDescsCpu, sampleDescsGpu, src, dst, intermediate, intermediateMeta, numKernelSamples, srcDtype,
+                dstDtype, kernelChannels, wideStride, ws, stream, isPlanarTensorBatch, planarSrcElements,
+                planarDstElements);
+        }
     }
 
 private:
@@ -3491,12 +3682,9 @@ private:
              const nvcv::TensorBatch &dst, IntermediateBaseT *intermediate[kNumTmpBuffers],
              const DynamicBatchWrapMeta intermediateMeta[kNumTmpBuffers], int numSamples, const nvcv::DataType srcDtype,
              const nvcv::DataType dstDtype, int uniqueNumChannels, bool wideStride, const cvcuda::Workspace &ws,
-             cudaStream_t stream, int planarChannels = 1) const
+             cudaStream_t stream, bool isPlanar, PlanarTensorBatchElement *planarSrcElements,
+             PlanarTensorBatchElement *planarDstElements) const
     {
-        // Planar TensorBatch is not yet wired (the var-shape adapter handles plane decode; the
-        // tensor-batch adapter does not), so the operator only ever passes planarChannels == 1 here.
-        NVCV_ASSERT(planarChannels == 1);
-
         // Other cointainer allow exporting data with const qualifiers
         const auto srcData
             = const_cast<nvcv::TensorBatch &>(src).exportData(stream).cast<nvcv::TensorBatchDataStridedCuda>();
@@ -3531,8 +3719,9 @@ private:
 
         RunTypedSwitch<IntermediateBaseT>(
             srcDtype, dstDtype, uniqueNumChannels,
-            [this, &wideStride, &sampleDescsCpu, &sampleDescsGpu, &dstData, &srcData, &intermediate, &intermediateMeta,
-             &numSamples, &ws, &stream](auto dummySrcVal, auto intermediateVal, auto dummyDstVal, auto numChannelsVal)
+            [this, &wideStride, &sampleDescsCpu, &sampleDescsGpu, &src, &srcData, &dstData, &intermediate,
+             &intermediateMeta, &numSamples, &ws, &stream, &isPlanar, &planarSrcElements,
+             &planarDstElements](auto dummySrcVal, auto intermediateVal, auto dummyDstVal, auto numChannelsVal)
             {
                 using InT                       = decltype(dummySrcVal);
                 using IntermediateT             = decltype(intermediateVal);
@@ -3542,6 +3731,49 @@ private:
                 static_assert(cuda::NumElements<IntermediateT> == cuda::NumElements<InT>);
                 static_assert(cuda::NumElements<OutT> == cuda::NumElements<IntermediateT>);
 
+                if constexpr (kSpatialNDim == 2)
+                {
+                    if constexpr (numStaticChannels == 1)
+                    {
+                        if (isPlanar)
+                        {
+                            NVCV_ASSERT(planarSrcElements != nullptr && planarDstElements != nullptr);
+                            const bool hasSampleDim = src.layout() == nvcv::TENSOR_NCHW;
+                            const batch_wrapper::tensor::PlanarTensorBatchData srcRunData{planarSrcElements};
+                            const batch_wrapper::tensor::PlanarTensorBatchData dstRunData{planarDstElements};
+                            // Defer descriptor typing until CUDA 12.2 discards the 3D branch.
+                            auto setupPlanar = [&](auto strideTag, const auto *descs)
+                            {
+                                using StrideT = decltype(strideTag);
+                                auto *intermediateAccess
+                                    = reinterpret_cast<batch_wrapper::dynamic::TensorAccessDesc<StrideT> *>(
+                                        intermediateMeta[0].gpu);
+                                batch_wrapper::tensor::SetupPlanarTensorBatchElements<StrideT>(
+                                    planarSrcElements, planarDstElements, intermediateAccess, intermediate[0], descs,
+                                    *srcData, *dstData, hasSampleDim, stream);
+                            };
+                            if (wideStride)
+                            {
+                                setupPlanar(int64_t{}, sampleDescsGpu);
+                                RunPasses<OutT, IntermediateT, InT, int64_t, numStaticChannels>(
+                                    sampleDescsCpu, sampleDescsGpu, dstRunData, srcRunData, intermediate,
+                                    intermediateMeta, numSamples, ws, stream);
+                            }
+                            else
+                            {
+                                setupPlanar(int32_t{}, sampleDescsGpu);
+                                RunPasses<OutT, IntermediateT, InT, int32_t, numStaticChannels>(
+                                    sampleDescsCpu, sampleDescsGpu, dstRunData, srcRunData, intermediate,
+                                    intermediateMeta, numSamples, ws, stream);
+                            }
+                            return;
+                        }
+                    }
+                }
+                else
+                {
+                    NVCV_ASSERT(!isPlanar);
+                }
                 if (wideStride)
                 {
                     RunPasses<OutT, IntermediateT, InT, int64_t, numStaticChannels>(
@@ -3604,10 +3836,15 @@ private:
         const InterWrap interWrap = batch_wrapper::tensor::CreateDenseWrap<kHasDynamicChannels, IntermediateT, StrideT>(
             intermediate[0], sampleDesc.channels, sampleDesc.shapes[1]);
 
-        SampleDescT runDesc = sampleDesc;
-        SetupTensorBlockLayout<OutT, InT, kNumStaticChannels>(runDesc);
-        RunPass<kNumStaticChannels, 0>(runDesc, interWrap, inWrap, numSamples, stream);
-        RunPass<kNumStaticChannels, 1>(runDesc, outWrap, interWrap, numSamples, stream);
+        SampleDescT    runDesc         = sampleDesc;
+        const bool     useFixedSupport = SetupTensorBlockLayout<OutT, InT, kNumStaticChannels>(runDesc, numSamples);
+        constexpr bool kFixedSupport
+            = (kNumStaticChannels == 1
+               && std::is_same_v<cuda::BaseType<InT>, __half> && std::is_same_v<cuda::BaseType<OutT>, __half>)
+           || (kNumStaticChannels == 3
+               && std::is_same_v<cuda::BaseType<InT>, float> && std::is_same_v<cuda::BaseType<OutT>, float>);
+        RunPass<kNumStaticChannels, 0, kFixedSupport>(runDesc, interWrap, inWrap, numSamples, stream, useFixedSupport);
+        RunPass<kNumStaticChannels, 1, kFixedSupport>(runDesc, outWrap, interWrap, numSamples, stream, useFixedSupport);
         RecordReady(ws.cudaMem.ready, stream);
     }
 
@@ -3658,20 +3895,23 @@ private:
         constexpr bool kHasDynamicChannels = kNumStaticChannels == -1;
         // sample extent, spatial extents, optional dynamic channel extent
         constexpr int  kWrapNDim = 1 + kSpatialNDim + kHasDynamicChannels;
-        using BatchWrapOutT
-            = std::conditional_t<std::is_same_v<BatchDataStridedCuda, nvcv::ImageBatchVarShapeDataStridedCuda>,
-                                 batch_wrapper::ImageBatchVarShapeWrapAdapter<OutT, StrideT>,
-                                 batch_wrapper::TensorBatchWrapAdapter<OutT, kWrapNDim, StrideT>>;
-        using BatchWrapInT
-            = std::conditional_t<std::is_same_v<BatchDataStridedCuda, nvcv::ImageBatchVarShapeDataStridedCuda>,
-                                 batch_wrapper::ImageBatchVarShapeWrapAdapter<const InT, StrideT>,
-                                 batch_wrapper::TensorBatchWrapAdapter<const InT, kWrapNDim, StrideT>>;
+        using BatchWrapOutT      = std::conditional_t<
+            std::is_same_v<BatchDataStridedCuda, nvcv::ImageBatchVarShapeDataStridedCuda>,
+            batch_wrapper::ImageBatchVarShapeWrapAdapter<OutT, StrideT>,
+            std::conditional_t<std::is_same_v<BatchDataStridedCuda, batch_wrapper::tensor::PlanarTensorBatchData>,
+                               batch_wrapper::PlanarTensorBatchWrapAdapter<OutT, StrideT>,
+                               batch_wrapper::TensorBatchWrapAdapter<OutT, kWrapNDim, StrideT>>>;
+        using BatchWrapInT = std::conditional_t<
+            std::is_same_v<BatchDataStridedCuda, nvcv::ImageBatchVarShapeDataStridedCuda>,
+            batch_wrapper::ImageBatchVarShapeWrapAdapter<const InT, StrideT>,
+            std::conditional_t<std::is_same_v<BatchDataStridedCuda, batch_wrapper::tensor::PlanarTensorBatchData>,
+                               batch_wrapper::PlanarTensorBatchWrapAdapter<const InT, StrideT>,
+                               batch_wrapper::TensorBatchWrapAdapter<const InT, kWrapNDim, StrideT>>>;
         using DynamicBatchWrap = batch_wrapper::dynamic::DynamicBatchWrap<IntermediateT, kWrapNDim, StrideT>;
         static_assert(std::is_trivially_copyable_v<BatchWrapOutT>);
         static_assert(std::is_trivially_copyable_v<BatchWrapInT>);
         static_assert(std::is_trivially_copyable_v<DynamicBatchWrap>);
-        // planarChannels > 1 only for the ImageBatchVarShape planar path; the adapter then decodes
-        // each expanded sample index to its {image, plane}. The TensorBatch adapter ignores it.
+        // planarChannels > 1 only for the ImageBatchVarShape planar path; the other adapters ignore it.
         const BatchWrapOutT outWrap(dstData, planarChannels);
         const BatchWrapInT  inWrap(srcData, planarChannels);
         if (numSamples > 0
@@ -3682,9 +3922,19 @@ private:
             RecordReady(ws.cudaMem.ready, stream);
             return;
         }
-        const DynamicBatchWrap intermediateWrap
-            = batch_wrapper::dynamic::CreateDynamicBatchWrap<kHasDynamicChannels, IntermediateT, StrideT>(
-                0, intermediate[0], intermediateMeta[0], sampleDescsCpu, numSamples, stream);
+        const DynamicBatchWrap intermediateWrap = [&]
+        {
+            if constexpr (std::is_same_v<BatchDataStridedCuda, batch_wrapper::tensor::PlanarTensorBatchData>)
+            {
+                return DynamicBatchWrap{
+                    reinterpret_cast<batch_wrapper::dynamic::TensorAccessDesc<StrideT> *>(intermediateMeta[0].gpu)};
+            }
+            else
+            {
+                return batch_wrapper::dynamic::CreateDynamicBatchWrap<kHasDynamicChannels, IntermediateT, StrideT>(
+                    0, intermediate[0], intermediateMeta[0], sampleDescsCpu, numSamples, stream);
+            }
+        }();
         RecordReady(ws.pinnedMem.ready, stream);
         RunPass<kNumStaticChannels, 0>(sampleDescsCpu, sampleDescsGpu, intermediateWrap, inWrap, numSamples, stream);
         RunPass<kNumStaticChannels, 1>(sampleDescsCpu, sampleDescsGpu, outWrap, intermediateWrap, numSamples, stream);
@@ -3736,7 +3986,10 @@ private:
     bool TryRunDirectLinear(const SampleDescT &sampleDesc, const PassOutWrap &outWrap, const PassInWrap &inWrap,
                             int numSamples, cudaStream_t stream) const
     {
-        if constexpr (IsDirectLinearSupported<kNumStaticChannels, PassOutWrap, PassInWrap>()
+        constexpr bool kHalfScale2x2
+            = kKind == DirectLinearKind::kScale2x2 && kSpatialNDim == 2 && kNumStaticChannels == 1
+           && std::is_same_v<WrapBaseT<PassInWrap>, __half> && std::is_same_v<WrapBaseT<PassOutWrap>, __half>;
+        if constexpr ((IsDirectLinearSupported<kNumStaticChannels, PassOutWrap, PassInWrap>() || kHalfScale2x2)
                       && !(kKind == DirectLinearKind::kScale2x2 && kNumStaticChannels != 1))
         {
             if (!IsDirectLinearNoRoi(sampleDesc))
@@ -3763,6 +4016,14 @@ private:
             dim3 block(kBlockDim.x, kBlockDim.y, 1);
             if constexpr (kKind == DirectLinearKind::kScale2x2)
             {
+                if constexpr (kHalfScale2x2)
+                {
+                    // Preserve separable pass order and exactly representable quarter-pixel coordinates.
+                    if (sampleDesc.processingOrder.x != 0 || outShape.x > (1 << 23) || outShape.y > (1 << 23))
+                    {
+                        return false;
+                    }
+                }
                 VecF<2> origin{};
                 VecF<2> scale{};
                 resampling::DirectLinearOriginScale(sampleDesc, origin, scale);
@@ -3784,8 +4045,39 @@ private:
             {
                 constexpr int kLanes = resampling::kDirectLinear2DLanes<kNumStaticChannels, WrapBaseT<PassInWrap>,
                                                                         WrapBaseT<PassOutWrap>>;
-                dim3          grid(utils::DivCeil(outShape.x, static_cast<int>(block.x) * kLanes),
-                                   utils::DivCeil(outShape.y, static_cast<int>(block.y)), numSamples);
+                // Avoid the signed ceil-division addition for wide scalar f32 outputs.
+                const int     gridWidth = std::is_same_v<WrapBaseT<PassInWrap>, float> && kLanes > 1
+                                            ? 1 + (outShape.x - 1) / (static_cast<int>(block.x) * kLanes)
+                                            : utils::DivCeil(outShape.x, static_cast<int>(block.x) * kLanes);
+                dim3          grid(gridWidth, utils::DivCeil(outShape.y, static_cast<int>(block.y)), numSamples);
+                if constexpr (kLanes > 1 && std::is_same_v<WrapBaseT<PassInWrap>, float>)
+                {
+                    // Small grids retain one output per thread to preserve parallelism.
+                    const int lanes = GetF32DirectLinear2DLanes(sampleDesc.shapes[0].x, sampleDesc.shapes[0].y,
+                                                                outShape.x, outShape.y, numSamples);
+                    if (lanes == 1)
+                    {
+                        grid.x = utils::DivCeil(outShape.x, static_cast<int>(block.x));
+                        resampling::DirectLinear2DKernel<kNumStaticChannels, false>
+                            <<<grid, block, 0, stream>>>(sampleDesc, outWrap, inWrap);
+                        NVCV_CHECK_THROW(cudaGetLastError());
+                        return true;
+                    }
+                    if (lanes == 2)
+                    {
+                        VecF<2> origin{};
+                        VecF<2> scale{};
+                        resampling::DirectLinearOriginScale(sampleDesc, origin, scale);
+                        if (origin.x == 0.f && origin.y == 0.f && scale.x == 2.f && scale.y == 2.f)
+                        {
+                            grid.x = 1 + (outShape.x - 1) / (static_cast<int>(block.x) * 2);
+                            resampling::DirectLinear2DKernel<kNumStaticChannels, true, true>
+                                <<<grid, block, 0, stream>>>(sampleDesc, outWrap, inWrap);
+                            NVCV_CHECK_THROW(cudaGetLastError());
+                            return true;
+                        }
+                    }
+                }
                 resampling::DirectLinear2DKernel<kNumStaticChannels>
                     <<<grid, block, 0, stream>>>(sampleDesc, outWrap, inWrap);
             }
@@ -4049,10 +4341,6 @@ private:
             {
                 return false;
             }
-            // The sample descriptors live in pinned staging memory, where host reads are
-            // uncached and slow enough to gap the GPU between iterations: reject on the
-            // first sample alone where possible, and stage the descriptors locally before
-            // the remaining per-sample checks.
             const SampleDescT desc0 = sampleDescsCpu[0];
             if (!IsDirectFilterEligible(desc0) || HasMagnifyingAxis(desc0))
             {
@@ -4070,8 +4358,7 @@ private:
                     return false;
                 }
             }
-            const std::vector<SampleDescT> stagedDescs(sampleDescsCpu, sampleDescsCpu + numSamples);
-            const SampleDescT             *descs = stagedDescs.data();
+            const SampleDescT *descs = sampleDescsCpu;
 
             // All samples must qualify; a mixed batch falls back to the separable passes.
             bool    allContract2x = true;
@@ -4207,9 +4494,10 @@ private:
             && std::is_same_v<OutBT, float> && std::is_same_v<InBT, unsigned char>;
     }
 
-    template<int kNumStaticChannels, int kWhichPass, typename PassOutWrap, typename PassInWrap>
+    template<int kNumStaticChannels, int kWhichPass, bool kUseFixedSupport = false, typename PassOutWrap,
+             typename PassInWrap>
     void RunPass(const SampleDescT &sampleDesc, const PassOutWrap &outWrap, const PassInWrap &inWrap, int numSamples,
-                 cudaStream_t stream) const
+                 cudaStream_t stream, bool useFixedSupport = false) const
     {
         using GridHelperT = resampling::GridHelper<kSpatialNDim>;
 
@@ -4234,6 +4522,30 @@ private:
         const auto  devGridHelper = gridHelper.GetDeviceGridHelper();
 
         int sharedMemSize = RequiredSharedMemorySize(sampleDesc, kWhichPass);
+        if constexpr (kUseFixedSupport)
+        {
+            static_assert(kSpatialNDim == 2 && (kNumStaticChannels == 1 || kNumStaticChannels == 3));
+            if (useFixedSupport)
+            {
+                if constexpr (kWhichPass == 1 && kNumStaticChannels == 1)
+                {
+                    // Keep the padded vector loop's final increment representable.
+                    constexpr int kVectorStep = kBlockDim.x * resampling::interpolate::kVertXVec;
+                    if (sampleDesc.processingOrder.y == 1
+                        && sampleDesc.shapes[2].x <= std::numeric_limits<int>::max() - kVectorStep)
+                    {
+                        resampling::SeparableResamplingKernel<kNumStaticChannels, kWhichPass, true, 4>
+                            <<<grid, block, sharedMemSize, stream>>>(sampleDesc, outWrap, inWrap, devGridHelper);
+                        NVCV_CHECK_THROW(cudaGetLastError());
+                        return;
+                    }
+                }
+                resampling::SeparableResamplingKernel<kNumStaticChannels, kWhichPass, false, 4>
+                    <<<grid, block, sharedMemSize, stream>>>(sampleDesc, outWrap, inWrap, devGridHelper);
+                NVCV_CHECK_THROW(cudaGetLastError());
+                return;
+            }
+        }
         // Keep the vectorized vertical path in its own instantiation so other tensor passes
         // retain their original register footprint.
         if constexpr (IsVertXVecSupported<kNumStaticChannels, PassOutWrap, PassInWrap>())
@@ -4515,10 +4827,10 @@ private:
     std::enable_if_t<ndim == 2> SetupBlockLayout(SampleDescT &sampleDesc) const
     {
         static_assert(kSpatialNDim == 2);
-        int lanes = resampling::GetResizeBlockLanes();
+        const auto &config = GetResizeBlockLanesConfig();
         for (int pass = 0; pass < kSpatialNDim; pass++)
         {
-            SetupBlockLayoutPass(sampleDesc, pass, lanes);
+            SetupBlockLayoutPass(sampleDesc, pass, config.lanes);
         }
     }
 
@@ -4538,61 +4850,90 @@ private:
         sampleDesc.blockShape[pass] = cuda::clamp(blockShape, VecI<2>{1, 1}, outputShape);
     }
 
+    // Filter eligibility is independent of optional block-lane tuning overrides.
     template<typename OutT, typename InT, int kNumStaticChannels, int ndim = kSpatialNDim>
-    std::enable_if_t<ndim == 2> SetupTensorBlockLayout(SampleDescT &sampleDesc) const
+    std::enable_if_t<ndim == 2, bool> SetupTensorBlockLayout(SampleDescT &sampleDesc, int numSamples) const
     {
         static_assert(kSpatialNDim == 2);
         using InBT  = cuda::BaseType<InT>;
         using OutBT = cuda::BaseType<OutT>;
         constexpr bool kSingleChannelU8
             = kNumStaticChannels == 1 && std::is_same_v<InBT, unsigned char> && std::is_same_v<OutBT, unsigned char>;
+        constexpr bool kSingleChannelF16
+            = kNumStaticChannels == 1 && std::is_same_v<InBT, __half> && std::is_same_v<OutBT, __half>;
         constexpr bool kSingleChannelF32
             = kNumStaticChannels == 1 && std::is_same_v<InBT, float> && std::is_same_v<OutBT, float>;
-        if constexpr (kSingleChannelU8 || kSingleChannelF32)
+        constexpr bool kPackedF32
+            = kNumStaticChannels == 3 && std::is_same_v<InBT, float> && std::is_same_v<OutBT, float>;
+        if constexpr (kSingleChannelU8 || kSingleChannelF16 || kSingleChannelF32 || kPackedF32)
         {
-            if (resampling::GetResizeBlockLanes() == 8)
+            bool isCubicMagnification = true;
+            for (int pass = 0; pass < kSpatialNDim; pass++)
             {
-                bool isCubicSupport4 = true;
-                for (int pass = 0; pass < kSpatialNDim; pass++)
+                const auto &flt      = sampleDesc.filter[pass];
+                isCubicMagnification = isCubicMagnification
+                                    && sampleDesc.filterKind[pass] == filter::FilterTypeKind::ShmFilter
+                                    && flt.numCoeffs == filter::ResamplingFiltersFactory::kCubicSize
+                                    && flt.support() == 4 && std::abs(cuda::GetElement(sampleDesc.scale, pass)) < 1.f;
+            }
+            if (!isCubicMagnification)
+            {
+                return false;
+            }
+            if constexpr (kPackedF32)
+            {
+                return true;
+            }
+            const auto &config = GetResizeBlockLanesConfig();
+            if (AllowsDtypeSpecificTensorBlockLaneTuning(config))
+            {
+                int lanes;
+                if constexpr (kSingleChannelU8)
                 {
-                    const auto &flt                 = sampleDesc.filter[pass];
-                    const bool  passIsCubicSupport4 = sampleDesc.filterKind[pass] == filter::FilterTypeKind::ShmFilter
-                                                  && flt.numCoeffs == filter::ResamplingFiltersFactory::kCubicSize
-                                                  && flt.support() == 4;
-                    isCubicSupport4 = isCubicSupport4 && passIsCubicSupport4;
+                    lanes = kU8CubicMagnificationBlockLanes;
                 }
-
-                if (isCubicSupport4)
+                else if constexpr (kSingleChannelF16)
                 {
-                    bool isCubicMagnification = true;
+                    lanes = kF16CubicMagnificationBlockLanes;
+                }
+                else
+                {
+                    lanes = GetF32CubicMagnificationBlockLanes(m_filtersFactory.GetDeviceComputeCapability());
+                }
+                if (lanes != kDefaultResizeBlockLanes)
+                {
+                    int64_t minimumBlocks = 0;
                     for (int pass = 0; pass < kSpatialNDim; pass++)
                     {
-                        const float scale    = std::abs(cuda::GetElement(sampleDesc.scale, pass));
-                        isCubicMagnification = isCubicMagnification && scale < 1.0f;
-                    }
-
-                    int lanes = 8;
-                    if constexpr (kSingleChannelU8)
-                    {
-                        lanes = isCubicMagnification ? 64 : 8;
-                    }
-                    else if constexpr (kSingleChannelF32)
-                    {
-                        lanes = isCubicMagnification ? resampling::GetF32CubicMagnificationBlockLanes(
-                                    m_filtersFactory.GetDeviceComputeCapability())
-                                                     : 8;
-                    }
-
-                    if (lanes != 8)
-                    {
-                        for (int pass = 0; pass < kSpatialNDim; pass++)
+                        const auto originalBlockShape = sampleDesc.blockShape[pass];
+                        SetupBlockLayoutPass(sampleDesc, pass, lanes);
+                        if constexpr (kSingleChannelF16)
                         {
-                            SetupBlockLayoutPass(sampleDesc, pass, lanes);
+                            const auto blockShape = sampleDesc.blockShape[pass];
+                            if (blockShape.x == originalBlockShape.x && blockShape.y == originalBlockShape.y)
+                            {
+                                continue;
+                            }
+                            if (minimumBlocks == 0)
+                            {
+                                minimumBlocks = static_cast<int64_t>(kF16CubicMinimumBlocksPerSM)
+                                              * m_filtersFactory.GetDeviceMultiprocessorCount();
+                            }
+                            // Wider tiles save coefficient work only when the pass has enough
+                            // blocks to keep the device busy. Planar channels count as samples.
+                            const auto outputShape = sampleDesc.shapes[pass + 1];
+                            if (!HasF16CubicBlockPopulation(outputShape.x, outputShape.y, blockShape.x, blockShape.y,
+                                                            numSamples, minimumBlocks))
+                            {
+                                sampleDesc.blockShape[pass] = originalBlockShape;
+                            }
                         }
                     }
                 }
             }
+            return true;
         }
+        return false;
     }
 
     /**
@@ -4602,7 +4943,8 @@ private:
     std::enable_if_t<ndim == 3> SetupBlockLayout(SampleDescT &sampleDesc) const
     {
         static_assert(kSpatialNDim == 3);
-        int lanes = resampling::GetResizeBlockLanes();
+        const auto &config = GetResizeBlockLanesConfig();
+        const int   lanes  = config.lanes;
         for (int pass = 0; pass < kSpatialNDim; pass++)
         {
             auto outputShape    = sampleDesc.shapes[pass + 1];

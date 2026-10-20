@@ -16,50 +16,50 @@
  */
 
 #include "../CvtColorUtil.hpp"
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpAdvCvtColor.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 namespace cvcudapy {
 
 namespace {
-Tensor AdvCvtColorInto(Tensor &output, Tensor &input, NVCVColorConversionCode code, NVCVColorSpec spec,
-                       std::optional<Stream> pstream)
+using native::Stream;
+using native::Tensor;
+
+Tensor &AdvCvtColorInto(Tensor &output, Tensor &input, NVCVColorConversionCode code, NVCVColorSpec spec,
+                        std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto          op = CreateOperator<cvcuda::AdvCvtColor>();
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
-    guard.run([&op, &pstream, &input, &output, &code, &spec]()
-              { op->submit(pstream->cudaHandle(), input, output, code, nvcv::ColorSpec{spec}); });
-    return std::move(output);
+    guard.run([&op, &stream, &input, &output, &code, &spec]()
+              { op->submit(stream.handle(), input.impl(), output.impl(), code, nvcv::ColorSpec{spec}); });
+    return output;
 }
 
-Tensor AdvCvtColor(Tensor &input, NVCVColorConversionCode code, NVCVColorSpec spec, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> AdvCvtColor(Tensor &input, NVCVColorConversionCode code, NVCVColorSpec spec,
+                                    std::optional<Stream *> pstream)
 {
     nvcv::ImageFormat outputFormat = GetOutputFormat(input.dtype(), code);
-    nvcv::TensorShape outputShape  = GetOutputTensorShape(input.shape(), outputFormat, code);
+    nvcv::TensorShape outputShape  = GetOutputTensorShape(input.impl().shape(), outputFormat, code);
 
-    Tensor output = Tensor::Create(outputShape, input.dtype());
+    auto output = native::CreateTensor(outputShape, input.dtype());
 
-    return AdvCvtColorInto(output, input, code, spec, pstream);
+    AdvCvtColorInto(*output, input, code, spec, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpAdvCvtColor(py::module &m)
+void ExportOpAdvCvtColor(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
     m.def("advcvtcolor", NvtxTrace("cvcuda.advcvtcolor", &AdvCvtColor), "src"_a, "code"_a, "spec"_a, py::kw_only(),
           "stream"_a = nullptr,
           R"pbdoc(
@@ -69,7 +69,9 @@ void ExportOpAdvCvtColor(py::module &m)
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
             code (cvcuda.ColorConversion): Code describing the desired color conversion.
-            spec (cvcuda.ColorSpec): Color specification for the conversion.
+            spec (cvcuda.ColorSpec): BT.601, BT.709, or BT.2020 color specification. Both the base
+                and full-range (``_ER``) variants are accepted; AdvCvtColor uses the same
+                full-sample-range U8 arithmetic for each pair.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -78,7 +80,7 @@ void ExportOpAdvCvtColor(py::module &m)
     )pbdoc");
 
     m.def("advcvtcolor_into", NvtxTrace("cvcuda.advcvtcolor_into", &AdvCvtColorInto), "dst"_a, "src"_a, "code"_a,
-          "spec"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "spec"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Adv Cvt Color operation on the given cuda stream.
 
 
@@ -86,7 +88,9 @@ void ExportOpAdvCvtColor(py::module &m)
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
             src (cvcuda.Tensor): Input tensor containing one or more images.
             code (cvcuda.ColorConversion): Code describing the desired color conversion.
-            spec (cvcuda.ColorSpec): Color specification for the conversion.
+            spec (cvcuda.ColorSpec): BT.601, BT.709, or BT.2020 color specification. Both the base
+                and full-range (``_ER``) variants are accepted; AdvCvtColor uses the same
+                full-sample-range U8 arithmetic for each pair.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:

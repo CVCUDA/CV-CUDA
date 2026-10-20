@@ -15,32 +15,35 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpPairwiseMatcher.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 #include <optional>
 
 namespace cvcudapy {
 
-using TupleTensor3 = std::tuple<Tensor, std::optional<Tensor>, std::optional<Tensor>>;
-
 namespace {
+using native::Stream;
+using native::Tensor;
+using TupleTensor3    = std::tuple<std::shared_ptr<Tensor>, std::optional<std::shared_ptr<Tensor>>,
+                                std::optional<std::shared_ptr<Tensor>>>;
+using TupleTensor3Ref = std::tuple<Tensor *, std::optional<Tensor *>, std::optional<Tensor *>>;
 
-TupleTensor3 PairwiseMatcherInto(Tensor &matches, std::optional<Tensor> numMatches, std::optional<Tensor> distances,
-                                 Tensor &set1, Tensor &set2, const std::optional<Tensor> &numSet1,
-                                 const std::optional<Tensor> &numSet2, bool crossCheck, int matchesPerPoint,
-                                 std::optional<NVCVNormType> normType, NVCVPairwiseMatcherType algoChoice,
-                                 std::optional<Stream> pstream)
+const nvcv::Tensor &AsNativeTensor(const std::optional<Tensor *> &tensor, const nvcv::Tensor &nullTensor)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    return tensor && *tensor ? (*tensor)->impl() : nullTensor;
+}
+
+TupleTensor3Ref PairwiseMatcherInto(Tensor &matches, std::optional<Tensor *> numMatches,
+                                    std::optional<Tensor *> distances, Tensor &set1, Tensor &set2,
+                                    const std::optional<Tensor *> &numSet1, const std::optional<Tensor *> &numSet2,
+                                    bool crossCheck, int matchesPerPoint, std::optional<NVCVNormType> normType,
+                                    NVCVPairwiseMatcherType algoChoice, std::optional<Stream *> pstream)
+{
+    Stream &stream = native::GetStream(pstream);
 
     if (!normType)
     {
@@ -49,48 +52,48 @@ TupleTensor3 PairwiseMatcherInto(Tensor &matches, std::optional<Tensor> numMatch
 
     auto op = CreateOperator<cvcuda::PairwiseMatcher>(algoChoice);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {set1, set2});
     guard.add(LockMode::LOCK_MODE_WRITE, {matches});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    if (numSet1)
+    if (numSet1 && *numSet1)
     {
-        guard.add(LockMode::LOCK_MODE_READ, {*numSet1});
+        guard.add(LockMode::LOCK_MODE_READ, {**numSet1});
     }
-    if (numSet2)
+    if (numSet2 && *numSet2)
     {
-        guard.add(LockMode::LOCK_MODE_READ, {*numSet2});
+        guard.add(LockMode::LOCK_MODE_READ, {**numSet2});
     }
-    if (numMatches)
+    if (numMatches && *numMatches)
     {
-        guard.add(LockMode::LOCK_MODE_WRITE, {*numMatches});
+        guard.add(LockMode::LOCK_MODE_WRITE, {**numMatches});
     }
-    if (distances)
+    if (distances && *distances)
     {
-        guard.add(LockMode::LOCK_MODE_WRITE, {*distances});
+        guard.add(LockMode::LOCK_MODE_WRITE, {**distances});
     }
 
     guard.run(
-        [&numSet1, &numSet2, &numMatches, &distances, &op, &pstream, &set1, &set2, &matches, &crossCheck,
+        [&numSet1, &numSet2, &numMatches, &distances, &op, &stream, &set1, &set2, &matches, &crossCheck,
          &matchesPerPoint, &normType]()
         {
             const nvcv::Tensor nullTensor{nullptr};
-            op->submit(pstream->cudaHandle(), set1, set2, AsNvcvTensor(numSet1, nullTensor),
-                       AsNvcvTensor(numSet2, nullTensor), matches, AsNvcvTensor(numMatches, nullTensor),
-                       AsNvcvTensor(distances, nullTensor), crossCheck, matchesPerPoint, *normType);
+            op->submit(stream.handle(), set1.impl(), set2.impl(), AsNativeTensor(numSet1, nullTensor),
+                       AsNativeTensor(numSet2, nullTensor), matches.impl(), AsNativeTensor(numMatches, nullTensor),
+                       AsNativeTensor(distances, nullTensor), crossCheck, matchesPerPoint, *normType);
         });
 
-    return TupleTensor3(std::move(matches), numMatches, distances);
+    return {&matches, numMatches, distances};
 }
 
-TupleTensor3 PairwiseMatcher(Tensor &set1, Tensor &set2, const std::optional<Tensor> &numSet1,
-                             const std::optional<Tensor> &numSet2, std::optional<bool> numMatches, bool distances,
+TupleTensor3 PairwiseMatcher(Tensor &set1, Tensor &set2, const std::optional<Tensor *> &numSet1,
+                             const std::optional<Tensor *> &numSet2, std::optional<bool> numMatches, bool distances,
                              bool crossCheck, int matchesPerPoint, std::optional<NVCVNormType> normType,
-                             NVCVPairwiseMatcherType algoChoice, std::optional<Stream> pstream)
+                             NVCVPairwiseMatcherType algoChoice, std::optional<Stream *> pstream)
 {
-    nvcv::TensorShape set1Shape = set1.shape();
-    nvcv::TensorShape set2Shape = set2.shape();
+    const nvcv::TensorShape &set1Shape = set1.impl().shape();
+    const nvcv::TensorShape &set2Shape = set2.impl().shape();
 
     if (set1Shape.rank() != 3 || set2Shape.rank() != 3)
     {
@@ -107,31 +110,33 @@ TupleTensor3 PairwiseMatcher(Tensor &set1, Tensor &set2, const std::optional<Ten
 
     // clang-format off
 
-    Tensor matches = Tensor::Create({{numSamples, maxMatches, 2}, "NMA"}, nvcv::TYPE_S32);
+    auto matches = native::CreateTensor({{numSamples, maxMatches, 2}, "NMA"}, nvcv::TYPE_S32);
 
-    std::optional<Tensor> numMatchesTensor;
-    std::optional<Tensor> distancesTensor;
+    std::optional<std::shared_ptr<Tensor>> numMatchesTensor;
+    std::optional<std::shared_ptr<Tensor>> distancesTensor;
 
     if (*numMatches)
     {
-        numMatchesTensor = Tensor::Create({{numSamples}, "N"}, nvcv::TYPE_S32);
+        numMatchesTensor = native::CreateTensor({{numSamples}, "N"}, nvcv::TYPE_S32);
     }
     if (distances)
     {
-        distancesTensor = Tensor::Create({{numSamples, maxMatches}, "NM"}, nvcv::TYPE_F32);
+        distancesTensor = native::CreateTensor({{numSamples, maxMatches}, "NM"}, nvcv::TYPE_F32);
     }
 
     // clang-format on
 
-    return PairwiseMatcherInto(matches, numMatchesTensor, distancesTensor, set1, set2, numSet1, numSet2, crossCheck,
-                               matchesPerPoint, normType, algoChoice, pstream);
+    PairwiseMatcherInto(*matches, numMatchesTensor ? std::optional<Tensor *>{numMatchesTensor->get()} : std::nullopt,
+                        distancesTensor ? std::optional<Tensor *>{distancesTensor->get()} : std::nullopt, set1, set2,
+                        numSet1, numSet2, crossCheck, matchesPerPoint, normType, algoChoice, pstream);
+    return {std::move(matches), std::move(numMatchesTensor), std::move(distancesTensor)};
 }
 
 } // namespace
 
-void ExportOpPairwiseMatcher(py::module &m)
+void ExportOpPairwiseMatcher(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("match", NvtxTrace("cvcuda.match", &PairwiseMatcher), "set1"_a, "set2"_a, "num_set1"_a = nullptr,
           "num_set2"_a = nullptr, "num_matches"_a = nullptr, "distances"_a = false, "cross_check"_a = false,
@@ -167,7 +172,7 @@ void ExportOpPairwiseMatcher(py::module &m)
     m.def("match_into", NvtxTrace("cvcuda.match_into", &PairwiseMatcherInto), "matches"_a, "num_matches"_a = nullptr,
           "distances"_a = nullptr, "set1"_a, "set2"_a, "num_set1"_a = nullptr, "num_set2"_a = nullptr,
           "cross_check"_a = false, "matches_per_point"_a = 1, "norm_type"_a = nullptr,
-          "algo_choice"_a = NVCV_BRUTE_FORCE, py::kw_only(), "stream"_a = nullptr,
+          "algo_choice"_a = NVCV_BRUTE_FORCE, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Executes the Pairwise matcher operation on the given CUDA stream.
 

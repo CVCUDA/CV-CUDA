@@ -44,8 +44,10 @@ class HistogramEq final : public IOperator
 public:
     explicit HistogramEq(uint32_t maxBatchSize);
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const;
-    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out) const;
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                    NVCVHistogramEqMethod method = NVCV_HISTOGRAM_EQ_OPENCV) const;
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                    NVCVHistogramEqMethod method = NVCV_HISTOGRAM_EQ_OPENCV) const;
 
     NVCVOperatorHandle handle() const noexcept override;
 
@@ -61,15 +63,17 @@ inline HistogramEq::HistogramEq(uint32_t maxBatchSize)
     m_handle = detail::OperatorHandle{h};
 }
 
-inline void HistogramEq::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const
+inline void HistogramEq::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                    NVCVHistogramEqMethod method) const
 {
-    nvcv::detail::CheckThrow(cvcudaHistogramEqSubmit(m_handle.get(), stream, in.handle(), out.handle()));
+    nvcv::detail::CheckThrow(cvcudaHistogramEqMethodSubmit(m_handle.get(), stream, in.handle(), out.handle(), method));
 }
 
 inline void HistogramEq::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
-                                    const nvcv::ImageBatchVarShape &out) const
+                                    const nvcv::ImageBatchVarShape &out, NVCVHistogramEqMethod method) const
 {
-    nvcv::detail::CheckThrow(cvcudaHistogramEqVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle()));
+    nvcv::detail::CheckThrow(
+        cvcudaHistogramEqVarShapeMethodSubmit(m_handle.get(), stream, in.handle(), out.handle(), method));
 }
 
 inline NVCVOperatorHandle HistogramEq::handle() const noexcept

@@ -1127,6 +1127,58 @@ TEST(OpThreshold, tensor_u8_binary_unaligned_pack_exact)
     RunTensorUnalignedPackCase<uint8_t>(nvcv::TYPE_U8, NVCV_THRESH_BINARY, 32);
 }
 
+TEST(OpThreshold_Negative, rejects_unsigned_32_bit_inputs)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    auto              thresh = MakeThresholdParam(1, 100.0);
+    auto              maxval = MakeThresholdParam(1, 255.0);
+    cvcuda::Threshold thresholdOp(NVCV_THRESH_BINARY, 1);
+
+    nvcv::Tensor tensorIn  = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_U32);
+    nvcv::Tensor tensorOut = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_U32);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { thresholdOp(stream, tensorIn, tensorOut, thresh, maxval); }));
+
+    nvcv::Image              imageIn({4, 4}, nvcv::FMT_U32);
+    nvcv::Image              imageOut({4, 4}, nvcv::FMT_U32);
+    nvcv::ImageBatchVarShape batchIn(1);
+    nvcv::ImageBatchVarShape batchOut(1);
+    batchIn.pushBack(imageIn);
+    batchOut.pushBack(imageOut);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { thresholdOp(stream, batchIn, batchOut, thresh, maxval); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpThreshold_Negative, rejects_signed_8_bit_inputs)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    auto              thresh = MakeThresholdParam(1, 100.0);
+    auto              maxval = MakeThresholdParam(1, 255.0);
+    cvcuda::Threshold thresholdOp(NVCV_THRESH_BINARY, 1);
+
+    nvcv::Tensor tensorIn  = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_S8);
+    nvcv::Tensor tensorOut = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_S8);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { thresholdOp(stream, tensorIn, tensorOut, thresh, maxval); }));
+
+    nvcv::Image              imageIn({4, 4}, nvcv::FMT_S8);
+    nvcv::Image              imageOut({4, 4}, nvcv::FMT_S8);
+    nvcv::ImageBatchVarShape batchIn(1);
+    nvcv::ImageBatchVarShape batchOut(1);
+    batchIn.pushBack(imageIn);
+    batchOut.pushBack(imageOut);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { thresholdOp(stream, batchIn, batchOut, thresh, maxval); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpThreshold, nvcv::test::ValueList<int, int, int, uint32_t, double, double, nvcv::ImageFormat>
 {
@@ -1490,6 +1542,63 @@ TEST(OpThresholdPlanar, tensor_rejects_two_channel)
                                                        cvcuda::Threshold thresholdOp(NVCV_THRESH_BINARY, 1);
                                                        thresholdOp(s, src, dst, threshval, maxvalval);
                                                    });
+}
+
+TEST(OpThresholdPlanar, varshape_threshold_edges_cover_scalar_fallbacks_and_tails)
+{
+    constexpr int    width  = 17;
+    constexpr int    height = 2;
+    constexpr double maxval = 201.0;
+
+    auto runPlanarCase = [&](uint32_t type, double thresh)
+    {
+        nvcv::test::planar::RunVarShapeParity(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, width, height, width, height, 1,
+                                              [type, thresh](cudaStream_t s, const nvcv::ImageBatchVarShape &src,
+                                                             const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+                                              {
+                                                  auto threshval = MakeThresholdParam(1, thresh);
+                                                  auto maxvalval = MakeThresholdParam(1, maxval);
+
+                                                  cvcuda::Threshold thresholdOp(type, 1);
+                                                  EXPECT_NO_THROW(thresholdOp(s, src, dst, threshval, maxvalval));
+                                              });
+    };
+
+    runPlanarCase(NVCV_THRESH_BINARY, 100.0);
+    runPlanarCase(NVCV_THRESH_BINARY_INV, 256.0);
+    runPlanarCase(NVCV_THRESH_TRUNC, -1.0);
+    runPlanarCase(NVCV_THRESH_TOZERO, 256.0);
+    runPlanarCase(NVCV_THRESH_TOZERO_INV, -1.0);
+
+    RunVarShapeUnalignedPackCase<uint16_t>(nvcv::FMT_U16, NVCV_THRESH_BINARY, 100.0, maxval);
+}
+
+TEST(OpThreshold_Negative, rejects_mixed_width_tensor_dtype)
+{
+    const nvcv::DataType mixedWidth{nvcv::DataKind::UNSIGNED, static_cast<nvcv::Packing>(NVCV_PACKING_X32_Y24b8)};
+    nvcv::Tensor         imgIn(
+                {
+                    {1, 5, 5, 3},
+                    "NHWC"
+    },
+                mixedWidth);
+    nvcv::Tensor imgOut(
+        {
+            {1, 5, 5, 3},
+            "NHWC"
+    },
+        mixedWidth);
+    auto threshval = MakeThresholdParam(1, 100.0);
+    auto maxvalval = MakeThresholdParam(1, 255.0);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Threshold thresholdOp(NVCV_THRESH_BINARY, 1);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { thresholdOp(stream, imgIn, imgOut, threshval, maxvalval); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 // clang-format off

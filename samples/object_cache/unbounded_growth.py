@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +16,6 @@
 from __future__ import annotations
 
 # docs-start: main
-import random
-
 import cvcuda
 import numpy as np
 
@@ -26,11 +24,9 @@ def create_tensor(h: int, w: int) -> None:
     _ = cvcuda.Tensor((h, w, 3), np.float32, cvcuda.TensorLayout.HWC)
 
 
-def main(iters: int = 10_000) -> None:
-    for _ in range(iters):
-        h = random.randint(1000, 2000)
-        w = random.randint(1000, 2000)
-        create_tensor(h, w)
+def main(iters: int = 100) -> None:
+    for i in range(iters):
+        create_tensor(1000 + i, 1000)
 
 
 # docs-end: main

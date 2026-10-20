@@ -18,18 +18,18 @@
 #ifndef NVCV_PYTHON_PRIV_CAPI_HPP
 #define NVCV_PYTHON_PRIV_CAPI_HPP
 
-#include <pybind11/pybind11.h>
+#include <common/Binding.hpp>
 
 namespace nvcvpy::priv {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
-void ExportCAPI(py::module &m);
+void ExportCAPI(py::module_ &m);
 
 // Registers the deterministic C API failure-injection toggles used by the
 // ResourceGuard lifetime regressions. Bound under the private cvcuda._test
 // submodule; not part of the public API.
-void ExportCAPITestHooks(py::module &m);
+void ExportCAPITestHooks(py::module_ &m);
 
 } // namespace nvcvpy::priv
 

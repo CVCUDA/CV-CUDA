@@ -15,10 +15,12 @@
  * limitations under the License.
  */
 
+#include "CudaDeviceUtils.hpp"
 #include "InvertPolicy.hpp"
 #include "Nvtx.hpp"
 #include "OpInvert.hpp"
 
+#include "ElementStreamCommon.cuh"
 #include "PhotometricBound.cuh"
 #include "SameShapeCommon.cuh"
 
@@ -38,9 +40,10 @@
 
 #include <type_traits>
 
-namespace cuda       = nvcv::cuda;
-namespace util       = nvcv::util;
-namespace same_shape = cvcuda::priv::same_shape;
+namespace cuda        = nvcv::cuda;
+namespace elem_stream = cvcuda::priv::elem_stream;
+namespace util        = nvcv::util;
+namespace same_shape  = cvcuda::priv::same_shape;
 
 namespace {
 
@@ -48,22 +51,43 @@ using cvcuda::priv::PhotometricUpperBound;
 
 inline bool UsePackedU8C3VarShapeKernelOnCurrentDevice()
 {
-    int device = 0;
-    NVCV_CHECK_THROW(cudaGetDevice(&device));
+    int sm = 0;
+    NVCV_CHECK_THROW(cvcuda::priv::GetCurrentDeviceSM(sm));
+    return cvcuda::priv::UsePackedU8C3VarShapeKernelForDevice(sm);
+}
 
-    static thread_local int  cachedDevice    = -1;
-    static thread_local bool cachedUsePacked = true;
-    if (cachedDevice != device)
+template<typename BT>
+inline __device__ BT InvertValue(BT value)
+{
+    const BT bound = PhotometricUpperBound<BT>();
+    if constexpr (std::is_integral_v<BT> && std::is_signed_v<BT>)
     {
-        cudaDeviceProp properties{};
-        NVCV_CHECK_THROW(cudaGetDeviceProperties(&properties, device));
-
-        const int sm    = properties.major * 10 + properties.minor;
-        cachedUsePacked = cvcuda::priv::UsePackedU8C3VarShapeKernelForDevice(sm, properties.name);
-        cachedDevice    = device;
+        // max - a negative input is above max; saturate before signed subtraction can overflow.
+        if (value < 0)
+        {
+            return bound;
+        }
     }
+    return cuda::SaturateCast<BT>(bound - value);
+}
 
-    return cachedUsePacked;
+inline __device__ double InvertDoubleStreamValue(double value)
+{
+#if __CUDA_ARCH__ >= 1000
+    unsigned long long bits;
+    asm("mov.b64 %0, %1;" : "=l"(bits) : "d"(value));
+    if (bits - 0x3fe0000000000000ULL <= 0x0010000000000000ULL)
+    {
+        // On [0.5, 1], the exact difference is this integer remainder times 2^-53.
+        const unsigned long long remainder = 0x3ff0000000000000ULL - bits;
+        if (!remainder)
+            return 0.;
+        const unsigned leading = __clzll(remainder);
+        return __longlong_as_double((static_cast<unsigned long long>(1032 - leading) << 52)
+                                    + (remainder << (leading - 11)));
+    }
+#endif
+    return InvertValue(value);
 }
 
 template<bool IsPlanar, class SrcWrapper, class DstWrapper>
@@ -71,7 +95,6 @@ inline __device__ void DoInvert(SrcWrapper src, DstWrapper dst, const int2 size,
 {
     using SrcT                       = std::remove_const_t<typename SrcWrapper::ValueType>;
     using DstT                       = typename DstWrapper::ValueType;
-    using BT                         = cuda::BaseType<SrcT>;
     static constexpr int numChannels = cuda::NumElements<SrcT>;
     static_assert(numChannels == cuda::NumElements<DstT>);
     // if planar then no interleaved channels
@@ -84,9 +107,28 @@ inline __device__ void DoInvert(SrcWrapper src, DstWrapper dst, const int2 size,
     }
     auto coord = same_shape::GetCoordForLayout<IsPlanar>(nhwCoord, p);
 
-    // out = bound - in, per element. The subtraction is exact for the supported types, so the
-    // result is bit-exact with the equivalent interleaved computation (Golden rule / COV-BITEXACT).
-    dst[coord] = cuda::SaturateCast<DstT>(PhotometricUpperBound<BT>() - src[coord]);
+    const auto invertPixel = [](SrcT pixel)
+    {
+        DstT out;
+#pragma unroll
+        for (int c = 0; c < numChannels; ++c)
+        {
+            cuda::GetElement(out, c) = InvertValue(cuda::GetElement(pixel, c));
+        }
+        return out;
+    };
+
+    if constexpr (!IsPlanar && alignof(SrcT) > alignof(cuda::BaseType<SrcT>))
+    {
+        const SrcT *srcPtr = src.ptr(nhwCoord.z, nhwCoord.y, nhwCoord.x);
+        DstT       *dstPtr = dst.ptr(nhwCoord.z, nhwCoord.y, nhwCoord.x);
+        if ((reinterpret_cast<uintptr_t>(srcPtr) | reinterpret_cast<uintptr_t>(dstPtr)) % alignof(SrcT) != 0)
+        {
+            same_shape::StoreUnalignedPixel(dstPtr, invertPixel(same_shape::LoadUnalignedPixel(srcPtr)));
+            return;
+        }
+    }
+    dst[coord] = invertPixel(src[coord]);
 }
 
 // Invert kernel --------------------------------------------------------------------------
@@ -95,214 +137,46 @@ inline __device__ void DoInvert(SrcWrapper src, DstWrapper dst, const int2 size,
 template<bool isPlanar, class SrcWrapper, class DstWrapper>
 __global__ void Invert(SrcWrapper src, DstWrapper dst, int2 size, int numPlanes)
 {
-    assert(isPlanar || numPlanes == 1);
-    if constexpr (!isPlanar)
-    {
-        DoInvert<isPlanar>(src, dst, size, 0);
-    }
-    else
-    {
-        for (int p = 0; p < numPlanes; p++)
-        {
-            DoInvert<isPlanar>(src, dst, size, p);
-        }
-    }
+    same_shape::ForEachPlane<isPlanar>(numPlanes, [=](int p) { DoInvert<isPlanar>(src, dst, size, p); });
 }
 
 // VarShape variant
 template<bool isPlanar, class SrcWrapper, class DstWrapper>
 __global__ void Invert(SrcWrapper src, DstWrapper dst, int numPlanes)
 {
-    assert(isPlanar || numPlanes == 1);
     int  z = blockIdx.z;
     int2 size{dst.width(z), dst.height(z)};
 
-    if constexpr (!isPlanar)
-    {
-        DoInvert<isPlanar>(src, dst, size, 0);
-    }
-    else
-    {
-        for (int p = 0; p < numPlanes; p++)
-        {
-            DoInvert<isPlanar>(src, dst, size, p);
-        }
-    }
+    same_shape::ForEachPlane<isPlanar>(numPlanes, [=](int p) { DoInvert<isPlanar>(src, dst, size, p); });
 }
 
-// Vectorized planar kernel -----------------------------------------------------------------
+// Vectorized planar element map ------------------------------------------------------------
 //
 // The scalar planar kernel above moves one element per thread per plane, so the 1-byte planar paths
-// are memory-latency bound (NCU: ~82% long-scoreboard stalls, ~58-70% BWUtil) — each warp has only a
-// single outstanding load. This kernel maps each (sample, plane) to grid.z (no per-plane loop) and
-// has each thread own NGROUP independent 4-column groups, issuing all NGROUP wide vector loads
-// (uchar4 / float4) before any compute so many memory requests are outstanding at once. Output is
-// bit-identical to DoInvert per element (same SaturateCast(bound - in)). Modeled on
-// OpNormalize.cu's planar vector body. Caller guards sizeof(Vec4)-aligned strides and falls back to the
-// scalar kernel otherwise; a width not a multiple of 4 is handled by the per-thread scalar tail.
-template<int NGROUP, typename BT>
-__global__ void InvertPlanarVec4Kernel(cuda::Tensor4DWrap<const BT, int32_t> src, cuda::Tensor4DWrap<BT, int32_t> dst,
-                                       int4 inout_size)
+// are memory-latency bound (NCU: ~82% long-scoreboard stalls, ~58-70% BWUtil) -- each warp has only a
+// single outstanding load. same_shape::PlanarVec4Kernel fixes that (wide loads, NGROUP groups per
+// thread, one grid.z block per (sample, plane)); this is the only Invert-specific part of it, and it
+// is bit-identical to DoInvert per element (same saturating InvertValue).
+template<typename BT>
+struct InvertVec4Op
 {
-    const int g0      = blockIdx.x * blockDim.x * NGROUP + threadIdx.x;
-    const int src_y   = blockIdx.y * blockDim.y + threadIdx.y;
-    const int nc      = blockIdx.z;
-    const int batch   = nc / inout_size.y;
-    const int channel = nc % inout_size.y;
-    const int width   = inout_size.w;
+    using Param = same_shape::NoParam;
 
-    if (g0 * 4 >= width || src_y >= inout_size.z)
+    inline __device__ explicit InvertVec4Op(Param) {}
+
+    inline __device__ BT operator()(BT v) const
     {
-        return;
+        return InvertValue(v);
     }
 
-    using Vec4     = cuda::MakeType<BT, 4>;
-    const BT bound = PhotometricUpperBound<BT>();
-
-    // Loads first: issue all NGROUP wide loads before any compute (raises outstanding requests).
-    int  cx[NGROUP];
-    bool full[NGROUP];
-    Vec4 in4[NGROUP];
-#pragma unroll
-    for (int i = 0; i < NGROUP; ++i)
+    // Four independent U8 complements are exactly one packed word complement. Keeping the value
+    // packed avoids lane extraction without changing the scalar fallback used by ragged rows.
+    template<typename T = BT, std::enable_if_t<std::is_same_v<T, unsigned char>, int> = 0>
+    inline __device__ uint32_t ApplyWord(uint32_t v) const
     {
-        cx[i]   = (g0 + i * blockDim.x) * 4;
-        full[i] = cx[i] + 4 <= width;
-        if (full[i])
-        {
-            in4[i] = *reinterpret_cast<const Vec4 *>(src.ptr(batch, channel, src_y, cx[i]));
-        }
+        return ~v;
     }
-
-#pragma unroll
-    for (int i = 0; i < NGROUP; ++i)
-    {
-        if (full[i])
-        {
-            Vec4 out4;
-            out4.x                                                           = cuda::SaturateCast<BT>(bound - in4[i].x);
-            out4.y                                                           = cuda::SaturateCast<BT>(bound - in4[i].y);
-            out4.z                                                           = cuda::SaturateCast<BT>(bound - in4[i].z);
-            out4.w                                                           = cuda::SaturateCast<BT>(bound - in4[i].w);
-            *reinterpret_cast<Vec4 *>(dst.ptr(batch, channel, src_y, cx[i])) = out4;
-        }
-        else if (cx[i] < width)
-        {
-            for (int x = cx[i]; x < width; ++x)
-            {
-                *dst.ptr(batch, channel, src_y, x) = cuda::SaturateCast<BT>(bound - *src.ptr(batch, channel, src_y, x));
-            }
-        }
-    }
-}
-
-// Keep the existing planar kernel's cross-group instruction-level parallelism. Collapsing this path
-// into the register-bounded U16 kernel below regresses the reference A100/H100 planar RGB8 workload.
-template<int NGROUP, typename BT>
-__global__ void InvertPlanarVarShapeVec4Kernel(cuda::ImageBatchVarShapeWrap<const BT> src,
-                                               cuda::ImageBatchVarShapeWrap<BT> dst, int numChannels)
-{
-    const int g0      = blockIdx.x * blockDim.x * NGROUP + threadIdx.x;
-    const int dst_y   = blockIdx.y * blockDim.y + threadIdx.y;
-    const int nc      = blockIdx.z;
-    const int batch   = nc / numChannels;
-    const int channel = nc % numChannels;
-    const int width   = dst.width(batch, channel);
-
-    if (g0 * 4 >= width || dst_y >= dst.height(batch, channel))
-    {
-        return;
-    }
-
-    using Vec4     = uchar4; // 1-byte planes only (caller guards sizeof(BT) == 1)
-    const BT bound = PhotometricUpperBound<BT>();
-
-    int  cx[NGROUP];
-    bool full[NGROUP];
-    Vec4 in4[NGROUP];
-#pragma unroll
-    for (int i = 0; i < NGROUP; ++i)
-    {
-        cx[i]   = (g0 + i * blockDim.x) * 4;
-        full[i] = cx[i] + 4 <= width;
-        if (full[i])
-        {
-            in4[i] = *reinterpret_cast<const Vec4 *>(src.ptr(batch, channel, dst_y, cx[i]));
-        }
-    }
-
-#pragma unroll
-    for (int i = 0; i < NGROUP; ++i)
-    {
-        if (full[i])
-        {
-            Vec4 out4;
-            out4.x                                                           = cuda::SaturateCast<BT>(bound - in4[i].x);
-            out4.y                                                           = cuda::SaturateCast<BT>(bound - in4[i].y);
-            out4.z                                                           = cuda::SaturateCast<BT>(bound - in4[i].z);
-            out4.w                                                           = cuda::SaturateCast<BT>(bound - in4[i].w);
-            *reinterpret_cast<Vec4 *>(dst.ptr(batch, channel, dst_y, cx[i])) = out4;
-        }
-        else if (cx[i] < width)
-        {
-            for (int x = cx[i]; x < width; ++x)
-            {
-                *dst.ptr(batch, channel, dst_y, x) = cuda::SaturateCast<BT>(bound - *src.ptr(batch, channel, dst_y, x));
-            }
-        }
-    }
-}
-
-// Vectorized U16 var-shape kernel: resolve the row pointers once per thread so each group does not
-// repeat the image-list lookup. Rows without Vec4 alignment and partial groups use the scalar fallback.
-template<int NGROUP, typename BT>
-__global__ void InvertU16VarShapeVec4Kernel(cuda::ImageBatchVarShapeWrap<const BT> src,
-                                            cuda::ImageBatchVarShapeWrap<BT> dst, int numChannels)
-{
-    const int g0      = blockIdx.x * blockDim.x * NGROUP + threadIdx.x;
-    const int dst_y   = blockIdx.y * blockDim.y + threadIdx.y;
-    const int nc      = blockIdx.z;
-    const int batch   = nc / numChannels;
-    const int channel = nc % numChannels;
-    const int width   = dst.width(batch, channel);
-
-    if (g0 * 4 >= width || dst_y >= dst.height(batch, channel))
-    {
-        return;
-    }
-
-    using Vec4       = cuda::MakeType<BT, 4>;
-    const BT   bound = PhotometricUpperBound<BT>();
-    const BT  *srow  = src.ptr(batch, channel, dst_y, 0);
-    BT        *drow  = dst.ptr(batch, channel, dst_y, 0);
-    const bool wide  = reinterpret_cast<uintptr_t>(srow) % alignof(Vec4) == 0
-                   && reinterpret_cast<uintptr_t>(drow) % alignof(Vec4) == 0;
-
-    // Keep one vector live at a time. Unrolling all groups raises the active register footprint
-    // above the optimization campaign's automatic memory allowance without improving coalescing.
-#pragma unroll 1
-    for (int i = 0; i < NGROUP; ++i)
-    {
-        const int cx = (g0 + i * blockDim.x) * 4;
-        if (wide && cx + 4 <= width)
-        {
-            const Vec4 in4 = *reinterpret_cast<const Vec4 *>(srow + cx);
-            Vec4       out4;
-            out4.x                               = cuda::SaturateCast<BT>(bound - in4.x);
-            out4.y                               = cuda::SaturateCast<BT>(bound - in4.y);
-            out4.z                               = cuda::SaturateCast<BT>(bound - in4.z);
-            out4.w                               = cuda::SaturateCast<BT>(bound - in4.w);
-            *reinterpret_cast<Vec4 *>(drow + cx) = out4;
-        }
-        else if (cx < width)
-        {
-            for (int x = cx; x < min(cx + 4, width); ++x)
-            {
-                drow[x] = cuda::SaturateCast<BT>(bound - srow[x]);
-            }
-        }
-    }
-}
+};
 
 // Four RGB8 pixels occupy exactly three aligned 32-bit words. Packing at that boundary avoids the
 // scalar uchar3 path's excessive sectors while preserving byte-exact 255-v arithmetic.
@@ -458,6 +332,122 @@ inline bool TryRunInvertDense(cudaStream_t stream, const nvcv::TensorDataStrided
     }
 }
 
+// Element stream. Allow-listed by base type, not width: F16 must not be complemented as integers.
+constexpr int kInvertStreamGrps = 2;
+
+template<typename BT, typename Enable = void>
+struct InvertStreamCarrier : elem_stream::DecliningCarrier
+{
+};
+
+template<typename BT>
+struct InvertStreamCarrier<BT,
+                           std::enable_if_t<std::is_same_v<BT, unsigned char> || std::is_same_v<BT, unsigned short>>>
+{
+    static constexpr bool kSupported = true;
+    using type                       = uint4;
+    using Param                      = elem_stream::NoParam;
+
+    static Param MakeParam()
+    {
+        return {};
+    }
+
+    inline static __device__ type Apply(type v, Param)
+    {
+        return type{~v.x, ~v.y, ~v.z, ~v.w};
+    }
+
+    inline static __device__ void Tail(const unsigned char *s, unsigned char *d, int bytes, Param)
+    {
+        for (int b = 0; b < bytes; ++b)
+        {
+            d[b] = static_cast<unsigned char>(~s[b]);
+        }
+    }
+};
+
+template<typename BT>
+struct InvertStreamCarrier<BT, std::enable_if_t<std::is_same_v<BT, short>>>
+{
+    static constexpr bool kSupported = true;
+    using type                       = uint4;
+    using Param                      = elem_stream::NoParam;
+
+    static Param MakeParam()
+    {
+        return {};
+    }
+
+    inline static __device__ uint32_t ApplyWord(uint32_t v)
+    {
+        // Expand each lane's sign bit without a cross-lane borrow. Negative lanes
+        // saturate to 32767; nonnegative lanes retain their low-15-bit complement.
+        const uint32_t sign = v & 0x80008000u;
+        const uint32_t mask = sign - (sign >> 15);
+        return (~v | mask) & 0x7fff7fffu;
+    }
+
+    inline static __device__ type Apply(type v, Param)
+    {
+        return type{ApplyWord(v.x), ApplyWord(v.y), ApplyWord(v.z), ApplyWord(v.w)};
+    }
+
+    inline static __device__ void Tail(const unsigned char *s, unsigned char *d, int bytes, Param)
+    {
+        elem_stream::TailElementwise<BT>(s, d, bytes, [](BT v) { return InvertValue(v); });
+    }
+};
+
+template<typename BT>
+struct InvertStreamCarrier<BT, std::enable_if_t<std::is_same_v<BT, float>>>
+{
+    static constexpr bool kSupported = true;
+    using type                       = float4;
+    using Param                      = elem_stream::NoParam;
+
+    static Param MakeParam()
+    {
+        return {};
+    }
+
+    inline static __device__ type Apply(type v, Param)
+    {
+        const BT bound = PhotometricUpperBound<BT>();
+        return type{cuda::SaturateCast<BT>(bound - v.x), cuda::SaturateCast<BT>(bound - v.y),
+                    cuda::SaturateCast<BT>(bound - v.z), cuda::SaturateCast<BT>(bound - v.w)};
+    }
+
+    inline static __device__ void Tail(const unsigned char *s, unsigned char *d, int bytes, Param)
+    {
+        const BT bound = PhotometricUpperBound<BT>();
+        elem_stream::TailElementwise<BT>(s, d, bytes, [bound](BT v) { return cuda::SaturateCast<BT>(bound - v); });
+    }
+};
+
+template<typename BT>
+struct InvertStreamCarrier<BT, std::enable_if_t<std::is_same_v<BT, double>>>
+{
+    static constexpr bool kSupported = true;
+    using type                       = double2;
+    using Param                      = elem_stream::NoParam;
+
+    static Param MakeParam()
+    {
+        return {};
+    }
+
+    inline static __device__ type Apply(type v, Param)
+    {
+        return type{InvertDoubleStreamValue(v.x), InvertDoubleStreamValue(v.y)};
+    }
+
+    inline static __device__ void Tail(const unsigned char *s, unsigned char *d, int bytes, Param)
+    {
+        elem_stream::TailElementwise<BT>(s, d, bytes, [](BT v) { return InvertDoubleStreamValue(v); });
+    }
+};
+
 // Run Invert kernel ----------------------------------------------------------------------
 
 template<bool isPlanar, typename ValueT, class SrcData, class DstData>
@@ -466,31 +456,39 @@ inline void RunInvert(cudaStream_t stream, const SrcData &srcData, const DstData
     dim3 block(32, 4, 1);
     if constexpr (std::is_same_v<SrcData, nvcv::TensorDataStridedCuda>)
     {
-        auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(srcData);
-        auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(dstData);
-        int2 size      = cuda::StaticCast<int>(long2{srcAccess->numCols(), srcAccess->numRows()});
+        auto       srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(srcData);
+        auto       dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(dstData);
+        const auto prep      = same_shape::MakeTensorLaunchPrep(*srcAccess, *dstAccess);
+        const int2 size      = prep.size;
 
-        // Each sample maps to one grid.z block (planar channels are looped inside the kernel, so
-        // grid.z is the sample count, not N*C); CUDA caps grid.z at 65535.
-        if (srcAccess->numSamples() > 65535)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Batch size exceeds the CUDA grid.z limit of 65535");
-        }
-        dim3 grid(util::DivUp(size.x, block.x), util::DivUp(size.y, block.y), srcAccess->numSamples());
-
-        int64_t inMaxStride  = srcAccess->sampleStride() * srcAccess->numSamples();
-        int64_t outMaxStride = dstAccess->sampleStride() * dstAccess->numSamples();
-        if (std::max(inMaxStride, outMaxStride) > cuda::TypeTraits<int32_t>::max)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Input or output size exceeds %d. Tensor is too large.",
-                                  cuda::TypeTraits<int32_t>::max);
-        }
         using StrideType = int32_t;
 
-        // Fully dense src+dst collapse to one contiguous byte range; the flat 16-byte-word kernels
-        // beat every per-element path (see the dense-kernel block above). Falls through to the
-        // layout-specific kernels for padded or externally-wrapped strides.
+        // 4-byte planar is the one arm the stream does not improve; it defers to below.
+        constexpr bool kStreamFirst = !(isPlanar && sizeof(cuda::BaseType<ValueT>) == 4);
+        if constexpr (kStreamFirst)
+        {
+            if (elem_stream::TryRunCarrier<kInvertStreamGrps, InvertStreamCarrier, isPlanar, ValueT>(
+                    stream, srcData, dstData, *srcAccess, *dstAccess))
+            {
+                return;
+            }
+        }
+
+        // Fully dense src+dst collapse to one contiguous byte range, which the flat 8-byte-word
+        // kernel above walks. Two ways dense work reaches it:
+        //   (a) elem_stream::IsCarrierAligned declined, because a base pointer or an uncollapsed
+        //       sample stride is a multiple of 8 but not of 16, which an 8-byte word does not care
+        //       about. A single-sample tensor is the common case: MakePlan's sample collapse
+        //       requires numSamples > 1, so its sampleStride stays at the (unused) sample size and
+        //       is tested for 16-byte alignment even though nothing indexes with it.
+        //   (b) MakePlan's final `runBytes <= INT32_MAX` test declined. That is reachable even
+        //       though MakeTensorLaunchPrep ran first, because CheckTensorStrideLimit bounds the
+        //       largest offset a wrap can form (totalBytes - colStride), not the byte count: a
+        //       dense single-sample tensor of exactly 2^31 bytes has a span bound of
+        //       2^31 - colStride <= INT32_MAX, passes the validator, and then fails MakePlan.
+        // MakePlan's remaining exits cannot leave dense work here -- an oversized batch is already
+        // thrown by MakeTensorLaunchPrep above, and an unpacked row or plane stride makes
+        // DenseTensorBytes return -1 too. Falls through to the layout-specific kernels otherwise.
         if (TryRunInvertDense<isPlanar, ValueT>(stream, srcData, dstData, *srcAccess, *dstAccess))
         {
             return;
@@ -506,48 +504,29 @@ inline void RunInvert(cudaStream_t stream, const SrcData &srcData, const DstData
             // like the planar paths. Reuse the vectorized planar kernel (C == 1). The multi-channel
             // interleaved cases (uchar3/uchar4/float3/float4) already move 3-4 bytes/thread and sit at
             // the bandwidth ridge, so they keep the scalar kernel untouched.
-            // F16 is excluded: InvertVec4Type maps 2-byte types to ushort4, whose lanes would feed
-            // raw half bit patterns into `bound - in` as integers. Falling back to the scalar kernel
-            // keeps real half arithmetic; a dedicated half wide-load path is a future optimization.
+            // F16 is excluded: the wide path's lane type is cuda::MakeType<BT, 4>, so a 2-byte BT
+            // gives ushort4, whose lanes would feed raw half bit patterns into `bound - in` as integers.
+            // Falling back to the scalar kernel keeps real half arithmetic; a dedicated half
+            // wide-load path is a future optimization.
             if constexpr (cuda::NumElements<ValueT> == 1 && !cuda::detail::IsHalfV<BT>)
             {
-                using Vec4            = cuda::MakeType<BT, 4>;
-                constexpr int NGROUP  = 4;
-                const int64_t sStride = srcAccess->sampleStride(), rStride = srcAccess->rowStride();
-                const int64_t dsStride = dstAccess->sampleStride(), drStride = dstAccess->rowStride();
-                const bool    aligned = reinterpret_cast<uintptr_t>(srcData.basePtr()) % sizeof(Vec4) == 0
-                                  && reinterpret_cast<uintptr_t>(dstData.basePtr()) % sizeof(Vec4) == 0
-                                  && sStride % sizeof(Vec4) == 0 && rStride % sizeof(Vec4) == 0
-                                  && dsStride % sizeof(Vec4) == 0 && drStride % sizeof(Vec4) == 0;
-                if (aligned)
-                {
-                    // C == 1, so planeStride is never indexed (channel is always 0); pass sampleStride.
-                    auto srcV = cuda::Tensor4DWrap<const BT, StrideType>(srcData.basePtr(), static_cast<int>(sStride),
-                                                                         static_cast<int>(sStride),
-                                                                         static_cast<int>(rStride));
-                    auto dstV
-                        = cuda::Tensor4DWrap<BT, StrideType>(dstData.basePtr(), static_cast<int>(dsStride),
-                                                             static_cast<int>(dsStride), static_cast<int>(drStride));
-                    dim3 vgrid(util::DivUp(util::DivUp(size.x, 4), static_cast<int>(block.x) * NGROUP),
-                               util::DivUp(size.y, block.y), srcAccess->numSamples());
-                    InvertPlanarVec4Kernel<NGROUP, BT><<<vgrid, block, 0, stream>>>(
-                        srcV, dstV, int4{static_cast<int>(srcAccess->numSamples()), 1, size.y, size.x});
-                    launchedVec = true;
-                }
+                constexpr int NGROUP = 4;
+                launchedVec          = same_shape::TryRunVec4TensorFor<NGROUP, BT, StrideType, InvertVec4Op<BT>>(
+                    stream, false, srcData.basePtr(), dstData.basePtr(), *srcAccess, *dstAccess, size, block,
+                    same_shape::NoParam{});
             }
 
             if (!launchedVec)
             {
                 auto src = cuda::CreateTensorWrapNHW<const ValueT, StrideType>(srcData);
                 auto dst = cuda::CreateTensorWrapNHW<ValueT, StrideType>(dstData);
-                Invert<isPlanar><<<grid, block, 0, stream>>>(src, dst, size, 1);
+                Invert<isPlanar><<<prep.scalarGrid(block), block, 0, stream>>>(src, dst, size, 1);
             }
         }
         else
         {
             using BT              = cuda::BaseType<ValueT>;
             const int numPlanes   = srcAccess->numPlanes();
-            const int numSamples  = static_cast<int>(srcAccess->numSamples());
             bool      launchedVec = false;
 
             // Vectorized planar path for 1-byte / 4-byte planes: map each (sample, plane) to grid.z and
@@ -557,43 +536,24 @@ inline void RunInvert(cudaStream_t stream, const SrcData &srcData, const DstData
             // kernel's per-thread tail handles a width that is not a multiple of 4).
             if constexpr (sizeof(BT) == 1 || sizeof(BT) == 4)
             {
-                using Vec4            = cuda::MakeType<BT, 4>;
-                constexpr int NGROUP  = sizeof(BT) == 1 ? 4 : 2;
-                const int64_t planes  = static_cast<int64_t>(numSamples) * numPlanes;
-                const int64_t sStride = srcAccess->sampleStride(), pStride = srcAccess->planeStride(),
-                              rStride  = srcAccess->rowStride();
-                const int64_t dsStride = dstAccess->sampleStride(), dpStride = dstAccess->planeStride(),
-                              drStride = dstAccess->rowStride();
-                const bool aligned
-                    = planes <= 65535 && reinterpret_cast<uintptr_t>(srcData.basePtr()) % sizeof(Vec4) == 0
-                   && reinterpret_cast<uintptr_t>(dstData.basePtr()) % sizeof(Vec4) == 0 && sStride % sizeof(Vec4) == 0
-                   && pStride % sizeof(Vec4) == 0 && rStride % sizeof(Vec4) == 0 && dsStride % sizeof(Vec4) == 0
-                   && dpStride % sizeof(Vec4) == 0 && drStride % sizeof(Vec4) == 0;
-                if (aligned)
-                {
-                    auto srcV = cuda::Tensor4DWrap<const BT, StrideType>(srcData.basePtr(), static_cast<int>(sStride),
-                                                                         static_cast<int>(pStride),
-                                                                         static_cast<int>(rStride));
-                    auto dstV
-                        = cuda::Tensor4DWrap<BT, StrideType>(dstData.basePtr(), static_cast<int>(dsStride),
-                                                             static_cast<int>(dpStride), static_cast<int>(drStride));
-                    dim3 vgrid(util::DivUp(util::DivUp(size.x, 4), static_cast<int>(block.x) * NGROUP),
-                               util::DivUp(size.y, block.y), static_cast<unsigned int>(planes));
-                    InvertPlanarVec4Kernel<NGROUP, BT>
-                        <<<vgrid, block, 0, stream>>>(srcV, dstV, int4{numSamples, numPlanes, size.y, size.x});
-                    launchedVec = true;
-                }
+                constexpr int NGROUP = sizeof(BT) == 1 ? 4 : 2;
+                launchedVec          = same_shape::TryRunVec4TensorFor<NGROUP, BT, StrideType, InvertVec4Op<BT>>(
+                    stream, true, srcData.basePtr(), dstData.basePtr(), *srcAccess, *dstAccess, size, block,
+                    same_shape::NoParam{});
+            }
+
+            if (!launchedVec && !kStreamFirst
+                && elem_stream::TryRunCarrier<kInvertStreamGrps, InvertStreamCarrier, isPlanar, ValueT>(
+                    stream, srcData, dstData, *srcAccess, *dstAccess))
+            {
+                return;
             }
 
             if (!launchedVec)
             {
-                auto src = cuda::Tensor4DWrap<const ValueT, StrideType>(
-                    srcData.basePtr(), static_cast<int>(srcAccess->sampleStride()),
-                    static_cast<int>(srcAccess->planeStride()), static_cast<int>(srcAccess->rowStride()));
-                auto dst = cuda::Tensor4DWrap<ValueT, StrideType>(
-                    dstData.basePtr(), static_cast<int>(dstAccess->sampleStride()),
-                    static_cast<int>(dstAccess->planeStride()), static_cast<int>(dstAccess->rowStride()));
-                Invert<isPlanar><<<grid, block, 0, stream>>>(src, dst, size, numPlanes);
+                auto [src, dst] = same_shape::MakePlanarWrapPair<ValueT, ValueT, StrideType>(srcData, *srcAccess,
+                                                                                             dstData, *dstAccess);
+                Invert<isPlanar><<<prep.scalarGrid(block), block, 0, stream>>>(src, dst, size, numPlanes);
             }
         }
         NVCV_CHECK_THROW(cudaGetLastError());
@@ -601,14 +561,7 @@ inline void RunInvert(cudaStream_t stream, const SrcData &srcData, const DstData
     else
     {
         static_assert(std::is_same_v<SrcData, nvcv::ImageBatchVarShapeDataStridedCuda>);
-        // One grid.z block per image; CUDA caps grid.z at 65535.
-        if (dstData.numImages() > 65535)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Batch size exceeds the CUDA grid.z limit of 65535");
-        }
-        int3 dstMaxSize{dstData.maxSize().w, dstData.maxSize().h, dstData.numImages()};
-        dim3 grid(util::DivUp(dstMaxSize.x, block.x), util::DivUp(dstMaxSize.y, block.y), dstMaxSize.z);
+        const auto prep = same_shape::MakeVarShapeLaunchPrep(dstData);
 
         const int numPlanes = dstData.uniqueFormat().numPlanes();
 
@@ -617,8 +570,11 @@ inline void RunInvert(cudaStream_t stream, const SrcData &srcData, const DstData
             if (UsePackedU8C3VarShapeKernelOnCurrentDevice())
             {
                 constexpr int NGROUP = 4;
-                dim3          vgrid(util::DivUp(util::DivUp(dstMaxSize.x, 4), static_cast<int>(block.x) * NGROUP),
-                                    util::DivUp(dstMaxSize.y, block.y), dstMaxSize.z);
+                // Rows map onto grid.y here too, and no var-shape path below divides rows any more
+                // coarsely, so there is nothing to decline to: bound it by throwing.
+                same_shape::CheckRowGridLimit(prep.maxSize.y, static_cast<int>(block.y));
+                dim3 vgrid(util::DivUp(util::DivUp(prep.maxSize.x, 4), static_cast<int>(block.x) * NGROUP),
+                           util::DivUp(prep.maxSize.y, block.y), prep.gridZ);
                 cuda::ImageBatchVarShapeWrap<const uchar3> srcV(srcData);
                 cuda::ImageBatchVarShapeWrap<uchar3>       dstV(dstData);
                 InvertU8C3VarShapePackedKernel<NGROUP><<<vgrid, block, 0, stream>>>(srcV, dstV);
@@ -628,78 +584,44 @@ inline void RunInvert(cudaStream_t stream, const SrcData &srcData, const DstData
         }
 
         // Preserve the established 1-byte planar kernel; it needs cross-group ILP to stay at ridge.
+        // Collapsing this path into the register-bounded U16 kernel above regresses the reference
+        // A100/H100 planar RGB8 workload, so the two var-shape wide paths stay distinct.
         using BT = cuda::BaseType<ValueT>;
         if constexpr (isPlanar && sizeof(BT) == 1)
         {
             constexpr int NGROUP = 4;
-            const int64_t planes = static_cast<int64_t>(dstData.numImages()) * numPlanes;
-            if (planes <= 65535)
+            if (same_shape::TryRunVec4VarShapeFor<NGROUP, BT, InvertVec4Op<BT>>(
+                    stream, srcData, dstData, numPlanes, prep.maxSize, block, same_shape::NoParam{}))
             {
-                cuda::ImageBatchVarShapeWrap<const BT> srcV(srcData);
-                cuda::ImageBatchVarShapeWrap<BT>       dstV(dstData);
-                dim3 vgrid(util::DivUp(util::DivUp(dstMaxSize.x, 4), static_cast<int>(block.x) * NGROUP),
-                           util::DivUp(dstMaxSize.y, block.y), static_cast<unsigned int>(planes));
-                InvertPlanarVarShapeVec4Kernel<NGROUP, BT><<<vgrid, block, 0, stream>>>(srcV, dstV, numPlanes);
                 NVCV_CHECK_THROW(cudaGetLastError());
                 return;
             }
         }
 
-        // The U16 interleaved path keeps one vector group live at a time to cap register residency.
-        // F16 is excluded like in the tensor path: the ushort4 lanes would treat half bit patterns
-        // as integers, so it falls back to the scalar kernel's real half arithmetic.
+        // The U16 interleaved path keeps one vector group live at a time to cap register residency,
+        // which is what `Serial` selects in the shared kernel. F16 is excluded like in the tensor
+        // path: the ushort4 lanes would treat half bit patterns as integers, so it falls back to
+        // the scalar kernel's real half arithmetic.
         if constexpr (!isPlanar && cuda::NumElements<ValueT> == 1 && sizeof(BT) == 2 && !cuda::detail::IsHalfV<BT>)
         {
-            constexpr int                          NGROUP = 4;
-            cuda::ImageBatchVarShapeWrap<const BT> srcV(srcData);
-            cuda::ImageBatchVarShapeWrap<BT>       dstV(dstData);
-            dim3 vgrid(util::DivUp(util::DivUp(dstMaxSize.x, 4), static_cast<int>(block.x) * NGROUP),
-                       util::DivUp(dstMaxSize.y, block.y), dstMaxSize.z);
-            InvertU16VarShapeVec4Kernel<NGROUP, BT><<<vgrid, block, 0, stream>>>(srcV, dstV, 1);
-            NVCV_CHECK_THROW(cudaGetLastError());
-            return;
+            constexpr int NGROUP = 4;
+            // Of the two caps inside TryRunVec4VarShape only the row one can decline here:
+            // numPlanes is 1 and CheckVarShapeGridLimit above has already rejected an image count
+            // over 65535, so grid.z is in range, but a batch whose tallest image needs more than
+            // 65535 block-rows falls through to the scalar kernel, which rejects it.
+            if (same_shape::TryRunVec4VarShapeFor<NGROUP, BT, InvertVec4Op<BT>, /*Serial=*/true>(
+                    stream, srcData, dstData, 1, prep.maxSize, block, same_shape::NoParam{}))
+            {
+                NVCV_CHECK_THROW(cudaGetLastError());
+                return;
+            }
         }
 
         cuda::ImageBatchVarShapeWrap<const ValueT> src(srcData);
         cuda::ImageBatchVarShapeWrap<ValueT>       dst(dstData);
-        Invert<isPlanar><<<grid, block, 0, stream>>>(src, dst, numPlanes);
+        Invert<isPlanar><<<prep.scalarGrid(block), block, 0, stream>>>(src, dst, numPlanes);
         NVCV_CHECK_THROW(cudaGetLastError());
     }
-}
-
-// Dispatch over base data type (u8 / u16 / f16 / f32) and channel count (1 / 3 / 4) -------
-
-template<typename Cb>
-inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
-{
-    using uchar  = unsigned char;
-    using ushort = unsigned short;
-
-#define NVCV_INVERT_RUN_TYPED(DYN_BASE_TYPE, STATIC_BASE_TYPE)                        \
-    ((dType == nvcv::TYPE_4##DYN_BASE_TYPE) || (dType == nvcv::TYPE_3##DYN_BASE_TYPE) \
-     || (dType == nvcv::TYPE_2##DYN_BASE_TYPE) || (dType == nvcv::TYPE_##DYN_BASE_TYPE)) cb(STATIC_BASE_TYPE{});
-
-    // clang-format off
-    if NVCV_INVERT_RUN_TYPED(U8, uchar)
-    else if NVCV_INVERT_RUN_TYPED(U16, ushort)
-    else if NVCV_INVERT_RUN_TYPED(F16, __half)
-    else if NVCV_INVERT_RUN_TYPED(F32, float)
-    else
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid data type: Invert supports 8-bit unsigned, 16-bit unsigned, 16-bit float and "
-                              "32-bit float");
-    }
-        // clang-format on
-
-#undef NVCV_INVERT_RUN_TYPED
-}
-
-template<typename Cb>
-inline void RunChannelSwitch(int numChannels, int numPlanes, nvcv::DataType dType, const Cb &cb)
-{
-    RunTypeSwitch(dType, [&](auto dummyVal)
-                  { same_shape::DispatchChannels<decltype(dummyVal)>(numChannels, numPlanes, "Invert", cb); });
 }
 
 } // anonymous namespace
@@ -712,20 +634,17 @@ Invert::Invert() {}
 void Invert::operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::Invert::operator()[Tensor]");
-    int            numInterleavedChannels;
-    int            numPlanes;
-    nvcv::DataType dtype;
-    auto           srcData = src.exportData<nvcv::TensorDataStridedCuda>();
-    auto           dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
-    same_shape::ValidateSrcDstTensors(numInterleavedChannels, numPlanes, dtype, srcData, dstData);
+    auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    auto info    = same_shape::ValidateSrcDstTensors(srcData, dstData);
 
-    RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
-                     [&stream, &srcData, &dstData](auto dummyVal, auto isPlanar)
-                     {
-                         using ValueT   = decltype(dummyVal);
-                         using IsPlanar = decltype(isPlanar);
-                         RunInvert<IsPlanar::value, ValueT>(stream, *srcData, *dstData);
-                     });
+    same_shape::DispatchWideTypeAndChannels(info.numInterleavedChannels, info.numPlanes, info.srcDtype, "Invert",
+                                            [&stream, &srcData, &dstData](auto dummyVal, auto isPlanar)
+                                            {
+                                                using ValueT   = decltype(dummyVal);
+                                                using IsPlanar = decltype(isPlanar);
+                                                RunInvert<IsPlanar::value, ValueT>(stream, *srcData, *dstData);
+                                            });
 }
 
 // VarShape input variant
@@ -738,14 +657,14 @@ void Invert::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src
     nvcv::DataType dtype;
     auto srcDstData = same_shape::ValidateSrcDstVarBatch(numInterleavedChannels, numPlanes, dtype, stream, src, dst);
 
-    RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
-                     [&stream, &srcDstData](auto dummyVal, auto isPlanar)
-                     {
-                         using ValueT             = decltype(dummyVal);
-                         using IsPlanar           = decltype(isPlanar);
-                         auto &[srcData, dstData] = srcDstData;
-                         RunInvert<IsPlanar::value, ValueT>(stream, *srcData, *dstData);
-                     });
+    same_shape::DispatchWideTypeAndChannels(numInterleavedChannels, numPlanes, dtype, "Invert",
+                                            [&stream, &srcDstData](auto dummyVal, auto isPlanar)
+                                            {
+                                                using ValueT             = decltype(dummyVal);
+                                                using IsPlanar           = decltype(isPlanar);
+                                                auto &[srcData, dstData] = srcDstData;
+                                                RunInvert<IsPlanar::value, ValueT>(stream, *srcData, *dstData);
+                                            });
 }
 
 } // namespace cvcuda::priv

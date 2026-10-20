@@ -1,5 +1,5 @@
 
-[//]: # "SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+[//]: # "SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
 [//]: # "SPDX-License-Identifier: Apache-2.0"
 [//]: # ""
 [//]: # "Licensed under the Apache License, Version 2.0 (the 'License');"
@@ -19,3 +19,4 @@ The sample data are obtained from the following sources :
 - tabby_tiger_cat.jpg is obtained from [maxpixel.net](https://www.maxpixel.net/Cute-Kitten-Cat-Tabby-Animals-Outdoors-Pets-1506960) under Creative Commons Zero - CC0 license)
 - pexels-ilimdar-avgezer-7081456.mp4 is obtained from [pexels](https://www.pexels.com/video/video-of-a-lazy-cat-while-closing-its-eyes-7081456/) under Pexels license
 - pexels-chiel-slotman-4423925-1920x1080-25fps.mp4  is obtained from [pexels](https://www.pexels.com/video/man-in-white-shirt-walking-in-slow-motion-4423925/) under Pexels license
+- peoplenet.jpg is a sample inference image published with [NVIDIA PeopleNet Transformer v2](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/peoplenet_transformer_v2/) on NGC. That page places the model itself under the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/) and states no separate terms for its illustrative sample images.

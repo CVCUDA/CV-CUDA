@@ -21,10 +21,15 @@
 
 namespace cvcudapy {
 
-void ExportInterpolationType(py::module &m)
+void ExportInterpolationType(py::module_ &m)
 {
-    py::enum_<NVCVInterpolationType>(m, "Interp", "Interpolation methods for image resampling.")
-        .value("NEAREST", NVCV_INTERP_NEAREST, "Nearest-neighbor interpolation")
+    py::enum_compat<NVCVInterpolationType>(m, "Interp", "Interpolation methods for image resampling.")
+        .value("NEAREST", NVCV_INTERP_NEAREST,
+               "Nearest-neighbor interpolation sampling the pixel covering the destination center "
+               "(PIL, OpenCV INTER_NEAREST, torchvision nearest-exact)")
+        .value("NEAREST_FLOOR", NVCV_INTERP_NEAREST_FLOOR,
+               "Nearest-neighbor interpolation without the half-pixel offset, biased toward the "
+               "origin (torchvision/PyTorch legacy nearest). Resize only")
         .value("LINEAR", NVCV_INTERP_LINEAR, "Linear interpolation")
         .value("CUBIC", NVCV_INTERP_CUBIC, "Cubic interpolation")
         .value("AREA", NVCV_INTERP_AREA, "Area-based (resampling using pixels in area) interpolation")

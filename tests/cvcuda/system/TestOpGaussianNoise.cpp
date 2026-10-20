@@ -34,6 +34,7 @@
 #include <nvcv/TensorDataAccess.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -894,6 +895,20 @@ TEST(OpGaussianNoisePlanar, varshape_rejects_two_channel)
         { op(stream, src, dst, muval, sigmaval, true, 12345); });
 }
 
+TEST(OpGaussianNoisePlanar, varshape_rejects_planar_channel_count_mismatch)
+{
+    constexpr int         batch    = 1;
+    nvcv::Tensor          muval    = MakeGaussianNoiseParam(batch, 0.f);
+    nvcv::Tensor          sigmaval = MakeGaussianNoiseParam(batch, 0.005f);
+    cvcuda::GaussianNoise op(batch);
+
+    nvcv::test::planar::ExpectVarShapeRejected(
+        {nvcv::FMT_RGB8p}, {nvcv::FMT_RGBA8p},
+        [&op, &muval, &sigmaval](cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                 const nvcv::ImageBatchVarShape &dst)
+        { op(stream, src, dst, muval, sigmaval, true, 12345); });
+}
+
 TEST(OpGaussianNoiseScalar, uint8_matches_torchvision_clip_and_wrap_semantics)
 {
     constexpr int width     = 2;
@@ -1195,6 +1210,62 @@ TEST(OpGaussianNoiseScalar_Negative, rejects_negative_sigma_and_unsupported_dtyp
     EXPECT_EQ(
         NVCV_ERROR_INVALID_ARGUMENT,
         nvcv::ProtectCall([&op, &srcF64, &dstF64] { op(nullptr, srcF64, dstF64, 0.f, 1.f, true, 0, true, true); }));
+}
+
+TEST(OpGaussianNoiseScalar_Negative, batch_exceeds_maxBatch)
+{
+    constexpr int batch    = 2;
+    constexpr int maxBatch = 1;
+
+    nvcv::Tensor          src = nvcv::util::CreateTensor(batch, 4, 4, nvcv::FMT_RGB8);
+    nvcv::Tensor          dst = nvcv::util::CreateTensor(batch, 4, 4, nvcv::FMT_RGB8);
+    cvcuda::GaussianNoise op(maxBatch);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, src, dst, 0.f, 1.f, false, 12345, true, true); }));
+}
+
+TEST(OpGaussianNoiseScalar_Negative, rejects_tensor_sample_stride_overflow)
+{
+    constexpr int     batch                 = 2;
+    constexpr int     height                = 1;
+    constexpr int     width                 = 1;
+    constexpr int     channels              = 3;
+    constexpr int64_t compactSampleStride   = height * width * channels;
+    constexpr int64_t oversizedSampleStride = static_cast<int64_t>(std::numeric_limits<int32_t>::max()) / batch + 1;
+
+    auto makeTensor = [](int64_t sampleStride)
+    {
+        NVCVByte *allocation{};
+        EXPECT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&allocation), 1));
+
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = allocation;
+        buffer.strides[0] = sampleStride;
+        buffer.strides[1] = width * channels;
+        buffer.strides[2] = channels;
+        buffer.strides[3] = 1;
+        return nvcv::TensorWrapData(
+            nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{batch, height, width, channels}, "NHWC"},
+                nvcv::TYPE_U8, buffer
+        },
+            nvcv::TensorDataCleanupCallback{[allocation](const nvcv::TensorData &)
+                                            {
+                                                EXPECT_EQ(cudaSuccess, cudaFree(allocation));
+                                            }});
+    };
+
+    nvcv::Tensor          srcLarge   = makeTensor(oversizedSampleStride);
+    nvcv::Tensor          dstCompact = makeTensor(compactSampleStride);
+    nvcv::Tensor          srcCompact = makeTensor(compactSampleStride);
+    nvcv::Tensor          dstLarge   = makeTensor(oversizedSampleStride);
+    cvcuda::GaussianNoise op(batch);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, srcLarge, dstCompact, 0.f, 1.f, false, 12345, true, true); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, srcCompact, dstLarge, 0.f, 1.f, false, 12345, true, true); }));
 }
 
 TEST(OpGaussianNoiseScalar_Negative, rejects_layout_shape_channel_and_batch_mismatches)

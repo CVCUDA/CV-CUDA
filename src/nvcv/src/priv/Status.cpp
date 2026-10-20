@@ -30,7 +30,7 @@
 
 namespace nvcv::priv {
 
-void SetThreadError(std::exception_ptr e)
+void SetThreadError(std::exception_ptr error)
 {
     CoreTLS &tls = GetCoreTLS();
 
@@ -38,9 +38,9 @@ void SetThreadError(std::exception_ptr e)
 
     try
     {
-        if (e)
+        if (error)
         {
-            rethrow_exception(e);
+            rethrow_exception(error);
         }
         else
         {

@@ -15,61 +15,59 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpNonMaximumSuppression.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
+#include <array>
 #include <limits>
 
 namespace cvcudapy {
 
 namespace {
+using native::Stream;
+using native::Tensor;
 
-Tensor NonMaximumSuppressionInto(Tensor &dst, Tensor &src, Tensor &scores, float scoreThreshold, float iouThreshold,
-                                 std::optional<Stream> pstream)
+Tensor &NonMaximumSuppressionInto(Tensor &dst, Tensor &src, Tensor &scores, float scoreThreshold, float iouThreshold,
+                                  std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<cvcuda::NonMaximumSuppression>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {src, scores});
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    guard.run([&op, &pstream, &src, &dst, &scores, &scoreThreshold, &iouThreshold]()
-              { op->submit(pstream->cudaHandle(), src, dst, scores, scoreThreshold, iouThreshold); });
+    guard.run([&op, &stream, &src, &dst, &scores, &scoreThreshold, &iouThreshold]()
+              { op->submit(stream.handle(), src.impl(), dst.impl(), scores.impl(), scoreThreshold, iouThreshold); });
 
-    return std::move(dst);
+    return dst;
 }
 
-Tensor NonMaximumSuppression(Tensor &src, Tensor &scores, float scoreThreshold, float iouThreshold,
-                             std::optional<Stream> pstream)
+std::shared_ptr<Tensor> NonMaximumSuppression(Tensor &src, Tensor &scores, float scoreThreshold, float iouThreshold,
+                                              std::optional<Stream *> pstream)
 {
-    nvcvpy::Shape dstShape(2);
+    const nvcv::TensorShape     &srcShape = src.impl().shape();
+    const std::array<int64_t, 2> dstShape{srcShape[0], srcShape[1]};
 
-    dstShape[0] = src.shape()[0];
-    dstShape[1] = src.shape()[1];
+    auto dst = native::CreateTensor({dstShape.data(), static_cast<int32_t>(dstShape.size()), nvcv::TENSOR_NONE},
+                                    nvcv::TYPE_U8);
 
-    Tensor dst = Tensor::Create(dstShape, nvcv::TYPE_U8);
-
-    return NonMaximumSuppressionInto(dst, src, scores, scoreThreshold, iouThreshold, pstream);
+    NonMaximumSuppressionInto(*dst, src, scores, scoreThreshold, iouThreshold, pstream);
+    return dst;
 }
 
 } // namespace
 
-void ExportOpNonMaximumSuppression(py::module &m)
+void ExportOpNonMaximumSuppression(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("nms", NvtxTrace("cvcuda.nms", &NonMaximumSuppression), "src"_a, "scores"_a,
           "score_threshold"_a = std::numeric_limits<float>::epsilon(), "iou_threshold"_a = 1.0, py::kw_only(),
@@ -102,7 +100,7 @@ void ExportOpNonMaximumSuppression(py::module &m)
     )pbdoc");
     m.def("nms_into", NvtxTrace("cvcuda.nms_into", &NonMaximumSuppressionInto), "dst"_a, "src"_a, "scores"_a,
           "score_threshold"_a = std::numeric_limits<float>::epsilon(), "iou_threshold"_a = 1.0, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes NMS.
 
         The Non-Maximum Suppression (NMS) operation reads a set of input bounding boxes (bboxes) proposals and

@@ -5,18 +5,17 @@
 
 These instructions are for AI coding agents working in the CV-CUDA repository.
 They define shared agent behavior and point to the project documents that own
-the detailed workflows. This file (`AGENTS.md`) is the single canonical entry
-point, read natively by Codex and Cursor; `CLAUDE.md` is a symlink to it for
-Claude Code.
+the detailed workflows. `AGENTS.md` is the canonical entry point; `CLAUDE.md` and
+`.claude/skills` are symlinks to it and `.agents/skills`. Edit the canonical files
+only.
 
-Skills are defined once under `.agents/skills/<name>/SKILL.md` (the tool-agnostic
-standard, read directly by Codex and Cursor); `.claude/skills` is a symlink to
-`.agents/skills` for Claude Code. Edit the canonical files under `.agents/skills`
-only — never the symlinked copies.
-
-Topic guidance documents live under `.agents/guidance/<name>.md`; see the
-"Authoritative docs" section below. This file and `README.md` remain at the
-repository root as the canonical entry points.
+Skills live under `.agents/skills/<name>/SKILL.md`. The operator-lifecycle
+commands (`/make-op*`, `/review-op*`, `/optimize-op*`, `/refactor-op`,
+`/device-code-proof`) are nested skills of the `.agents/skills/op-tools/` bundle:
+per-command procedures live in its `reference/<command>.md` docs and the common
+checker-loop / findings-first / inviolables contract in `reference/conventions.md`.
+Keep skill wrappers thin; put op-tooling substance in the bundle or the guidance
+docs.
 
 Shared helper modules imported by skill scripts live under `.agents/tools/`.
 
@@ -25,7 +24,7 @@ Shared helper modules imported by skill scripts live under `.agents/tools/`.
 | Path | Purpose |
 |------|---------|
 | `src/` | C++ core library, C API, private operator implementations, and nvcv types |
-| `python/` | pybind11-based Python bindings and wheel packaging |
+| `python/` | nanobind-based Python bindings and wheel packaging |
 | `tests/` | C++ googletest and Python pytest test suites |
 | `bench/` | C++ and Python nvbench benchmarks; shared config in `bench/config/` |
 | `samples/` | Example applications and interoperability samples |
@@ -43,7 +42,7 @@ Shared helper modules imported by skill scripts live under `.agents/tools/`.
 - Samples: `samples/README.md`
 - New operators: `.agents/guidance/MAKE_OP_GUIDELINES.md` (narrative how-to:
   `docs/sphinx/advanced/make_operator.rst`); `/make-op`, `/make-op-scaffold`,
-  `/make-op-verify` skills
+  `/make-op-verify` skills (nested in the op-tools bundle)
 - Per-operator coverage review (support/test/bench/docs): `.agents/guidance/REVIEW_OP_GUIDELINES.md`
   (`/review-op` skill)
 - Bug fixes: `.agents/guidance/BUGFIX_GUIDELINES.md`
@@ -70,8 +69,8 @@ in tool-specific prompts unless a command needs a short output template.
 
 ## Repository invariants
 
-- New source, script, and documentation files need NVIDIA Apache 2.0 SPDX
-  headers. Files created in 2026 should use `Copyright (c) 2026`, not a range.
+- New source, script, and documentation files need NVIDIA Apache 2.0
+  SPDX headers. Files created in 2026 should use `Copyright (c) 2026`, not a range.
 - Requirements `.txt` files under `tests/`, `bench/`, `samples/`, `docker/`,
   and `docs/` are generally generated from `.template` files and `versions.env`.
   Do not hand-edit generated requirements. Update the matching source template
@@ -109,6 +108,10 @@ For targeted C++ work, prefer building and running the relevant executable
 under `build-rel/bin/`, such as `cvcuda_test_system` or
 `nvcv_test_cudatools_system`. For Python work, run the relevant pytest file or
 the generated `cvcuda_test_python` wrapper when available.
+
+For operator changes, run the full `basic,advanced` benchmark surface for every
+affected operator against the committed baselines, per `bench/README.md`.
+Reuse existing before measurements; do not regenerate them in pre-change CI.
 
 GPU, CUDA toolkit, Docker, profiler, and `compute-sanitizer` checks may not be
 available in every agent environment. If a required check cannot be run, say so

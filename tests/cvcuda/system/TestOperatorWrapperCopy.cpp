@@ -160,3 +160,12 @@ TEST(PublicOperatorWrappers, moveTransfersHandle)
     c = std::move(b);
     EXPECT_EQ(original, c.handle());
 }
+
+TEST(OperatorHandle, destroysValidHandle)
+{
+    NVCVOperatorHandle handle = nullptr;
+    ASSERT_EQ(NVCV_SUCCESS, cvcudaResizeCreate(&handle));
+    ASSERT_NE(nullptr, handle);
+
+    EXPECT_NO_THROW(nvcvOperatorDestroy(handle));
+}

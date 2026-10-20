@@ -15,50 +15,48 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpCenterCrop.hpp>
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/TensorLayoutInfo.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 namespace cvcudapy {
 
 namespace {
-Tensor CenterCropInto(Tensor &output, Tensor &input, const std::tuple<int, int> &cropSize,
-                      std::optional<Stream> pstream)
+using native::Stream;
+using native::Tensor;
+
+Tensor &CenterCropInto(Tensor &output, Tensor &input, const std::tuple<int, int> &cropSize,
+                       std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto center_crop = CreateOperator<cvcuda::CenterCrop>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*center_crop});
 
     nvcv::Size2D cropSizeArg{std::get<0>(cropSize), std::get<1>(cropSize)};
 
-    guard.run([&center_crop, &pstream, &input, &output, &cropSizeArg]()
-              { center_crop->submit(pstream->cudaHandle(), input, output, cropSizeArg); });
+    guard.run([&center_crop, &stream, &input, &output, &cropSizeArg]()
+              { center_crop->submit(stream.handle(), input.impl(), output.impl(), cropSizeArg); });
 
     return output;
 }
 
-Tensor CenterCrop(Tensor &input, const std::tuple<int, int> &cropSize, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> CenterCrop(Tensor &input, const std::tuple<int, int> &cropSize, std::optional<Stream *> pstream)
 {
-    auto info = nvcv::TensorLayoutInfoImage::Create(input.layout());
+    const nvcv::TensorLayout layout = input.impl().layout();
+    auto                     info   = nvcv::TensorLayoutInfoImage::Create(layout);
     if (!info)
     {
         throw std::invalid_argument("Non-supported tensor layout");
@@ -71,20 +69,21 @@ Tensor CenterCrop(Tensor &input, const std::tuple<int, int> &cropSize, std::opti
     NVCV_ASSERT(iheight >= 0 && "All images have height");
 
     // Use cropSize (width, height) for output
-    Shape out_shape    = CreateShape(input.shape());
+    Shape out_shape    = input.shape();
     out_shape[iwidth]  = std::get<0>(cropSize);
     out_shape[iheight] = std::get<1>(cropSize);
 
-    Tensor output = Tensor::Create(out_shape, input.dtype(), input.layout());
+    auto output = Tensor::Create(out_shape, input.dtype(), layout, 0);
 
-    return CenterCropInto(output, input, cropSize, pstream);
+    CenterCropInto(*output, input, cropSize, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpCenterCrop(py::module &m)
+void ExportOpCenterCrop(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("center_crop", NvtxTrace("cvcuda.center_crop", &CenterCrop), "src"_a, "crop_size"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
@@ -102,7 +101,7 @@ void ExportOpCenterCrop(py::module &m)
     )pbdoc");
 
     m.def("center_crop_into", NvtxTrace("cvcuda.center_crop_into", &CenterCropInto), "dst"_a, "src"_a, "crop_size"_a,
-          py::kw_only(), "stream"_a = nullptr,
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Executes the Center Crop operation on the given cuda stream.
 

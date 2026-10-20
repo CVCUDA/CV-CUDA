@@ -66,7 +66,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRemapCreate(NVCVOperatorHandle *handle);
  *
  *  Input:
  *       Data Layout:    [NVCV_TENSOR_NHWC, NVCV_TENSOR_HWC, NVCV_TENSOR_NCHW, NVCV_TENSOR_CHW]
- *       Channels:       [1, 3, 4]
+ *       Channels:       [1, 3, 4]; planar tensors accept any count with N*C <= 65535
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -76,13 +76,13 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRemapCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       16bit Float    | Yes (only if Channel=1)
- *       32bit Float    | Yes (only if Channel=1)
+ *       16bit Float    | Yes
+ *       32bit Float    | Yes
  *       64bit Float    | No
  *
  *  Output:
  *       Data Layout:    [NVCV_TENSOR_NHWC, NVCV_TENSOR_HWC, NVCV_TENSOR_NCHW, NVCV_TENSOR_CHW]
- *       Channels:       [1, 3, 4]
+ *       Channels:       [1, 3, 4]; planar tensors accept any count with N*C <= 65535
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -92,8 +92,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRemapCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       16bit Float    | Yes (only if Channel=1)
- *       32bit Float    | Yes (only if Channel=1)
+ *       16bit Float    | Yes
+ *       32bit Float    | Yes
  *       64bit Float    | No
  *
  *  Input map:
@@ -185,8 +185,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRemapCreate(NVCVOperatorHandle *handle);
  *               + NVCV_BORDER_REFLECT
  *               + NVCV_BORDER_WRAP
  *               + NVCV_BORDER_REFLECT101
+ *               + NVCV_BORDER_CONSTANT_COVERAGE (tensor input only; see \ref NVCVBorderType)
  *
  * @param [in] borderValue Border value used when accessing outside values in input tensor for constant border.
+ *                         Planar channels up to four use the corresponding x, y, z, w component.
+ *                         Planar tensors with more than four channels require a uniform value across
+ *                         x, y, z, w for constant borders; every channel then uses x.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
@@ -200,7 +204,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRemapSubmit(NVCVOperatorHandle handle, cudaStream
 /**
  * Executes the Remap operation on a batch of images.
  *
- * Apart from input and output image batches, all parameters are the same as \ref cvcudaRemapSubmit.
+ * Apart from input and output image batches, all parameters are the same as \ref cvcudaRemapSubmit,
+ * except that NVCV_BORDER_CONSTANT_COVERAGE is not supported and returns NVCV_ERROR_INVALID_ARGUMENT.
  *
  * @param[in] in Input image batch.
  * @param[out] out Output image batch.

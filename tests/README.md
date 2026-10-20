@@ -30,6 +30,21 @@ tests/install_test_dependencies.sh numpy2 cu12
 tests/install_test_dependencies.sh numpy1 cu12
 ```
 
+For the optional `cvcuda.tv` torchvision-parity tests, also install the paired
+torch/torchvision dependencies after generating the requirements files:
+
+```bash
+bash generate_requirements.sh
+python3 -m pip install -r tests/requirements.tests.torchvision.cu12.txt
+# For CUDA 13, use requirements.tests.torchvision.cu13.txt instead.
+```
+
+The PyTorch wheels bundle their own CUDA runtime. Select requirements matching
+your CUDA major and check the wheel runtime's driver requirement, not just the
+installed toolkit version. The current CUDA 12 pins use `cu126` wheels; the
+conservative driver requirement in `versions.env` is CUDA 12.6 or newer. This
+does not establish compatibility with a CUDA 12.2 / R535 host.
+
 ### 3. Run
 
 ```bash

@@ -117,3 +117,9 @@ CV-CUDA v0.18.0-beta includes the following changes.
     internally rather than through the attribute — so the two names disagreed
     from then on. Enter a stream's context or pass it as the operator's stream
     argument instead.
+  * Fixed the identity value ``Morphology`` seeds its running maximum with for
+    ``DILATE`` (and the dilate pass of ``OPEN``/``CLOSE``). It used the
+    smallest *positive* normal of the element type rather than the lowest
+    representable value, so for F32 inputs any mask window whose samples were
+    all negative produced ``1.17549435e-38`` — a value absent from the input —
+    instead of the window maximum. U8/U16 and F16 were unaffected.

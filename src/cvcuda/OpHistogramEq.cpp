@@ -50,7 +50,8 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaHistogramEqSubmit,
         {
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
-            priv::ToDynamicRef<priv::HistogramEq>(handle)(stream, input.resource(), output.resource());
+            priv::ToDynamicRef<priv::HistogramEq>(handle)(stream, input.resource(), output.resource(),
+                                                          NVCV_HISTOGRAM_EQ_OPENCV);
         });
 }
 
@@ -63,6 +64,35 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaHistogramEqVarShapeSubmit,
         {
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::ImageBatchVarShapeWrapHandle output(out);
-            priv::ToDynamicRef<priv::HistogramEq>(handle)(stream, input.resource(), output.resource());
+            priv::ToDynamicRef<priv::HistogramEq>(handle)(stream, input.resource(), output.resource(),
+                                                          NVCV_HISTOGRAM_EQ_OPENCV);
+        });
+}
+
+CVCUDA_DEFINE_API(0, 17, NVCVStatus, cvcudaHistogramEqMethodSubmit,
+                  (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
+                   NVCVHistogramEqMethod method))
+{
+    CVCUDA_NVTX_RANGE("cvcudaHistogramEqMethodSubmit");
+    return nvcv::ProtectCall(
+        [&in, &out, &handle, &stream, &method]
+        {
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::HistogramEq>(handle)(stream, input.resource(), output.resource(), method);
+        });
+}
+
+CVCUDA_DEFINE_API(0, 17, NVCVStatus, cvcudaHistogramEqVarShapeMethodSubmit,
+                  (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
+                   NVCVHistogramEqMethod method))
+{
+    CVCUDA_NVTX_RANGE("cvcudaHistogramEqVarShapeMethodSubmit");
+    return nvcv::ProtectCall(
+        [&in, &out, &handle, &stream, &method]
+        {
+            nvcv::ImageBatchVarShapeWrapHandle input(in);
+            nvcv::ImageBatchVarShapeWrapHandle output(out);
+            priv::ToDynamicRef<priv::HistogramEq>(handle)(stream, input.resource(), output.resource(), method);
         });
 }

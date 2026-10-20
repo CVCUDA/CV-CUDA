@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +23,14 @@
 template<class DstWrapper, class SrcWrapper>
 void DeviceRunFillBorderVarShape(DstWrapper &dstWrap, SrcWrapper &srcWrap, int3 dstMaxSize, int2 borderSize,
                                  cudaStream_t &stream);
+
+// Compare value() against operator[] on the device for a var-shape border wrap, with int3 and
+// int4 coordinates. These wraps carry their own value() bodies and their own coordinate orders, so
+// the tensor-side BorderWrap parity test does not reach them. Writes 0 to \p mismatches
+// for agreement, or the 1-based index of the first disagreeing probe.
+template<class BorderWrapper>
+void DeviceRunVarShapeValueMatchesSubscript(BorderWrapper &wrap, const int3 *coords, int numCoords, int *mismatches,
+                                            cudaStream_t &stream);
 
 template<class DstWrapper, class SrcWrapper>
 void DeviceRunFillBorderVarShapeNHWC(DstWrapper &dstWrap, SrcWrapper &srcWrap, int3 dstMaxSize, int2 borderSize,

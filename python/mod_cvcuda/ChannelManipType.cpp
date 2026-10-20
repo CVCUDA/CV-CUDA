@@ -21,9 +21,9 @@
 
 namespace cvcudapy {
 
-void ExportChannelManipType(py::module &m)
+void ExportChannelManipType(py::module_ &m)
 {
-    py::enum_<NVCVChannelManip>(m, "ChannelManip", "Channel manipulation modes for color conversion.")
+    py::enum_compat<NVCVChannelManip>(m, "ChannelManip", "Channel manipulation modes for color conversion.")
         .value("NO_OP", NVCV_CHANNEL_NO_OP, "No manipulation (i.e., channels are unchanged)")
         .value("REVERSE", NVCV_CHANNEL_REVERSE, "Reverse channel order (e.g., RGB to BGR, RGBA to ABGR, etc.)");
 }

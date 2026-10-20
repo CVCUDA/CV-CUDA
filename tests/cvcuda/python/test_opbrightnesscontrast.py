@@ -467,8 +467,10 @@ globals().update(
             cvcuda.Type.U16,
             cvcuda.Type.S16,
             cvcuda.Type.S32,
+            cvcuda.Type.S64,
             cvcuda.Type.F16,
             cvcuda.Type.F32,
+            cvcuda.Type.F64,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
         supported_channels={1, 2, 3, 4},
@@ -489,11 +491,145 @@ globals().update(
             cvcuda.Type.U16,
             cvcuda.Type.S16,
             cvcuda.Type.S32,
+            cvcuda.Type.S64,
             cvcuda.Type.F16,
             cvcuda.Type.F32,
+            cvcuda.Type.F64,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
         supported_channels={1, 2, 3, 4},
         exclude_dlc=[(None, "NCHW", 2), (None, "CHW", 2)],
     )
 )
+
+
+@pytest.mark.parametrize("layout", ["NHWC", "HWC", "NCHW", "CHW"])
+@pytest.mark.parametrize("brightness", [1.0, 0.5])
+def test_op_brightness_contrast_s64_boundaries(layout, brightness):
+    """Check double-intermediate rounding and saturation without integer overflow."""
+    limits = np.iinfo(np.int64)
+    values = np.array(
+        [
+            limits.min,
+            limits.min + 1,
+            -(2**53) - 1,
+            -1,
+            0,
+            1,
+            2**53 + 1,
+            limits.max - 1,
+            limits.max,
+        ],
+        dtype=np.int64,
+    )
+    shapes = {
+        "NHWC": (1, 1, 9, 3),
+        "HWC": (1, 9, 3),
+        "NCHW": (1, 3, 1, 9),
+        "CHW": (3, 1, 9),
+    }
+    host = np.resize(values, shapes[layout])
+    expected = np.asarray(
+        [
+            min(limits.max, max(limits.min, round(float(value) * brightness)))
+            for value in host.flat
+        ],
+        dtype=np.int64,
+    ).reshape(host.shape)
+    src = util.to_cvcuda_tensor(host, layout)
+    scalar_args = (brightness, 1.0, 0.0, 0.0)
+    tensor_args = tuple(
+        util.to_cvcuda_tensor(np.array([value], np.float64), "N")
+        for value in scalar_args
+    )
+    for args in (scalar_args, tensor_args):
+        out = cvcuda.brightness_contrast(src, *args)
+        np.testing.assert_array_equal(util.to_cpu_numpy_buffer(out.cuda()), expected)
+        dst = cvcuda.Tensor(src.shape, src.dtype, src.layout)
+        assert cvcuda.brightness_contrast_into(dst, src, *args) is dst
+        np.testing.assert_array_equal(util.to_cpu_numpy_buffer(dst.cuda()), expected)
+
+
+@pytest.mark.parametrize(
+    "round_mode,expected", [(cvcuda.Round.NEAREST, 2), (cvcuda.Round.TRUNCATE, 1)]
+)
+@pytest.mark.parametrize(
+    "shape,layout",
+    [
+        ((1, 1, 1, 1), "NHWC"),
+        ((2, 32, 64, 3), "NHWC"),
+        ((32, 64, 3), "HWC"),
+        ((2, 3, 32, 64), "NCHW"),
+        ((3, 32, 64), "CHW"),
+    ],
+)
+def test_op_brightness_contrast_scalar_round_mode(round_mode, expected, shape, layout):
+    # 3 * 0.5 == 1.5, exactly between the two conversions.
+    h_src = np.full(shape, 3, dtype=np.uint8)
+    src = util.to_cvcuda_tensor(h_src, layout)
+
+    out = cvcuda.brightness_contrast(
+        src, 0.5, 1.0, 0.0, 0.0, clamp=True, round=round_mode
+    )
+    np.testing.assert_array_equal(
+        util.to_cpu_numpy_buffer(out.cuda()), np.full_like(h_src, expected)
+    )
+
+    dst = util.to_cvcuda_tensor(np.zeros_like(h_src), layout)
+    returned = cvcuda.brightness_contrast_into(
+        dst, src, 0.5, 1.0, 0.0, 0.0, clamp=True, round=round_mode
+    )
+    assert returned is dst
+    np.testing.assert_array_equal(
+        util.to_cpu_numpy_buffer(dst.cuda()), np.full_like(h_src, expected)
+    )
+
+
+def test_op_brightness_contrast_scalar_round_mode_varshape():
+    host = np.array([[[3]]], dtype=np.uint8)
+    src = cvcuda.ImageBatchVarShape(1)
+    src.pushback(util.to_cvcuda_image(host))
+
+    for mode, expected in [(cvcuda.Round.NEAREST, 2), (cvcuda.Round.TRUNCATE, 1)]:
+        out = cvcuda.brightness_contrast(
+            src, 0.5, 1.0, 0.0, 0.0, clamp=True, round=mode
+        )
+        np.testing.assert_array_equal(
+            util.to_cpu_numpy_buffer(next(iter(out)).cuda()),
+            np.full(host.shape[:2], expected, dtype=np.uint8),
+        )
+        dst = util.clone_image_batch(src)
+        assert (
+            cvcuda.brightness_contrast_into(
+                dst, src, 0.5, 1.0, 0.0, 0.0, clamp=True, round=mode
+            )
+            is dst
+        )
+        np.testing.assert_array_equal(
+            util.to_cpu_numpy_buffer(next(iter(dst)).cuda()),
+            np.full(host.shape[:2], expected, dtype=np.uint8),
+        )
+
+
+def test_op_brightness_contrast_rejects_wrap_round_mode():
+    src = cvcuda.Tensor((1, 2, 2, 1), np.uint8, "NHWC")
+    with pytest.raises(RuntimeError):
+        cvcuda.brightness_contrast(
+            src, 1.0, 1.0, 0.0, 0.0, round=cvcuda.Round.NEAREST_WRAP
+        )
+
+
+def test_op_brightness_contrast_round_mode_defaults_to_nearest():
+    h_src = np.array([[[[3]]]], dtype=np.uint8)
+    src = util.to_cvcuda_tensor(h_src, "NHWC")
+
+    np.testing.assert_array_equal(
+        util.to_cpu_numpy_buffer(
+            cvcuda.brightness_contrast(src, 0.5, 1.0, 0.0, 0.0, clamp=True).cuda()
+        ),
+        util.to_cpu_numpy_buffer(
+            cvcuda.brightness_contrast(
+                src, 0.5, 1.0, 0.0, 0.0, clamp=True, round=cvcuda.Round.NEAREST
+            ).cuda()
+        ),
+    )

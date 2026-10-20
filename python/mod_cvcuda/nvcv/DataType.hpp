@@ -18,21 +18,30 @@
 #ifndef NVCV_PYTHON_DATATYPE_HPP
 #define NVCV_PYTHON_DATATYPE_HPP
 
+#include <common/Binding.hpp>
 #include <nvcv/DataType.hpp>
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
+
+#include <optional>
 
 namespace nvcv {
 size_t ComputeHash(const nvcv::DataType &dtype);
 }
 
 namespace nvcvpy::priv {
-namespace py = pybind11;
+namespace py = nanobind;
 
-void ExportDataType(py::module &m);
+struct PyDataType
+{
+    nvcv::DataType value;
+};
 
-std::optional<nvcv::DataType> ToNVCVDataType(const py::dtype &dt);
-py::dtype                     ToDType(nvcv::DataType dtype);
+void ExportDataType(py::module_ &m);
+
+nvcv::Packing MakeHomogeneousPacking(int bits, int numChannels);
+
+std::optional<nvcv::DataType> ToNVCVDataType(const py::numpy_dtype &dt);
+std::optional<nvcv::DataType> ToNVCVDataType(char kind, int itemSize);
+py::numpy_dtype               ToDType(nvcv::DataType dtype);
 
 // Normalize `dtype` to its canonical supported representation. Equivalent to
 // ToNVCVDataType(ToDType(dtype)) without materializing a numpy dtype; returns
@@ -41,17 +50,17 @@ std::optional<nvcv::DataType> NormalizeDataType(const nvcv::DataType &dtype);
 
 } // namespace nvcvpy::priv
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 template<>
-struct PYBIND11_EXPORT type_caster<nvcv::DataType>
+struct NB_EXPORT type_caster<nvcv::DataType>
 {
-    PYBIND11_TYPE_CASTER(nvcv::DataType, const_name("cvcuda.Type"));
+    NB_TYPE_CASTER(nvcv::DataType, const_name("cvcuda.Type"));
 
-    bool          load(handle src, bool);
-    static handle cast(nvcv::DataType type, return_value_policy /* policy */, handle /*parent */);
+    bool          from_python(handle src, uint32_t flags, cleanup_list *cleanup) noexcept;
+    static handle from_cpp(nvcv::DataType type, rv_policy policy, cleanup_list *cleanup) noexcept;
 };
 
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_DATATYPE_HPP

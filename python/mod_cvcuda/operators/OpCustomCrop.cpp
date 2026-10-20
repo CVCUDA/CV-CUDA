@@ -15,42 +15,41 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/Assert.hpp>
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpCustomCrop.hpp>
 #include <nvcv/TensorLayoutInfo.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 namespace cvcudapy {
 
 namespace {
-Tensor CustomCropInto(Tensor &output, Tensor &input, const NVCVRectI &rcCrop, std::optional<Stream> pstream)
+using native::Stream;
+using native::Tensor;
+
+Tensor &CustomCropInto(Tensor &output, Tensor &input, const NVCVRectI &rcCrop, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto crop = CreateOperator<cvcuda::CustomCrop>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*crop});
 
-    guard.run([&crop, &pstream, &input, &output, &rcCrop]()
-              { crop->submit(pstream->cudaHandle(), input, output, rcCrop); });
+    guard.run([&crop, &stream, &input, &output, &rcCrop]()
+              { crop->submit(stream.handle(), input.impl(), output.impl(), rcCrop); });
 
-    return std::move(output);
+    return output;
 }
 
-Tensor CustomCrop(Tensor &input, const NVCVRectI &rcCrop, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> CustomCrop(Tensor &input, const NVCVRectI &rcCrop, std::optional<Stream *> pstream)
 {
-    auto info = nvcv::TensorLayoutInfoImage::Create(input.layout());
+    const nvcv::TensorShape &inputShape = input.impl().shape();
+    auto                     info       = nvcv::TensorLayoutInfoImage::Create(inputShape.layout());
     if (!info)
     {
         throw std::invalid_argument("Non-supported tensor layout");
@@ -69,7 +68,7 @@ Tensor CustomCrop(Tensor &input, const NVCVRectI &rcCrop, std::optional<Stream> 
     }
 
     // Create the output shape based inputs, changing width/height to match rcCrop's size
-    nvcv::Shape          shape = input.shape().shape();
+    nvcv::Shape          shape = inputShape.shape();
     std::vector<int64_t> out_shape{shape.begin(), shape.end()};
     out_shape[iwidth] = rcCrop.width;
     if (iheight >= 0)
@@ -77,19 +76,20 @@ Tensor CustomCrop(Tensor &input, const NVCVRectI &rcCrop, std::optional<Stream> 
         out_shape[iheight] = rcCrop.height;
     }
 
-    Tensor output
-        = Tensor::Create({out_shape.data(), static_cast<int32_t>(out_shape.size()), input.layout()}, input.dtype());
+    auto output = native::CreateTensor({out_shape.data(), static_cast<int32_t>(out_shape.size()), inputShape.layout()},
+                                       input.dtype());
 
-    return CustomCropInto(output, input, rcCrop, pstream);
+    CustomCropInto(*output, input, rcCrop, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpCustomCrop(py::module &m)
+void ExportOpCustomCrop(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
-    m.def("customcrop", NvtxTrace("cvcuda.customcrop", &CustomCrop), "src"_a, "rect"_a, py::kw_only(),
+    m.def("customcrop", NvtxTrace("cvcuda.customcrop", &CustomCrop), "src"_a, "rect"_a.lock(), py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
         Executes the Custom Crop operation on the given cuda stream.
 
@@ -104,8 +104,8 @@ void ExportOpCustomCrop(py::module &m)
 
     )pbdoc");
 
-    m.def("customcrop_into", NvtxTrace("cvcuda.customcrop_into", &CustomCropInto), "dst"_a, "src"_a, "rect"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("customcrop_into", NvtxTrace("cvcuda.customcrop_into", &CustomCropInto), "dst"_a, "src"_a, "rect"_a.lock(),
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Custom Crop operation on the given cuda stream.
 
 

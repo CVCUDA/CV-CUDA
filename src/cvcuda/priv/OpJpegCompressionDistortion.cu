@@ -22,6 +22,7 @@
 
 #include "JpegDistortionMath.hpp"
 #include "OpJpegCompressionDistortion.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include "ChannelAxisCommon.cuh"
 
@@ -584,8 +585,8 @@ void JpegCompressionDistortion::operator()(cudaStream_t stream, const nvcv::Tens
     int            numChannels;
     int            numSamples;
     nvcv::DataType dtype;
-    auto           srcData = in.exportData<nvcv::TensorDataStridedCuda>();
-    auto           dstData = out.exportData<nvcv::TensorDataStridedCuda>();
+    auto           srcData = cvcuda::priv::RequireCudaTensor(in, "Input");
+    auto           dstData = cvcuda::priv::RequireCudaTensor(out, "Output");
     const bool     isPlanar
         = channel_axis::ValidateSrcDstTensors(isEmpty, numChannels, dtype, numSamples, srcData, dstData);
     if (dtype != nvcv::TYPE_U8 && dtype != nvcv::TYPE_3U8)
@@ -612,8 +613,8 @@ void JpegCompressionDistortion::operator()(cudaStream_t stream, const nvcv::Tens
     int            numChannels;
     int            numSamples;
     nvcv::DataType dtype;
-    auto           srcData = in.exportData<nvcv::TensorDataStridedCuda>();
-    auto           dstData = out.exportData<nvcv::TensorDataStridedCuda>();
+    auto           srcData = cvcuda::priv::RequireCudaTensor(in, "Input");
+    auto           dstData = cvcuda::priv::RequireCudaTensor(out, "Output");
     const bool     isPlanar
         = channel_axis::ValidateSrcDstTensors(isEmpty, numChannels, dtype, numSamples, srcData, dstData);
     if (dtype != nvcv::TYPE_U8 && dtype != nvcv::TYPE_3U8)
@@ -635,8 +636,8 @@ void JpegCompressionDistortion::operator()(cudaStream_t stream, const nvcv::Imag
     bool           isEmpty;
     int            numChannels;
     nvcv::DataType dtype;
-    auto           srcData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    auto           dstData = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+    auto           srcData = cvcuda::priv::RequireCudaVarShape(in, stream, "Input");
+    auto           dstData = cvcuda::priv::RequireCudaVarShape(out, stream, "Output");
     const bool isPlanar = channel_axis::ValidateSrcDstVarBatch(isEmpty, numChannels, dtype, in, out, srcData, dstData);
     if (isEmpty)
     {
@@ -661,8 +662,8 @@ void JpegCompressionDistortion::operator()(cudaStream_t stream, const nvcv::Imag
     bool           isEmpty;
     int            numChannels;
     nvcv::DataType dtype;
-    auto           srcData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    auto           dstData = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+    auto           srcData = cvcuda::priv::RequireCudaVarShape(in, stream, "Input");
+    auto           dstData = cvcuda::priv::RequireCudaVarShape(out, stream, "Output");
     const bool isPlanar = channel_axis::ValidateSrcDstVarBatch(isEmpty, numChannels, dtype, in, out, srcData, dstData);
     if (isEmpty)
     {

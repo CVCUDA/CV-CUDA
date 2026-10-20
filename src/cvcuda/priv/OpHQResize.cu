@@ -22,68 +22,11 @@
 #include <nvcv/Exception.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorBatch.hpp>
-#include <nvcv/TensorDataAccess.hpp>
 
 #include <cassert>
-#include <vector>
 
 namespace cvcuda::priv {
 namespace hq_resize {
-
-namespace {
-
-// Expand a planar (NCHW/CHW) tensor batch into a batch of single-channel (H,W,1) HWC views, one per
-// (sample, channel) plane. HQResize resizes channels independently, so resizing each plane as an
-// independent single-channel image reproduces the interleaved result bit-for-bit. The views alias
-// the original device memory (no copy); the returned batch must outlive the operator call. The
-// caller sizes the workspace from the matching expanded (sum-of-channels single-channel) shapes.
-static nvcv::TensorBatch ExpandPlanarTensorBatch(const nvcv::TensorBatch &batch)
-{
-    std::vector<nvcv::Tensor> views;
-    for (int i = 0; i < batch.numTensors(); ++i)
-    {
-        nvcv::Tensor tensor = batch[i];
-        auto         data   = tensor.exportData<nvcv::TensorDataStridedCuda>();
-        if (!data)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Planar HQResize requires cuda-accessible "
-                                  "tensors");
-        }
-        auto access = nvcv::TensorDataAccessStridedImagePlanar::Create(*data);
-        if (!access)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Planar HQResize requires planar-accessible "
-                                  "tensors");
-        }
-
-        const int     numSamples  = access->numSamples();
-        const int     numChannels = access->numChannels();
-        const int64_t H = access->numRows(), W = access->numCols();
-        for (int s = 0; s < numSamples; ++s)
-        {
-            for (int c = 0; c < numChannels; ++c)
-            {
-                nvcv::TensorDataStridedCuda::Buffer buf;
-                buf.basePtr    = reinterpret_cast<NVCVByte *>(access->sampleData(s) + c * access->chStride());
-                buf.strides[0] = access->rowStride(); // H
-                buf.strides[1] = access->colStride(); // W
-                buf.strides[2] = access->colStride(); // C == 1
-                nvcv::TensorDataStridedCuda viewData{
-                    nvcv::TensorShape{{H, W, 1}, "HWC"},
-                    data->dtype(), buf
-                };
-                views.push_back(nvcv::TensorWrapData(viewData));
-            }
-        }
-    }
-    nvcv::TensorBatch out(static_cast<int32_t>(views.size()));
-    out.pushBack(views.begin(), views.end());
-    return out;
-}
-
-} // namespace
 
 class HQResizeImpl final : public IHQResizeImpl
 {
@@ -144,15 +87,10 @@ public:
                     const NVCVInterpolationType magInterpolation, bool antialias, const HQResizeRoisF rois) override
     {
         CVCUDA_NVTX_RANGE("cvcuda::hq_resize::HQResizeImpl::operator()[TensorBatch]");
-        // Planar (channel-first 2D, NCHW/CHW) batches are expanded into single-channel (H,W,1) plane
-        // views and run through the regular 2D path; the views alias the originals so the result is
-        // bit-identical to the interleaved path. Views are kept alive for the duration of the call.
         const nvcv::TensorLayout layout = src.layout();
         if (layout == nvcv::TENSOR_NCHW || layout == nvcv::TENSOR_CHW)
         {
-            nvcv::TensorBatch planarSrc = ExpandPlanarTensorBatch(src);
-            nvcv::TensorBatch planarDst = ExpandPlanarTensorBatch(dst);
-            (*m_impl2d)(stream, ws, planarSrc, planarDst, minInterpolation, magInterpolation, antialias, rois);
+            (*m_impl2d)(stream, ws, src, dst, minInterpolation, magInterpolation, antialias, rois);
             return;
         }
         bool is3d = layout.find('D') >= 0;

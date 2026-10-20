@@ -30,6 +30,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent.parent
 TOOL = REPO / "tools" / "device_code_proof.py"
+HOST_ONLY_SOURCE = "src/cvcuda/Operator.cpp"
 
 needs_nvcc = pytest.mark.skipif(
     shutil.which("nvcc") is None,
@@ -499,12 +500,19 @@ def test_revert_outside_repository_is_rejected(tmp_path):
     assert "Traceback" not in result.stderr
 
 
-@needs_nvcc
-def test_host_only_sources_are_refused_rather_than_silently_passed():
-    result = run("--file", "src/cvcuda/priv/OpFlip.cpp")
-    assert result.returncode == 2
-    assert "host-only" in result.stderr
-    assert "Traceback" not in result.stderr
+def test_host_only_sources_are_refused_rather_than_silently_passed(monkeypatch, capsys):
+    m = _module()
+    monkeypatch.setattr(
+        m.shutil, "which", lambda name: "/unused/nvcc" if name == "nvcc" else None
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        m.main(["--file", HOST_ONLY_SOURCE, "--stage", "ptx"])
+
+    assert exc_info.value.code == 2
+    stderr = capsys.readouterr().err
+    assert "host-only" in stderr
+    assert "Traceback" not in stderr
 
 
 @needs_nvcc
@@ -572,3 +580,221 @@ def test_a_real_shared_header_refactor_proves_bit_exact():
     payload = json.loads(result.stdout)
     assert payload["verdict"] == "MATCH"
     assert payload["results"][0]["counts"]["identical"] >= 10
+
+
+def resource_text(stack=72, stores=80, loads=120):
+    return f"""ptxas info    : Function properties for _Z6kernelv
+    {stack} bytes stack frame, {stores} bytes spill stores, {loads} bytes spill loads
+Resource usage:
+ Function _Z6kernelv:
+  REG:32 STACK:{stack} SHARED:0 LOCAL:0
+ code for sm_80
+ Function : _Z6kernelv
+ /*0000*/ LDL R1, [R2]; /* 0x0 */
+ /*0010*/ @P0 STL.64 [R2], R4; /* 0x0 */
+ /*0020*/ EXIT; /* 0x0 */
+"""
+
+
+@pytest.mark.parametrize("stage", ["ptx", "resources"])
+@pytest.mark.parametrize("output_format", ["md", "json"])
+def test_main_reports_and_keeps_device_code(
+    monkeypatch, tmp_path, capsys, stage, output_format
+):
+    proof = _module()
+    source = REPO / "src/cvcuda/priv/OpAdvCvtColor.cu"
+    key = (proof.tu_cost.rel(source), "sm_80")
+    text = (
+        ptx(entry("_Z6kernelv", [], []), target="sm_80")
+        if stage == "ptx"
+        else resource_text()
+    )
+    monkeypatch.setattr(proof.shutil, "which", lambda name: "/unused/" + name)
+    monkeypatch.setattr(proof, "run_side", lambda *args, **kwargs: {key: (text, None)})
+    output = tmp_path / "report.txt"
+    keep = tmp_path / "code"
+    code = proof.main(
+        [
+            "--file",
+            str(source),
+            "--stage",
+            stage,
+            "--arch",
+            "sm_80",
+            "--format",
+            output_format,
+            "--keep",
+            str(keep),
+            "--out",
+            str(output),
+        ]
+    )
+    report = capsys.readouterr().out
+    assert code == 0
+    assert output.read_text() == report
+    verdict = "MATCH" if stage == "ptx" else "RESOURCE-REPORT"
+    if output_format == "json":
+        payload = json.loads(report)
+        assert payload["verdict"] == verdict
+        assert len(payload["results"][0]["units"]) == 1
+    else:
+        assert verdict in report
+    for side in ("base", "head"):
+        assert (keep / f"{source.name}.sm_80.{side}.{stage}").read_text() == text
+
+
+def test_resource_parser_and_delta():
+    proof = _module()
+    base = resource_text()
+    head = resource_text(stack=152, stores=160, loads=240)
+    row = proof.resource_delta(base, head)[0]
+    assert row["base"] == {
+        "registers": 32,
+        "stack_bytes": 72,
+        "spill_store_bytes": 80,
+        "spill_load_bytes": 120,
+        "local_bytes": 0,
+        "shared_bytes": 0,
+        "static_ldl": 1,
+        "static_stl": 1,
+    }
+    assert row["delta"]["stack_bytes"] == 80
+    assert row["delta"]["spill_load_bytes"] == 120
+    assert row["missing"] == []
+    assert proof.resource_verdict([{"units": [row]}]) == proof.RESOURCE_INCREASE
+    assert (
+        proof.resource_verdict([{"units": proof.resource_delta(base, base)}])
+        == proof.RESOURCE_REPORT
+    )
+
+
+@pytest.mark.parametrize("prefix", ["    ", "ptxas info    : "])
+@pytest.mark.parametrize("counts", [(0, 0, 0), (72, 80, 120), (10**19, 1, 2)])
+def test_resource_counter_line_formats(prefix, counts):
+    proof = _module()
+    current = dict.fromkeys(proof.RESOURCE_FIELDS)
+    proof._parse_resource_line(
+        current,
+        prefix
+        + "%d bytes stack frame, %d bytes spill stores, %d bytes spill loads trailing text"
+        % counts,
+    )
+    assert [
+        current[key] for key in ("stack_bytes", "spill_store_bytes", "spill_load_bytes")
+    ] == list(counts)
+
+
+@pytest.mark.parametrize(
+    "case", ["stack", "stores", "loads", "incomplete", "partial", "repeated"]
+)
+def test_resource_counter_line_rejects_adversarial_input(case):
+    huge = "1" * 100_000
+    counts = ["1", "2", "3"]
+    if case in ("stack", "stores", "loads"):
+        counts[("stack", "stores", "loads").index(case)] = huge
+    elif case in ("incomplete", "partial"):
+        counts[0] = "1" * 100 + "x1" if case == "partial" else huge
+    line = "%s bytes stack frame, %s bytes spill stores, %s bytes spill loads" % tuple(
+        counts
+    )
+    if case == "incomplete":
+        line = line[:-1]
+    elif case == "repeated":
+        line = (huge + " bytes stack frame, x bytes spill stores, ") * 100 + line
+    script = """
+import runpy
+import sys
+proof = runpy.run_path(sys.argv[1])
+current = dict.fromkeys(proof["RESOURCE_FIELDS"])
+proof["_parse_resource_line"](current, sys.stdin.read())
+assert all(value is None for value in current.values()), current
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(TOOL)],
+        input=line,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_resource_missing_is_not_zero_or_pass():
+    proof = _module()
+    text = resource_text()
+    no_ptxas = "Resource usage:" + text.partition("Resource usage:")[2]
+    parsed = proof.parse_resources(no_ptxas)["_Z6kernelv"]
+    assert parsed["spill_store_bytes"] is None
+    assert parsed["spill_load_bytes"] is None
+    assert parsed["stack_bytes"] == 72
+    assert parsed["local_bytes"] == 0
+    for base, head in ((text, no_ptxas), (text, ""), ("", ""), ("", text)):
+        rows = proof.resource_delta(base, head)
+        assert proof.resource_verdict([{"units": rows}]) == proof.RESOURCE_MISSING
+        if rows:
+            assert rows[0]["delta"]["spill_load_bytes"] is None
+    assert (
+        proof.parse_resources(no_ptxas.split(" code for")[0])["_Z6kernelv"][
+            "static_ldl"
+        ]
+        is None
+    )
+    assert (
+        proof.resource_verdict([{"units": [], "error": "compile failed"}])
+        == proof.FAILED
+    )
+
+
+def test_resource_explicit_zero_and_multiple_kernels():
+    proof = _module()
+    first = resource_text(0, 0, 0).replace("LDL", "MOV").replace("STL", "MOV")
+    second = resource_text().replace("_Z6kernelv", "_Z5otherv")
+    parsed = proof.parse_resources(first + second)
+    assert parsed["_Z6kernelv"]["spill_load_bytes"] == 0
+    assert parsed["_Z6kernelv"]["static_ldl"] == 0
+    assert parsed["_Z5otherv"]["spill_load_bytes"] == 120
+    assert parsed["_Z5otherv"]["static_ldl"] == 1
+
+
+def test_resource_render_unknown_and_limits():
+    proof = _module()
+    payload = {
+        "base": "base",
+        "head": "head",
+        "flag_source": "synthesized",
+        "arches": ["sm_80"],
+        "verdict": proof.RESOURCE_MISSING,
+        "results": [
+            {
+                "tu": "kernel.cu",
+                "arch": "sm_80",
+                "units": proof.resource_delta("", resource_text()),
+            }
+        ],
+        "limits": proof.limits("resources"),
+    }
+    report = proof.render_resources(payload)
+    assert "? -> 32 (?)" in report
+    assert "missing:" in report
+    assert "Occupancy is unknown" in report
+    assert "not executed traffic" in report
+
+
+@pytest.mark.skipif(
+    not shutil.which("nvcc") or not shutil.which("cuobjdump"),
+    reason="CUDA toolkit required",
+)
+def test_emit_resources(tmp_path):
+    proof = _module()
+    source = tmp_path / "kernel.cu"
+    source.write_text("__global__ void kernel(int *p) { p[threadIdx.x] = 1; }\n")
+    text, error = proof.emit_device_code(
+        ["nvcc"], str(source), "sm_80", "resources", tmp_path / "kernel.cubin", tmp_path
+    )
+    assert error is None, error
+    parsed = proof.parse_resources(text)
+    assert len(parsed) == 1
+    row = next(iter(parsed.values()))
+    assert all(value is not None for value in row.values()), row
+    assert row["registers"] > 0
+    assert row["spill_load_bytes"] == row["spill_store_bytes"] == 0

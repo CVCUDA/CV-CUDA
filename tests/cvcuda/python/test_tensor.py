@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
+
 import numpy as np
 import pytest as t
 
@@ -242,6 +244,181 @@ def test_wrap_cuda_buffer_dlpack_v1(shape, dtype):
     assert tensor.ndim == len(shape)
 
 
+def test_wrap_cuda_buffer_dlpack_v0_retries_unsupported_max_version():
+    cuda_buffer = cupy.zeros((2, 3), dtype=np.float32)
+
+    class DLPackV0Object:
+        def __init__(self, src):
+            self._src = src
+            self._prevent_gc = None
+            self.calls = 0
+
+        def __dlpack__(self, stream=None):
+            self.calls += 1
+            capsule, refs = _make_dlpack_capsule(self._src)
+            self._prevent_gc = refs
+            return capsule
+
+        def __dlpack_device__(self):
+            return (2, self._src.device.id)  # kDLCUDA
+
+    producer = DLPackV0Object(cuda_buffer)
+
+    tensor = cvcuda.as_tensor(producer)
+
+    assert tensor.shape == cuda_buffer.shape
+    assert tensor.dtype == cuda_buffer.dtype
+    assert producer.calls == 1
+
+
+def test_wrap_cuda_buffer_dlpack_v0_retries_nanobind_signature_mismatch():
+    cuda_buffer = cupy.zeros((2, 3), dtype=np.float32)
+
+    class NanobindDLPackV0Object:
+        def __init__(self, src):
+            self._src = src
+            self._prevent_gc = None
+            self.calls = 0
+
+        def __dlpack__(self, stream=None, **kwargs):
+            self.calls += 1
+            if "max_version" in kwargs:
+                raise TypeError(
+                    "__dlpack__(): incompatible function arguments. "
+                    "The following argument types are supported: "
+                    "(self, stream: object = 0) -> capsule; "
+                    "kwargs: stream=1, max_version=(1, 0)"
+                )
+            capsule, refs = _make_dlpack_capsule(self._src)
+            self._prevent_gc = refs
+            return capsule
+
+        def __dlpack_device__(self):
+            return (2, self._src.device.id)  # kDLCUDA
+
+    producer = NanobindDLPackV0Object(cuda_buffer)
+
+    tensor = cvcuda.as_tensor(producer)
+
+    assert tensor.shape == cuda_buffer.shape
+    assert tensor.dtype == cuda_buffer.dtype
+    assert producer.calls == 2
+
+
+def test_wrap_cuda_buffer_dlpack_does_not_retry_exporter_type_error():
+    cuda_buffer = cupy.zeros((2, 3), dtype=np.float32)
+
+    class FailingDLPackObject:
+        def __init__(self, src):
+            self._src = src
+            self.calls = 0
+
+        def __dlpack__(self, *, stream=None, max_version=None):
+            self.calls += 1
+            raise TypeError("max_version is temporarily unavailable")
+
+        def __dlpack_device__(self):
+            return (2, self._src.device.id)  # kDLCUDA
+
+    producer = FailingDLPackObject(cuda_buffer)
+
+    with t.raises(TypeError, match="max_version is temporarily unavailable"):
+        cvcuda.as_tensor(producer)
+
+    assert producer.calls == 1
+
+
+def test_wrap_cuda_buffer_dlpack_v0_deleter_receives_capsule_pointer():
+    """A legacy DLPack deleter must run on the pointer the capsule carried.
+
+    DLPack makes the consumer responsible for calling ``deleter(dlm_tensor)``
+    with the exact ``DLManagedTensor *`` it took out of the capsule: producers
+    routinely free the enclosing allocation, or look up their bookkeeping,
+    through that address.  Handing the deleter the address of a consumer-side
+    copy therefore destroys the wrong object.
+    """
+    import ctypes
+
+    class _DLDevice(ctypes.Structure):
+        _fields_ = [("device_type", ctypes.c_int), ("device_id", ctypes.c_int)]
+
+    class _DLDataType(ctypes.Structure):
+        _fields_ = [
+            ("code", ctypes.c_uint8),
+            ("bits", ctypes.c_uint8),
+            ("lanes", ctypes.c_uint16),
+        ]
+
+    class _DLTensor(ctypes.Structure):
+        _fields_ = [
+            ("data", ctypes.c_void_p),
+            ("device", _DLDevice),
+            ("ndim", ctypes.c_int),
+            ("dtype", _DLDataType),
+            ("shape", ctypes.POINTER(ctypes.c_int64)),
+            ("strides", ctypes.POINTER(ctypes.c_int64)),
+            ("byte_offset", ctypes.c_uint64),
+        ]
+
+    class _DLManagedTensor(ctypes.Structure):
+        pass
+
+    _DELETER = ctypes.CFUNCTYPE(None, ctypes.POINTER(_DLManagedTensor))
+    _DLManagedTensor._fields_ = [
+        ("dl_tensor", _DLTensor),
+        ("manager_ctx", ctypes.c_void_p),
+        ("deleter", _DELETER),
+    ]
+
+    PyCapsule_New = ctypes.pythonapi.PyCapsule_New
+    PyCapsule_New.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+    PyCapsule_New.restype = ctypes.py_object
+
+    cuda_buffer = cupy.zeros((4, 5), dtype=np.uint8)
+    deleter_arguments = []
+    capsule_pointers = []
+    keep_alive = []
+
+    @_DELETER
+    def record_deleter_argument(managed_tensor):
+        deleter_arguments.append(ctypes.addressof(managed_tensor.contents))
+
+    class LegacyDLPackProducer:
+        def __dlpack__(self, *args, **kwargs):
+            shape = (ctypes.c_int64 * 2)(4, 5)
+            strides = (ctypes.c_int64 * 2)(5, 1)
+            managed = _DLManagedTensor()
+            managed.dl_tensor.data = ctypes.c_void_p(cuda_buffer.data.ptr)
+            managed.dl_tensor.device = _DLDevice(2, cuda_buffer.device.id)  # kDLCUDA
+            managed.dl_tensor.ndim = 2
+            managed.dl_tensor.dtype = _DLDataType(1, 8, 1)  # kDLUInt, 8 bits
+            managed.dl_tensor.shape = shape
+            managed.dl_tensor.strides = strides
+            managed.dl_tensor.byte_offset = 0
+            managed.manager_ctx = None
+            managed.deleter = record_deleter_argument
+            keep_alive.append((managed, shape, strides))
+            capsule_pointers.append(ctypes.addressof(managed))
+            return PyCapsule_New(capsule_pointers[-1], b"dltensor", None)
+
+        def __dlpack_device__(self):
+            return (2, cuda_buffer.device.id)  # kDLCUDA
+
+    cvcuda.clear_cache()
+    producer = LegacyDLPackProducer()
+    tensor = cvcuda.as_tensor(producer, "HW")
+    assert tensor.shape == (4, 5)
+
+    del tensor, producer
+    cvcuda.clear_cache()
+    gc.collect()
+
+    assert deleter_arguments == capsule_pointers, (
+        "the legacy DLPack deleter ran on a copied DLManagedTensor: expected "
+        f"{capsule_pointers!r}, got {deleter_arguments!r}"
+    )
+
+
 @t.mark.parametrize("shape,dtype", params_wrap_cuda_buffer)
 def test_wrap_cuda_buffer_cuda_array_interface(shape, dtype):
     cuda_buffer = cupy.asarray(np.ndarray(shape, dtype=dtype))
@@ -280,6 +457,35 @@ def test_wrap_cuda_buffer_with_layout(shape, dtype, layout):
     assert tensor.dtype == dtype
     assert tensor.layout == layout
     assert tensor.ndim == len(shape)
+
+
+def test_wrap_cuda_buffer_string_layout_parses_buffer_once():
+    class CountingCudaArrayInterface:
+        def __init__(self, owner):
+            self._owner = owner
+            self.access_count = 0
+
+        @property
+        def __cuda_array_interface__(self):
+            self.access_count += 1
+            return self._owner.__cuda_array_interface__
+
+    owner = cupy.zeros((1, 2, 3, 4), dtype=np.uint8)
+    layout_object_buffer = CountingCudaArrayInterface(owner)
+    string_buffer = CountingCudaArrayInterface(owner)
+
+    cvcuda.as_tensor(layout_object_buffer, cvcuda.TensorLayout.NHWC)
+    cvcuda.as_tensor(string_buffer, "NHWC")
+
+    assert string_buffer.access_count == layout_object_buffer.access_count
+
+
+@t.mark.parametrize("layout", [b"NHWC", bytearray(b"NHWC")])
+def test_wrap_cuda_buffer_rejects_bytes_layout(layout):
+    owner = cupy.zeros((1, 2, 3, 4), dtype=np.uint8)
+
+    with t.raises(TypeError):
+        cvcuda.as_tensor(owner, layout)
 
 
 @t.mark.parametrize(
@@ -414,7 +620,7 @@ def test_tensor_is_kept_alive_by_cuda_array_interface():
 
     del tensor1
 
-    tensor2 = cvcuda.Tensor((480, 640, 3), np.uint8)
+    tensor2 = cvcuda.Tensor((240, 320, 3), np.uint8)
     assert tensor2.cuda().__cuda_array_interface__["data"][0] != data_buffer1
 
     del tensor2
@@ -498,9 +704,15 @@ def test_tensor_reshape_error(orig_shape, orig_layout, dtype, shape_arg, layout_
         cvcuda.reshape(tensor, shape_arg, layout=layout_arg)
 
 
-def test_tensor_reshape_lifetime_ref_obj():
+@t.mark.parametrize("new_shape", [(20, 10, 3), (5, 10, 3)])
+def test_tensor_reshape_lifetime_ref_obj(new_shape):
+    cvcuda.clear_cache()
     tensor1 = cvcuda.Tensor((20, 10, 3), np.uint8, layout="HWC", rowalign=1)
     tensor2 = tensor1.reshape((200, 3), layout="WC")
+    data = cupy.asarray(tensor1.cuda())
+    data.fill(17)
+    cupy.cuda.get_current_stream().synchronize()
+    del data
 
     # tensor2 increased the reference count of the underlying handle,
     # so it should be kept alive after tensor1 is deleted
@@ -509,6 +721,16 @@ def test_tensor_reshape_lifetime_ref_obj():
     assert tensor2.dtype == np.uint8
     assert tensor2.shape == (200, 3)
     assert tensor2.cuda().strides == (3, 1)
+
+    replacement = cvcuda.Tensor(new_shape, np.uint8, layout="HWC", rowalign=1)
+    data = cupy.asarray(replacement.cuda())
+    data.fill(42)
+    cupy.cuda.get_current_stream().synchronize()
+    del data, replacement
+    cvcuda.clear_cache()
+    np.testing.assert_array_equal(
+        cupy.asarray(tensor2.cuda()).get(), np.full((200, 3), 17, np.uint8)
+    )
 
 
 @t.mark.parametrize(
@@ -596,6 +818,149 @@ def test_tensor_size_in_bytes():
         tensor_create, (5, 32, 16, 4), cvcuda.TensorLayout.NHWC
     )
     assert cvcuda.internal.nbytes_in_cache(tensor_reshape) == 0
+
+
+class _FakeCAIBuffer:
+    """Minimal __cuda_array_interface__ producer with a caller-chosen typestr."""
+
+    def __init__(self, backing, typestr, shape):
+        self.__cuda_array_interface__ = {
+            "shape": shape,
+            "typestr": typestr,
+            "data": (backing.data.ptr, False),
+            "version": 3,
+            "strides": None,
+            "stream": 1,
+        }
+
+
+@t.mark.parametrize(
+    "typestr,gold_dtype",
+    [
+        ("|u1", np.uint8),
+        ("<u2", np.uint16),
+        ("=u4", np.uint32),
+        ("|i1", np.int8),
+        ("<i8", np.int64),
+        ("<f2", np.float16),
+        ("<f4", np.float32),
+        ("|f8", np.float64),
+        ("<c8", np.complex64),
+        ("<c16", np.complex128),
+        # Byte order is meaningless for a single byte, and the character is
+        # optional; both spellings must keep working.
+        (">u1", np.uint8),
+        ("u1", np.uint8),
+    ],
+)
+def test_as_tensor_accepts_cai_typestr(typestr, gold_dtype):
+    backing = cupy.zeros((64, 64), dtype=cupy.uint8)
+    tensor = cvcuda.as_tensor(_FakeCAIBuffer(backing, typestr, (8, 8)))
+    assert tensor.dtype == gold_dtype
+    assert tensor.shape == (8, 8)
+
+
+@t.mark.parametrize(
+    "typestr",
+    [
+        ">f2",  # float16 used to ignore byte order and read this as native
+        ">f4",  # multi-byte big-endian would need swapping, which is not done
+        ">i2",
+        "|u3",  # width not backed by a supported base type
+        "|f1",
+        "|c4",
+        "|b1",  # kind not supported
+        "|V8",
+        "|O8",
+        "",
+        "|u",
+        "|u1x",
+    ],
+)
+def test_as_tensor_rejects_unsupported_cai_typestr(typestr):
+    backing = cupy.zeros((64, 64), dtype=cupy.uint8)
+    with t.raises(Exception):
+        cvcuda.as_tensor(_FakeCAIBuffer(backing, typestr, (8, 8)))
+
+
+def test_as_tensor_cai_typestr_matches_dtype_conversion():
+    byte_orders = ("", "|", "<", "=", ">")
+    kinds = ("u", "i", "f", "c", "b", "V", "O", "S", "U")
+    widths = ("1", "2", "3", "4", "8", "16")
+    malformed = (
+        "",
+        "|",
+        "<",
+        "=",
+        ">",
+        "u",
+        "i",
+        "f",
+        "c",
+        "b",
+        "V",
+        "O",
+        "S",
+        "U",
+        "?",
+        "x1",
+        "|x1",
+        "u1x",
+        "|u1x",
+        "u-1",
+        "u1 ",
+        "||u1",
+        "<<u1",
+        "><u1",
+        "u999",
+        "|u999",
+        "\0u1",
+        "1u",
+    )
+    typestrs = (
+        tuple(
+            f"{byte_order}{kind}{width}"
+            for byte_order in byte_orders
+            for kind in kinds
+            for width in widths
+        )
+        + malformed
+    )
+    assert len(typestrs) == len(set(typestrs)) == 298
+
+    backing = cupy.zeros((64, 64), dtype=cupy.uint8)
+    mismatches = []
+    for typestr in typestrs:
+        if typestr in malformed:
+            expected = None
+        else:
+            try:
+                expected = cvcuda.Type(np.dtype(typestr))
+            except (TypeError, ValueError):
+                expected = None
+
+        try:
+            tensor = cvcuda.as_tensor(_FakeCAIBuffer(backing, typestr, (8, 8)))
+        except Exception as error:
+            if expected is not None:
+                mismatches.append(
+                    f"{typestr!r}: dtype conversion accepted {expected!r}, "
+                    f"CAI import raised {type(error).__name__}"
+                )
+        else:
+            actual = cvcuda.Type(tensor.dtype)
+            if expected is None:
+                mismatches.append(
+                    f"{typestr!r}: dtype conversion rejected, "
+                    f"CAI import accepted {actual!r}"
+                )
+            elif actual != expected:
+                mismatches.append(
+                    f"{typestr!r}: dtype conversion produced {expected!r}, "
+                    f"CAI import produced {actual!r}"
+                )
+
+    assert not mismatches, "\n".join(mismatches)
 
 
 def test_as_tensor_reads_cuda_array_interface_once():

@@ -20,6 +20,7 @@
 #include "PerDeviceResource.hpp"
 
 #include "PhotometricBound.cuh"
+#include "SameShapeCommon.cuh"
 
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
@@ -179,6 +180,20 @@ static __device__ __noinline__ float RemapWideFloat(float in, float lo, float hi
     return static_cast<float>((static_cast<double>(in) - wideLo) / (static_cast<double>(hi) - wideLo));
 }
 
+// S16 extrema make the divisor an integer in [1, 65535] and the rounded numerator
+// finite in [0, 65535 * 32767]. The ordinary division's underflow/overflow slow
+// path is unnecessary, including for zero numerators. Keep its RN correction.
+inline __device__ float DivideS16Range(float numerator, float range)
+{
+    float reciprocal;
+    asm("rcp.approx.ftz.f32 %0, %1;" : "=f"(reciprocal) : "f"(range));
+    const float error     = __fmaf_rn(-range, reciprocal, 1.f);
+    reciprocal            = __fmaf_rn(reciprocal, error, reciprocal);
+    const float quotient  = __fmaf_rn(numerator, reciprocal, 0.f);
+    const float remainder = __fmaf_rn(-range, quotient, numerator);
+    return __fmaf_rn(reciprocal, remainder, quotient);
+}
+
 // AutoContrast remap, shared by every layout/container. A flat channel passes
 // through unchanged. Integer results are clamped and truncated to match Pillow
 // and torchvision; floating-point results retain the scaled value.
@@ -199,7 +214,11 @@ inline __device__ BT RemapPixel(BT in, float lo, float hi, float bound)
     }
     float range = hi - lo;
     float val;
-    if (isfinite(range))
+    if constexpr (std::is_same_v<BT, short>)
+    {
+        val = DivideS16Range((static_cast<float>(in) - lo) * bound, range);
+    }
+    else if (isfinite(range))
     {
         val = (static_cast<float>(in) - lo) * bound / range;
     }
@@ -576,6 +595,517 @@ __global__ void ReduceVarShape(SrcWrapper src, float *partialLo, float *partialH
     }
 }
 
+// Element-stream apply. ApplyTensor below is ALU-bound; warp-contiguous vectors carry a rotating channel phase.
+
+constexpr int kStreamBlock    = 256;
+constexpr int kStreamVecBytes = 16;
+
+using StreamVec = uint4;
+
+struct StreamShape
+{
+    int32_t segElems;
+    int32_t numSegments;
+    int32_t segStride;
+    int32_t sampleStride;
+    int32_t planeStride;
+};
+
+template<typename BT>
+inline constexpr int kStreamElemsPerVec = kStreamVecBytes / static_cast<int>(sizeof(BT));
+
+// Selects keep indices literal; a runtime index would spill.
+template<int C>
+inline __device__ void RotateExtrema(int r, const float (&loV)[C], const float (&hiV)[C], float (&rl)[C],
+                                     float (&rh)[C], int (&rt)[C])
+{
+#pragma unroll
+    for (int j = 0; j < C; ++j)
+    {
+        const int c = (r + j) < C ? (r + j) : (r + j - C);
+        float     l = loV[0];
+        float     h = hiV[0];
+        int       t = 0;
+#pragma unroll
+        for (int m = 1; m < C; ++m)
+        {
+            const bool sel = (c == m);
+            l              = sel ? loV[m] : l;
+            h              = sel ? hiV[m] : h;
+            t              = sel ? (m << 8) : t;
+        }
+        rl[j] = l;
+        rh[j] = h;
+        rt[j] = t;
+    }
+}
+
+// RemapPixel with the flat and non-finite tests hoisted out; both are uniform per (sample, channel).
+template<typename BT>
+inline __device__ BT RemapNormal(BT in, float lo, float hi, float bound)
+{
+    if constexpr (cuda::detail::IsFloatingPointV<BT>)
+    {
+        // IsFloatingPointV, not std::is_floating_point_v: the latter excludes __half and drops this for F16.
+        if (!isfinite(static_cast<float>(in)))
+        {
+            return in;
+        }
+    }
+    float val;
+    if constexpr (std::is_same_v<BT, short>)
+    {
+        val = DivideS16Range((static_cast<float>(in) - lo) * bound, hi - lo);
+    }
+    else
+    {
+        val = (static_cast<float>(in) - lo) * bound / (hi - lo);
+    }
+    return static_cast<BT>(fminf(fmaxf(val, 0.f), bound));
+}
+
+// `Skew` advances by a compile-time constant, so one RotateExtrema serves the whole thread.
+template<typename BT, int C, bool UseLut, bool AllNormal, int Skew>
+inline __device__ void RemapVector(BT *b, const float (&rl)[C], const float (&rh)[C], const int (&rt)[C], float bound,
+                                   const unsigned char *lut)
+{
+    constexpr int E = kStreamElemsPerVec<BT>;
+#pragma unroll
+    for (int i = 0; i < E; ++i)
+    {
+        const int j = (Skew + i) % C;
+        if constexpr (UseLut)
+        {
+            b[i] = static_cast<BT>(lut[rt[j] + static_cast<int>(b[i])]);
+        }
+        else if constexpr (AllNormal)
+        {
+            b[i] = RemapNormal<BT>(b[i], rl[j], rh[j], bound);
+        }
+        else
+        {
+            b[i] = RemapPixel<BT>(b[i], rl[j], rh[j], bound);
+        }
+    }
+}
+
+template<int K, int VPT, typename BT, int C, bool UseLut, bool AllNormal, int Skew>
+inline __device__ void RemapVectors(StreamVec *v, const float (&rl)[C], const float (&rh)[C], const int (&rt)[C],
+                                    float bound, const unsigned char *lut)
+{
+    if constexpr (K < VPT)
+    {
+        RemapVector<BT, C, UseLut, AllNormal, (K * Skew) % C>(reinterpret_cast<BT *>(&v[K]), rl, rh, rt, bound, lut);
+        RemapVectors<K + 1, VPT, BT, C, UseLut, AllNormal, Skew>(v, rl, rh, rt, bound, lut);
+    }
+}
+
+template<bool IsPlanar, typename BT, int C, int VPT, bool UseLut>
+__global__ __launch_bounds__(kStreamBlock) void ApplyStream(const BT *__restrict__ src, BT *__restrict__ dst,
+                                                            const float *__restrict__ lo, const float *__restrict__ hi,
+                                                            StreamShape shape, int numChannels, float bound)
+{
+    constexpr int E    = kStreamElemsPerVec<BT>;
+    constexpr int kTab = IsPlanar ? 1 : C;
+
+    __shared__ unsigned char lut[UseLut ? kTab * 256 : 1];
+
+    const int sample = blockIdx.z;
+    const int plane  = IsPlanar ? static_cast<int>(blockIdx.y) / shape.numSegments : 0;
+    const int seg    = IsPlanar ? static_cast<int>(blockIdx.y) % shape.numSegments : static_cast<int>(blockIdx.y);
+
+    const int sampleOffset = sample * numChannels;
+    float     loV[C], hiV[C];
+#pragma unroll
+    for (int c = 0; c < C; ++c)
+    {
+        const int idx = IsPlanar ? (sampleOffset + plane) : (sampleOffset + c);
+        loV[c]        = lo[idx];
+        hiV[c]        = hi[idx];
+    }
+
+    bool allNormal = true;
+#pragma unroll
+    for (int c = 0; c < C; ++c)
+    {
+        allNormal = allNormal && (hiV[c] != loV[c]) && isfinite(hiV[c] - loV[c]);
+    }
+
+    if constexpr (UseLut)
+    {
+        // Built from the same RemapPixel call, and a 1-byte type has exactly 256 inputs.
+#pragma unroll
+        for (int c = 0; c < kTab; ++c)
+        {
+            for (int v = threadIdx.x; v < 256; v += kStreamBlock)
+            {
+                lut[(c << 8) + v]
+                    = static_cast<unsigned char>(RemapPixel<BT>(static_cast<BT>(v), loV[c], hiV[c], bound));
+            }
+        }
+        __syncthreads();
+    }
+
+    const int32_t base        = sample * shape.sampleStride + plane * shape.planeStride + seg * shape.segStride;
+    const BT *__restrict__ sp = src + base;
+    BT *__restrict__ dp       = dst + base;
+
+    const int32_t tile     = static_cast<int32_t>(blockIdx.x) * (VPT * kStreamBlock * E);
+    const int32_t segElems = shape.segElems;
+
+    const int32_t oBase = tile + static_cast<int32_t>(threadIdx.x) * E;
+    // Span test hoisted out of the unrolled body; per-vector guards serialise the loads.
+    if (oBase + (VPT - 1) * kStreamBlock * E + E <= segElems)
+    {
+        StreamVec v[VPT];
+#pragma unroll
+        for (int k = 0; k < VPT; ++k)
+        {
+            v[k] = *reinterpret_cast<const StreamVec *>(sp + oBase + k * kStreamBlock * E);
+        }
+        const int r0 = C == 1 ? 0 : static_cast<int>(oBase % C);
+        float     rl[C], rh[C];
+        int       rt[C];
+        RotateExtrema<C>(r0, loV, hiV, rl, rh, rt);
+        constexpr int kSkew = (kStreamBlock * E) % C;
+        if (allNormal)
+        {
+            RemapVectors<0, VPT, BT, C, UseLut, true, kSkew>(v, rl, rh, rt, bound, lut);
+        }
+        else
+        {
+            RemapVectors<0, VPT, BT, C, UseLut, false, kSkew>(v, rl, rh, rt, bound, lut);
+        }
+#pragma unroll
+        for (int k = 0; k < VPT; ++k)
+        {
+            *reinterpret_cast<StreamVec *>(dp + oBase + k * kStreamBlock * E) = v[k];
+        }
+        return;
+    }
+
+#pragma unroll
+    for (int k = 0; k < VPT; ++k)
+    {
+        const int32_t o = oBase + k * kStreamBlock * E;
+        if (o >= segElems)
+        {
+            break;
+        }
+        const int r = C == 1 ? 0 : static_cast<int>(o % C);
+        float     rl[C], rh[C];
+        int       rt[C];
+        RotateExtrema<C>(r, loV, hiV, rl, rh, rt);
+
+        if (o + E <= segElems)
+        {
+            StreamVec v = *reinterpret_cast<const StreamVec *>(sp + o);
+            BT       *b = reinterpret_cast<BT *>(&v);
+            RemapVector<BT, C, UseLut, false, 0>(b, rl, rh, rt, bound, lut);
+            *reinterpret_cast<StreamVec *>(dp + o) = v;
+        }
+        else
+        {
+            for (int32_t e = o; e < segElems; ++e)
+            {
+                const int j  = C == 1 ? 0 : static_cast<int>(e - o) % C;
+                float     l  = rl[0];
+                float     h  = rh[0];
+                int       tb = rt[0];
+#pragma unroll
+                for (int m = 1; m < C; ++m)
+                {
+                    const bool sel = (j == m);
+                    l              = sel ? rl[m] : l;
+                    h              = sel ? rh[m] : h;
+                    tb             = sel ? rt[m] : tb;
+                }
+                if constexpr (UseLut)
+                {
+                    dp[e] = static_cast<BT>(lut[tb + static_cast<int>(sp[e])]);
+                }
+                else
+                {
+                    dp[e] = RemapPixel<BT>(sp[e], l, h, bound);
+                }
+            }
+        }
+    }
+}
+
+// Packed RGBF32 segments with no tail use a lean application kernel. Keeping the
+// general tail path out of this instantiation avoids extending the live ranges of
+// the per-channel extrema through the hot vector body.
+constexpr int kF32C3FullBlock = 320;
+constexpr int kF32C3FullVPT   = 2;
+
+__global__ __launch_bounds__(kF32C3FullBlock) void ApplyF32C3FullStream(const float *__restrict__ src,
+                                                                        float *__restrict__ dst,
+                                                                        const float *__restrict__ lo,
+                                                                        const float *__restrict__ hi, StreamShape shape)
+{
+    constexpr int E       = kStreamElemsPerVec<float>;
+    constexpr int perTile = (kF32C3FullVPT + 1) * kF32C3FullBlock * E;
+
+    const int sample = blockIdx.z;
+    const int seg    = blockIdx.y;
+
+    const int   sampleOffset = sample * 3;
+    const int   lane         = static_cast<int>(threadIdx.x) & (WARP_WIDTH - 1);
+    const float laneLo       = lane < 3 ? lo[sampleOffset + lane] : 0.f;
+    const float laneHi       = lane < 3 ? hi[sampleOffset + lane] : 0.f;
+    float       loV[3], hiV[3];
+#pragma unroll
+    for (int c = 0; c < 3; ++c)
+    {
+        loV[c] = __shfl_sync(0xffffffffu, laneLo, c);
+        hiV[c] = __shfl_sync(0xffffffffu, laneHi, c);
+    }
+
+    bool allNormal = true;
+#pragma unroll
+    for (int c = 0; c < 3; ++c)
+    {
+        allNormal = allNormal && (hiV[c] != loV[c]) && isfinite(hiV[c] - loV[c]);
+    }
+
+    const int32_t base = sample * shape.sampleStride + seg * shape.segStride;
+    const int32_t tile = static_cast<int32_t>(blockIdx.x) * perTile;
+    const int32_t o    = tile + static_cast<int32_t>(threadIdx.x) * E;
+
+    const int r0 = static_cast<int>(o % 3);
+    float     rl[3], rh[3];
+    int       rt[3];
+    RotateExtrema<3>(r0, loV, hiV, rl, rh, rt);
+
+    StreamVec v[kF32C3FullVPT];
+#pragma unroll
+    for (int k = 0; k < kF32C3FullVPT; ++k)
+    {
+        v[k] = *reinterpret_cast<const StreamVec *>(src + base + o + k * kF32C3FullBlock * E);
+    }
+    if (allNormal)
+    {
+        RemapVectors<0, kF32C3FullVPT, float, 3, false, true, (kF32C3FullBlock * E) % 3>(v, rl, rh, rt, 1.f, nullptr);
+    }
+    else
+    {
+        RemapVectors<0, kF32C3FullVPT, float, 3, false, false, (kF32C3FullBlock * E) % 3>(v, rl, rh, rt, 1.f, nullptr);
+    }
+#pragma unroll
+    for (int k = 0; k < kF32C3FullVPT; ++k)
+    {
+        *reinterpret_cast<StreamVec *>(dst + base + o + k * kF32C3FullBlock * E) = v[k];
+    }
+
+    constexpr int extraOffset = kF32C3FullVPT * kF32C3FullBlock * E;
+    StreamVec     extra       = *reinterpret_cast<const StreamVec *>(src + base + o + extraOffset);
+    if (allNormal)
+    {
+        RemapVector<float, 3, false, true, extraOffset % 3>(reinterpret_cast<float *>(&extra), rl, rh, rt, 1.f,
+                                                            nullptr);
+    }
+    else
+    {
+        RemapVector<float, 3, false, false, extraOffset % 3>(reinterpret_cast<float *>(&extra), rl, rh, rt, 1.f,
+                                                             nullptr);
+    }
+    *reinterpret_cast<StreamVec *>(dst + base + o + extraOffset) = extra;
+}
+
+// Element-stream reduce. Only the order values reach a lane changes, and fminf/fmaxf are associative.
+
+template<bool IsPlanar, typename BT, int C, int VPT>
+__global__ __launch_bounds__(kStreamBlock) void ReduceStream(const BT *__restrict__ src, float *partialLo,
+                                                             float *partialHi, StreamShape shape, int numChannels,
+                                                             int numPartials)
+{
+    extern __shared__ float sm[];
+    constexpr int           E = kStreamElemsPerVec<BT>;
+
+    const int sample = blockIdx.z;
+    const int plane  = IsPlanar ? static_cast<int>(blockIdx.y) / shape.numSegments : 0;
+    const int seg    = IsPlanar ? static_cast<int>(blockIdx.y) % shape.numSegments : static_cast<int>(blockIdx.y);
+
+    const int32_t base        = sample * shape.sampleStride + plane * shape.planeStride + seg * shape.segStride;
+    const BT *__restrict__ sp = src + base;
+
+    // One accumulator per rotation slot; a vector spanning whole pixels has zero phase and needs one.
+    constexpr int SLOTS = (E % C == 0) ? 1 : VPT;
+    float         aMin[SLOTS][C], aMax[SLOTS][C];
+#pragma unroll
+    for (int k = 0; k < SLOTS; ++k)
+    {
+#pragma unroll
+        for (int j = 0; j < C; ++j)
+        {
+            aMin[k][j] = CUDART_INF_F;
+            aMax[k][j] = -CUDART_INF_F;
+        }
+    }
+
+    const int32_t segElems = shape.segElems;
+    const int32_t perGrid  = static_cast<int32_t>(gridDim.x) * (VPT * kStreamBlock * E);
+    for (int32_t tile = static_cast<int32_t>(blockIdx.x) * (VPT * kStreamBlock * E); tile < segElems; tile += perGrid)
+    {
+        const int32_t oBase = tile + static_cast<int32_t>(threadIdx.x) * E;
+        if (oBase + (VPT - 1) * kStreamBlock * E + E <= segElems)
+        {
+            StreamVec v[VPT];
+#pragma unroll
+            for (int k = 0; k < VPT; ++k)
+            {
+                v[k] = *reinterpret_cast<const StreamVec *>(sp + oBase + k * kStreamBlock * E);
+            }
+#pragma unroll
+            for (int k = 0; k < VPT; ++k)
+            {
+                const BT *b = reinterpret_cast<const BT *>(&v[k]);
+#pragma unroll
+                for (int i = 0; i < E; ++i)
+                {
+                    AccumulateExtrema<BT>(static_cast<float>(b[i]), aMin[SLOTS == 1 ? 0 : k][i % C],
+                                          aMax[SLOTS == 1 ? 0 : k][i % C]);
+                }
+            }
+        }
+        else
+        {
+#pragma unroll
+            for (int k = 0; k < VPT; ++k)
+            {
+                const int32_t o = oBase + k * kStreamBlock * E;
+                if (o >= segElems)
+                {
+                    break;
+                }
+                if (o + E <= segElems)
+                {
+                    StreamVec v = *reinterpret_cast<const StreamVec *>(sp + o);
+                    const BT *b = reinterpret_cast<const BT *>(&v);
+#pragma unroll
+                    for (int i = 0; i < E; ++i)
+                    {
+                        AccumulateExtrema<BT>(static_cast<float>(b[i]), aMin[SLOTS == 1 ? 0 : k][i % C],
+                                              aMax[SLOTS == 1 ? 0 : k][i % C]);
+                    }
+                }
+                else
+                {
+                    for (int32_t e = o; e < segElems; ++e)
+                    {
+                        const int   rel = C == 1 ? 0 : static_cast<int>(e - o) % C;
+                        const float val = static_cast<float>(sp[e]);
+#pragma unroll
+                        for (int m = 0; m < C; ++m)
+                        {
+                            if (rel == m)
+                            {
+                                AccumulateExtrema<BT>(val, aMin[SLOTS == 1 ? 0 : k][m], aMax[SLOTS == 1 ? 0 : k][m]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    float vMin[C], vMax[C];
+#pragma unroll
+    for (int c = 0; c < C; ++c)
+    {
+        vMin[c] = CUDART_INF_F;
+        vMax[c] = -CUDART_INF_F;
+    }
+#pragma unroll
+    for (int k = 0; k < SLOTS; ++k)
+    {
+        const int32_t o = static_cast<int32_t>(blockIdx.x) * (VPT * kStreamBlock * E)
+                        + (k * kStreamBlock + static_cast<int32_t>(threadIdx.x)) * E;
+        const int r = (C == 1 || SLOTS == 1) ? 0 : static_cast<int>(o % C);
+#pragma unroll
+        for (int j = 0; j < C; ++j)
+        {
+            const int c = (r + j) < C ? (r + j) : (r + j - C);
+#pragma unroll
+            for (int m = 0; m < C; ++m)
+            {
+                if (c == m)
+                {
+                    vMin[m] = fminf(vMin[m], aMin[k][j]);
+                    vMax[m] = fmaxf(vMax[m], aMax[k][j]);
+                }
+            }
+        }
+    }
+
+    const int partial   = seg * static_cast<int>(gridDim.x) + static_cast<int>(blockIdx.x);
+    const int extremaId = sample * numChannels * numPartials + (IsPlanar ? plane * numPartials : 0) + partial;
+    ReduceBlockToPartials<C>(sm, kStreamBlock, static_cast<int>(threadIdx.x), C, vMin, vMax, &partialLo[extremaId],
+                             &partialHi[extremaId], numPartials);
+}
+
+// A full RGBF32 tile gives every thread four values from each channel. Accumulate
+// those three channels directly instead of retaining one rotated accumulator set
+// per vector; the value order within each channel stays identical to ReduceStream.
+__global__ __launch_bounds__(kStreamBlock) void ReduceF32C3FullStream(const float *__restrict__ src, float *partialLo,
+                                                                      float *partialHi, StreamShape shape,
+                                                                      int numChannels, int numPartials)
+{
+    extern __shared__ float sm[];
+    constexpr int           E       = kStreamElemsPerVec<float>;
+    constexpr int           perTile = 3 * kStreamBlock * E;
+
+    const int sample = blockIdx.z;
+    const int seg    = blockIdx.y;
+
+    const int32_t base = sample * shape.sampleStride + seg * shape.segStride;
+    const int32_t o    = static_cast<int32_t>(blockIdx.x) * perTile + static_cast<int32_t>(threadIdx.x) * E;
+
+    StreamVec v[3];
+#pragma unroll
+    for (int k = 0; k < 3; ++k)
+    {
+        v[k] = *reinterpret_cast<const StreamVec *>(src + base + o + k * kStreamBlock * E);
+    }
+
+    const float *b0 = reinterpret_cast<const float *>(&v[0]);
+    const float *b1 = reinterpret_cast<const float *>(&v[1]);
+    const float *b2 = reinterpret_cast<const float *>(&v[2]);
+
+    float qMin[3]{CUDART_INF_F, CUDART_INF_F, CUDART_INF_F};
+    float qMax[3]{-CUDART_INF_F, -CUDART_INF_F, -CUDART_INF_F};
+
+    AccumulateExtrema<float>(b0[0], qMin[0], qMax[0]);
+    AccumulateExtrema<float>(b0[3], qMin[0], qMax[0]);
+    AccumulateExtrema<float>(b1[2], qMin[0], qMax[0]);
+    AccumulateExtrema<float>(b2[1], qMin[0], qMax[0]);
+
+    AccumulateExtrema<float>(b0[1], qMin[1], qMax[1]);
+    AccumulateExtrema<float>(b1[0], qMin[1], qMax[1]);
+    AccumulateExtrema<float>(b1[3], qMin[1], qMax[1]);
+    AccumulateExtrema<float>(b2[2], qMin[1], qMax[1]);
+
+    AccumulateExtrema<float>(b0[2], qMin[2], qMax[2]);
+    AccumulateExtrema<float>(b1[1], qMin[2], qMax[2]);
+    AccumulateExtrema<float>(b2[0], qMin[2], qMax[2]);
+    AccumulateExtrema<float>(b2[3], qMin[2], qMax[2]);
+
+    const int r = static_cast<int>(threadIdx.x % 3);
+    float     vMin[3], vMax[3];
+    vMin[0] = r == 0 ? qMin[0] : (r == 1 ? qMin[2] : qMin[1]);
+    vMin[1] = r == 0 ? qMin[1] : (r == 1 ? qMin[0] : qMin[2]);
+    vMin[2] = r == 0 ? qMin[2] : (r == 1 ? qMin[1] : qMin[0]);
+    vMax[0] = r == 0 ? qMax[0] : (r == 1 ? qMax[2] : qMax[1]);
+    vMax[1] = r == 0 ? qMax[1] : (r == 1 ? qMax[0] : qMax[2]);
+    vMax[2] = r == 0 ? qMax[2] : (r == 1 ? qMax[1] : qMax[0]);
+
+    const int partial   = seg * static_cast<int>(gridDim.x) + static_cast<int>(blockIdx.x);
+    const int extremaId = sample * numChannels * numPartials + partial;
+    ReduceBlockToPartials<3>(sm, kStreamBlock, static_cast<int>(threadIdx.x), 3, vMin, vMax, &partialLo[extremaId],
+                             &partialHi[extremaId], numPartials);
+}
+
 // ------------------------------- Apply kernels -----------------------------
 
 constexpr int APPLY_X_STEPS = 4;
@@ -847,6 +1377,173 @@ inline bool TensorAddressingFitsInt32(const Access &access)
         && accumulate(access.rowStride(), access.numRows()) && accumulate(access.colStride(), access.numCols());
 }
 
+// Declining leaves the wrapper-indexed ApplyTensor path in charge, so every shape stays supported.
+template<bool IsPlanar, typename BT, class Access>
+inline bool MakeStreamShape(const Access &srcAccess, const Access &dstAccess, const void *srcPtr, const void *dstPtr,
+                            int numSamples, int numPlanes, StreamShape &shape)
+{
+    constexpr int64_t elemSize  = sizeof(BT);
+    const int64_t     rowStride = srcAccess.rowStride();
+    if (rowStride != dstAccess.rowStride() || srcAccess.sampleStride() != dstAccess.sampleStride())
+    {
+        return false;
+    }
+    if (rowStride % elemSize != 0 || srcAccess.sampleStride() % elemSize != 0)
+    {
+        return false;
+    }
+    auto aligned = [](int64_t v)
+    {
+        return v % kStreamVecBytes == 0;
+    };
+    if (!aligned(reinterpret_cast<uintptr_t>(srcPtr)) || !aligned(reinterpret_cast<uintptr_t>(dstPtr))
+        || !aligned(srcAccess.sampleStride()))
+    {
+        return false;
+    }
+
+    const int64_t rowElems   = IsPlanar ? srcAccess.numCols() : srcAccess.numCols() * srcAccess.numChannels();
+    const bool    rowsPacked = (rowStride == rowElems * elemSize);
+
+    int64_t planeStride = 0;
+    if constexpr (IsPlanar)
+    {
+        if (srcAccess.planeStride() != dstAccess.planeStride() || srcAccess.planeStride() % elemSize != 0
+            || !aligned(srcAccess.planeStride()))
+        {
+            return false;
+        }
+        planeStride = srcAccess.planeStride() / elemSize;
+    }
+
+    int64_t segElems, numSegments, segStride;
+    if (rowsPacked)
+    {
+        segElems    = rowElems * srcAccess.numRows();
+        numSegments = 1;
+        segStride   = 0;
+    }
+    else
+    {
+        if (!aligned(rowStride))
+        {
+            return false;
+        }
+        segElems    = rowElems;
+        numSegments = srcAccess.numRows();
+        segStride   = rowStride / elemSize;
+    }
+
+    const int64_t gridY = numSegments * (IsPlanar ? numPlanes : 1);
+    if (segElems <= 0 || gridY > 65535 || numSamples > 65535)
+    {
+        return false;
+    }
+    constexpr int64_t i32max = cuda::TypeTraits<int32_t>::max;
+    if (segElems > i32max || segStride > i32max || planeStride > i32max || srcAccess.sampleStride() / elemSize > i32max)
+    {
+        return false;
+    }
+
+    shape.segElems     = static_cast<int32_t>(segElems);
+    shape.numSegments  = static_cast<int32_t>(numSegments);
+    shape.segStride    = static_cast<int32_t>(segStride);
+    shape.sampleStride = static_cast<int32_t>(srcAccess.sampleStride() / elemSize);
+    shape.planeStride  = static_cast<int32_t>(planeStride);
+    return true;
+}
+
+// One vector wins where the carrier spans whole pixels; C3 prefers three to reuse the rotation.
+template<typename BT, int C>
+inline constexpr int kStreamVPT = (kStreamElemsPerVec<BT> % C == 0) ? 4 : 3;
+
+template<bool IsPlanar, typename BT, int C>
+inline bool LaunchApplyStream(cudaStream_t stream, const BT *src, BT *dst, const float *lo, const float *hi,
+                              const StreamShape &shape, int numSamples, int numChannels, int numPlanes, float bound)
+{
+    constexpr int     E        = kStreamElemsPerVec<BT>;
+    constexpr int     VPT      = kStreamVPT<BT, C>;
+    constexpr bool    UseLut   = std::is_same_v<BT, unsigned char>;
+    constexpr int64_t fullTile = static_cast<int64_t>(kF32C3FullVPT + 1) * kF32C3FullBlock * kStreamElemsPerVec<float>;
+
+    if constexpr (!IsPlanar && std::is_same_v<BT, float> && C == 3)
+    {
+        if (shape.segElems % fullTile == 0)
+        {
+            const int64_t gridX = shape.segElems / fullTile;
+            if (gridX <= 0 || gridX > cuda::TypeTraits<int32_t>::max)
+            {
+                return false;
+            }
+            dim3 grid(static_cast<unsigned int>(gridX), static_cast<unsigned int>(shape.numSegments),
+                      static_cast<unsigned int>(numSamples));
+            ApplyF32C3FullStream<<<grid, kF32C3FullBlock, 0, stream>>>(src, dst, lo, hi, shape);
+            return true;
+        }
+    }
+
+    const int64_t perTile = static_cast<int64_t>(VPT) * kStreamBlock * E;
+    const int64_t gridX   = (shape.segElems + perTile - 1) / perTile;
+    if (gridX <= 0 || gridX > cuda::TypeTraits<int32_t>::max)
+    {
+        return false;
+    }
+    dim3 grid(static_cast<unsigned int>(gridX),
+              static_cast<unsigned int>(shape.numSegments * (IsPlanar ? numPlanes : 1)),
+              static_cast<unsigned int>(numSamples));
+    ApplyStream<IsPlanar, BT, C, VPT, UseLut>
+        <<<grid, kStreamBlock, 0, stream>>>(src, dst, lo, hi, shape, numChannels, bound);
+    return true;
+}
+
+// Bounded so the partial count stays inside the workspace budget; the grid-stride loop covers rest.
+inline int StreamReduceGridX(int64_t segElems, int64_t perTile, int64_t numSegments, int64_t numExtrema)
+{
+    constexpr int64_t kWorkspaceOneSide = static_cast<int64_t>(MAX_REDUCTION_WORKSPACE_ONE_SIDE);
+    if (numExtrema <= 0 || numExtrema > kWorkspaceOneSide / 2)
+    {
+        return 0;
+    }
+    const int64_t byWorkspace = kWorkspaceOneSide / numExtrema - 1;
+    const int64_t maxPartials = std::min<int64_t>(MAX_PARTIALS_PER_SAMPLE, byWorkspace);
+    if (maxPartials < numSegments)
+    {
+        return 0; // one partial per segment is the floor this layout can express
+    }
+    const int64_t need  = (segElems + perTile - 1) / perTile;
+    const int64_t byCap = maxPartials / numSegments;
+    const int64_t gridX = std::min<int64_t>(need, byCap);
+    return gridX > 0 && gridX <= cuda::TypeTraits<int32_t>::max ? static_cast<int>(gridX) : 0;
+}
+
+template<bool IsPlanar, typename BT, int C>
+inline void LaunchReduceStream(cudaStream_t stream, const BT *src, float *partialLo, float *partialHi,
+                               const StreamShape &shape, int numSamples, int numChannels, int numPlanes, int gridX,
+                               int numPartials)
+{
+    constexpr int VPT   = kStreamVPT<BT, C>;
+    constexpr int E     = kStreamElemsPerVec<BT>;
+    const int64_t gridY = static_cast<int64_t>(shape.numSegments) * (IsPlanar ? numPlanes : 1);
+    NVCV_ASSERT(gridY <= 65535 && gridX > 0);
+    const size_t smem = 2 * static_cast<size_t>(C) * (kStreamBlock / WARP_WIDTH) * sizeof(float);
+    dim3         grid(static_cast<unsigned int>(gridX), static_cast<unsigned int>(gridY),
+                      static_cast<unsigned int>(numSamples));
+
+    if constexpr (!IsPlanar && std::is_same_v<BT, float> && C == 3)
+    {
+        constexpr int64_t perTile = static_cast<int64_t>(3) * kStreamBlock * E;
+        if (shape.segElems % perTile == 0 && gridX == shape.segElems / perTile)
+        {
+            ReduceF32C3FullStream<<<grid, kStreamBlock, smem, stream>>>(src, partialLo, partialHi, shape, numChannels,
+                                                                        numPartials);
+            return;
+        }
+    }
+
+    ReduceStream<IsPlanar, BT, C, VPT>
+        <<<grid, kStreamBlock, smem, stream>>>(src, partialLo, partialHi, shape, numChannels, numPartials);
+}
+
 template<bool IsPlanar, typename T>
 void RunTensor(cudaStream_t stream, cvcuda::priv::AutoContrastWorkspace &ws, const nvcv::TensorDataStridedCuda &srcData,
                const nvcv::TensorDataStridedCuda &dstData, int numSamples, int numChannels, int numPlanes)
@@ -866,6 +1563,21 @@ void RunTensor(cudaStream_t stream, cvcuda::priv::AutoContrastWorkspace &ws, con
     }
     using StrideType = int32_t;
 
+    constexpr int     C       = IsPlanar ? 1 : cuda::NumElements<T>;
+    constexpr int     E       = kStreamElemsPerVec<BT>;
+    constexpr int     VPT     = kStreamVPT<BT, C>;
+    constexpr int64_t perTile = static_cast<int64_t>(VPT) * kStreamBlock * E;
+    StreamShape       shape{};
+    const bool canStream   = MakeStreamShape<IsPlanar, BT>(*srcAccess, *dstAccess, srcData.basePtr(), dstData.basePtr(),
+                                                         numSamples, numPlanes, shape);
+    int        streamGridX = 0;
+    if (canStream && static_cast<int64_t>(shape.numSegments) * (IsPlanar ? numPlanes : 1) <= 65535)
+    {
+        streamGridX = StreamReduceGridX(shape.segElems, perTile, shape.numSegments,
+                                        static_cast<int64_t>(numSamples) * numChannels);
+    }
+    const bool useStreamReduce = canStream && streamGridX > 0;
+
     dim3          block(BLOCK_X, BLOCK_Y, 1);
     ReductionGrid reduceGrid = GetReductionGrid(size.x, size.y, numSamples, numChannels);
     dim3      applyGrid(ComputeGridX(size.x, APPLY_X_STEPS), cvcuda::priv::detail::AutoContrastDivUp(size.y, BLOCK_Y),
@@ -875,28 +1587,46 @@ void RunTensor(cudaStream_t stream, cvcuda::priv::AutoContrastWorkspace &ws, con
     const size_t          reduceChan = IsPlanar ? 1 : cuda::NumElements<T>;
     const size_t          smem       = 2 * reduceChan * numWarps * sizeof(float);
     const size_t          finalSmem  = 2 * (FINAL_THREADS / WARP_WIDTH) * sizeof(float);
-    auto                  reduction  = GetReductionWorkspace(ws, stream, numSamples, numChannels, reduceGrid.launch);
+    const dim3            wsGrid     = useStreamReduce ? dim3(static_cast<unsigned int>(streamGridX),
+                                                              static_cast<unsigned int>(shape.numSegments), 1)
+                                                       : reduceGrid.launch;
+    auto                  reduction  = GetReductionWorkspace(ws, stream, numSamples, numChannels, wsGrid);
     WorkspaceReleaseGuard releaseGuard(ws, stream);
 
     if constexpr (!IsPlanar)
     {
         auto src = cuda::CreateTensorWrapNHW<const T, StrideType>(srcData);
         auto dst = cuda::CreateTensorWrapNHW<T, StrideType>(dstData);
-        if (reduceGrid.isExact())
+        if (useStreamReduce)
         {
-            ReduceTensor<false, T><<<reduceGrid.launch, block, smem, stream>>>(
-                src, reduction.partialLo, reduction.partialHi, size, numChannels, 1);
+            LaunchReduceStream<false, BT, C>(stream, reinterpret_cast<const BT *>(srcData.basePtr()),
+                                             reduction.partialLo, reduction.partialHi, shape, numSamples, numChannels,
+                                             numPlanes, streamGridX, static_cast<int>(reduction.numPartials));
         }
         else
         {
-            ReduceTensor<false, T>
-                <<<reduceGrid.launch, block, smem, stream>>>(src, reduction.partialLo, reduction.partialHi, size,
-                                                             numChannels, 1, reduceGrid.logicalX, reduceGrid.logicalY);
+            if (reduceGrid.isExact())
+            {
+                ReduceTensor<false, T><<<reduceGrid.launch, block, smem, stream>>>(
+                    src, reduction.partialLo, reduction.partialHi, size, numChannels, 1);
+            }
+            else
+            {
+                ReduceTensor<false, T><<<reduceGrid.launch, block, smem, stream>>>(
+                    src, reduction.partialLo, reduction.partialHi, size, numChannels, 1, reduceGrid.logicalX,
+                    reduceGrid.logicalY);
+            }
         }
         FinalizeMinMax<<<static_cast<unsigned int>(reduction.numExtrema), FINAL_THREADS, finalSmem, stream>>>(
             reduction.partialLo, reduction.partialHi, reduction.lo, reduction.hi, reduction.numPartials);
-        ApplyTensor<false, T>
-            <<<applyGrid, block, 0, stream>>>(src, dst, reduction.lo, reduction.hi, size, numChannels, 1, bound);
+        if (!canStream
+            || !LaunchApplyStream<false, BT, C>(stream, reinterpret_cast<const BT *>(srcData.basePtr()),
+                                                reinterpret_cast<BT *>(dstData.basePtr()), reduction.lo, reduction.hi,
+                                                shape, numSamples, numChannels, numPlanes, bound))
+        {
+            ApplyTensor<false, T>
+                <<<applyGrid, block, 0, stream>>>(src, dst, reduction.lo, reduction.hi, size, numChannels, 1, bound);
+        }
     }
     else
     {
@@ -906,7 +1636,13 @@ void RunTensor(cudaStream_t stream, cvcuda::priv::AutoContrastWorkspace &ws, con
         auto dst = cuda::Tensor4DWrap<T, StrideType>(
             dstData.basePtr(), static_cast<StrideType>(dstAccess->sampleStride()),
             static_cast<StrideType>(dstAccess->planeStride()), static_cast<StrideType>(dstAccess->rowStride()));
-        if (reduceGrid.isExact())
+        if (useStreamReduce)
+        {
+            LaunchReduceStream<true, BT, 1>(stream, reinterpret_cast<const BT *>(srcData.basePtr()),
+                                            reduction.partialLo, reduction.partialHi, shape, numSamples, numChannels,
+                                            numPlanes, streamGridX, static_cast<int>(reduction.numPartials));
+        }
+        else if (reduceGrid.isExact())
         {
             ReduceTensor<true, T><<<reduceGrid.launch, block, smem, stream>>>(
                 src, reduction.partialLo, reduction.partialHi, size, numChannels, numPlanes);
@@ -919,8 +1655,14 @@ void RunTensor(cudaStream_t stream, cvcuda::priv::AutoContrastWorkspace &ws, con
         }
         FinalizeMinMax<<<static_cast<unsigned int>(reduction.numExtrema), FINAL_THREADS, finalSmem, stream>>>(
             reduction.partialLo, reduction.partialHi, reduction.lo, reduction.hi, reduction.numPartials);
-        ApplyTensor<true, T><<<applyGrid, block, 0, stream>>>(src, dst, reduction.lo, reduction.hi, size, numChannels,
-                                                              numPlanes, bound);
+        if (!canStream
+            || !LaunchApplyStream<true, BT, 1>(stream, reinterpret_cast<const BT *>(srcData.basePtr()),
+                                               reinterpret_cast<BT *>(dstData.basePtr()), reduction.lo, reduction.hi,
+                                               shape, numSamples, numChannels, numPlanes, bound))
+        {
+            ApplyTensor<true, T><<<applyGrid, block, 0, stream>>>(src, dst, reduction.lo, reduction.hi, size,
+                                                                  numChannels, numPlanes, bound);
+        }
     }
     NVCV_CHECK_THROW(cudaGetLastError());
     releaseGuard.finish();
@@ -986,12 +1728,13 @@ inline void DispatchBaseType(nvcv::DataType dtype, const Cb &cb)
     // clang-format off
     if      CVCUDA_AC_BASE(U8, uchar)
     else if CVCUDA_AC_BASE(U16, ushort)
+    else if CVCUDA_AC_BASE(S16, short)
     else if CVCUDA_AC_BASE(F16, __half)
     else if CVCUDA_AC_BASE(F32, float)
     else
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid input/output data type (only U8, U16, F16, F32 are supported)");
+                              "Invalid input/output data type (only U8, U16, S16, F16, F32 are supported)");
     }
         // clang-format on
 
@@ -1039,34 +1782,10 @@ inline bool ValidateSrcDstTensors(int &numSamples, int &numInterleavedChannels, 
                                   const nvcv::Optional<nvcv::TensorDataStridedCuda> &srcData,
                                   const nvcv::Optional<nvcv::TensorDataStridedCuda> &dstData)
 {
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-    if (srcData->layout() != dstData->layout())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
-    }
-    if (!(srcData->layout() == nvcv::TENSOR_HWC || srcData->layout() == nvcv::TENSOR_NHWC
-          || srcData->layout() == nvcv::TENSOR_CHW || srcData->layout() == nvcv::TENSOR_NCHW))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have (N)HWC or (N)CHW layout");
-    }
-    if (srcData->dtype() != dstData->dtype())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same data type");
-    }
-    if (srcData->dtype().numChannels() != 1)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Tensor data type must be scalar; use the C dimension for image channels");
-    }
+    const auto info = cvcuda::priv::same_shape::ValidateSrcDstTensors(srcData, dstData);
+
+    // The shared validator compares 32-bit extents; the full-shape compare also rejects a pair
+    // that differs only above that range.
     if (srcData->shape() != dstData->shape())
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -1084,6 +1803,7 @@ inline bool ValidateSrcDstTensors(int &numSamples, int &numInterleavedChannels, 
     const int64_t rawRows     = extent('H', 1);
     const int64_t rawCols     = extent('W', 1);
     const int64_t rawChannels = extent('C', 1);
+    // Each sample is mapped to grid.z in the reduce/apply kernels.
     if (rawSamples > 65535)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -1109,53 +1829,10 @@ inline bool ValidateSrcDstTensors(int &numSamples, int &numInterleavedChannels, 
     auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
     NVCV_ASSERT(srcAccess && dstAccess);
 
-    numSamples = srcAccess->numSamples();
-    if (numSamples != dstAccess->numSamples())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
-    // Each sample is mapped to grid.z in the reduce/apply kernels, so the batch size must fit
-    // the CUDA grid.z limit.
-    if (numSamples > 65535)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Batch size %d exceeds the maximum supported (65535)", numSamples);
-    }
-
-    int numChannels = srcAccess->numChannels();
-    if (numChannels != dstAccess->numChannels())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of channels");
-    }
-    if (numChannels == 2)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel images are not supported");
-    }
-    if (numChannels != 1 && numChannels != 3 && numChannels != 4)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid channel number %d (only 1, 3, 4)",
-                              numChannels);
-    }
-
-    numPlanes = srcAccess->numPlanes();
-    if (numPlanes != dstAccess->numPlanes())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of planes");
-    }
-
-    if (srcAccess->numCols() != dstAccess->numCols() || srcAccess->numRows() != dstAccess->numRows())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input and output must have matching width and height");
-    }
-    if (srcAccess->numRows() > MAX_HEIGHT)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Image height %ld exceeds the maximum supported (%d)", srcAccess->numRows(), MAX_HEIGHT);
-    }
-
-    const int64_t elementStride     = srcData->dtype().strideBytes();
-    const int64_t expectedColStride = elementStride * (srcAccess->infoLayout().isChannelLast() ? numChannels : 1);
+    // Stricter than the shared column check: the kernels also assume packed channels, and a
+    // one-column image must still be packed.
+    const int64_t elementStride     = info.srcDtype.strideBytes();
+    const int64_t expectedColStride = elementStride * info.numInterleavedChannels;
     if (srcAccess->colStride() != expectedColStride || dstAccess->colStride() != expectedColStride
         || (srcAccess->infoLayout().isChannelLast()
             && (srcAccess->chStride() != elementStride || dstAccess->chStride() != elementStride)))
@@ -1164,8 +1841,10 @@ inline bool ValidateSrcDstTensors(int &numSamples, int &numInterleavedChannels, 
                               "Tensor pixels must have packed width and channel strides");
     }
 
-    dtype                  = srcData->dtype();
-    numInterleavedChannels = srcAccess->infoLayout().isChannelLast() ? numChannels : 1;
+    numSamples             = info.numSamples;
+    numPlanes              = info.numPlanes;
+    dtype                  = info.srcDtype;
+    numInterleavedChannels = info.numInterleavedChannels;
     return numSamples == 0 || srcAccess->numCols() == 0 || srcAccess->numRows() == 0;
 }
 

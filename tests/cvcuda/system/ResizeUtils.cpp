@@ -247,10 +247,13 @@ void resize(T *dstPtr, int dstStep, nvcv::Size2D dstSize, const T *srcPtr, int s
 
 template<typename T>
 static void StoreNearestCropPixel(T *dstPtr, int dstStep, const T *srcPtr, int srcStep, nvcv::Size2D srcSize,
-                                  int channels, int dy, int dx, int top, int left, float scaleH, float scaleW)
+                                  int channels, int dy, int dx, int top, int left, float scaleH, float scaleW,
+                                  bool halfPixel = true)
 {
-    float fy = scaleH * (static_cast<float>(dy) + 0.5f) + static_cast<float>(top);
-    float fx = scaleW * (static_cast<float>(dx) + 0.5f) + static_cast<float>(left);
+    const float offset = halfPixel ? 0.5f : 0.0f;
+
+    float fy = scaleH * (static_cast<float>(dy) + offset) + static_cast<float>(top);
+    float fx = scaleW * (static_cast<float>(dx) + offset) + static_cast<float>(left);
 
     auto sy = static_cast<int>(std::floor(fy));
     auto sx = static_cast<int>(std::floor(fx));
@@ -401,6 +404,10 @@ void resizedCrop(T *dstPtr, int dstStep, nvcv::Size2D dstSize, const T *srcPtr, 
                 StoreNearestCropPixel(dstPtr, dstStep, srcPtr, srcStep, srcSize, channels, dy, dx, top, left, scaleH,
                                       scaleW);
                 break;
+            case NVCV_INTERP_NEAREST_FLOOR:
+                StoreNearestCropPixel(dstPtr, dstStep, srcPtr, srcStep, srcSize, channels, dy, dx, top, left, scaleH,
+                                      scaleW, /*halfPixel=*/false);
+                break;
             case NVCV_INTERP_LINEAR:
                 StoreLinearCropPixel(dstPtr, dstStep, srcPtr, srcStep, srcSize, channels, dy, dx, top, left, scaleH,
                                      scaleW, MinVal, MaxVal);
@@ -423,7 +430,8 @@ void _Resize(T *dstPtr, int dstStride, nvcv::Size2D dstSize, const T *srcPtr, in
     int dstStep = dstStride / sizeof(T);
     int srcStep = srcStride / sizeof(T);
 
-    if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
+    if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_NEAREST_FLOOR || interp == NVCV_INTERP_LINEAR
+        || interp == NVCV_INTERP_CUBIC)
     {
         resizedCrop<T>(dstPtr, dstStep, dstSize, srcPtr, srcStep, srcSize, 0, 0, srcSize.h, srcSize.w, frmt, interp,
                        std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());
@@ -489,7 +497,8 @@ void _ResizedCrop(T *dstPtr, int dstStride, nvcv::Size2D dstSize, const T *srcPt
     int dstStep = dstStride / sizeof(T);
     int srcStep = srcStride / sizeof(T);
 
-    if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
+    if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_NEAREST_FLOOR || interp == NVCV_INTERP_LINEAR
+        || interp == NVCV_INTERP_CUBIC)
     {
         resizedCrop<T>(dstPtr, dstStep, dstSize, srcPtr, srcStep, srcSize, top, left, crop_rows, crop_cols, frmt,
                        interp, std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());

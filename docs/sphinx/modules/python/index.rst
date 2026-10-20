@@ -24,6 +24,7 @@ Python API
 
    data_types
    operators
+   tv
    auxiliary_types
    utilities
    cache

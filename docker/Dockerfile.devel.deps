@@ -20,8 +20,12 @@ ARG VER_CUDA=12.5.0
 ARG VER_NUMPY_MAJOR=2
 ARG TORCH_CUDA_SUFFIX=cu12
 
-ARG PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14"
+ARG PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14 3.14t"
+ARG CPYTHON_314T_VERSION
+ARG CPYTHON_314T_SHA256
 ARG CMAKE_VERSION=3.31.1
+ARG GET_PIP_COMMIT=f6f644156f23dfe9acc06e7b9ca75eee311f2e37
+ARG GET_PIP_SHA256=fb24e693bab954209a063d90953621412ccad4a500905a726286e038f508ddf6
 ARG CCACHE_VERSION=4.13.6
 ARG CCACHE_SHA256_X86_64=09e0547a0c3b250a76675c33130366f1399f3580842fb360c052520d56214ead
 ARG CCACHE_SHA256_AARCH64=bff0e0c19165db8627c85c36b0885b3b180659eda67a028298d26565aad52f56
@@ -109,10 +113,13 @@ RUN UBUNTU_VERSION=$(lsb_release -rs) && \
 # Install development tools. Clang 14 is not available on Ubuntu 26.04; Clang 18
 # is the oldest native release there and is supported by CUDA 13.3.
 RUN UBUNTU_VERSION=$(lsb_release -rs) && \
+    set -- && \
     if [ "$UBUNTU_VERSION" = "22.04" ]; then \
         CLANG_VERSION=14; \
     elif [ "$UBUNTU_VERSION" = "26.04" ]; then \
         CLANG_VERSION=18; \
+        # Static OpenSSL 3.5 needs jitterentropy; libzstd-dev is installed above.
+        set -- libjitterentropy3-dev; \
     else \
         echo "Unsupported Ubuntu version: $UBUNTU_VERSION" >&2; \
         exit 1; \
@@ -124,6 +131,7 @@ RUN UBUNTU_VERSION=$(lsb_release -rs) && \
         libgtest-dev \
         libgmock-dev \
         libssl-dev \
+        "$@" \
         doxygen \
         graphviz \
         fonts-dejavu \
@@ -176,24 +184,67 @@ RUN apt-fast update && \
 
 # NOTE: we use minimal Debian/Ubuntu-based python packages and handle most dependencies with pip
 
-# Install system default Python packages first
+# Install system Python and prerequisites for the free-threaded source build.
 RUN apt-fast update && \
     apt-fast install -y --no-install-recommends \
         python3 python3-dev python3-venv \
+        libbz2-dev \
+        libffi-dev \
+        libgdbm-dev \
+        libgdbm-compat-dev \
+        liblzma-dev \
+        libncurses-dev \
+        libreadline-dev \
+        libsqlite3-dev \
+        libzstd-dev \
+        pkg-config \
+        uuid-dev \
+        xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Add deadsnakes for the non-default Python versions. It provides Python
 # 3.10-3.13 on Ubuntu 26.04; Ubuntu itself provides Python 3.14.
 RUN add-apt-repository ppa:deadsnakes/ppa -y
 
-# Install all specified Python versions with dev and venv packages
+# Free-threaded Python uses a pinned source build because apt does not provide
+# it on every supported Ubuntu base. Regular interpreters retain their packages.
 RUN set -e; \
-    apt-fast update && \
+    apt-fast update; \
     for pyver in $PYTHON_VERSIONS; do \
-        echo "Installing Python $pyver with dev and venv packages" && \
-        apt-fast install -y --no-install-recommends \
-            "python${pyver}" "python${pyver}-dev" "python${pyver}-venv"; \
-    done && \
+        if [ "$pyver" = "3.14t" ]; then \
+            : "${CPYTHON_314T_VERSION:?required for Python 3.14t}"; \
+            : "${CPYTHON_314T_SHA256:?required for Python 3.14t}"; \
+            archive="/tmp/Python-${CPYTHON_314T_VERSION}.tar.xz"; \
+            source_dir="/tmp/Python-${CPYTHON_314T_VERSION}"; \
+            prefix=/opt/python/cp314-cp314t; \
+            curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+                "https://www.python.org/ftp/python/${CPYTHON_314T_VERSION}/Python-${CPYTHON_314T_VERSION}.tar.xz" \
+                --output "$archive"; \
+            echo "$CPYTHON_314T_SHA256  $archive" | sha256sum -c -; \
+            tar -xJf "$archive" -C /tmp; \
+            cd "$source_dir"; \
+            ./configure \
+                --prefix="$prefix" \
+                --disable-gil \
+                --enable-shared \
+                --with-ensurepip=install \
+                --with-platlibdir=lib \
+                --with-system-libmpdec=no; \
+            make -j"$(nproc)" altinstall; \
+            ln -sf "$prefix/bin/python3.14t" /usr/local/bin/python3.14t; \
+            printf '%s\n' "$prefix/lib" > /etc/ld.so.conf.d/python3.14t.conf; \
+            ldconfig; \
+            python3.14t -X gil=0 -c \
+                "import sys, sysconfig; \
+                assert sysconfig.get_config_var('Py_GIL_DISABLED') == 1; \
+                assert not sys._is_gil_enabled()"; \
+            cd /; \
+            rm -rf "$archive" "$source_dir"; \
+        else \
+            apt-fast install -y --no-install-recommends \
+                "python${pyver}" "python${pyver}-dev" "python${pyver}-venv"; \
+        fi; \
+    done; \
     rm -rf /var/lib/apt/lists/*
 
 # Determine architecture for CMake download
@@ -229,33 +280,21 @@ RUN git init /tmp/dlpack \
 
 # Upgrade system pip first to support --break-system-packages. Ignore distro-owned
 # packages because Ubuntu 26.04 packages do not always include pip RECORD metadata.
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --force-reinstall --ignore-installed
-
-# install build/packaging/linting packages for the system python
-COPY requirements.build.sys_python.txt /tmp/requirements.build.sys_python.txt
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3 -m pip install --break-system-packages --force-reinstall --ignore-installed \
-        -r /tmp/requirements.build.sys_python.txt && \
-    rm -rf /tmp/requirements.build.sys_python.txt
-
-# install documentation packages for the system python
-COPY requirements.docs.txt /tmp/requirements.docs.txt
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3 -m pip install --break-system-packages --force-reinstall --ignore-installed \
-        -r /tmp/requirements.docs.txt && \
-    rm -rf /tmp/requirements.docs.txt
-
+ADD --checksum=sha256:${GET_PIP_SHA256} \
+    https://raw.githubusercontent.com/pypa/get-pip/${GET_PIP_COMMIT}/public/get-pip.py /opt/
+RUN python3 /opt/get-pip.py --break-system-packages --force-reinstall --ignore-installed
 
 # Install/Update pip for all python versions in one layer
 # Using get-pip.py consistently for all versions to avoid per-version quirks
 RUN set -e; \
     for pyver in $PYTHON_VERSIONS; do \
         echo "Installing pip for Python $pyver" && \
-        curl -sS https://bootstrap.pypa.io/get-pip.py | "python${pyver}" - --break-system-packages --force-reinstall --ignore-installed; \
-    done
+        "python${pyver}" /opt/get-pip.py --break-system-packages --force-reinstall --ignore-installed; \
+    done; \
+    rm -f /opt/get-pip.py
 
 
-# Install build dependencies (pybind11, needed for CMake find_package)
+# Install build dependencies (nanobind, needed for CMake find_package)
 COPY requirements.build.all_pythons.txt /tmp/requirements.build.all_pythons.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     set -e; \
@@ -325,6 +364,7 @@ RUN set -e; \
     if [ "$VER_NUMPY_MAJOR" != "1" ]; then \
         mkdir -p /tmp/nvbench_wheels && \
         for pyver in $PYTHON_VERSIONS; do \
+            case "$pyver" in *t) continue ;; esac; \
             CMAKE_ARGS="-Drapids-cmake-sha=${RAPIDS_CMAKE_SHA}" \
             CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" \
             "python${pyver}" -m pip wheel --no-deps \
@@ -332,6 +372,7 @@ RUN set -e; \
         done && \
         wait && \
         for pyver in $PYTHON_VERSIONS; do \
+            case "$pyver" in *t) continue ;; esac; \
             "python${pyver}" -m pip install --break-system-packages --no-deps \
                 --no-index --find-links /tmp/nvbench_wheels pynvbench; \
         done && \
@@ -351,6 +392,7 @@ RUN if [ "$VER_NUMPY_MAJOR" != "1" ]; then \
         PYCUDA_VER=$(grep "^pycuda==" /tmp/requirements.bench.common.txt | head -1 | cut -d= -f3); \
         mkdir -p /tmp/pycuda_wheels && \
         for pyver in $PYTHON_VERSIONS; do \
+            case "$pyver" in *t) continue ;; esac; \
             CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" \
             "python${pyver}" -m pip wheel "pycuda==${PYCUDA_VER}" \
                 -w /tmp/pycuda_wheels & \
@@ -363,6 +405,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         set -e; \
         CUDA_MAJOR=$(echo "$VER_CUDA" | cut -d. -f1); \
         for pyver in $PYTHON_VERSIONS; do \
+            case "$pyver" in *t) continue ;; esac; \
             "python${pyver}" -m pip install --break-system-packages --no-cache-dir \
                 --find-links /tmp/pycuda_wheels \
                 -r "/tmp/requirements.bench.cu${CUDA_MAJOR}.txt"; \
@@ -401,12 +444,21 @@ RUN if [ "$INSTALL_NSIGHT_COMPUTE" = "1" ]; then \
         ncu --version && nsys --version; \
     fi
 
+COPY requirements.sys_python.lock /tmp/requirements.sys_python.lock
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m pip install --require-hashes --break-system-packages --force-reinstall --ignore-installed \
+        -r /tmp/requirements.sys_python.lock && \
+    rm -f /tmp/requirements.sys_python.lock
+
 # Verify critical packages are installed and importable for all Python versions
 RUN set -e; \
     for pyver in $PYTHON_VERSIONS; do \
         echo "Verifying Python $pyver..."; \
-        "python${pyver}" -c "import pybind11; print(f'  pybind11 {pybind11.__version__}')" || \
-            { echo "VERIFY FAILED: pybind11 not importable for Python $pyver" && exit 1; }; \
+        "python${pyver}" -c \
+            "import sysconfig; assert bool(sysconfig.get_config_var('Py_GIL_DISABLED')) == '$pyver'.endswith('t')" || \
+            { echo "VERIFY FAILED: Python $pyver has the wrong GIL ABI" && exit 1; }; \
+        "python${pyver}" -c "import nanobind; print(f'  nanobind {nanobind.__version__}')" || \
+            { echo "VERIFY FAILED: nanobind not importable for Python $pyver" && exit 1; }; \
         "python${pyver}" -c "import pytest; print(f'  pytest {pytest.__version__}')" || \
             { echo "VERIFY FAILED: pytest not importable for Python $pyver" && exit 1; }; \
         "python${pyver}" -c \

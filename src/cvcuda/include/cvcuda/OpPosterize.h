@@ -25,8 +25,14 @@
  * type bit width (8 for 8-bit unsigned, 16 for 16-bit unsigned). It is a pure bitwise mask, applied
  * channel-independently. @p bits must be in @f$ [0, W] @f$ for the input data type.
  *
+ * A floating-point image has no bit layout to keep, and its values are normalized to
+ * @f$ [0, 1] @f$, where the same operation is a quantization into @f$ 2^{bits} @f$ levels:
+ * @f$ out = clamp(\lfloor in \cdot 2^{bits} \rfloor, 0, 2^{bits} - 1) / 2^{bits} @f$. For those
+ * types @p bits must be in @f$ [0, 8] @f$, the range the reference defines.
+ *
  * Reference: mimics torchvision.transforms.v2.functional.posterize / PIL ImageOps.posterize (8-bit:
- * keep the top @p bits), generalized to 16-bit. The mask is exact, so the result is bit-exact.
+ * keep the top @p bits), generalized to 16-bit and to floating point. Both forms are bit-exact
+ * against the reference.
  *
  * @defgroup NVCV_C_ALGORITHM__POSTERIZE Posterize
  * @{
@@ -76,8 +82,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaPosterizeCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       32bit Float    | No
- *       64bit Float    | No
+ *       16bit Float    | Yes
+ *       32bit Float    | Yes
+ *       64bit Float    | Yes
  *
  *  Output:
  *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
@@ -91,8 +98,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaPosterizeCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       32bit Float    | No
- *       64bit Float    | No
+ *       16bit Float    | Yes
+ *       32bit Float    | Yes
+ *       64bit Float    | Yes
  *
  *  Input/Output dependency
  *
@@ -113,9 +121,10 @@ CVCUDA_PUBLIC NVCVStatus cvcudaPosterizeCreate(NVCVOperatorHandle *handle);
  *
  * @param [out] out output tensor.
  *
- * @param [in] bits Number of most-significant bits to keep per channel; must be in [0, W] where W
- *                  is the data type bit width (8 for 8-bit, 16 for 16-bit). bits == W is a no-op;
- *                  bits == 0 zeros the image. Applied to all images.
+ * @param [in] bits For integer input, the number of most-significant bits to keep per channel in
+ *                  [0, W], where W is the data type bit width (8 or 16); W is a no-op and 0 zeros
+ *                  the image. For floating-point input, the number of normalized quantization bits
+ *                  in [0, 8]; 0 zeros the image and 8 produces 256 levels. Applied to all images.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
@@ -131,7 +140,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaPosterizeSubmit(NVCVOperatorHandle handle, cudaSt
  * @param [in] stream Handle to a valid CUDA stream.
  * @param [in] in     input image batch.
  * @param [out] out   output image batch.
- * @param [in] bits   Number of most-significant bits to keep per channel (see cvcudaPosterizeSubmit).
+ * @param [in] bits   Integer bit-mask width or floating-point quantization bits (see
+ *                    cvcudaPosterizeSubmit).
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.

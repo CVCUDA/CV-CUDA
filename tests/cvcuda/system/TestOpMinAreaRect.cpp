@@ -396,6 +396,124 @@ TEST(OpMinAreaRect, invalid_create)
     EXPECT_EQ(cvcudaMinAreaRectCreate(nullptr, 1), NVCV_ERROR_INVALID_ARGUMENT);
 }
 
+TEST(OpMinAreaRect, c_api_s32_tensor_submission_reaches_operator)
+{
+    constexpr int numPoints = 4;
+
+    nvcv::Tensor inContours(
+        {
+            {1, numPoints, 2},
+            "NWC"
+    },
+        nvcv::TYPE_S32);
+    auto contourAccess   = nvcv::TensorDataAccessStrided::Create(inContours.exportData());
+    auto contourElements = contourAccess->sampleStride() / inContours.dtype().strideBytes();
+    SetRectanglePoints<int32_t>(inContours, contourElements, numPoints);
+
+    nvcv::Tensor numPointsInContour(
+        {
+            {1, 1},
+            "NW"
+    },
+        nvcv::TYPE_S32);
+    auto             pointCountAccess = nvcv::TensorDataAccessStrided::Create(numPointsInContour.exportData());
+    std::vector<int> pointCounts(pointCountAccess->sampleStride() / sizeof(int), 0);
+    pointCounts[0] = numPoints;
+    nvcv::util::SetTensorFromVector<int>(numPointsInContour.exportData(), pointCounts, -1);
+
+    nvcv::Tensor output(
+        {
+            {1, 8},
+            "NW"
+    },
+        nvcv::TYPE_F32);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::MinAreaRect op(1);
+    EXPECT_EQ(NVCV_SUCCESS, cvcudaMinAreaRectSubmit(op.handle(), stream, inContours.handle(), output.handle(),
+                                                    numPointsInContour.handle(), 1));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::vector<float> actual(8);
+    nvcv::util::GetVectorFromTensor<float>(output.exportData(), 0, actual);
+    std::vector<float> expected{10, 20, 110, 20, 110, 70, 10, 70};
+    ASSERT_PRED2(isNearOpenCvResults, expected, actual);
+}
+
+TEST(OpMinAreaRect_Negative, rejects_null_input_tensor_handle)
+{
+    nvcv::Tensor numPointsInContour(
+        {
+            {1, 1},
+            "NW"
+    },
+        nvcv::TYPE_S32);
+    nvcv::Tensor output(
+        {
+            {1, 8},
+            "NW"
+    },
+        nvcv::TYPE_F32);
+    cvcuda::MinAreaRect op(1);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_OPERATION,
+              cvcudaMinAreaRectSubmit(op.handle(), nullptr, nullptr, output.handle(), numPointsInContour.handle(), 1));
+}
+
+TEST(OpMinAreaRect_Negative, rejects_empty_input_tensor_before_cuda_access)
+{
+    nvcv::Tensor input;
+    nvcv::Tensor numPointsInContour(
+        {
+            {1, 1},
+            "NW"
+    },
+        nvcv::TYPE_S32);
+    nvcv::Tensor output(
+        {
+            {1, 8},
+            "NW"
+    },
+        nvcv::TYPE_F32);
+    cvcuda::MinAreaRect op(1);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_OPERATION,
+              nvcv::ProtectCall([&] { op(nullptr, input, output, numPointsInContour, 1); }));
+}
+
+TEST(OpMinAreaRect_Negative, rejects_total_contours_mismatching_input_batch)
+{
+    constexpr int contours      = 2;
+    constexpr int totalContours = 1;
+    constexpr int maxPoints     = 8;
+
+    nvcv::Tensor inContours(
+        {
+            {contours, maxPoints, 2},
+            "NWC"
+    },
+        nvcv::TYPE_S16);
+    nvcv::Tensor numPoints(
+        {
+            {1, contours},
+            "NW"
+    },
+        nvcv::TYPE_S32);
+    nvcv::Tensor output(
+        {
+            {contours, 8},
+            "NW"
+    },
+        nvcv::TYPE_F32);
+
+    cvcuda::MinAreaRect op(contours);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, inContours, output, numPoints, totalContours); }));
+}
+
 TEST(OpMinAreaRect_Negative, rejects_contours_without_xy_channels)
 {
     constexpr int contours  = 2;
@@ -470,4 +588,52 @@ TEST(OpMinAreaRect, numPointsInContour_exceeds_tensor_width)
     EXPECT_NO_THROW(minAreaRectOp(stream, inContours, outMinAreaRect, inPointNumInContour, batchsize));
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpMinAreaRect, even_degree_sweep_reaches_initial_foldback_guard)
+{
+    constexpr int numPoints = 4;
+
+    nvcv::Tensor inContours(
+        {
+            {1, numPoints, 2},
+            "NWC"
+    },
+        nvcv::TYPE_S16);
+    auto contourAccess   = nvcv::TensorDataAccessStrided::Create(inContours.exportData());
+    auto contourElements = contourAccess->sampleStride() / inContours.dtype().strideBytes();
+    SetRectanglePoints<int16_t>(inContours, contourElements, numPoints);
+
+    nvcv::Tensor numPointsInContour(
+        {
+            {1, 1},
+            "NW"
+    },
+        nvcv::TYPE_S32);
+    auto             pointCountAccess = nvcv::TensorDataAccessStrided::Create(numPointsInContour.exportData());
+    std::vector<int> pointCounts(pointCountAccess->sampleStride() / sizeof(int), 0);
+    pointCounts[0] = numPoints;
+    nvcv::util::SetTensorFromVector<int>(numPointsInContour.exportData(), pointCounts, -1);
+
+    nvcv::Tensor output(
+        {
+            {1, 8},
+            "NW"
+    },
+        nvcv::TYPE_F32);
+
+    // The fixed 90-angle sweep reaches FindMinAreaAndAngle with an even initial count, so this
+    // valid submission exercises the false path of its initial odd-count fold-back guard.
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::MinAreaRect op(1);
+    EXPECT_NO_THROW(op(stream, inContours, output, numPointsInContour, 1));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::vector<float> actual(8);
+    nvcv::util::GetVectorFromTensor<float>(output.exportData(), 0, actual);
+    std::vector<float> expected{10, 20, 110, 20, 110, 70, 10, 70};
+    ASSERT_PRED2(isNearOpenCvResults, expected, actual);
 }

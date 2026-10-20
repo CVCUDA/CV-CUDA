@@ -42,3 +42,12 @@ target_link_libraries(${NVCV_EXE}
         nvcv_types
         GTest::gtest_main
 )
+
+# nvcv_types hides __asan_default_options behind its version script, so linking
+# it does not give the test the sanitizer defaults NVCV expects. Pull the
+# options object into the executable directly; its -Wl,-u flags then keep
+# __asan_default_options, and with it protect_shadow_gap=0, which CUDA needs to
+# reserve its address space.
+if(ENABLE_SANITIZER)
+    target_link_libraries(${NVCV_EXE} PUBLIC nvcv_util_sanitizer)
+endif()

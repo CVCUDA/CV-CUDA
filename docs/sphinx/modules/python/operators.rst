@@ -189,6 +189,18 @@ Operators
 
 .. cvcuda-autofunction:: cvcuda.median_blur_into
 
+``merge`` and ``merge_into`` accept either sequences of single-channel tensors or
+sequences of single-channel ``ImageBatchVarShape`` objects. The tensor overload
+retains its optional ``layout`` argument. Allocating an image batch instead
+requires an explicit keyword-only ``format`` (for example,
+``cvcuda.merge(bands, format=cvcuda.Format.RGB8)``); the format specifies
+interleaved or full-resolution planar storage, not a color conversion.
+``merge_into`` uses the preallocated destination's format.
+
+.. cvcuda-autofunction:: cvcuda.merge
+
+.. cvcuda-autofunction:: cvcuda.merge_into
+
 .. cvcuda-autofunction:: cvcuda.minarearect
 
 .. cvcuda-autofunction:: cvcuda.minarearect_into
@@ -261,6 +273,10 @@ Operators
 
 .. cvcuda-autofunction:: cvcuda.solarize_into
 
+.. cvcuda-autofunction:: cvcuda.split
+
+.. cvcuda-autofunction:: cvcuda.split_into
+
 .. cvcuda-autofunction:: cvcuda.stack
 
 .. cvcuda-autofunction:: cvcuda.stack_into
@@ -268,6 +284,10 @@ Operators
 .. cvcuda-autofunction:: cvcuda.threshold
 
 .. cvcuda-autofunction:: cvcuda.threshold_into
+
+.. cvcuda-autofunction:: cvcuda.tvresize
+
+.. cvcuda-autofunction:: cvcuda.tvresize_into
 
 .. cvcuda-autofunction:: cvcuda.warp_affine
 

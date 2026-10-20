@@ -27,6 +27,7 @@
 
 #include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
+#include <nvcv/RoundMode.h>
 #include <nvcv/Tensor.hpp>
 
 namespace cvcuda::priv {
@@ -45,11 +46,12 @@ public:
                     const nvcv::Tensor &contrastCenter) const;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst, double brightness,
-                    double contrast, double brightnessShift, double contrastCenter, bool clamp) const;
+                    double contrast, double brightnessShift, double contrastCenter, bool clamp,
+                    NVCVRoundMode roundMode) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src, const nvcv::ImageBatchVarShape &dst,
-                    double brightness, double contrast, double brightnessShift, double contrastCenter,
-                    bool clamp) const;
+                    double brightness, double contrast, double brightnessShift, double contrastCenter, bool clamp,
+                    NVCVRoundMode roundMode) const;
 };
 
 } // namespace cvcuda::priv

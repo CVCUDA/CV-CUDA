@@ -22,76 +22,71 @@
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpAdvCvtColor.hpp>
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
-#include <cvcuda/cuda_tools/math/LinAlg.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <random>
+#include <utility>
 
-namespace gt    = ::testing;
-namespace test  = nvcv::test;
-namespace util  = nvcv::util;
-namespace mmath = nvcv::cuda::math;
+namespace gt   = ::testing;
+namespace test = nvcv::test;
+namespace util = nvcv::util;
 
-template<class T>
-using Matrix3x3 = mmath::Matrix<T, 3, 3>;
-
-static Matrix3x3<float> getRGB2YUVMatrix(nvcv::ColorSpec spec)
+struct FullRangeYCbCrCoefficients
 {
-    Matrix3x3<float> matrix;
-    switch (static_cast<NVCVColorSpec>(spec))
+    double kr;
+    double kb;
+};
+
+static NVCVColorSpec CanonicalizeRangeSpec(nvcv::ColorSpec spec)
+{
+    return static_cast<NVCVColorSpec>(spec.colorRange(nvcv::ColorRange::LIMITED));
+}
+
+static FullRangeYCbCrCoefficients GetFullRangeYCbCrCoefficients(nvcv::ColorSpec spec)
+{
+    // The full-range equations below use the luma coefficients specified by the corresponding ITU-R
+    // recommendations. They intentionally do not share constants or arithmetic with the CUDA implementation.
+    // BT.601: https://www.itu.int/rec/R-REC-BT.601
+    // BT.709: https://www.itu.int/rec/R-REC-BT.709
+    // BT.2020: https://www.itu.int/rec/R-REC-BT.2020
+    switch (CanonicalizeRangeSpec(spec))
     {
     case NVCV_COLOR_SPEC_BT601:
-    {
-        matrix.load({0.299f, 0.587f, 0.114f, -0.168736f, -0.331264f, 0.5f, 0.5f, -0.418688f, -0.0813124f});
-        return matrix;
-    }
+        return {0.299, 0.114};
     case NVCV_COLOR_SPEC_BT709:
-    {
-        matrix.load({0.2126f, 0.7152f, 0.0722f, -0.114572f, -0.385428f, 0.5f, 0.5f, -0.454153f, -0.0458471f});
-        return matrix;
-    }
+        return {0.2126, 0.0722};
     case NVCV_COLOR_SPEC_BT2020:
-    {
-        matrix.load({0.2627f, 0.678f, 0.0593f, -0.13963f, -0.36037f, 0.5f, 0.5f, -0.459786f, -0.0402143f});
-        return matrix;
-    }
+        return {0.2627, 0.0593};
     default:
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Unknown color spec");
     }
 }
 
-static Matrix3x3<float> getYUV2RGBMatrix(nvcv::ColorSpec spec)
-{
-    Matrix3x3<float> matrix = getRGB2YUVMatrix(spec);
-    mmath::inv_inplace<float>(matrix);
-    return matrix;
-}
-
-static float ToFloat(int value)
-{
-    return static_cast<float>(value);
-}
-
-static int TruncateToInt(float value)
-{
-    return static_cast<int>(value);
-}
-
 struct RGBPixel
 {
-    int r;
-    int g;
-    int b;
+    double r;
+    double g;
+    double b;
 };
 
-static RGBPixel GetRGBPixel(const std::vector<uint8_t> &rgbData, int pixelIndex, bool bgr)
+struct YCbCrPixel
 {
-    RGBPixel pixel{rgbData[pixelIndex], rgbData[pixelIndex + 1], rgbData[pixelIndex + 2]};
+    double y;
+    double cb;
+    double cr;
+};
+
+static RGBPixel GetRGBPixel(const std::vector<uint8_t> &rgbData, size_t pixelIndex, bool bgr)
+{
+    RGBPixel pixel{static_cast<double>(rgbData[pixelIndex]), static_cast<double>(rgbData[pixelIndex + 1]),
+                   static_cast<double>(rgbData[pixelIndex + 2])};
     if (bgr)
     {
         std::swap(pixel.r, pixel.b);
@@ -99,31 +94,30 @@ static RGBPixel GetRGBPixel(const std::vector<uint8_t> &rgbData, int pixelIndex,
     return pixel;
 }
 
-struct NV12ChromaBlockData
+static YCbCrPixel ReferenceRGBToYCbCr(const RGBPixel &rgb, const FullRangeYCbCrCoefficients &coefficients)
 {
-    const Matrix3x3<float>     &conversionMatrix;
-    const std::vector<uint8_t> &rgbData;
-    int                         width;
-    bool                        bgr;
-};
+    const double kg = 1.0 - coefficients.kr - coefficients.kb;
+    const double y  = coefficients.kr * rgb.r + kg * rgb.g + coefficients.kb * rgb.b;
 
-static void AccumulateNV12ChromaBlock(const NV12ChromaBlockData &block, int row, int col, int &uSum, int &vSum)
+    // Full-range digital YCbCr uses the entire [0,255] luma interval and centers both chroma channels at 128.
+    return {y, (rgb.b - y) / (2.0 * (1.0 - coefficients.kb)) + 128.0,
+            (rgb.r - y) / (2.0 * (1.0 - coefficients.kr)) + 128.0};
+}
+
+static RGBPixel ReferenceYCbCrToRGB(const YCbCrPixel &yuv, const FullRangeYCbCrCoefficients &coefficients)
 {
-    for (int y = 0; y < 2; ++y)
-    {
-        for (int x = 0; x < 2; ++x)
-        {
-            int      idx   = ((row + y) * block.width + (col + x)) * 3;
-            RGBPixel pixel = GetRGBPixel(block.rgbData, idx, block.bgr);
+    const double kg = 1.0 - coefficients.kr - coefficients.kb;
+    const double cb = yuv.cb - 128.0;
+    const double cr = yuv.cr - 128.0;
+    const double r  = yuv.y + 2.0 * (1.0 - coefficients.kr) * cr;
+    const double b  = yuv.y + 2.0 * (1.0 - coefficients.kb) * cb;
+    const double g  = (yuv.y - coefficients.kr * r - coefficients.kb * b) / kg;
+    return {r, g, b};
+}
 
-            uSum += TruncateToInt(block.conversionMatrix[1][0] * ToFloat(pixel.r)
-                                  + block.conversionMatrix[1][1] * ToFloat(pixel.g)
-                                  + block.conversionMatrix[1][2] * ToFloat(pixel.b));
-            vSum += TruncateToInt(block.conversionMatrix[2][0] * ToFloat(pixel.r)
-                                  + block.conversionMatrix[2][1] * ToFloat(pixel.g)
-                                  + block.conversionMatrix[2][2] * ToFloat(pixel.b));
-        }
-    }
+static uint8_t QuantizeReference(double value)
+{
+    return static_cast<uint8_t>(std::clamp(std::lround(value), 0L, 255L));
 }
 
 static bool isBGR(NVCVColorConversionCode code)
@@ -156,126 +150,103 @@ static bool isYVU(NVCVColorConversionCode code)
     }
 }
 
-static std::vector<uint8_t> convertYUVtoRGB(const Matrix3x3<float>     &conversionMatrix,
-                                            const std::vector<uint8_t> &yuvData, bool bgr)
+static std::vector<uint8_t> ConvertYCbCrToRGBReference(const FullRangeYCbCrCoefficients &coefficients,
+                                                       const std::vector<uint8_t> &yuvData, bool bgr)
 {
-    assert(yuvData.size() % 3 == 0); // Ensure the input data has sets of 3 (Y, U, V)
+    assert(yuvData.size() % 3 == 0);
     std::vector<uint8_t> rgbData;
-    rgbData.reserve(yuvData.size()); // Reserve space for RGB data
+    rgbData.reserve(yuvData.size());
 
     for (size_t i = 0; i < yuvData.size(); i += 3)
     {
-        int Y = yuvData[i];
-        int U = yuvData[i + 1];
-        int V = yuvData[i + 2];
-
-        int R = TruncateToInt(conversionMatrix[0][0] * ToFloat(Y) + conversionMatrix[0][1] * ToFloat(U - 128)
-                              + conversionMatrix[0][2] * ToFloat(V - 128));
-        int G = TruncateToInt(conversionMatrix[1][0] * ToFloat(Y) + conversionMatrix[1][1] * ToFloat(U - 128)
-                              + conversionMatrix[1][2] * ToFloat(V - 128));
-        int B = TruncateToInt(conversionMatrix[2][0] * ToFloat(Y) + conversionMatrix[2][1] * ToFloat(U - 128)
-                              + conversionMatrix[2][2] * ToFloat(V - 128));
+        RGBPixel rgb = ReferenceYCbCrToRGB(
+            {static_cast<double>(yuvData[i]), static_cast<double>(yuvData[i + 1]), static_cast<double>(yuvData[i + 2])},
+            coefficients);
 
         if (bgr)
         {
-            std::swap(R, B);
+            std::swap(rgb.r, rgb.b);
         }
-        rgbData.push_back(nvcv::cuda::SaturateCast<uint8_t>(R));
-        rgbData.push_back(nvcv::cuda::SaturateCast<uint8_t>(G));
-        rgbData.push_back(nvcv::cuda::SaturateCast<uint8_t>(B));
+        rgbData.push_back(QuantizeReference(rgb.r));
+        rgbData.push_back(QuantizeReference(rgb.g));
+        rgbData.push_back(QuantizeReference(rgb.b));
     }
 
     return rgbData;
 }
 
-static std::vector<uint8_t> convertRGBtoYUV(const Matrix3x3<float>     &conversionMatrix,
-                                            const std::vector<uint8_t> &rgbData, bool bgr)
+static std::vector<uint8_t> ConvertRGBToYCbCrReference(const FullRangeYCbCrCoefficients &coefficients,
+                                                       const std::vector<uint8_t> &rgbData, bool bgr)
 {
-    assert(rgbData.size() % 3 == 0); // Ensure the input data has sets of 3 (Y, U, V)
+    assert(rgbData.size() % 3 == 0);
     std::vector<uint8_t> yuvData;
-    yuvData.reserve(rgbData.size()); // Reserve space for YUV data
+    yuvData.reserve(rgbData.size());
 
     for (size_t i = 0; i < rgbData.size(); i += 3)
     {
-        int R = rgbData[i];
-        int G = rgbData[i + 1];
-        int B = rgbData[i + 2];
-        if (bgr)
-        {
-            std::swap(R, B);
-        }
-
-        int Y = TruncateToInt(conversionMatrix[0][0] * ToFloat(R) + conversionMatrix[0][1] * ToFloat(G)
-                              + conversionMatrix[0][2] * ToFloat(B));
-        int U = TruncateToInt(conversionMatrix[1][0] * ToFloat(R) + conversionMatrix[1][1] * ToFloat(G)
-                              + conversionMatrix[1][2] * ToFloat(B) + 128.0f);
-        int V = TruncateToInt(conversionMatrix[2][0] * ToFloat(R) + conversionMatrix[2][1] * ToFloat(G)
-                              + conversionMatrix[2][2] * ToFloat(B) + 128.0f);
-
-        yuvData.push_back(nvcv::cuda::SaturateCast<uint8_t>(Y));
-        yuvData.push_back(nvcv::cuda::SaturateCast<uint8_t>(U));
-        yuvData.push_back(nvcv::cuda::SaturateCast<uint8_t>(V));
+        YCbCrPixel yuv = ReferenceRGBToYCbCr(GetRGBPixel(rgbData, i, bgr), coefficients);
+        yuvData.push_back(QuantizeReference(yuv.y));
+        yuvData.push_back(QuantizeReference(yuv.cb));
+        yuvData.push_back(QuantizeReference(yuv.cr));
     }
 
     return yuvData;
 }
 
-static std::vector<uint8_t> convertRGBtoNV12(const Matrix3x3<float>     &conversionMatrix,
-                                             const std::vector<uint8_t> &rgbData, int width, int height, bool bgr,
-                                             bool yvu)
+static std::pair<uint8_t, uint8_t> GetSubsampledChroma(const FullRangeYCbCrCoefficients &coefficients,
+                                                       const std::vector<uint8_t> &rgbData, int width, int x, int y,
+                                                       bool bgr)
 {
-    assert(rgbData.size()
-           == (size_t)(width * height
-                       * 3)); // Ensure the input data has sets of 3 (R, G, B) for the given width and height
-    assert(width % 2 == 0
-           && height % 2 == 0); // Ensure both width and height are even since we're processing 2x2 blocks
-
-    std::vector<uint8_t> nv12Data;
-    nv12Data.reserve(width * height * 3 / 2); // NV12 needs 1.5 bytes per RGB pixel
-
-    NV12ChromaBlockData chromaBlock{conversionMatrix, rgbData, width, bgr};
-
-    // Convert all RGB values to Y values and store them.
-    for (size_t i = 0; i < rgbData.size(); i += 3)
+    double cbSum = 0.0;
+    double crSum = 0.0;
+    for (int dy = 0; dy < 2; ++dy)
     {
-        int R = rgbData[i];
-        int G = rgbData[i + 1];
-        int B = rgbData[i + 2];
-        if (bgr)
+        for (int dx = 0; dx < 2; ++dx)
         {
-            std::swap(R, B);
+            const size_t pixelIndex = (static_cast<size_t>(y + dy) * width + x + dx) * 3;
+            const auto   yuv        = ReferenceRGBToYCbCr(GetRGBPixel(rgbData, pixelIndex, bgr), coefficients);
+            cbSum += yuv.cb;
+            crSum += yuv.cr;
         }
-
-        int Y = TruncateToInt(conversionMatrix[0][0] * ToFloat(R) + conversionMatrix[0][1] * ToFloat(G)
-                              + conversionMatrix[0][2] * ToFloat(B));
-        nv12Data.push_back(nvcv::cuda::SaturateCast<uint8_t>(Y));
     }
 
-    // Calculate U and V values for each 2x2 block and store them interleaved.
+    return {QuantizeReference(cbSum / 4.0), QuantizeReference(crSum / 4.0)};
+}
+
+static std::vector<uint8_t> ConvertRGBToNVReference(const FullRangeYCbCrCoefficients &coefficients,
+                                                    const std::vector<uint8_t> &rgbData, int width, int height,
+                                                    bool bgr, bool yvu)
+{
+    assert(rgbData.size() == static_cast<size_t>(width) * height * 3);
+    assert(width % 2 == 0 && height % 2 == 0);
+
+    std::vector<uint8_t> nv12Data;
+    nv12Data.reserve(static_cast<size_t>(width) * height * 3 / 2);
+
+    for (size_t i = 0; i < rgbData.size(); i += 3)
+    {
+        nv12Data.push_back(QuantizeReference(ReferenceRGBToYCbCr(GetRGBPixel(rgbData, i, bgr), coefficients).y));
+    }
+
     for (int h = 0; h < height; h += 2)
     {
         for (int w = 0; w < width; w += 2)
         {
-            int U_sum = 0;
-            int V_sum = 0;
-
-            AccumulateNV12ChromaBlock(chromaBlock, h, w, U_sum, V_sum);
-
-            int U = (U_sum / 4) + 128; // Average of 4 U values
-            int V = (V_sum / 4) + 128; // Average of 4 V values
-
+            auto [cb, cr] = GetSubsampledChroma(coefficients, rgbData, width, w, h, bgr);
             if (yvu)
             {
-                std::swap(U, V);
+                std::swap(cb, cr);
             }
-            nv12Data.push_back(nvcv::cuda::SaturateCast<uint8_t>(U));
-            nv12Data.push_back(nvcv::cuda::SaturateCast<uint8_t>(V));
+            nv12Data.push_back(cb);
+            nv12Data.push_back(cr);
         }
     }
 
     return nv12Data;
 }
 
+// These fixed-point helpers intentionally mirror the CUDA implementation's Q14 constants and rounding. They are
+// bit-exact regression models; the independent standards-derived correctness oracle is defined above.
 struct FixedRGB2YUVConstants
 {
     int r2y;
@@ -287,12 +258,12 @@ struct FixedRGB2YUVConstants
 
 static FixedRGB2YUVConstants GetFixedRGB2YUVConstants(nvcv::ColorSpec spec)
 {
-    switch (static_cast<NVCVColorSpec>(spec))
+    switch (CanonicalizeRangeSpec(spec))
     {
     case NVCV_COLOR_SPEC_BT601:
-        return {4899, 9671, 1868, 9246, 11686};
+        return {4899, 9617, 1868, 9246, 11686};
     case NVCV_COLOR_SPEC_BT709:
-        return {3483, 11718, 1265, 8829, 10404};
+        return {3483, 11718, 1183, 8829, 10404};
     case NVCV_COLOR_SPEC_BT2020:
         return {4304, 11108, 972, 8708, 11111};
     default:
@@ -359,7 +330,7 @@ struct FixedYUV2RGBConstants
 
 static FixedYUV2RGBConstants GetFixedYUV2RGBConstants(nvcv::ColorSpec spec)
 {
-    switch (static_cast<NVCVColorSpec>(spec))
+    switch (CanonicalizeRangeSpec(spec))
     {
     case NVCV_COLOR_SPEC_BT601:
         return {29032, -5636, -11698, 22970};
@@ -458,61 +429,70 @@ static std::vector<uint8_t> Convert444Exact(const std::vector<uint8_t> &src, int
     return dst;
 }
 
-static std::vector<uint8_t> convertNV12toRGB(const Matrix3x3<float>     &conversionMatrix,
-                                             const std::vector<uint8_t> &nv12Data, int width, int height, bool bgr,
-                                             bool yvu)
+static std::vector<uint8_t> ConvertNVToRGBReference(const FullRangeYCbCrCoefficients &coefficients,
+                                                    const std::vector<uint8_t> &nv12Data, int width, int height,
+                                                    bool bgr, bool yvu)
 {
-    assert(nv12Data.size()
-           == (size_t)(width * height * 3
-                       / 2)); // Ensure the input data size is consistent with the provided width and height
+    assert(nv12Data.size() == static_cast<size_t>(width) * height * 3 / 2);
     std::vector<uint8_t> rgbData;
-    rgbData.reserve(nv12Data.size() * 3 / 2); // Reserve space for RGB data (1.5 times the NV12 data size)
+    rgbData.reserve(static_cast<size_t>(width) * height * 3);
 
-    // Pointer to the beginning of the UV data
-    const uint8_t *uvData = &nv12Data[width * height];
+    const uint8_t *uvData = &nv12Data[static_cast<size_t>(width) * height];
 
-    for (int i = 0; i < height; i++)
+    for (int i = 0; i < height; ++i)
     {
-        for (int j = 0; j < width; j++)
+        for (int j = 0; j < width; ++j)
         {
-            int Y = nv12Data[i * width + j];
-
-            // Calculate UV index: For every two Y values in a row, there's one UV pair.
-            int uvIndex = (i / 2) * width + (j & ~1); // 'j & ~1' ensures j is even.
-            int U       = uvData[uvIndex];
-            int V       = uvData[uvIndex + 1];
+            const uint8_t y       = nv12Data[static_cast<size_t>(i) * width + j];
+            const size_t  uvIndex = static_cast<size_t>(i / 2) * width + (j & ~1);
+            uint8_t       cb      = uvData[uvIndex];
+            uint8_t       cr      = uvData[uvIndex + 1];
             if (yvu)
             {
-                std::swap(U, V);
+                std::swap(cb, cr);
             }
 
-            int R = TruncateToInt(conversionMatrix[0][0] * ToFloat(Y) + conversionMatrix[0][1] * ToFloat(U - 128)
-                                  + conversionMatrix[0][2] * ToFloat(V - 128));
-            int G = TruncateToInt(conversionMatrix[1][0] * ToFloat(Y) + conversionMatrix[1][1] * ToFloat(U - 128)
-                                  + conversionMatrix[1][2] * ToFloat(V - 128));
-            int B = TruncateToInt(conversionMatrix[2][0] * ToFloat(Y) + conversionMatrix[2][1] * ToFloat(U - 128)
-                                  + conversionMatrix[2][2] * ToFloat(V - 128));
+            RGBPixel rgb = ReferenceYCbCrToRGB(
+                {static_cast<double>(y), static_cast<double>(cb), static_cast<double>(cr)}, coefficients);
 
             if (bgr)
             {
-                std::swap(R, B);
+                std::swap(rgb.r, rgb.b);
             }
 
-            rgbData.push_back(nvcv::cuda::SaturateCast<uint8_t>(R));
-            rgbData.push_back(nvcv::cuda::SaturateCast<uint8_t>(G));
-            rgbData.push_back(nvcv::cuda::SaturateCast<uint8_t>(B));
+            rgbData.push_back(QuantizeReference(rgb.r));
+            rgbData.push_back(QuantizeReference(rgb.g));
+            rgbData.push_back(QuantizeReference(rgb.b));
         }
     }
 
     return rgbData;
 }
 
+// The production kernels use Q14 coefficients and staged integer rounding, while this oracle evaluates the ITU-R
+// equations in double precision and rounds only the final result. The per-test tolerance covers that quantization
+// difference; dedicated luma endpoint checks and fixed-point regression tests below remain bit-exact.
 #define VEC_EXPECT_NEAR(vec1, vec2, delta)                              \
     ASSERT_EQ(vec1.size(), vec2.size());                                \
     for (std::size_t idx = 0; idx < vec1.size(); ++idx)                 \
     {                                                                   \
         EXPECT_NEAR(vec1[idx], vec2[idx], delta) << "At index " << idx; \
     }
+
+static void ExpectNVOutputNear(const std::vector<uint8_t> &expected, const std::vector<uint8_t> &actual, int width,
+                               int height, float chromaMaxDiff)
+{
+    ASSERT_EQ(expected.size(), actual.size());
+    const size_t lumaSamples = static_cast<size_t>(width) * height;
+    for (size_t index = 0; index < lumaSamples; ++index)
+    {
+        EXPECT_NEAR(expected[index], actual[index], 1.0) << "At luma index " << index;
+    }
+    for (size_t index = lumaSamples; index < expected.size(); ++index)
+    {
+        EXPECT_NEAR(expected[index], actual[index], chromaMaxDiff) << "At chroma index " << index;
+    }
+}
 
 struct VerifyOutputParams
 {
@@ -540,16 +520,16 @@ static void verifyOutput(const nvcv::Tensor &inTensor, const nvcv::Tensor &outTe
         case NVCV_COLOR_BGR2YUV:
         case NVCV_COLOR_RGB2YUV:
         {
-            std::vector<uint8_t> goldOut
-                = convertRGBtoYUV(getRGB2YUVMatrix(params.colorSpec), inData, isBGR(params.convCode));
+            std::vector<uint8_t> goldOut = ConvertRGBToYCbCrReference(GetFullRangeYCbCrCoefficients(params.colorSpec),
+                                                                      inData, isBGR(params.convCode));
             VEC_EXPECT_NEAR(goldOut, outData, params.maxDiff);
             break;
         }
         case NVCV_COLOR_YUV2BGR:
         case NVCV_COLOR_YUV2RGB:
         {
-            std::vector<uint8_t> goldOut
-                = convertYUVtoRGB(getYUV2RGBMatrix(params.colorSpec), inData, isBGR(params.convCode));
+            std::vector<uint8_t> goldOut = ConvertYCbCrToRGBReference(GetFullRangeYCbCrCoefficients(params.colorSpec),
+                                                                      inData, isBGR(params.convCode));
             VEC_EXPECT_NEAR(goldOut, outData, params.maxDiff);
             break;
         }
@@ -559,8 +539,8 @@ static void verifyOutput(const nvcv::Tensor &inTensor, const nvcv::Tensor &outTe
         case NVCV_COLOR_YUV2BGR_NV21:
         {
             std::vector<uint8_t> goldOut
-                = convertNV12toRGB(getYUV2RGBMatrix(params.colorSpec), inData, params.width, params.height,
-                                   isBGR(params.convCode), isYVU(params.convCode));
+                = ConvertNVToRGBReference(GetFullRangeYCbCrCoefficients(params.colorSpec), inData, params.width,
+                                          params.height, isBGR(params.convCode), isYVU(params.convCode));
             VEC_EXPECT_NEAR(goldOut, outData, params.maxDiff);
             break;
         }
@@ -570,9 +550,9 @@ static void verifyOutput(const nvcv::Tensor &inTensor, const nvcv::Tensor &outTe
         case NVCV_COLOR_BGR2YUV_NV12:
         {
             std::vector<uint8_t> goldOut
-                = convertRGBtoNV12(getRGB2YUVMatrix(params.colorSpec), inData, params.width, params.height,
-                                   isBGR(params.convCode), isYVU(params.convCode));
-            VEC_EXPECT_NEAR(goldOut, outData, params.maxDiff);
+                = ConvertRGBToNVReference(GetFullRangeYCbCrCoefficients(params.colorSpec), inData, params.width,
+                                          params.height, isBGR(params.convCode), isYVU(params.convCode));
+            ExpectNVOutputNear(goldOut, outData, params.width, params.height, params.maxDiff);
             break;
         }
         default:
@@ -732,9 +712,15 @@ NVCV_TEST_SUITE_P(
         { 37, 35, NVCV_COLOR_RGB2YUV,  NVCV_COLOR_SPEC_BT601,  false},
         { 29,  7, NVCV_COLOR_BGR2YUV,  NVCV_COLOR_SPEC_BT709,  true },
         { 41, 33, NVCV_COLOR_RGB2YUV,  NVCV_COLOR_SPEC_BT2020, false},
+        { 43, 31, NVCV_COLOR_RGB2YUV,  NVCV_COLOR_SPEC_BT601_ER,  false},
+        { 23, 17, NVCV_COLOR_BGR2YUV,  NVCV_COLOR_SPEC_BT709_ER,  true },
+        { 47, 29, NVCV_COLOR_RGB2YUV,  NVCV_COLOR_SPEC_BT2020_ER, false},
         { 37, 35, NVCV_COLOR_YUV2RGB,  NVCV_COLOR_SPEC_BT601,  false},
         { 31, 11, NVCV_COLOR_YUV2BGR,  NVCV_COLOR_SPEC_BT709,  true },
         { 41, 33, NVCV_COLOR_YUV2RGB,  NVCV_COLOR_SPEC_BT2020, false},
+        { 43, 31, NVCV_COLOR_YUV2RGB,  NVCV_COLOR_SPEC_BT601_ER,  false},
+        { 23, 17, NVCV_COLOR_YUV2BGR,  NVCV_COLOR_SPEC_BT709_ER,  true },
+        { 47, 29, NVCV_COLOR_YUV2RGB,  NVCV_COLOR_SPEC_BT2020_ER, false},
     });
 
 // clang-format on
@@ -800,6 +786,9 @@ NVCV_TEST_SUITE_P(
         {   2,  2, 3, NVCV_COLOR_RGB2YUV_NV21,  NVCV_COLOR_SPEC_BT2020, true },
         {   2,  2, 4, NVCV_COLOR_RGB2YUV_NV12,  NVCV_COLOR_SPEC_BT601,  true },
         {  70, 22, 4, NVCV_COLOR_BGR2YUV_NV21,  NVCV_COLOR_SPEC_BT709,  true },
+        {  68, 24, 3, NVCV_COLOR_RGB2YUV_NV12,  NVCV_COLOR_SPEC_BT601_ER,  false},
+        {  72, 26, 4, NVCV_COLOR_BGR2YUV_NV21,  NVCV_COLOR_SPEC_BT709_ER,  true },
+        {  74, 28, 3, NVCV_COLOR_RGB2YUV_NV21,  NVCV_COLOR_SPEC_BT2020_ER, false},
     });
 
 // clang-format on
@@ -981,6 +970,9 @@ NVCV_TEST_SUITE_P(
         {   2,  2, 3, NVCV_COLOR_YUV2RGB_NV21,  NVCV_COLOR_SPEC_BT2020, true },
         {   2,  2, 4, NVCV_COLOR_YUV2RGB_NV12,  NVCV_COLOR_SPEC_BT601,  true },
         {  70, 22, 4, NVCV_COLOR_YUV2BGR_NV21,  NVCV_COLOR_SPEC_BT709,  true },
+        {  68, 24, 3, NVCV_COLOR_YUV2RGB_NV12,  NVCV_COLOR_SPEC_BT601_ER,  false},
+        {  72, 26, 4, NVCV_COLOR_YUV2BGR_NV21,  NVCV_COLOR_SPEC_BT709_ER,  true },
+        {  74, 28, 3, NVCV_COLOR_YUV2RGB_NV21,  NVCV_COLOR_SPEC_BT2020_ER, false},
     });
 
 // clang-format on
@@ -1149,8 +1141,114 @@ TEST(OpAdvCvtColorNVToRGBExact, misaligned_padded_nhwc_c4_matches_fixed_point_re
     RunMisalignedPaddedNVToRGBExact(4, NVCV_COLOR_YUV2BGR_NV12, nvcv::ColorSpec{NVCV_COLOR_SPEC_BT709}, 113);
 }
 
+static void RunRangeSpecConversion(int width, int srcHeight, int srcChannels, int dstHeight, int dstChannels,
+                                   NVCVColorConversionCode code, nvcv::ColorSpec colorSpec, std::vector<uint8_t> input,
+                                   std::vector<uint8_t> &output)
+{
+    nvcv::Tensor src = MakeAdvCvtColorTensor(1, width, srcHeight, srcChannels, "NHWC");
+    nvcv::Tensor dst = MakeAdvCvtColorTensor(1, width, dstHeight, dstChannels, "NHWC");
+    ASSERT_NO_THROW(util::SetImageTensorFromVector<uint8_t>(src.exportData(), input, 0));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::AdvCvtColor op;
+    ASSERT_NO_THROW(op(stream, src, dst, code, colorSpec));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(dst.exportData(), 0, output));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+static void CheckFullRangeNV12NeutralSample(nvcv::ColorSpec colorSpec, uint8_t sample)
+{
+    SCOPED_TRACE(static_cast<int>(sample));
+    const std::vector<uint8_t> rgb(2 * 2 * 3, sample);
+    const std::vector<uint8_t> nv12{sample, sample, sample, sample, 128, 128};
+    std::vector<uint8_t>       output;
+
+    ASSERT_NO_FATAL_FAILURE(RunRangeSpecConversion(2, 2, 3, 3, 1, NVCV_COLOR_RGB2YUV_NV12, colorSpec, rgb, output));
+    ASSERT_EQ(nv12.size(), output.size());
+    constexpr size_t kLumaSamples = 2 * 2;
+    for (size_t index = 0; index < kLumaSamples; ++index)
+    {
+        EXPECT_EQ(sample, output[index]);
+    }
+    EXPECT_EQ(128, output[kLumaSamples]);
+    EXPECT_EQ(128, output[kLumaSamples + 1]);
+
+    ASSERT_NO_FATAL_FAILURE(RunRangeSpecConversion(2, 3, 1, 2, 3, NVCV_COLOR_YUV2RGB_NV12, colorSpec, nv12, output));
+    EXPECT_EQ(rgb, output);
+}
+
+NVCV_TEST_SUITE_P(OpAdvCvtColorRangeSpecEquivalence, test::ValueList<NVCVColorSpec, NVCVColorSpec>{
+                                                         { NVCV_COLOR_SPEC_BT601,  NVCV_COLOR_SPEC_BT601_ER},
+                                                         { NVCV_COLOR_SPEC_BT709,  NVCV_COLOR_SPEC_BT709_ER},
+                                                         {NVCV_COLOR_SPEC_BT2020, NVCV_COLOR_SPEC_BT2020_ER},
+});
+
+TEST_P(OpAdvCvtColorRangeSpecEquivalence, base_and_extended_range_specs_are_bit_exact)
+{
+    const nvcv::ColorSpec baseSpec{GetParamValue<0>()};
+    const nvcv::ColorSpec extendedSpec{GetParamValue<1>()};
+
+    const std::vector<uint8_t> rgb{0, 0, 0,   255, 255, 255, 255, 0,   0,  0,   255, 0,
+                                   0, 0, 255, 17,  67,  149, 83,  191, 37, 241, 113, 7};
+    std::vector<uint8_t>       baseOutput;
+    std::vector<uint8_t>       extendedOutput;
+
+    ASSERT_NO_FATAL_FAILURE(RunRangeSpecConversion(4, 2, 3, 2, 3, NVCV_COLOR_RGB2YUV, baseSpec, rgb, baseOutput));
+    ASSERT_NO_FATAL_FAILURE(
+        RunRangeSpecConversion(4, 2, 3, 2, 3, NVCV_COLOR_RGB2YUV, extendedSpec, rgb, extendedOutput));
+    EXPECT_EQ(baseOutput, extendedOutput);
+
+    const std::vector<uint8_t> nv12{0, 32, 64, 96, 128, 160, 224, 255, 16, 240, 200, 80};
+    ASSERT_NO_FATAL_FAILURE(RunRangeSpecConversion(4, 3, 1, 2, 3, NVCV_COLOR_YUV2RGB_NV12, baseSpec, nv12, baseOutput));
+    ASSERT_NO_FATAL_FAILURE(
+        RunRangeSpecConversion(4, 3, 1, 2, 3, NVCV_COLOR_YUV2RGB_NV12, extendedSpec, nv12, extendedOutput));
+    EXPECT_EQ(baseOutput, extendedOutput);
+}
+
+NVCV_TEST_SUITE_P(OpAdvCvtColorFullRangeEndpoints,
+                  test::ValueList<NVCVColorSpec>{NVCV_COLOR_SPEC_BT601, NVCV_COLOR_SPEC_BT601_ER, NVCV_COLOR_SPEC_BT709,
+                                                 NVCV_COLOR_SPEC_BT709_ER, NVCV_COLOR_SPEC_BT2020,
+                                                 NVCV_COLOR_SPEC_BT2020_ER});
+
+TEST_P(OpAdvCvtColorFullRangeEndpoints, packed_444_maps_neutral_ramp_to_full_luma_range)
+{
+    const nvcv::ColorSpec colorSpec{GetParam()};
+    std::vector<uint8_t>  rgb;
+    std::vector<uint8_t>  idealYCbCr;
+    std::vector<uint8_t>  output;
+    rgb.reserve(256 * 3);
+    idealYCbCr.reserve(256 * 3);
+    for (int value = 0; value <= 255; ++value)
+    {
+        const auto sample = static_cast<uint8_t>(value);
+        rgb.insert(rgb.end(), {sample, sample, sample});
+        idealYCbCr.insert(idealYCbCr.end(), {sample, 128, 128});
+    }
+
+    ASSERT_NO_FATAL_FAILURE(RunRangeSpecConversion(256, 1, 3, 1, 3, NVCV_COLOR_RGB2YUV, colorSpec, rgb, output));
+    ASSERT_EQ(idealYCbCr.size(), output.size());
+    EXPECT_EQ(idealYCbCr, output);
+
+    ASSERT_NO_FATAL_FAILURE(RunRangeSpecConversion(256, 1, 3, 1, 3, NVCV_COLOR_YUV2RGB, colorSpec, idealYCbCr, output));
+    EXPECT_EQ(rgb, output);
+}
+
+TEST_P(OpAdvCvtColorFullRangeEndpoints, nv12_maps_neutral_samples_to_full_luma_range)
+{
+    const nvcv::ColorSpec colorSpec{GetParam()};
+
+    ASSERT_NO_FATAL_FAILURE(CheckFullRangeNV12NeutralSample(colorSpec, 0));
+    ASSERT_NO_FATAL_FAILURE(CheckFullRangeNV12NeutralSample(colorSpec, 192));
+    ASSERT_NO_FATAL_FAILURE(CheckFullRangeNV12NeutralSample(colorSpec, 255));
+}
+
 // clang-format off
-// Max diff is 2.0 for 8-bit images is defined here since the conversion in the test is using floats directly and not integers.
+// Packed and inverse conversions differ from the independent double-precision reference by at most one code
+// value. RGB/BGR-to-NV12/NV21 rows allow two because the kernel averages four rounded chroma values with integer
+// truncation; exact fixed-point tests pin those paths, and neutral-ramp tests pin full-range normalization.
+// The broad shape matrix uses base specs; dedicated exact, equivalence, neutral, and planar tests cover _ER aliases.
 
 NVCV_TEST_SUITE_P(OpAdvCvtColor, test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConversionCode, NVCVColorSpec, float>
 {
@@ -1165,13 +1263,13 @@ NVCV_TEST_SUITE_P(OpAdvCvtColor, test::ValueList<int, int, int, NVCVImageFormat,
     {    74,       28,              3, NVCV_IMAGE_FORMAT_BGR8,       NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_COLOR_BGR2YUV_NV12,  NVCV_COLOR_SPEC_BT709,  2.0},
     {   720,      400,              2, NVCV_IMAGE_FORMAT_BGR8,       NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_COLOR_BGR2YUV_NV12,  NVCV_COLOR_SPEC_BT2020, 2.0},
 
-    {    66,       48,              1, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV12,  NVCV_COLOR_SPEC_BT601,  2.0},
-    {   536,      422,              2, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV12,  NVCV_COLOR_SPEC_BT709,  2.0},
-    {   400,        4,              5, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV12,  NVCV_COLOR_SPEC_BT2020, 2.0},
+    {    66,       48,              1, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV12,  NVCV_COLOR_SPEC_BT601,  1.0},
+    {   536,      422,              2, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV12,  NVCV_COLOR_SPEC_BT709,  1.0},
+    {   400,        4,              5, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV12,  NVCV_COLOR_SPEC_BT2020, 1.0},
 
-    {     2,        2,              2, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV12,  NVCV_COLOR_SPEC_BT601,  2.0},
-    {    56,       42,              1, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV12,  NVCV_COLOR_SPEC_BT709,  2.0},
-    {     4,      108,              3, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV12,  NVCV_COLOR_SPEC_BT2020, 2.0},
+    {     2,        2,              2, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV12,  NVCV_COLOR_SPEC_BT601,  1.0},
+    {    56,       42,              1, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV12,  NVCV_COLOR_SPEC_BT709,  1.0},
+    {     4,      108,              3, NVCV_IMAGE_FORMAT_NV12_ER,       NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV12,  NVCV_COLOR_SPEC_BT2020, 1.0},
 
     {     4,       40,              1, NVCV_IMAGE_FORMAT_RGB8,      NVCV_IMAGE_FORMAT_NV21_ER,       NVCV_COLOR_RGB2YUV_NV21,  NVCV_COLOR_SPEC_BT601,  2.0},
     {   100,      440,              2, NVCV_IMAGE_FORMAT_RGB8,      NVCV_IMAGE_FORMAT_NV21_ER,       NVCV_COLOR_RGB2YUV_NV21,  NVCV_COLOR_SPEC_BT709,  2.0},
@@ -1181,31 +1279,31 @@ NVCV_TEST_SUITE_P(OpAdvCvtColor, test::ValueList<int, int, int, NVCVImageFormat,
     {    74,       28,              3, NVCV_IMAGE_FORMAT_BGR8,      NVCV_IMAGE_FORMAT_NV21_ER,       NVCV_COLOR_BGR2YUV_NV21,  NVCV_COLOR_SPEC_BT709,  2.0},
     {   720,      400,              2, NVCV_IMAGE_FORMAT_BGR8,      NVCV_IMAGE_FORMAT_NV21_ER,       NVCV_COLOR_BGR2YUV_NV21,  NVCV_COLOR_SPEC_BT2020, 2.0},
 
-    {    66,       48,              1, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV21,  NVCV_COLOR_SPEC_BT601,  2.0},
-    {   536,      422,              2, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV21,  NVCV_COLOR_SPEC_BT709,  2.0},
-    {   400,        4,              5, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV21,  NVCV_COLOR_SPEC_BT2020, 2.0},
+    {    66,       48,              1, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV21,  NVCV_COLOR_SPEC_BT601,  1.0},
+    {   536,      422,              2, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV21,  NVCV_COLOR_SPEC_BT709,  1.0},
+    {   400,        4,              5, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB_NV21,  NVCV_COLOR_SPEC_BT2020, 1.0},
 
-    {     2,        2,              2, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV21,  NVCV_COLOR_SPEC_BT601,  2.0},
-    {    56,       42,              1, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV21,  NVCV_COLOR_SPEC_BT709,  2.0},
-    {     4,      108,              3, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV21,  NVCV_COLOR_SPEC_BT2020, 2.0},
+    {     2,        2,              2, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV21,  NVCV_COLOR_SPEC_BT601,  1.0},
+    {    56,       42,              1, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV21,  NVCV_COLOR_SPEC_BT709,  1.0},
+    {     4,      108,              3, NVCV_IMAGE_FORMAT_NV21_ER,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR_NV21,  NVCV_COLOR_SPEC_BT2020, 1.0},
 
 
 //YUV can be odd dims
-    {    321,       24,             2, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB,    NVCV_COLOR_SPEC_BT601,  2.0},
-    {     85,       27,             1, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB,    NVCV_COLOR_SPEC_BT709,  2.0},
-    {     21,       22,             4, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB,    NVCV_COLOR_SPEC_BT2020, 2.0},
+    {    321,       24,             2, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB,    NVCV_COLOR_SPEC_BT601,  1.0},
+    {     85,       27,             1, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB,    NVCV_COLOR_SPEC_BT709,  1.0},
+    {     21,       22,             4, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_RGB8,       NVCV_COLOR_YUV2RGB,    NVCV_COLOR_SPEC_BT2020, 1.0},
 
-    {      3,      124,             1, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR,    NVCV_COLOR_SPEC_BT601,  2.0},
-    {    131,      239,             2, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR,    NVCV_COLOR_SPEC_BT709,  2.0},
-    {     45,       45,             1, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR,    NVCV_COLOR_SPEC_BT2020, 2.0},
+    {      3,      124,             1, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR,    NVCV_COLOR_SPEC_BT601,  1.0},
+    {    131,      239,             2, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR,    NVCV_COLOR_SPEC_BT709,  1.0},
+    {     45,       45,             1, NVCV_IMAGE_FORMAT_YUV8,      NVCV_IMAGE_FORMAT_BGR8,       NVCV_COLOR_YUV2BGR,    NVCV_COLOR_SPEC_BT2020, 1.0},
 
-    {   1080,        1,             5, NVCV_IMAGE_FORMAT_RGB8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_RGB2YUV,    NVCV_COLOR_SPEC_BT601,  2.0},
-    {     42,        2,             7, NVCV_IMAGE_FORMAT_RGB8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_RGB2YUV,    NVCV_COLOR_SPEC_BT709,  2.0},
-    {    340,      620,            10, NVCV_IMAGE_FORMAT_RGB8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_RGB2YUV,    NVCV_COLOR_SPEC_BT2020, 2.0},
+    {   1080,        1,             5, NVCV_IMAGE_FORMAT_RGB8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_RGB2YUV,    NVCV_COLOR_SPEC_BT601,  1.0},
+    {     42,        2,             7, NVCV_IMAGE_FORMAT_RGB8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_RGB2YUV,    NVCV_COLOR_SPEC_BT709,  1.0},
+    {    340,      620,            10, NVCV_IMAGE_FORMAT_RGB8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_RGB2YUV,    NVCV_COLOR_SPEC_BT2020, 1.0},
 
-    {      3,        3,             1, NVCV_IMAGE_FORMAT_BGR8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_BGR2YUV,    NVCV_COLOR_SPEC_BT601,  2.0},
-    {     43,      208,             2, NVCV_IMAGE_FORMAT_BGR8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_BGR2YUV,    NVCV_COLOR_SPEC_BT709,  2.0},
-    {    340,      220,             1, NVCV_IMAGE_FORMAT_BGR8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_BGR2YUV,    NVCV_COLOR_SPEC_BT2020, 2.0},
+    {      3,        3,             1, NVCV_IMAGE_FORMAT_BGR8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_BGR2YUV,    NVCV_COLOR_SPEC_BT601,  1.0},
+    {     43,      208,             2, NVCV_IMAGE_FORMAT_BGR8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_BGR2YUV,    NVCV_COLOR_SPEC_BT709,  1.0},
+    {    340,      220,             1, NVCV_IMAGE_FORMAT_BGR8,      NVCV_IMAGE_FORMAT_YUV8,       NVCV_COLOR_BGR2YUV,    NVCV_COLOR_SPEC_BT2020, 1.0},
 
 });
 
@@ -1223,6 +1321,9 @@ test::ValueList<int, int, int, int, int, NVCVColorConversionCode, NVCVColorSpec,
     { 34, 22, 1,    4,    1,  NVCV_COLOR_BGR2YUV_NV21,  NVCV_COLOR_SPEC_BT601,  true},
     { 30, 20, 2,    1,    3,  NVCV_COLOR_YUV2RGB_NV12,  NVCV_COLOR_SPEC_BT709,  false},
     { 28, 18, 1,    1,    4,  NVCV_COLOR_YUV2BGR_NV21,  NVCV_COLOR_SPEC_BT2020, true},
+    { 27, 19, 2,    3,    3,  NVCV_COLOR_RGB2YUV,       NVCV_COLOR_SPEC_BT709_ER,  false},
+    { 36, 26, 2,    3,    1,  NVCV_COLOR_RGB2YUV_NV21,  NVCV_COLOR_SPEC_BT601_ER,  false},
+    { 26, 16, 2,    1,    3,  NVCV_COLOR_YUV2BGR_NV12,  NVCV_COLOR_SPEC_BT2020_ER, false},
 });
 
 // clang-format on
@@ -1288,6 +1389,11 @@ NVCV_TEST_SUITE_P(OpAdvCvtColor_Negative, test::ValueList<int, int, int, int, in
 {
     {2, 2, 400, 400, 400, 400, NVCV_IMAGE_FORMAT_RGBA8, NVCV_IMAGE_FORMAT_RGB8, NVCV_COLOR_RGBA2RGB, NVCV_COLOR_SPEC_BT601},
     {2, 2, 400, 400, 400, 400, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_sRGB},
+    {2, 2, 400, 400, 400, 400, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_BT2020_PQ_ER},
+    {2, 2,   2,   2,   2,   2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_MPEG2_BT601},
+    {2, 2,   2,   2,   2,   2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_MPEG2_BT709},
+    {2, 2,   2,   2,   2,   2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_BT2020c_ER},
+    {2, 2,   2,   2,   2,   2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_UNDEFINED},
     {2, 2, 400, 400, 400, 400, NVCV_IMAGE_FORMAT_RGB8p, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_BT601},
     {3, 2, 400, 400, 400, 400, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_BT601},
     {2, 2, 400, 500, 400, 400, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_BT601},
@@ -1365,4 +1471,80 @@ TEST(OpAdvCvtColor_Negative, rejects_layout_and_size_incompatibilities)
         NVCV_ERROR_INVALID_ARGUMENT,
         nvcv::ProtectCall(
             [&] { op(nullptr, interleaved, wrongSize, NVCV_COLOR_RGB2YUV, nvcv::ColorSpec{NVCV_COLOR_SPEC_BT601}); }));
+}
+
+TEST(OpAdvCvtColor_Negative, rejects_nv420_output_height_mismatch_after_dispatch)
+{
+    cvcuda::AdvCvtColor op;
+
+    nvcv::Tensor input  = MakeAdvCvtColorTensor(1, 4, 4, 3, "NHWC");
+    nvcv::Tensor output = MakeAdvCvtColorTensor(1, 4, 7, 1, "NHWC");
+
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall(
+            [&] { op(nullptr, input, output, NVCV_COLOR_RGB2YUV_NV12, nvcv::ColorSpec{NVCV_COLOR_SPEC_BT601}); }));
+}
+
+TEST(OpAdvCvtColorCoverage, single_sample_hwc_rgb_to_nv12_matches_fixed_point_reference)
+{
+    constexpr int                     width     = 34;
+    constexpr int                     height    = 22;
+    constexpr int                     dstHeight = height * 3 / 2;
+    constexpr int                     channels  = 3;
+    constexpr NVCVColorConversionCode code      = NVCV_COLOR_RGB2YUV_NV12;
+    const nvcv::ColorSpec             colorSpec{NVCV_COLOR_SPEC_BT709};
+
+    nvcv::Tensor src = MakeAdvCvtColorTensor(1, width, height, channels, "HWC");
+    nvcv::Tensor dst = MakeAdvCvtColorTensor(1, width, dstHeight, 1, "HWC");
+
+    auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData && dstData);
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(srcAccess && dstAccess);
+
+    std::vector<uint8_t> input(static_cast<size_t>(width) * height * channels);
+    test::planar::FillDeterministicValues(input, 257, nvcv::TYPE_U8);
+    test::planar::UploadInterleavedSample(*srcAccess, 0, input, width, height, width * channels);
+    const std::vector<uint8_t> gold = ConvertRGBToNVExact(input, width, height, channels, code, colorSpec);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::AdvCvtColor op;
+    EXPECT_NO_THROW(op(stream, src, dst, code, colorSpec));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    const auto output = test::planar::DownloadInterleavedSample(*dstAccess, 0, width, dstHeight, width);
+    EXPECT_EQ(gold, output);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdvCvtColorCoverage, planar_444_row_guard_paths_match_interleaved)
+{
+    constexpr int         width   = 65;
+    constexpr int         height  = 33;
+    constexpr int         samples = 2;
+    const nvcv::ColorSpec colorSpec{NVCV_COLOR_SPEC_BT709};
+
+    RunAdvCvtColorTensorPlanarParity(width, height, samples, 3, 3, NVCV_COLOR_RGB2YUV, colorSpec, false);
+    RunAdvCvtColorTensorPlanarParity(width, height, samples, 3, 3, NVCV_COLOR_YUV2RGB, colorSpec, false);
+}
+
+TEST(OpAdvCvtColorCoverage, rank3_planar_444_row_guards_match_interleaved)
+{
+    constexpr int         width  = 33;
+    constexpr int         height = 9;
+    const nvcv::ColorSpec colorSpec{NVCV_COLOR_SPEC_BT601};
+
+    RunAdvCvtColorTensorPlanarParity(width, height, 1, 3, 3, NVCV_COLOR_BGR2YUV, colorSpec, true);
+    RunAdvCvtColorTensorPlanarParity(width, height, 1, 3, 3, NVCV_COLOR_YUV2BGR, colorSpec, true);
+}
+
+TEST(OpAdvCvtColorCoverage, batched_planar_rgb_to_nv12_matches_interleaved)
+{
+    RunAdvCvtColorTensorPlanarParity(34, 22, 2, 3, 1, NVCV_COLOR_RGB2YUV_NV12, nvcv::ColorSpec{NVCV_COLOR_SPEC_BT709},
+                                     false);
 }

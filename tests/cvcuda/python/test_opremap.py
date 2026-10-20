@@ -71,6 +71,26 @@ REF_SHAPE = {
 REF_SHAPE["default"] = REF_SHAPE["absolute"]
 
 
+def test_op_remap_constant_coverage_tensor_only():
+    src = cvcuda.Tensor((1, 4, 4, 1), cvcuda.Type.U8, "NHWC")
+    map_tensor = cvcuda.Tensor((1, 4, 4, 1), cvcuda.Type._2F32, "NHWC")
+    kwargs = {
+        "src_interp": cvcuda.Interp.LINEAR,
+        "border": cvcuda.Border.CONSTANT_COVERAGE,
+        "border_value": [0.5],
+    }
+    assert isinstance(cvcuda.remap(src, map_tensor, **kwargs), cvcuda.Tensor)
+    dst = cvcuda.Tensor(src.shape, src.dtype, src.layout)
+    assert cvcuda.remap_into(dst, src, map_tensor, **kwargs) is dst
+
+    batch = util.create_image_batch(1, cvcuda.Format.U8, size=(4, 4))
+    batch_dst = util.clone_image_batch(batch)
+    with pytest.raises(RuntimeError):
+        cvcuda.remap(batch, map_tensor, **kwargs)
+    with pytest.raises(RuntimeError):
+        cvcuda.remap_into(batch_dst, batch, map_tensor, **kwargs)
+
+
 @pytest.mark.parametrize(
     "src_args, map_args",
     [
@@ -89,6 +109,22 @@ REF_SHAPE["default"] = REF_SHAPE["absolute"]
         (
             ((13, 21, 1), cvcuda.Type._4U8, "HWC"),
             ((11, 22, 1), cvcuda.Type._2F32, "HWC"),
+        ),
+        (
+            ((5, 16, 23, 3), cvcuda.Type.F32, "NHWC"),
+            ((5, 17, 13, 2), cvcuda.Type.F32, "NHWC"),
+        ),
+        (
+            ((5, 16, 23, 4), cvcuda.Type.F16, "NHWC"),
+            ((5, 17, 13, 2), cvcuda.Type.F32, "NHWC"),
+        ),
+        (
+            ((13, 21, 1), cvcuda.Type._3F16, "HWC"),
+            ((22, 11, 1), cvcuda.Type._2F32, "HWC"),
+        ),
+        (
+            ((13, 21, 1), cvcuda.Type._4F32, "HWC"),
+            ((22, 11, 1), cvcuda.Type._2F32, "HWC"),
         ),
     ],
 )
@@ -147,6 +183,45 @@ def test_op_remap_rejects_border_value_longer_than_float4():
             border=cvcuda.Border.CONSTANT,
             border_value=np.arange(5, dtype=np.float32),
         )
+
+
+def test_op_remap_planar_many_channels_border():
+    src = util.to_cvcuda_tensor(np.full((1, 5, 8, 8), 29, dtype=np.uint8), "NCHW")
+    map_tensor = util.to_cvcuda_tensor(
+        np.full((1, 8, 8, 2), -20, dtype=np.float32), "NHWC"
+    )
+    border = cvcuda.Border.CONSTANT
+    dst = cvcuda.remap(src, map_tensor, border=border, border_value=[7, 7, 7, 7])
+    np.testing.assert_array_equal(cupy.asarray(dst.cuda()).get(), 7)
+    with pytest.raises(RuntimeError):
+        cvcuda.remap(src, map_tensor, border=border, border_value=[7, 8, 7, 7])
+
+
+def test_op_remap_border_value_binding_contract():
+    t_src = cvcuda.Tensor((1, 4, 4, 3), cvcuda.Type.U8, "NHWC")
+    t_map = cvcuda.Tensor((1, 4, 4, 2), cvcuda.Type.F32, "NHWC")
+    t_dst = cvcuda.Tensor(t_src.shape, t_src.dtype, t_src.layout)
+
+    for function in (cvcuda.remap, cvcuda.remap_into):
+        assert "= array([], dtype=float32)" in function.__doc__
+        assert "*, stream:" in function.__doc__
+
+    assert isinstance(cvcuda.remap(t_src, t_map, border_value=None), cvcuda.Tensor)
+    assert cvcuda.remap_into(t_dst, t_src, t_map, border_value=None) is t_dst
+
+    positional_arguments = (
+        t_src,
+        t_map,
+        cvcuda.Interp.NEAREST,
+        cvcuda.Interp.NEAREST,
+        cvcuda.Remap.ABSOLUTE,
+        False,
+        cvcuda.Border.CONSTANT,
+        np.empty(0, dtype=np.float32),
+        cvcuda.Stream(),
+    )
+    with pytest.raises(TypeError):
+        cvcuda.remap(*positional_arguments)
 
 
 @pytest.mark.parametrize(

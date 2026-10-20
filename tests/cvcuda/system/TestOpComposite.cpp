@@ -730,6 +730,83 @@ TEST(OpCompositePlanar, varshape_rgba_output_matches_interleaved)
     RunCompositePlanarVarShapeParity(nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p, 29, 17, 2, 4);
 }
 
+TEST(OpCompositePlanar, varshape_single_image_uses_chw_layout)
+{
+    RunCompositePlanarVarShapeParity(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 31, 19, 1, 3);
+}
+
+TEST(OpComposite, tensor_rank3_hwc_chw_match_gold)
+{
+    constexpr int width    = 17;
+    constexpr int height   = 13;
+    constexpr int channels = 3;
+
+    cudaStream_t stream{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Composite compositeOp;
+    auto              runLayout = [&](bool planar)
+    {
+        const nvcv::TensorShape imageShape
+            = planar ? nvcv::TensorShape{{channels, height, width}, "CHW"}
+                     : nvcv::TensorShape{{height, width, channels}, "HWC"};
+        const nvcv::TensorShape maskShape
+            = planar ? nvcv::TensorShape{{1, height, width}, "CHW"}
+                     : nvcv::TensorShape{{height, width, 1}, "HWC"};
+
+        nvcv::Tensor foreground(imageShape, nvcv::TYPE_U8);
+        nvcv::Tensor background(imageShape, nvcv::TYPE_U8);
+        nvcv::Tensor fgMask(maskShape, nvcv::TYPE_U8);
+        nvcv::Tensor output(imageShape, nvcv::TYPE_U8);
+
+        auto foregroundData = foreground.exportData<nvcv::TensorDataStridedCuda>();
+        auto backgroundData = background.exportData<nvcv::TensorDataStridedCuda>();
+        auto fgMaskData     = fgMask.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(foregroundData && backgroundData && fgMaskData);
+
+        std::vector<uint8_t> foregroundValues = MakePatternBytes(width * height * channels, 7);
+        std::vector<uint8_t> backgroundValues = MakePatternBytes(width * height * channels, 19);
+        std::vector<uint8_t> maskValues       = MakePatternBytes(width * height, 31);
+
+        if (planar)
+        {
+            UploadTensorPlanar(*foregroundData, 0, InterleavedToPlanar(foregroundValues, width, height, channels),
+                               width, height, channels);
+            UploadTensorPlanar(*backgroundData, 0, InterleavedToPlanar(backgroundValues, width, height, channels),
+                               width, height, channels);
+            UploadTensorPlanar(*fgMaskData, 0, maskValues, width, height, 1);
+        }
+        else
+        {
+            UploadTensorInterleaved(*foregroundData, 0, foregroundValues, width, height, channels);
+            UploadTensorInterleaved(*backgroundData, 0, backgroundValues, width, height, channels);
+            UploadTensorInterleaved(*fgMaskData, 0, maskValues, width, height, 1);
+        }
+
+        EXPECT_NO_THROW(compositeOp(stream, foreground, background, fgMask, output));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        auto outputData = output.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(outputData);
+
+        std::vector<uint8_t> actual = planar ? DownloadTensorPlanar(*outputData, 0, width, height, channels)
+                                             : DownloadTensorInterleaved(*outputData, 0, width, height, channels);
+        std::vector<uint8_t> gold(static_cast<size_t>(width) * height * channels);
+        setGoldBuffer(gold, foregroundValues, backgroundValues, maskValues, width, height, width * channels, width,
+                      width * channels, channels, channels);
+        std::vector<uint8_t> expected = planar ? InterleavedToPlanar(gold, width, height, channels) : gold;
+
+        EXPECT_EQ(expected, actual);
+    };
+
+    for (const bool planar : {false, true})
+    {
+        ASSERT_NO_FATAL_FAILURE(runLayout(planar));
+    }
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpComposite_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, bool>
     {
@@ -755,6 +832,58 @@ TEST(OpComposite_Negative, createWithNullHandle)
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaCompositeCreate(nullptr));
 }
 
+TEST(OpComposite_Negative, tensor_rejects_non_u8_scalar_dtypes)
+{
+    cudaStream_t stream{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const std::array<nvcv::ImageFormat, 5> foregroundFormats{nvcv::FMT_F64, nvcv::FMT_S8, nvcv::FMT_S16, nvcv::FMT_S32,
+                                                             nvcv::FMT_U16};
+
+    cvcuda::Composite compositeOp;
+    for (const nvcv::ImageFormat foregroundFormat : foregroundFormats)
+    {
+        nvcv::Tensor foreground(3, {24, 24}, foregroundFormat);
+        nvcv::Tensor background(3, {24, 24}, nvcv::FMT_RGB8);
+        nvcv::Tensor fgMask(3, {24, 24}, nvcv::FMT_U8);
+        nvcv::Tensor output(3, {24, 24}, nvcv::FMT_RGB8);
+
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { compositeOp(stream, foreground, background, fgMask, output); }));
+    }
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpComposite_Negative, tensor_rejects_unhandled_dtype_classifications)
+{
+    const std::array<nvcv::DataType, 5> invalidTypes{
+        nvcv::DataType(nvcv::DataKind::UNSIGNED, static_cast<nvcv::Packing>(NVCV_PACKING_X32_Y24b8)),
+        nvcv::DataType(nvcv::DataKind::FLOAT, nvcv::Packing::X8),
+        nvcv::DataType(nvcv::DataKind::SIGNED, nvcv::Packing::X64),
+        nvcv::DataType(nvcv::DataKind::UNSIGNED, nvcv::Packing::X32), nvcv::TYPE_C64};
+
+    cvcuda::Composite compositeOp;
+    for (int i = 0; i < static_cast<int>(invalidTypes.size()); ++i)
+    {
+        SCOPED_TRACE(i);
+        const nvcv::DataType dtype = invalidTypes[i];
+        nvcv::Tensor         foreground(
+                    {
+                        {1, 5, 5, dtype.numChannels()},
+                        "NHWC"
+        },
+                    dtype);
+        nvcv::Tensor background(1, {5, 5}, nvcv::FMT_RGB8);
+        nvcv::Tensor fgMask(1, {5, 5}, nvcv::FMT_U8);
+        nvcv::Tensor output(1, {5, 5}, nvcv::FMT_RGB8);
+
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { compositeOp(nullptr, foreground, background, fgMask, output); }));
+    }
+}
+
 TEST(OpComposite_Negative, planar_varshape_batch_exceeds_cuda_grid_limit)
 {
     constexpr int batchSize = 65536;
@@ -763,6 +892,59 @@ TEST(OpComposite_Negative, planar_varshape_batch_exceeds_cuda_grid_limit)
     nvcv::Image backgroundImage(nvcv::Size2D{1, 1}, nvcv::FMT_RGB8p);
     nvcv::Image maskImage(nvcv::Size2D{1, 1}, nvcv::FMT_U8);
     nvcv::Image outputImage(nvcv::Size2D{1, 1}, nvcv::FMT_RGB8p);
+
+    nvcv::ImageBatchVarShape foreground(batchSize);
+    nvcv::ImageBatchVarShape background(batchSize);
+    nvcv::ImageBatchVarShape mask(batchSize);
+    nvcv::ImageBatchVarShape output(batchSize);
+    for (int i = 0; i < batchSize; ++i)
+    {
+        foreground.pushBack(foregroundImage);
+        background.pushBack(backgroundImage);
+        mask.pushBack(maskImage);
+        output.pushBack(outputImage);
+    }
+
+    cvcuda::Composite op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, foreground, background, mask, output); }));
+}
+
+// Both interleaved launchers (RunCompositeTensor and RunCompositeVarShape) build a CUDA grid
+// with gridSize.z = batchSize. CUDA limits gridDim.z to 65535 on all compute capabilities;
+// a batch larger than that would pass validation and reach the kernel launch, where CUDA
+// returns cudaErrorInvalidConfiguration. NVCV_CHECK_THROW catches that as a device error
+// (not NVCV_ERROR_INVALID_ARGUMENT), and the caller gets a confusing launch failure instead
+// of a clear bounds error. The planar launchers already guarded this in the legacy code; the
+// interleaved launchers did not. The guards added in 73831590a close that gap: batchSize is
+// now checked before the launch, so oversized inputs get NVCV_ERROR_INVALID_ARGUMENT at
+// validation. Without the guard the EXPECT_EQ below fails because the wrong status is raised.
+
+TEST(OpComposite_Negative, interleaved_tensor_batch_exceeds_cuda_grid_limit)
+{
+    constexpr int batchSize = 65536;
+
+    nvcv::Tensor foreground(batchSize, {1, 1}, nvcv::FMT_RGB8);
+    nvcv::Tensor background(batchSize, {1, 1}, nvcv::FMT_RGB8);
+    nvcv::Tensor mask(batchSize, {1, 1}, nvcv::FMT_U8);
+    nvcv::Tensor output(batchSize, {1, 1}, nvcv::FMT_RGB8);
+
+    cvcuda::Composite op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, foreground, background, mask, output); }));
+}
+
+TEST(OpComposite_Negative, interleaved_varshape_batch_exceeds_cuda_grid_limit)
+{
+    // Same gridDim.z overflow bug as the Tensor path above; see the comment there for the
+    // full explanation. This exercises RunCompositeVarShape, which uses outData.numImages()
+    // as gridSize.z directly.
+    constexpr int batchSize = 65536;
+
+    nvcv::Image foregroundImage(nvcv::Size2D{1, 1}, nvcv::FMT_RGB8);
+    nvcv::Image backgroundImage(nvcv::Size2D{1, 1}, nvcv::FMT_RGB8);
+    nvcv::Image maskImage(nvcv::Size2D{1, 1}, nvcv::FMT_U8);
+    nvcv::Image outputImage(nvcv::Size2D{1, 1}, nvcv::FMT_RGB8);
 
     nvcv::ImageBatchVarShape foreground(batchSize);
     nvcv::ImageBatchVarShape background(batchSize);
@@ -877,6 +1059,47 @@ static std::vector<nvcv::Image> CreateCompositeImages(int numImages, nvcv::Size2
     }
 
     return images;
+}
+
+TEST(OpComposite_Negative, rejects_unsupported_tensor_layout_and_multichannel_planes)
+{
+    cudaStream_t stream{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Composite compositeOp;
+
+    nvcv::Tensor invalidLayout(
+        {
+            {1, 5, 7, 3},
+            "ABCD"
+    },
+        nvcv::TYPE_U8);
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall([&] { compositeOp(stream, invalidLayout, invalidLayout, invalidLayout, invalidLayout); }));
+
+    const nvcv::ImageFormat multiChannelPlanes{nvcv::MemLayout::PITCH_LINEAR, nvcv::DataKind::UNSIGNED,
+                                               nvcv::Swizzle::S_XYZW, nvcv::Packing::X8_Y8, nvcv::Packing::X8_Y8};
+
+    std::vector<nvcv::Image> foregroundImages = CreateCompositeImages(1, {7, 5}, multiChannelPlanes);
+    std::vector<nvcv::Image> backgroundImages = CreateCompositeImages(1, {7, 5}, multiChannelPlanes);
+    std::vector<nvcv::Image> maskImages       = CreateCompositeImages(1, {7, 5}, nvcv::FMT_U8);
+    std::vector<nvcv::Image> outputImages     = CreateCompositeImages(1, {7, 5}, multiChannelPlanes);
+
+    nvcv::ImageBatchVarShape foreground(1);
+    nvcv::ImageBatchVarShape background(1);
+    nvcv::ImageBatchVarShape mask(1);
+    nvcv::ImageBatchVarShape output(1);
+    foreground.pushBack(foregroundImages[0]);
+    background.pushBack(backgroundImages[0]);
+    mask.pushBack(maskImages[0]);
+    output.pushBack(outputImages[0]);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { compositeOp(stream, foreground, background, mask, output); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 TEST(OpComposite_Negative, varshape_rejects_mismatched_shape)

@@ -130,7 +130,7 @@ inline void __host__ __device__ GetCubicCoeffs(float delta, float &w0, float &w1
 
 namespace detail {
 
-template<class BW, NVCVInterpolationType I>
+template<class BW, NVCVInterpolationType I, bool ReadTapByValue>
 class InterpolationWrapImpl
 {
 public:
@@ -146,6 +146,8 @@ public:
     static constexpr int  kNumActiveDimensions = BorderWrapper::kNumActiveDimensions;
 
     static_assert(kNumActiveDimensions == 2, "InterpolationWrap can only wrap a BorderWrap with 2 active dimensions");
+    static_assert(BorderWrapper::kBorderType != NVCV_BORDER_CONSTANT_COVERAGE || I != NVCV_INTERP_AREA,
+                  "Constant-coverage border supports NEAREST, LINEAR, and CUBIC, not AREA");
 
     struct ActiveCoordMap
     {
@@ -175,14 +177,16 @@ public:
 
     InterpolationWrapImpl() = default;
 
-    explicit __host__ InterpolationWrapImpl(const TensorDataStridedCuda &tensor, ValueType borderValue = {})
+    explicit __host__ InterpolationWrapImpl(const TensorDataStridedCuda                           &tensor,
+                                            BorderValueType<ValueType, BorderWrapper::kBorderType> borderValue = {})
         : m_borderWrap(tensor, borderValue)
     {
     }
 
     template<typename... Args>
-    explicit __host__ __device__ InterpolationWrapImpl(TensorWrapper tensorWrap, ValueType borderValue,
-                                                       Args... tensorShape)
+    explicit __host__ __device__
+        InterpolationWrapImpl(TensorWrapper                                          tensorWrap,
+                              BorderValueType<ValueType, BorderWrapper::kBorderType> borderValue, Args... tensorShape)
         : m_borderWrap(tensorWrap, borderValue, tensorShape...)
     {
     }
@@ -214,7 +218,7 @@ public:
 
 protected:
     template<typename DimType>
-    inline const __host__ __device__ ValueType &doGetValue(DimType c, StrideType x, StrideType y) const
+    inline __host__ __device__ decltype(auto) doGetValue(DimType c, StrideType x, StrideType y) const
     {
         cuda::ConvertBaseTypeTo<int, DimType> ic;
         GetElement<kCoordMap.id[0]>(ic) = static_cast<int>(x);
@@ -224,7 +228,18 @@ protected:
         if constexpr (NumElements<DimType> == 4)
             GetElement<kCoordMap.id[3]>(ic) = static_cast<int>(GetElement<kCoordMap.id[3]>(c));
 
-        return m_borderWrap[ic];
+        if constexpr (BorderWrapper::kBorderType == NVCV_BORDER_CONSTANT_COVERAGE)
+        {
+            return m_borderWrap.ptr(ic);
+        }
+        else if constexpr (ReadTapByValue && BorderWrapper::kBorderType == NVCV_BORDER_CONSTANT)
+        {
+            return m_borderWrap.value(ic);
+        }
+        else
+        {
+            return m_borderWrap[ic];
+        }
     }
 
     const BorderWrapper m_borderWrap = {};
@@ -262,9 +277,11 @@ protected:
  *
  * @tparam BW It is a \ref BorderWrap class with any dimension and type.
  * @tparam I It is a \ref NVCVInterpolationType defining the interpolation type to be used.
+ * @tparam ReadTapByValue Whether to opt constant-border taps into \ref BorderWrap::value. This
+ * policy has no element-width clamp, unlike \ref InterpolationVarShapeWrap.
  */
-template<class BW, NVCVInterpolationType I>
-class InterpolationWrap : public detail::InterpolationWrapImpl<BW, I>
+template<class BW, NVCVInterpolationType I, bool ReadTapByValue = false>
+class InterpolationWrap : public detail::InterpolationWrapImpl<BW, I, ReadTapByValue>
 {
 };
 
@@ -273,10 +290,11 @@ class InterpolationWrap : public detail::InterpolationWrapImpl<BW, I>
  *
  * @tparam BW It is a \ref BorderWrap class with any dimension and type.
  */
-template<class BW>
-class InterpolationWrap<BW, NVCV_INTERP_NEAREST> : public detail::InterpolationWrapImpl<BW, NVCV_INTERP_NEAREST>
+template<class BW, bool ReadTapByValue>
+class InterpolationWrap<BW, NVCV_INTERP_NEAREST, ReadTapByValue>
+    : public detail::InterpolationWrapImpl<BW, NVCV_INTERP_NEAREST, ReadTapByValue>
 {
-    using Base = detail::InterpolationWrapImpl<BW, NVCV_INTERP_NEAREST>;
+    using Base = detail::InterpolationWrapImpl<BW, NVCV_INTERP_NEAREST, ReadTapByValue>;
 
 public:
     using typename Base::BorderWrapper;
@@ -298,7 +316,8 @@ public:
      * @param[in] scaleX The scale X value is ignored in non-Area interpolation types.
      * @param[in] scaleY The scale Y value is ignored in non-Area interpolation types.
      */
-    explicit __host__ InterpolationWrap(const TensorDataStridedCuda &tensor, ValueType borderValue = {},
+    explicit __host__ InterpolationWrap(const TensorDataStridedCuda                           &tensor,
+                                        BorderValueType<ValueType, BorderWrapper::kBorderType> borderValue = {},
                                         float scaleX = {}, float scaleY = {})
         : Base(tensor, borderValue)
     {
@@ -313,8 +332,9 @@ public:
      * @param[in] scaleY The scale Y value is ignored in non-Area interpolation types.
      */
     template<typename... Args>
-    explicit __host__ __device__ InterpolationWrap(TensorWrapper tensorWrap, ValueType borderValue, float scaleX,
-                                                   float scaleY, Args... tensorShape)
+    explicit __host__ __device__ InterpolationWrap(TensorWrapper                                          tensorWrap,
+                                                   BorderValueType<ValueType, BorderWrapper::kBorderType> borderValue,
+                                                   float scaleX, float scaleY, Args... tensorShape)
         : Base(tensorWrap, borderValue, tensorShape...)
     {
     }
@@ -361,7 +381,18 @@ public:
         const StrideType y
             = GetIndexForInterpolation<kInterpolationType, 1, StrideType>(GetElement<kCoordMap.id[1]>(c) + .5f);
 
-        return Base::doGetValue(c, x, y);
+        if constexpr (BorderWrapper::kBorderType == NVCV_BORDER_CONSTANT_COVERAGE)
+        {
+            // Single ptr() call gives both the pixel value and the inside flag; no second
+            // lookup for inside pixels.  SaturateCast on the border branch rounds once here,
+            // matching what a covered pixel gets on its way out of the linear path.
+            const ValueType *p = Base::doGetValue(c, x, y);
+            return p != nullptr ? *p : SaturateCast<ValueType>(Base::borderWrap().borderValue());
+        }
+        else
+        {
+            return Base::doGetValue(c, x, y);
+        }
     }
 };
 
@@ -370,10 +401,11 @@ public:
  *
  * @tparam BW It is a \ref BorderWrap class with any dimension and type.
  */
-template<class BW>
-class InterpolationWrap<BW, NVCV_INTERP_LINEAR> : public detail::InterpolationWrapImpl<BW, NVCV_INTERP_LINEAR>
+template<class BW, bool ReadTapByValue>
+class InterpolationWrap<BW, NVCV_INTERP_LINEAR, ReadTapByValue>
+    : public detail::InterpolationWrapImpl<BW, NVCV_INTERP_LINEAR, ReadTapByValue>
 {
-    using Base = detail::InterpolationWrapImpl<BW, NVCV_INTERP_LINEAR>;
+    using Base = detail::InterpolationWrapImpl<BW, NVCV_INTERP_LINEAR, ReadTapByValue>;
 
 public:
     using typename Base::BorderWrapper;
@@ -395,7 +427,8 @@ public:
      * @param[in] scaleX The scale X value is ignored in non-Area interpolation types.
      * @param[in] scaleY The scale Y value is ignored in non-Area interpolation types.
      */
-    explicit __host__ InterpolationWrap(const TensorDataStridedCuda &tensor, ValueType borderValue = {},
+    explicit __host__ InterpolationWrap(const TensorDataStridedCuda                           &tensor,
+                                        BorderValueType<ValueType, BorderWrapper::kBorderType> borderValue = {},
                                         float scaleX = {}, float scaleY = {})
         : Base(tensor, borderValue)
     {
@@ -410,8 +443,9 @@ public:
      * @param[in] scaleY The scale Y value is ignored in non-Area interpolation types.
      */
     template<typename... Args>
-    explicit __host__ __device__ InterpolationWrap(TensorWrapper tensorWrap, ValueType borderValue, float scaleX,
-                                                   float scaleY, Args... tensorShape)
+    explicit __host__ __device__ InterpolationWrap(TensorWrapper                                          tensorWrap,
+                                                   BorderValueType<ValueType, BorderWrapper::kBorderType> borderValue,
+                                                   float scaleX, float scaleY, Args... tensorShape)
         : Base(tensorWrap, borderValue, tensorShape...)
     {
     }
@@ -440,6 +474,42 @@ public:
     // True if this interpolation wrap is integer Area, none is stored so an empty value is returned.
     using Base::isIntegerArea;
 
+private:
+    template<typename DimType>
+    inline __host__ __device__ ValueType doGetValueCoverage(DimType c, StrideType x1, StrideType y1, float wx1,
+                                                            float wx2, float wy1, float wy2) const
+    {
+        const ValueType *p11 = Base::doGetValue(c, x1, y1);
+        const ValueType *p21 = Base::doGetValue(c, x1 + 1, y1);
+        const ValueType *p12 = Base::doGetValue(c, x1, y1 + 1);
+        const ValueType *p22 = Base::doGetValue(c, x1 + 1, y1 + 1);
+
+        const bool in11 = p11 != nullptr;
+        const bool in21 = p21 != nullptr;
+        const bool in12 = p12 != nullptr;
+        const bool in22 = p22 != nullptr;
+
+        const auto zero = SetAll<std::remove_cv_t<ValueType>>(0);
+        auto       out  = SetAll<ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>>(0);
+        out += (in11 ? *p11 : zero) * wx1 * wy1;
+        out += (in21 ? *p21 : zero) * wx2 * wy1;
+        out += (in12 ? *p12 : zero) * wx1 * wy2;
+        out += (in22 ? *p22 : zero) * wx2 * wy2;
+
+        if (in11 && in21 && in12 && in22)
+            return SaturateCast<ValueType>(out);
+
+        if (const float coverage
+            = (in11 ? wx1 * wy1 : 0.f) + (in21 ? wx2 * wy1 : 0.f) + (in12 ? wx1 * wy2 : 0.f) + (in22 ? wx2 * wy2 : 0.f);
+            coverage != 1.f)
+        {
+            const auto border = Base::borderWrap().borderValue();
+            out               = coverage == 0.f ? border : (out - border) * coverage + border;
+        }
+        return SaturateCast<ValueType>(out);
+    }
+
+public:
     /**
      * Subscript operator for interpolated value access.
      *
@@ -460,14 +530,24 @@ public:
         const StrideType y1 = GetIndexForInterpolation<kInterpolationType, 1, StrideType>(y);
         const StrideType y2 = y1 + 1;
 
-        auto out = SetAll<ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>>(0);
+        const float wx1 = static_cast<float>(x2) - x;
+        const float wx2 = x - static_cast<float>(x1);
+        const float wy1 = static_cast<float>(y2) - y;
+        const float wy2 = y - static_cast<float>(y1);
 
-        out += Base::doGetValue(c, x1, y1) * (static_cast<float>(x2) - x) * (static_cast<float>(y2) - y);
-        out += Base::doGetValue(c, x2, y1) * (x - static_cast<float>(x1)) * (static_cast<float>(y2) - y);
-        out += Base::doGetValue(c, x1, y2) * (static_cast<float>(x2) - x) * (y - static_cast<float>(y1));
-        out += Base::doGetValue(c, x2, y2) * (x - static_cast<float>(x1)) * (y - static_cast<float>(y1));
-
-        return SaturateCast<ValueType>(out);
+        if constexpr (BorderWrapper::kBorderType == NVCV_BORDER_CONSTANT_COVERAGE)
+        {
+            return doGetValueCoverage(c, x1, y1, wx1, wx2, wy1, wy2);
+        }
+        else
+        {
+            auto out = SetAll<ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>>(0);
+            out += Base::doGetValue(c, x1, y1) * wx1 * wy1;
+            out += Base::doGetValue(c, x1 + 1, y1) * wx2 * wy1;
+            out += Base::doGetValue(c, x1, y1 + 1) * wx1 * wy2;
+            out += Base::doGetValue(c, x1 + 1, y1 + 1) * wx2 * wy2;
+            return SaturateCast<ValueType>(out);
+        }
     }
 };
 
@@ -476,10 +556,11 @@ public:
  *
  * @tparam BW It is a \ref BorderWrap class with any dimension and type.
  */
-template<class BW>
-class InterpolationWrap<BW, NVCV_INTERP_CUBIC> : public detail::InterpolationWrapImpl<BW, NVCV_INTERP_CUBIC>
+template<class BW, bool ReadTapByValue>
+class InterpolationWrap<BW, NVCV_INTERP_CUBIC, ReadTapByValue>
+    : public detail::InterpolationWrapImpl<BW, NVCV_INTERP_CUBIC, ReadTapByValue>
 {
-    using Base = detail::InterpolationWrapImpl<BW, NVCV_INTERP_CUBIC>;
+    using Base = detail::InterpolationWrapImpl<BW, NVCV_INTERP_CUBIC, ReadTapByValue>;
 
 public:
     using typename Base::BorderWrapper;
@@ -501,7 +582,8 @@ public:
      * @param[in] scaleX The scale X value is ignored in non-Area interpolation types.
      * @param[in] scaleY The scale Y value is ignored in non-Area interpolation types.
      */
-    explicit __host__ InterpolationWrap(const TensorDataStridedCuda &tensor, ValueType borderValue = {},
+    explicit __host__ InterpolationWrap(const TensorDataStridedCuda                           &tensor,
+                                        BorderValueType<ValueType, BorderWrapper::kBorderType> borderValue = {},
                                         float scaleX = {}, float scaleY = {})
         : Base(tensor, borderValue)
     {
@@ -516,8 +598,9 @@ public:
      * @param[in] scaleY The scale Y value is ignored in non-Area interpolation types.
      */
     template<typename... Args>
-    explicit __host__ __device__ InterpolationWrap(TensorWrapper tensorWrap, ValueType borderValue, float scaleX,
-                                                   float scaleY, Args... tensorShape)
+    explicit __host__ __device__ InterpolationWrap(TensorWrapper                                          tensorWrap,
+                                                   BorderValueType<ValueType, BorderWrapper::kBorderType> borderValue,
+                                                   float scaleX, float scaleY, Args... tensorShape)
         : Base(tensorWrap, borderValue, tensorShape...)
     {
     }
@@ -569,16 +652,39 @@ public:
         float wy[4]; // NOSONAR: CUDA cubic coefficients are indexed in the unrolled loop.
         GetCubicCoeffs(y - static_cast<float>(iy), wy[0], wy[1], wy[2], wy[3]);
 
-        using FT = ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>;
-        auto sum = SetAll<FT>(0);
+        using FT          = ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>;
+        auto  sum         = SetAll<FT>(0);
+        float coverage    = 0;
+        bool  fullyInside = true;
 
 #pragma unroll
         for (StrideType cy = -1; cy <= 2; cy++)
         {
 #pragma unroll
-            for (StrideType cx = -1; cx <= 2; cx++)
+            for (StrideType cx = -1; cx <= 2; cx++) // NOSONAR: fixed 4x4 CUDA interpolation stencil.
             {
-                sum += Base::doGetValue(c, ix + cx, iy + cy) * (wx[cx + 1] * wy[cy + 1]);
+                const float weight = wx[cx + 1] * wy[cy + 1];
+                if constexpr (BorderWrapper::kBorderType == NVCV_BORDER_CONSTANT_COVERAGE)
+                {
+                    const ValueType *ptr = Base::doGetValue(c, ix + cx, iy + cy);
+                    fullyInside          = fullyInside && ptr != nullptr;
+                    sum += ptr != nullptr ? *ptr * weight : SetAll<FT>(0);
+                    coverage += ptr != nullptr ? weight : 0.f;
+                }
+                else
+                {
+                    sum += Base::doGetValue(c, ix + cx, iy + cy) * weight;
+                }
+            }
+        }
+
+        if constexpr (BorderWrapper::kBorderType == NVCV_BORDER_CONSTANT_COVERAGE)
+        {
+            // Preserve interior rounding; signed cubic weights need not give coverage in [0, 1].
+            if (!fullyInside && coverage != 1.f)
+            {
+                const auto border = Base::borderWrap().borderValue();
+                sum               = coverage == 0.f ? border : (sum - border) * coverage + border;
             }
         }
 
@@ -591,10 +697,11 @@ public:
  *
  * @tparam BW It is a \ref BorderWrap class with any dimension and type.
  */
-template<class BW>
-class InterpolationWrap<BW, NVCV_INTERP_AREA> : public detail::InterpolationWrapImpl<BW, NVCV_INTERP_AREA>
+template<class BW, bool ReadTapByValue>
+class InterpolationWrap<BW, NVCV_INTERP_AREA, ReadTapByValue>
+    : public detail::InterpolationWrapImpl<BW, NVCV_INTERP_AREA, ReadTapByValue>
 {
-    using Base = detail::InterpolationWrapImpl<BW, NVCV_INTERP_AREA>;
+    using Base = detail::InterpolationWrapImpl<BW, NVCV_INTERP_AREA, ReadTapByValue>;
 
 public:
     using typename Base::BorderWrapper;
@@ -910,6 +1017,7 @@ private:
  * @tparam B Border extension to be used when accessing H and W, one of \ref NVCVBorderType
  * @tparam I Interpolation to be used when accessing H and W, one of \ref NVCVInterpolationType
  * @tparam StrideType Stride type used when accessing underlying tensor data
+ * @tparam ReadTapByValue Whether to opt constant-border taps into \ref BorderWrap::value
  *
  * @param[in] tensor Reference to the tensor that will be wrapped.
  * @param[in] borderValue Border value to be used when accessing outside elements in constant border type
@@ -919,13 +1027,13 @@ private:
  * @return Interpolation wrap useful to access tensor data interpolation-border aware in H and W in CUDA kernels.
  */
 template<typename T, NVCVBorderType B, NVCVInterpolationType I, typename StrideType = int64_t,
-         class = Require<HasTypeTraits<T>>>
-__host__ auto CreateInterpolationWrapNHW(const TensorDataStridedCuda &tensor, T borderValue = {}, float scaleX = {},
-                                         float scaleY = {})
+         bool ReadTapByValue = false, class = Require<HasTypeTraits<T>>>
+__host__ auto CreateInterpolationWrapNHW(const TensorDataStridedCuda &tensor, BorderValueType<T, B> borderValue = {},
+                                         float scaleX = {}, float scaleY = {})
 {
     auto borderWrap = CreateBorderWrapNHW<T, B, StrideType>(tensor, borderValue);
 
-    return InterpolationWrap<decltype(borderWrap), I>(borderWrap, scaleX, scaleY);
+    return InterpolationWrap<decltype(borderWrap), I, ReadTapByValue>(borderWrap, scaleX, scaleY);
 }
 
 /**
@@ -943,6 +1051,7 @@ __host__ auto CreateInterpolationWrapNHW(const TensorDataStridedCuda &tensor, T 
  * @tparam B Border extension to be used when accessing H and W, one of \ref NVCVBorderType
  * @tparam I Interpolation to be used when accessing H and W, one of \ref NVCVInterpolationType
  * @tparam StrideType Stride type used when accessing underlying tensor data
+ * @tparam ReadTapByValue Whether to opt constant-border taps into \ref BorderWrap::value
  *
  * @param[in] tensor Reference to the tensor that will be wrapped.
  * @param[in] borderValue Border value to be used when accessing outside elements in constant border type
@@ -952,13 +1061,13 @@ __host__ auto CreateInterpolationWrapNHW(const TensorDataStridedCuda &tensor, T 
  * @return Interpolation wrap useful to access tensor data interpolation-border aware in H and W in CUDA kernels.
  */
 template<typename T, NVCVBorderType B, NVCVInterpolationType I, typename StrideType = int64_t,
-         class = Require<HasTypeTraits<T>>>
-__host__ auto CreateInterpolationWrapNHWC(const TensorDataStridedCuda &tensor, T borderValue = {}, float scaleX = {},
-                                          float scaleY = {})
+         bool ReadTapByValue = false, class = Require<HasTypeTraits<T>>>
+__host__ auto CreateInterpolationWrapNHWC(const TensorDataStridedCuda &tensor, BorderValueType<T, B> borderValue = {},
+                                          float scaleX = {}, float scaleY = {})
 {
     auto borderWrap = CreateBorderWrapNHWC<T, B, StrideType>(tensor, borderValue);
 
-    return InterpolationWrap<decltype(borderWrap), I>(borderWrap, scaleX, scaleY);
+    return InterpolationWrap<decltype(borderWrap), I, ReadTapByValue>(borderWrap, scaleX, scaleY);
 }
 
 } // namespace nvcv::cuda

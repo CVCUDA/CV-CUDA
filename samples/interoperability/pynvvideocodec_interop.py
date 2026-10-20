@@ -22,14 +22,16 @@ PyNvVideoCodec videos can be used to create CV-CUDA tensors and vice verse.
 from __future__ import annotations
 
 from pathlib import Path
-import sys
+import sysconfig
 
 import cvcuda
 
 try:
     import PyNvVideoCodec as nvc
 except ModuleNotFoundError as error:
-    if error.name != "PyNvVideoCodec" or sys.version_info < (3, 13):
+    if error.name != "PyNvVideoCodec" or not sysconfig.get_config_var(
+        "Py_GIL_DISABLED"
+    ):
         raise
     nvc = None
 
@@ -43,10 +45,9 @@ def main():
     and video encoding (if hardware video encoder (NVENC) is available)
     """
     if nvc is None:
-        python_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
         print(
             "Skipping PyNvVideoCodec interoperability sample: "
-            f"PyNvVideoCodec is unavailable for Python {python_version}."
+            "PyNvVideoCodec wheels are unavailable for free-threaded Python."
         )
         return
 
@@ -117,10 +118,10 @@ def main():
         return
     with output_path.open("wb") as f:
         for frame in processed_frames:
-            bitstream = encoder.Encode(frame)
-            f.write(bytearray(bitstream))
-        bitstream = encoder.EndEncode()
-        f.write(bytearray(bitstream))
+            for packet in encoder.Encode(frame):
+                f.write(packet["data"])
+        for packet in encoder.EndEncode():
+            f.write(packet["data"])
     print(f"Successfully encoded video to {output_path}")
     # docs_tag: end_encode_frames
 

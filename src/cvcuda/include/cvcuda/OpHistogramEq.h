@@ -27,6 +27,7 @@
 #define CVCUDA__HISTOGRAM_EQ_H
 
 #include "Operator.h"
+#include "Types.h"
 #include "detail/Export.h"
 
 #include <cuda_runtime.h>
@@ -67,9 +68,15 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqCreate(NVCVOperatorHandle *handle, uin
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       16bit Float    | No
- *       32bit Float    | No
- *       64bit Float    | No
+ *       16bit Float    | Yes
+ *       32bit Float    | Yes
+ *       64bit Float    | Yes
+ *
+ *
+ *
+ *
+ *
+ *
  *
  *  Output:
  *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
@@ -83,9 +90,15 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqCreate(NVCVOperatorHandle *handle, uin
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       16bit Float    | No
- *       32bit Float    | No
- *       64bit Float    | No
+ *       16bit Float    | Yes
+ *       32bit Float    | Yes
+ *       64bit Float    | Yes
+ *
+ *       A floating-point image is binned to 8 bits, equalized and scaled back: a 256-bin
+ *       histogram has no other reading of a continuous value. The scale factors are
+ *       torchvision's, which reaches equalize through the same conversion -- multiply by
+ *       `255 + 1 - 1e-3` and truncate on the way in, divide by 255 on the way out. 16-bit float
+ *       bins through 32-bit float, because the multiplier is not representable in half.
  *
  *  Input/Output dependency
  *
@@ -121,6 +134,37 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqSubmit(NVCVOperatorHandle handle, cuda
  */
 CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
                                                          NVCVImageBatchHandle in, NVCVImageBatchHandle out);
+
+/** Executes HistogramEq on a tensor, choosing how the equalization table is built.
+ *
+ * The histogram, the per-channel semantics, the layouts and the data types are identical to
+ * \ref cvcudaHistogramEqSubmit; only the lookup table differs, cf. \ref NVCVHistogramEqMethod.
+ * Calling this with #NVCV_HISTOGRAM_EQ_OPENCV is bit-exact with \ref cvcudaHistogramEqSubmit.
+ *
+ * @param [in] handle Handle to the operator.
+ * @param [in] stream Handle to a valid CUDA stream.
+ * @param [in] in Input tensor.
+ * @param [out] out Output tensor.
+ * @param [in] method Lookup-table construction, cf. \ref NVCVHistogramEqMethod. Use
+ *                    #NVCV_HISTOGRAM_EQ_OPENCV to preserve \ref cvcudaHistogramEqSubmit's
+ *                    behavior, or #NVCV_HISTOGRAM_EQ_PILLOW to match Pillow and torchvision.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
+ * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqMethodSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                       NVCVTensorHandle in, NVCVTensorHandle out,
+                                                       NVCVHistogramEqMethod method);
+
+/** Executes the method-selecting HistogramEq on a batch of variable-shaped images.
+ *
+ * Apart from input and output image batches, all parameters are the same as
+ * \ref cvcudaHistogramEqMethodSubmit.
+ */
+CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqVarShapeMethodSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                               NVCVImageBatchHandle in, NVCVImageBatchHandle out,
+                                                               NVCVHistogramEqMethod method);
 
 #ifdef __cplusplus
 }

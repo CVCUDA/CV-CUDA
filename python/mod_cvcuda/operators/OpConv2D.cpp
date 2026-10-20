@@ -15,59 +15,58 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
-#include <common/String.hpp>
 #include <cvcuda/OpConv2D.hpp>
 #include <cvcuda/Types.h>
-#include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/Image.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
+
+#include <memory>
 
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
-ImageBatchVarShape Conv2DVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, ImageBatchVarShape &kernel,
-                                      Tensor &kernel_anchor, NVCVBorderType border, std::optional<Stream> pstream)
+ImageBatchVarShape &Conv2DVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                       ImageBatchVarShape &kernel, Tensor &kernel_anchor, NVCVBorderType border,
+                                       std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto conv2D = CreateOperator<cvcuda::Conv2D>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, kernel, kernel_anchor});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*conv2D});
 
-    guard.run([&conv2D, &pstream, &input, &output, &kernel, &kernel_anchor, &border]()
-              { conv2D->submit(pstream->cudaHandle(), input, output, kernel, kernel_anchor, border); });
+    guard.run(
+        [&conv2D, &stream, &input, &output, &kernel, &kernel_anchor, &border]()
+        { conv2D->submit(stream.handle(), input.impl(), output.impl(), kernel.impl(), kernel_anchor.impl(), border); });
 
     return output;
 }
 
-ImageBatchVarShape Conv2DVarShape(ImageBatchVarShape &input, ImageBatchVarShape &kernel, Tensor &kernel_anchor,
-                                  NVCVBorderType border, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> Conv2DVarShape(ImageBatchVarShape &input, ImageBatchVarShape &kernel,
+                                                   Tensor &kernel_anchor, NVCVBorderType border,
+                                                   std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return Conv2DVarShapeInto(output, input, kernel, kernel_anchor, border, pstream);
+    Conv2DVarShapeInto(*output, input, kernel, kernel_anchor, border, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpConv2D(py::module &m)
+void ExportOpConv2D(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("conv2d", NvtxTrace("cvcuda.conv2d", &Conv2DVarShape), "src"_a, "kernel"_a, "kernel_anchor"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -90,7 +89,7 @@ void ExportOpConv2D(py::module &m)
 
     m.def("conv2d_into", NvtxTrace("cvcuda.conv2d_into", &Conv2DVarShapeInto), "dst"_a, "src"_a, "kernel"_a,
           "kernel_anchor"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
-          R"pbdoc(
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Convolve 2D operation on the given cuda stream.
 
 

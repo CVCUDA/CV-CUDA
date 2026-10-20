@@ -55,8 +55,10 @@ try
         return;
     }
 
+    using ArgT
+        = std::conditional_t<(std::is_integral_v<BT> && sizeof(BT) >= 4) || std::is_same_v<BT, double>, double, float>;
     const long bytes    = static_cast<long>(shape.x) * shape.y * shape.z * sizeof(T);
-    const long argBytes = static_cast<long>(shape.x) * sizeof(float) * 4;
+    const long argBytes = static_cast<long>(shape.x) * sizeof(ArgT) * 4;
     if (isFakePlanar)
     {
         state.add_global_memory_reads(3 * bytes + argBytes);
@@ -72,17 +74,16 @@ try
 
     // clang-format off
 
-    nvcv::Tensor brightness({{shape.x}, "N"}, nvcv::TYPE_F32);
-    nvcv::Tensor contrast({{shape.x}, "N"}, nvcv::TYPE_F32);
-    nvcv::Tensor brightnessShift({{shape.x}, "N"}, nvcv::TYPE_F32);
-    nvcv::Tensor contrastCenter({{shape.x}, "N"}, nvcv::TYPE_F32);
+    nvcv::Tensor brightness({{shape.x}, "N"}, benchutils::GetDataType<ArgT>());
+    nvcv::Tensor contrast({{shape.x}, "N"}, benchutils::GetDataType<ArgT>());
+    nvcv::Tensor brightnessShift({{shape.x}, "N"}, benchutils::GetDataType<ArgT>());
+    nvcv::Tensor contrastCenter({{shape.x}, "N"}, benchutils::GetDataType<ArgT>());
 
-    // All 4 param tensors use the deterministic LCG GPU fast path so the
-    // bytes match the Python bench's fill_mode="lcg" exactly.
-    benchutils::FillTensor<float>(brightness, benchutils::LcgValues<float>());
-    benchutils::FillTensor<float>(contrast, benchutils::LcgValues<float>());
-    benchutils::FillTensor<float>(brightnessShift, benchutils::LcgValues<float>());
-    benchutils::FillTensor<float>(contrastCenter, benchutils::LcgValues<float>());
+    // Match the Python benchmark's parameter precision and deterministic fill.
+    benchutils::FillTensor<ArgT>(brightness, benchutils::LcgValues<ArgT>());
+    benchutils::FillTensor<ArgT>(contrast, benchutils::LcgValues<ArgT>());
+    benchutils::FillTensor<ArgT>(brightnessShift, benchutils::LcgValues<ArgT>());
+    benchutils::FillTensor<ArgT>(contrastCenter, benchutils::LcgValues<ArgT>());
 
     if (isFakePlanar) // tensor-only: planar->interleaved->brightnesscontrast->interleaved->planar
     {

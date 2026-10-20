@@ -18,7 +18,7 @@
 #include "Definitions.hpp"
 
 #include <cvcuda/priv/Types.hpp>
-#include <cvcuda/priv/legacy/textbackend/backend.hpp>
+#include <cvcuda/priv/textbackend/backend.hpp>
 
 #include <array>
 #include <cstdlib>
@@ -164,6 +164,27 @@ TEST(TextBackend, StbUninitializedAndUntrustedFontPathsFailSafely)
     EXPECT_EQ(backend->measure_text(words, 12, untrustedFont.c_str()), std::make_tuple(-1, -1, -1));
 }
 
+TEST(TextBackend, StbRejectedFontBitmapBuildRemainsEmptyAndRecovers)
+{
+    auto backend = create_text_backend(TextBackendType::StbTrueType);
+    ASSERT_NE(backend, nullptr);
+    const auto untrustedFont = std::filesystem::canonical("/proc/self/exe");
+    const auto words         = backend->split_utf8("A");
+
+    backend->add_build_text(words, 20, untrustedFont.c_str());
+    backend->build_bitmap();
+    EXPECT_EQ(backend->bitmap_width(), 0);
+    EXPECT_EQ(backend->bitmap_device_pointer(), nullptr);
+    backend->build_bitmap();
+    EXPECT_EQ(backend->bitmap_width(), 0);
+
+    backend->add_build_text(words, 20, cvcuda::priv::DEFAULT_OSD_FONT);
+    backend->build_bitmap();
+    EXPECT_GT(backend->bitmap_width(), 0);
+    EXPECT_NE(backend->bitmap_device_pointer(), nullptr);
+    EXPECT_EQ(cudaSuccess, cudaDeviceSynchronize());
+}
+
 TEST(TextBackend, StbFontFamilySearchContinuesAfterFirstNonEmptyDirectory)
 {
     ScopedTempDir tempDir;
@@ -206,4 +227,40 @@ TEST(TextBackend, StbFontFamilySearchHandlesEmptyAndFallbackCases)
 
     TouchFile(otherDir / "Other.ttf");
     EXPECT_EQ(get_ttf_path_from_family_name("Missing", {otherDir.string()}), (otherDir / "Other.ttf").string());
+}
+
+// Regression: pre-fix, max_b - min_y = 0 - font_size = -font_size when words is empty because
+// min_y is initialised to font_size and max_b stays 0. The early-return added in
+// fix(osd) e080574d9 (StbBackend::measure_text, stb.cpp) pins the result to {0, 0, font_size}.
+TEST(TextBackend, StbMeasureTextEmptyWordListReturnsZeroDimensions)
+{
+    auto backend = create_text_backend(TextBackendType::StbTrueType);
+    ASSERT_NE(backend, nullptr);
+
+    constexpr int  kFontSize    = 60;
+    constexpr auto kDefaultFont = cvcuda::priv::DEFAULT_OSD_FONT;
+
+    EXPECT_EQ(backend->measure_text({}, kFontSize, kDefaultFont), std::make_tuple(0, 0, kFontSize));
+}
+
+// Regression: pre-fix, std::transform called ::tolower(char) directly; on platforms where char is
+// signed, bytes >= 0x80 are negative and passing them to tolower is undefined behaviour (C standard
+// requires the argument to be representable as unsigned char or EOF). The unsigned-char cast added
+// in fix(osd) e080574d9 (two transform sites in stb.cpp) makes this well-defined. Verify the
+// search completes without crashing and returns a non-empty path for the fallback.
+TEST(TextBackend, StbFontFamilySearchHandlesNonAsciiFontName)
+{
+    ScopedTempDir tempDir;
+    ASSERT_FALSE(tempDir.path.empty());
+
+    // DejaVuSansMono is the hardcoded fallback inside get_ttf_path_from_family_name.
+    TouchFile(tempDir.path / "DejaVuSansMono.ttf");
+
+    // '\xE9' (é, Latin-1) has value 233 as unsigned char, but -23 as signed char on most
+    // platforms. The pre-fix code passed that negative value straight to ::tolower, which is UB.
+    std::string nonAscii("caf\xE9");
+    std::string result = get_ttf_path_from_family_name(nonAscii.c_str(), {tempDir.path.string()});
+
+    // The query name does not match any installed font, so the fallback is returned.
+    EXPECT_FALSE(result.empty());
 }

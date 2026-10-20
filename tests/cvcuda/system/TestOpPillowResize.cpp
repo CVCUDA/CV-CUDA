@@ -18,6 +18,7 @@
 #include "Definitions.hpp"
 #include "PlanarParityUtils.hpp"
 
+#include <common/DeviceBuffer.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpPillowResize.hpp>
 #include <nvcv/Image.hpp>
@@ -28,11 +29,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cfenv>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <random>
 #include <ranges>
 #include <stdexcept>
@@ -1357,12 +1360,1414 @@ TEST(OpPillowResizePlanar, unaligned_vector_tail_matches_interleaved)
     RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 40, 32, 65, 49, NVCV_INTERP_LINEAR, 1);
 }
 
+TEST(OpPillowResizePlanar, rgba_float_tensor_contract_linear_matches_interleaved)
+{
+    // Four-channel FLOAT downscale reaches the planar fused downscale path while retaining an exact
+    // interleaved-layout parity check through the shared helper.
+    RunPlanarParityTensorCase(nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32, 96, 72, 48, 36, NVCV_INTERP_LINEAR, 1);
+}
+
+TEST(OpPillowResizePlanar, rgb_float_tensor_all_filters_match_interleaved)
+{
+    constexpr std::array<NVCVInterpolationType, 5> interpolations{
+        NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, NVCV_INTERP_BOX, NVCV_INTERP_HAMMING, NVCV_INTERP_LANCZOS};
+    for (const auto interpolation : interpolations)
+    {
+        SCOPED_TRACE(static_cast<int>(interpolation));
+        RunPlanarParityTensorCase(nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, 50, 40, 100, 80, interpolation, 2);
+    }
+}
+
 TEST(OpPillowResizePlanar, signed8_tensor_contract_and_expand_match_interleaved)
 {
     // Signed 8-bit contract exercises the paired interleaved horizontal round-to-nearest path.
     RunPlanarParityTensorCase(FMT_RGBS8p, FMT_RGBS8, 72, 54, 44, 34, NVCV_INTERP_LINEAR, 2);
     // Signed 8-bit expand exercises the paired planar vertical round-to-nearest path.
     RunPlanarParityTensorCase(FMT_RGBS8p, FMT_RGBS8, 48, 35, 80, 65, NVCV_INTERP_LINEAR, 1);
+}
+
+// Byte-exact reference for the optimized U8 paths. PillowResizeCPU above uses double/fixed-point
+// coefficients and permits pixel error; this independent scalar oracle preserves float tap order,
+// FMA accumulation and per-pass quantization without reading operator internals.
+
+namespace {
+
+// Pillow's bilinear/bicubic filter kernels. The literal types are load-bearing: the |x| < 1 cubic
+// lobe has always evaluated in double precision, and narrowing it early moves results across a
+// half-integer rounding boundary.
+float PillowGoldBilinearFilter(float value)
+{
+    if (const float x = std::fabs(value); x < 1.f)
+    {
+        return static_cast<float>(1.0 - static_cast<double>(x));
+    }
+    return 0.f;
+}
+
+float PillowGoldBicubicFilter(float value)
+{
+    const float x = std::fabs(value);
+    if (x < 1.f)
+    {
+        const auto   xd     = static_cast<double>(x);
+        const double linear = std::fma(1.5, xd, -2.5);
+        return static_cast<float>(std::fma(linear * xd, xd, 1.));
+    }
+    if (x < 2.f)
+    {
+        // This lobe is evaluated entirely in single precision by the operator.
+        const float cubic = std::fma(std::fma(x - 5.f, x, 8.f), x, -4.f);
+        return cubic * -0.5f;
+    }
+    return 0.f;
+}
+
+float PillowGoldFilter(NVCVInterpolationType interp, float value)
+{
+    return interp == NVCV_INTERP_CUBIC ? PillowGoldBicubicFilter(value) : PillowGoldBilinearFilter(value);
+}
+
+float PillowGoldFilterSupport(NVCVInterpolationType interp)
+{
+    return interp == NVCV_INTERP_CUBIC ? 2.f : 1.f;
+}
+
+// One axis of resampling weights: `bounds[2*i]` is the first contributing source index of output
+// index i, `bounds[2*i+1]` the number of taps, and `kk[i*ksize + t]` the normalized weight.
+struct PillowGoldCoeffs
+{
+    int                ksize = 0;
+    std::vector<int>   bounds;
+    std::vector<float> kk;
+};
+
+PillowGoldCoeffs PillowGoldPrecomputeCoeffs(int inSize, int outSize, NVCVInterpolationType interp)
+{
+    if (interp != NVCV_INTERP_LINEAR && interp != NVCV_INTERP_CUBIC)
+        throw std::invalid_argument("Pillow strict oracle supports only linear and cubic interpolation");
+
+    const float scale       = static_cast<float>(inSize) / static_cast<float>(outSize);
+    float       filterscale = scale;
+    if (filterscale < 1.0f)
+    {
+        filterscale = 1.0f;
+    }
+    const float support = PillowGoldFilterSupport(interp) * filterscale;
+
+    PillowGoldCoeffs out;
+    out.ksize = static_cast<int>(std::ceil(support)) * 2 + 1;
+    out.bounds.assign(static_cast<size_t>(outSize) * 2, 0);
+    out.kk.assign(static_cast<size_t>(outSize) * out.ksize, 0.f);
+
+    const float halfPixel = 0.5f;
+    // The operator derives the reciprocal in double precision before narrowing; reproducing that
+    // exactly matters because the result scales every tap distance.
+    const auto  ss = static_cast<float>(1.0 / static_cast<double>(filterscale));
+
+    for (int xx = 0; xx < outSize; ++xx)
+    {
+        const float center = (static_cast<float>(xx) + halfPixel) * scale;
+
+        auto xmin = static_cast<int>(center - support + halfPixel);
+        if (xmin < 0)
+        {
+            xmin = 0;
+        }
+        auto xmax = static_cast<int>(center + support + halfPixel);
+        if (xmax > inSize)
+        {
+            xmax = inSize;
+        }
+        xmax -= xmin;
+
+        float *k  = out.kk.data() + static_cast<size_t>(xx) * out.ksize;
+        float  ww = 0.f;
+        for (int x = 0; x < xmax; ++x)
+        {
+            const float w = PillowGoldFilter(interp, (static_cast<float>(x + xmin) - center + halfPixel) * ss);
+            k[x]          = w;
+            ww += w;
+        }
+        if (std::fabs(ww) > 1e-5f)
+        {
+            for (int x = 0; x < xmax; ++x)
+            {
+                k[x] /= ww;
+            }
+        }
+
+        out.bounds[static_cast<size_t>(xx) * 2]     = xmin;
+        out.bounds[static_cast<size_t>(xx) * 2 + 1] = xmax;
+    }
+    return out;
+}
+
+// Quantize each pass with round-to-nearest-even and unsigned-byte saturation.
+uint8_t PillowGoldQuantize(float value)
+{
+    const float rounded = std::nearbyint(value);
+    if (!(rounded > 0.f))
+    {
+        return 0;
+    }
+    if (rounded >= 255.f)
+    {
+        return 255;
+    }
+    return static_cast<uint8_t>(rounded);
+}
+
+// Full two-pass separable resample of one HWC sample. The horizontal pass is quantized into the
+// intermediate exactly as the operator's intermediate buffer is, which is what makes an integer
+// result reproducible from the host.
+std::vector<uint8_t> PillowGoldResampleSample(const std::vector<uint8_t> &src, int srcW, int srcH, int dstW, int dstH,
+                                              int channels, NVCVInterpolationType interp)
+{
+    const PillowGoldCoeffs hc = PillowGoldPrecomputeCoeffs(srcW, dstW, interp);
+    const PillowGoldCoeffs vc = PillowGoldPrecomputeCoeffs(srcH, dstH, interp);
+
+    std::vector<uint8_t> inter(static_cast<size_t>(srcH) * dstW * channels);
+    for (int y = 0; y < srcH; ++y)
+    {
+        for (int xc = 0; xc < dstW * channels; ++xc)
+        {
+            const int    x    = xc / channels;
+            const int    c    = xc % channels;
+            const int    xmin = hc.bounds[static_cast<size_t>(x) * 2];
+            const int    taps = hc.bounds[static_cast<size_t>(x) * 2 + 1];
+            const float *k    = hc.kk.data() + static_cast<size_t>(x) * hc.ksize;
+            float        sum  = 0.f;
+            for (int t = 0; t < taps; ++t)
+            {
+                const size_t idx = (static_cast<size_t>(y) * srcW + xmin + t) * channels + c;
+                sum              = std::fma(k[t], static_cast<float>(src[idx]), sum);
+            }
+            inter[static_cast<size_t>(y) * dstW * channels + xc] = PillowGoldQuantize(sum);
+        }
+    }
+
+    std::vector<uint8_t> dst(static_cast<size_t>(dstH) * dstW * channels);
+    for (int y = 0; y < dstH; ++y)
+    {
+        const int    ymin = vc.bounds[static_cast<size_t>(y) * 2];
+        const int    taps = vc.bounds[static_cast<size_t>(y) * 2 + 1];
+        const float *k    = vc.kk.data() + static_cast<size_t>(y) * vc.ksize;
+        for (int xc = 0; xc < dstW * channels; ++xc)
+        {
+            float sum = 0.f;
+            for (int t = 0; t < taps; ++t)
+            {
+                const size_t idx = static_cast<size_t>(ymin + t) * dstW * channels + xc;
+                sum              = std::fma(k[t], static_cast<float>(inter[idx]), sum);
+            }
+            dst[static_cast<size_t>(y) * dstW * channels + xc] = PillowGoldQuantize(sum);
+        }
+    }
+    return dst;
+}
+
+nvcv::ImageFormat PillowGoldFormat(int channels, bool planar)
+{
+    switch (channels)
+    {
+    case 1:
+        return nvcv::FMT_U8;
+    case 3:
+        return planar ? nvcv::FMT_RGB8p : nvcv::FMT_RGB8;
+    default:
+        return planar ? nvcv::FMT_RGBA8p : nvcv::FMT_RGBA8;
+    }
+}
+
+void PillowGoldFillSample(std::vector<uint8_t> &values, int sample)
+{
+    size_t i = 0;
+    for (uint8_t &value : values)
+    {
+        const auto raw = static_cast<unsigned>((i * 2654435761u + sample * 40503u) >> 13) & 0xFFu;
+        ++i;
+        value = static_cast<uint8_t>(raw);
+    }
+}
+
+std::vector<uint8_t> PillowPlanarByteTailSample(nvcv::DataKind kind, int sample, int width, int height, int numChannels)
+{
+    std::vector<uint8_t> values(static_cast<size_t>(width) * height * numChannels);
+
+    const uint8_t low  = kind == nvcv::DataKind::SIGNED ? 0x80 : 0;
+    const uint8_t high = kind == nvcv::DataKind::SIGNED ? 0x7F : 0xFF;
+    for (int row = 0; row < height; ++row)
+    {
+        for (int column = 0; column < width; ++column)
+        {
+            for (int channel = 0; channel < numChannels; ++channel)
+            {
+                values[(static_cast<size_t>(row) * width + column) * numChannels + channel]
+                    = ((column / 5 + row / 3 + channel + sample) % 2) ? high : low;
+            }
+        }
+    }
+    return values;
+}
+
+void PillowGoldCopyRows(uint8_t *dst, const uint8_t *src, int height, int64_t rowStride, size_t rowBytes)
+{
+    for (int row = 0; row < height; ++row)
+    {
+        std::memcpy(dst + row * rowStride, src + row * rowBytes, rowBytes);
+    }
+}
+
+// Optional row/sample padding exercises the packed-access alignment gates.
+struct PillowGoldPitchedTensor
+{
+    nvcv::Tensor tensor;
+    NVCVByte    *allocation      = nullptr;
+    size_t       allocationBytes = 0;
+};
+
+PillowGoldPitchedTensor PillowGoldMakeTensor(int numImages, int width, int height, int channels, bool planar,
+                                             int rowPad, int samplePad, int planePad = 0, bool chw = false)
+{
+    PillowGoldPitchedTensor out;
+    nvcv::TensorShape       shape{
+        {numImages, height, width, channels},
+        "NHWC"
+    };
+    if (planar)
+    {
+        shape = chw ? nvcv::TensorShape{{channels, height, width}, "CHW"}
+                    : nvcv::TensorShape{{numImages, channels, height, width}, "NCHW"};
+    }
+    if (rowPad == 0 && samplePad == 0 && planePad == 0)
+    {
+        out.tensor = planar ? nvcv::Tensor(shape, nvcv::TYPE_U8)
+                            : nvcv::util::CreateTensor(numImages, width, height, PillowGoldFormat(channels, planar));
+        return out;
+    }
+
+    const size_t rowBytes     = static_cast<size_t>(width) * (planar ? 1 : channels);
+    const size_t rowStride    = rowBytes + rowPad;
+    const size_t planeStride  = rowStride * height + planePad;
+    const size_t sampleStride = planeStride * (planar ? channels : 1) + samplePad;
+    out.allocationBytes       = sampleStride * numImages;
+
+    EXPECT_EQ(cudaSuccess, cudaMalloc(&out.allocation, out.allocationBytes));
+    EXPECT_EQ(cudaSuccess, cudaMemset(out.allocation, 0xA5, out.allocationBytes));
+
+    nvcv::TensorDataStridedCuda::Buffer buffer{};
+    buffer.basePtr = out.allocation;
+    if (planar)
+    {
+        const int channelDim           = chw ? 0 : 1;
+        buffer.strides[0]              = static_cast<int64_t>(sampleStride);
+        buffer.strides[channelDim]     = static_cast<int64_t>(planeStride);
+        buffer.strides[channelDim + 1] = static_cast<int64_t>(rowStride);
+        buffer.strides[channelDim + 2] = 1;
+    }
+    else
+    {
+        buffer.strides[0] = static_cast<int64_t>(sampleStride);
+        buffer.strides[1] = static_cast<int64_t>(rowStride);
+        buffer.strides[2] = static_cast<int64_t>(channels);
+        buffer.strides[3] = 1;
+    }
+    out.tensor = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, buffer});
+    return out;
+}
+
+void RunPillowBitExactCase(int srcW, int srcH, int dstW, int dstH, int channels, NVCVInterpolationType interp,
+                           int numImages, bool planar, int srcRowPad = 0, int srcSamplePad = 0, int dstRowPad = 0,
+                           int srcPlanePad = 0, int dstPlanePad = 0, int dstSamplePad = 0, bool chw = false)
+{
+    const nvcv::ImageFormat fmt = PillowGoldFormat(channels, planar);
+    ASSERT_TRUE(!chw || (planar && numImages == 1));
+    ASSERT_TRUE(planar || (srcPlanePad == 0 && dstPlanePad == 0));
+
+    auto pitchedSrc
+        = PillowGoldMakeTensor(numImages, srcW, srcH, channels, planar, srcRowPad, srcSamplePad, srcPlanePad, chw);
+    auto pitchedDst
+        = PillowGoldMakeTensor(numImages, dstW, dstH, channels, planar, dstRowPad, dstSamplePad, dstPlanePad, chw);
+    const nvcv::Tensor &src = pitchedSrc.tensor;
+    const nvcv::Tensor &dst = pitchedDst.tensor;
+
+    auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, srcData);
+    ASSERT_NE(nullptr, dstData);
+    if (planar)
+    {
+        ASSERT_EQ(chw ? nvcv::TENSOR_CHW : nvcv::TENSOR_NCHW, srcData->layout());
+        ASSERT_EQ(chw ? nvcv::TENSOR_CHW : nvcv::TENSOR_NCHW, dstData->layout());
+    }
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(srcAccess);
+    ASSERT_TRUE(dstAccess);
+
+    const int    dstRowStride    = dstW * channels;
+    const size_t srcSampleValues = static_cast<size_t>(srcH) * srcW * channels;
+
+    std::vector<std::vector<uint8_t>> goldHWC(numImages);
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        std::vector<uint8_t> srcHWC(srcSampleValues);
+        PillowGoldFillSample(srcHWC, i);
+        goldHWC[i] = PillowGoldResampleSample(srcHWC, srcW, srcH, dstW, dstH, channels, interp);
+
+        if (planar)
+        {
+            test::planar::UploadPlanarSample(*srcAccess, i,
+                                             test::planar::DeinterleaveToPlanes(srcHWC, srcW, srcH, channels, 1), srcW,
+                                             srcH, channels, 1);
+        }
+        else
+        {
+            test::planar::UploadInterleavedSample(*srcAccess, i, srcHWC, srcW, srcH, srcW * channels);
+        }
+    }
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::PillowResize    op;
+    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+        op.getWorkspaceRequirements(numImages, nvcv::Size2D{srcW, srcH}, nvcv::Size2D{dstW, dstH}, fmt));
+    ASSERT_NO_THROW(op(stream, ws.get(), src, dst, interp));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        SCOPED_TRACE(i);
+        std::vector<uint8_t> bytes
+            = planar ? test::planar::InterleaveFromPlanes(
+                  test::planar::DownloadPlanarSample(*dstAccess, i, dstW, dstH, channels, 1), dstW, dstH, channels, 1)
+                     : test::planar::DownloadInterleavedSample(*dstAccess, i, dstW, dstH, dstRowStride);
+
+        ASSERT_EQ(goldHWC[i], bytes);
+    }
+
+    if (pitchedSrc.allocation != nullptr)
+    {
+        EXPECT_EQ(cudaSuccess, cudaFree(pitchedSrc.allocation));
+    }
+    if (pitchedDst.allocation != nullptr)
+    {
+        const int            planes   = planar ? channels : 1;
+        const size_t         rowBytes = static_cast<size_t>(dstW) * (planar ? 1 : channels);
+        std::vector<uint8_t> expected(pitchedDst.allocationBytes, 0xA5);
+        std::vector<uint8_t> actual(pitchedDst.allocationBytes);
+        for (int sample = 0; sample < numImages; ++sample)
+        {
+            const auto packed = planar ? test::planar::DeinterleaveToPlanes(goldHWC[sample], dstW, dstH, channels, 1)
+                                       : goldHWC[sample];
+            const auto sampleOffset = dstAccess->sampleData(sample) - dstData->basePtr();
+            for (int plane = 0; plane < planes; ++plane)
+            {
+                PillowGoldCopyRows(expected.data() + sampleOffset + plane * dstAccess->chStride(),
+                                   packed.data() + static_cast<size_t>(plane) * dstH * rowBytes, dstH,
+                                   dstAccess->rowStride(), rowBytes);
+            }
+        }
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), pitchedDst.allocation, actual.size(), cudaMemcpyDeviceToHost));
+        EXPECT_EQ(expected, actual);
+        EXPECT_EQ(cudaSuccess, cudaFree(pitchedDst.allocation));
+    }
+}
+
+struct PillowGoldStridedImage
+{
+    nvcv::Image image;
+    size_t      allocationBytes = 0;
+};
+
+PillowGoldStridedImage PillowGoldMakeImage(nvcv::Size2D size, nvcv::ImageFormat format, int rowPadding)
+{
+    PillowGoldStridedImage             out;
+    nvcv::ImageDataStridedCuda::Buffer buffer{};
+    buffer.numPlanes = format.numPlanes();
+    for (int planeIndex = 0; planeIndex < buffer.numPlanes; ++planeIndex)
+    {
+        auto &plane     = buffer.planes[planeIndex];
+        plane.width     = size.w;
+        plane.height    = size.h;
+        plane.rowStride = size.w * format.planePixelStrideBytes(planeIndex) + rowPadding + planeIndex * 3;
+        out.allocationBytes += static_cast<size_t>(plane.rowStride) * size.h + 17;
+    }
+
+    NVCVByte *allocation = nullptr;
+    auto      status     = cudaMalloc(&allocation, out.allocationBytes);
+    if (status != cudaSuccess)
+    {
+        throw PillowResizeTestError(cudaGetErrorString(status));
+    }
+    auto cleanup = [](NVCVByte *buffer)
+    {
+        EXPECT_EQ(cudaSuccess, cudaFree(buffer));
+    };
+    std::unique_ptr<NVCVByte, decltype(cleanup)> owner(allocation, cleanup);
+    status = cudaMemset(allocation, 0xA5, out.allocationBytes);
+    if (status != cudaSuccess)
+    {
+        throw PillowResizeTestError(cudaGetErrorString(status));
+    }
+    size_t offset = 0;
+    for (int planeIndex = 0; planeIndex < buffer.numPlanes; ++planeIndex)
+    {
+        auto &plane   = buffer.planes[planeIndex];
+        plane.basePtr = allocation + offset;
+        offset += static_cast<size_t>(plane.rowStride) * size.h + 17;
+    }
+    out.image = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{format, buffer},
+                                    nvcv::ImageDataCleanupCallback{[allocation](const nvcv::ImageData &)
+                                                                   {
+                                                                       EXPECT_EQ(cudaSuccess, cudaFree(allocation));
+                                                                   }});
+    owner.release();
+    return out;
+}
+
+std::vector<uint8_t> PillowGoldPackImage(const PillowGoldStridedImage &image, const std::vector<uint8_t> &values,
+                                         bool planar)
+{
+    const auto   data     = image.image.exportData<nvcv::ImageDataStridedCuda>();
+    const auto   size     = image.image.size();
+    const int    channels = image.image.format().numChannels();
+    const auto   packed   = planar ? test::planar::DeinterleaveToPlanes(values, size.w, size.h, channels, 1) : values;
+    const size_t rowBytes = static_cast<size_t>(size.w) * (planar ? 1 : channels);
+    std::vector<uint8_t> expected(image.allocationBytes, 0xA5);
+    for (int planeIndex = 0; planeIndex < data->numPlanes(); ++planeIndex)
+    {
+        const auto &plane  = data->plane(planeIndex);
+        const auto  offset = static_cast<size_t>(plane.basePtr - data->plane(0).basePtr);
+        PillowGoldCopyRows(expected.data() + offset,
+                           packed.data() + static_cast<size_t>(planeIndex) * size.h * rowBytes, size.h, plane.rowStride,
+                           rowBytes);
+    }
+    return expected;
+}
+
+struct PillowGoldVarShapeSizes
+{
+    std::array<nvcv::Size2D, 4> source;
+    std::array<nvcv::Size2D, 4> destination;
+};
+
+PillowGoldVarShapeSizes PillowGoldVarShapeScenario(int scenario)
+{
+    const std::array<std::array<nvcv::Size2D, 4>, 8> sourceShapes{
+        {
+         {{{1920, 24}, {1024, 48}, {130, 34}, {18, 6}}},
+         {{{1920, 25}, {131, 39}, {65, 17}, {7, 3}}},
+         {{{49, 27}, {17, 9}, {1, 1}, {65, 31}}},
+         {{{1920, 9}, {1537, 5}, {257, 3}, {1, 1}}},
+         {{{1920, 24}, {1024, 17}, {130, 9}, {18, 3}}},
+         {{{1920, 25}, {131, 39}, {65, 17}, {7, 3}}},
+         {{{1920, 25}, {131, 48}, {65, 17}, {7, 3}}},
+         {{{1920, 25}, {131, 48}, {65, 17}, {8, 3}}},
+         }
+    };
+    const std::array<std::array<nvcv::Size2D, 4>, 8> destinationShapes{
+        {
+         {{{960, 12}, {512, 24}, {65, 17}, {9, 3}}},
+         {{{864, 11}, {57, 21}, {33, 5}, {1, 1}}},
+         {{{101, 55}, {35, 19}, {2, 3}, {33, 63}}},
+         {{{9, 3}, {7, 2}, {1, 1}, {1, 1}}},
+         {{{960, 24}, {512, 17}, {65, 9}, {9, 3}}},
+         {{{864, 25}, {57, 39}, {33, 17}, {1, 3}}},
+         {{{833, 11}, {57, 21}, {33, 5}, {2, 1}}},
+         {{{833, 11}, {57, 21}, {33, 5}, {2, 1}}},
+         }
+    };
+    return {sourceShapes.at(scenario), destinationShapes.at(scenario)};
+}
+
+void PillowGoldFillVarShapeSample(std::vector<uint8_t> &input, nvcv::Size2D size, int channels, int sampleIndex,
+                                  int pattern)
+{
+    PillowGoldFillSample(input, sampleIndex);
+    if (pattern == 0)
+    {
+        return;
+    }
+    for (int row = 0; row < size.h; ++row)
+    {
+        for (int column = 0; column < size.w; ++column)
+        {
+            for (int channel = 0; channel < channels; ++channel)
+            {
+                const size_t index = (static_cast<size_t>(row) * size.w + column) * channels + channel;
+                input[index]
+                    = pattern == 1
+                        ? static_cast<uint8_t>(((row / 2 + column / 3 + channel + sampleIndex) % 2) * 255)
+                        : static_cast<uint8_t>((row * 23 + column * 5 + channel * 113 + sampleIndex * 67) & 255);
+            }
+        }
+    }
+}
+
+void RunPillowVarShapeBitExactBatch(const cvcuda::PillowResize &op, const cvcuda::Workspace &workspace,
+                                    cudaStream_t stream, bool planar, NVCVInterpolationType interpolation,
+                                    const PillowGoldVarShapeSizes &sizes, int pattern)
+{
+    ASSERT_EQ(FE_TONEAREST, std::fegetround());
+    SCOPED_TRACE(t::Message() << "planar=" << planar << " interpolation=" << interpolation << " pattern=" << pattern);
+    const auto                         &sourceSizes      = sizes.source;
+    const auto                         &destinationSizes = sizes.destination;
+    constexpr int                       channels         = 3;
+    constexpr int                       numImages        = 4;
+    const auto                          format           = PillowGoldFormat(channels, planar);
+    std::vector<PillowGoldStridedImage> sources;
+    std::vector<PillowGoldStridedImage> destinations;
+    std::vector<std::vector<uint8_t>>   sourceBytes;
+    std::vector<std::vector<uint8_t>>   expectedBytes;
+    nvcv::ImageBatchVarShape            sourceBatch(numImages);
+    nvcv::ImageBatchVarShape            destinationBatch(numImages);
+
+    for (int sampleIndex = 0; sampleIndex < numImages; ++sampleIndex)
+    {
+        const auto sourceSize      = sourceSizes[sampleIndex];
+        const auto destinationSize = destinationSizes[sampleIndex];
+        sources.push_back(PillowGoldMakeImage(sourceSize, format, 5 + sampleIndex * 2));
+        destinations.push_back(PillowGoldMakeImage(destinationSize, format, 7 + sampleIndex * 2));
+        sourceBatch.pushBack(sources.back().image);
+        destinationBatch.pushBack(destinations.back().image);
+        std::vector<uint8_t> input(static_cast<size_t>(sourceSize.w) * sourceSize.h * channels);
+        PillowGoldFillVarShapeSample(input, sourceSize, channels, sampleIndex, pattern);
+        sourceBytes.push_back(PillowGoldPackImage(sources.back(), input, planar));
+        const auto reference = PillowGoldResampleSample(input, sourceSize.w, sourceSize.h, destinationSize.w,
+                                                        destinationSize.h, channels, interpolation);
+        expectedBytes.push_back(PillowGoldPackImage(destinations.back(), reference, planar));
+        const auto sourceData = sources.back().image.exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(sourceData->plane(0).basePtr, sourceBytes.back().data(),
+                                          sourceBytes.back().size(), cudaMemcpyHostToDevice));
+        const auto destinationData = destinations.back().image.exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(cudaSuccess, cudaMemsetAsync(destinationData->plane(0).basePtr, 0xA5,
+                                               destinations.back().allocationBytes, stream));
+    }
+
+    ASSERT_NO_THROW(op(stream, workspace, sourceBatch, destinationBatch, interpolation));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (int sampleIndex = 0; sampleIndex < numImages; ++sampleIndex)
+    {
+        SCOPED_TRACE(sampleIndex);
+        const auto           destinationData = destinations[sampleIndex].image.exportData<nvcv::ImageDataStridedCuda>();
+        std::vector<uint8_t> actual(expectedBytes[sampleIndex].size());
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(actual.data(), destinationData->plane(0).basePtr, actual.size(), cudaMemcpyDeviceToHost));
+        EXPECT_EQ(expectedBytes[sampleIndex], actual);
+        const auto sourceData = sources[sampleIndex].image.exportData<nvcv::ImageDataStridedCuda>();
+        actual.resize(sourceBytes[sampleIndex].size());
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(actual.data(), sourceData->plane(0).basePtr, actual.size(), cudaMemcpyDeviceToHost));
+        EXPECT_EQ(sourceBytes[sampleIndex], actual);
+    }
+}
+
+void RunPillowVarShapeBitExactCase(bool planar, NVCVInterpolationType interpolation, int scenario, int pattern)
+{
+    SCOPED_TRACE(scenario);
+    const auto        sizes = PillowGoldVarShapeScenario(scenario);
+    test::StreamGuard stream;
+    ASSERT_NE(nullptr, stream.get());
+    cvcuda::PillowResize op;
+    auto                 workspace = cvcuda::AllocateWorkspace(
+                        op.getWorkspaceRequirements(static_cast<int>(sizes.source.size()), sizes.source.data(),
+                                                    sizes.destination.data(), PillowGoldFormat(3, planar)));
+    ASSERT_NO_FATAL_FAILURE(
+        RunPillowVarShapeBitExactBatch(op, workspace.get(), stream.get(), planar, interpolation, sizes, pattern));
+}
+
+void RunPillowVarShapeWorkspaceReuse(bool planar, NVCVInterpolationType interpolation)
+{
+    std::array<PillowGoldVarShapeSizes, 3> batches{PillowGoldVarShapeScenario(4), PillowGoldVarShapeScenario(3),
+                                                   PillowGoldVarShapeScenario(5)};
+    std::rotate(batches[1].source.begin(), batches[1].source.begin() + 1, batches[1].source.end() - 1);
+    std::rotate(batches[1].destination.begin(), batches[1].destination.begin() + 1, batches[1].destination.end() - 1);
+    std::swap(batches[2].source[0], batches[2].source[2]);
+    std::swap(batches[2].destination[0], batches[2].destination[2]);
+
+    test::StreamGuard stream;
+    ASSERT_NE(nullptr, stream.get());
+    cvcuda::PillowResize op;
+    const auto           format       = PillowGoldFormat(3, planar);
+    auto                 requirements = op.getWorkspaceRequirements(static_cast<int>(batches[0].source.size()),
+                                                                    batches[0].source.data(), batches[0].destination.data(), format);
+    for (size_t batchIndex = 1; batchIndex < batches.size(); ++batchIndex)
+    {
+        requirements = cvcuda::MaxWorkspaceReq(
+            requirements, op.getWorkspaceRequirements(static_cast<int>(batches[batchIndex].source.size()),
+                                                      batches[batchIndex].source.data(),
+                                                      batches[batchIndex].destination.data(), format));
+    }
+    auto                        workspace   = cvcuda::AllocateWorkspace(requirements);
+    const auto                 *hostStorage = workspace.get().hostMem.data;
+    const auto                 *cudaStorage = workspace.get().cudaMem.data;
+    const std::array<size_t, 4> sequence{0, 1, 2, 0};
+    for (size_t submission = 0; submission < sequence.size(); ++submission)
+    {
+        SCOPED_TRACE(submission);
+        ASSERT_NO_FATAL_FAILURE(RunPillowVarShapeBitExactBatch(op, workspace.get(), stream.get(), planar, interpolation,
+                                                               batches[sequence[submission]], submission % 3));
+        ASSERT_EQ(hostStorage, workspace.get().hostMem.data);
+        ASSERT_EQ(cudaStorage, workspace.get().cudaMem.data);
+    }
+}
+
+} // namespace
+
+NVCV_TEST_SUITE_P(OpPillowResizeVarShapeBitExact,
+                  test::ValueList<bool, NVCVInterpolationType, int>{
+                      { true,  NVCV_INTERP_CUBIC, 0},
+                      { true,  NVCV_INTERP_CUBIC, 1},
+                      { true,  NVCV_INTERP_CUBIC, 2},
+                      { true,  NVCV_INTERP_CUBIC, 3},
+                      { true,  NVCV_INTERP_CUBIC, 4},
+                      { true,  NVCV_INTERP_CUBIC, 5},
+                      {false,  NVCV_INTERP_CUBIC, 0},
+                      {false,  NVCV_INTERP_CUBIC, 1},
+                      {false,  NVCV_INTERP_CUBIC, 2},
+                      {false,  NVCV_INTERP_CUBIC, 3},
+                      {false,  NVCV_INTERP_CUBIC, 4},
+                      {false,  NVCV_INTERP_CUBIC, 5},
+                      {false,  NVCV_INTERP_CUBIC, 6},
+                      {false,  NVCV_INTERP_CUBIC, 7},
+                      { true, NVCV_INTERP_LINEAR, 0},
+                      { true, NVCV_INTERP_LINEAR, 1},
+                      { true, NVCV_INTERP_LINEAR, 2},
+                      { true, NVCV_INTERP_LINEAR, 3},
+                      { true, NVCV_INTERP_LINEAR, 4},
+                      { true, NVCV_INTERP_LINEAR, 5},
+                      {false, NVCV_INTERP_LINEAR, 0},
+                      {false, NVCV_INTERP_LINEAR, 1},
+                      {false, NVCV_INTERP_LINEAR, 2},
+                      {false, NVCV_INTERP_LINEAR, 3},
+                      {false, NVCV_INTERP_LINEAR, 4},
+                      {false, NVCV_INTERP_LINEAR, 5},
+});
+
+TEST_P(OpPillowResizeVarShapeBitExact, rgb8_matches_scalar_oracle_and_preserves_padding)
+{
+    for (int pattern = 0; pattern < 3; ++pattern)
+    {
+        SCOPED_TRACE(pattern);
+        RunPillowVarShapeBitExactCase(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), pattern);
+    }
+}
+
+NVCV_TEST_SUITE_P(OpPillowResizeVarShapeBitExactReuse, test::ValueList<bool, NVCVInterpolationType>{
+                                                           { true,  NVCV_INTERP_CUBIC},
+                                                           {false,  NVCV_INTERP_CUBIC},
+                                                           { true, NVCV_INTERP_LINEAR},
+                                                           {false, NVCV_INTERP_LINEAR},
+});
+
+TEST_P(OpPillowResizeVarShapeBitExactReuse, shared_global_shared_workspace_matches_scalar_oracle)
+{
+    RunPillowVarShapeWorkspaceReuse(GetParamValue<0>(), GetParamValue<1>());
+}
+
+// srcW, srcH, dstW, dstH, channels, interpolation, numImages, planar
+NVCV_TEST_SUITE_P(OpPillowResizeBitExact, test::ValueList<int, int, int, int, int, NVCVInterpolationType, int, bool>{
+  // Exact 2x: tiny boundaries, odd paired tail and multiple samples.
+                                              {   2,   2,    4,  4, 3, NVCV_INTERP_LINEAR, 1, false},
+                                              {   1,   1,    2,  2, 3, NVCV_INTERP_LINEAR, 1, false},
+                                              { 257,  33,  514, 66, 3, NVCV_INTERP_LINEAR, 2, false},
+ // Narrow/scalar paths, both filters, odd extents and anisotropic ratios.
+                                              {  64,  48,  128, 96, 3,  NVCV_INTERP_CUBIC, 2, false},
+                                              { 128,  96,   64, 48, 1, NVCV_INTERP_LINEAR, 2, false},
+                                              {  64,  48,  128, 96, 1,  NVCV_INTERP_CUBIC, 1, false},
+                                              { 129,  97,   65, 49, 3,  NVCV_INTERP_CUBIC, 1, false},
+                                              {  65,  49,  131, 99, 3, NVCV_INTERP_LINEAR, 1, false},
+                                              { 129,  97,   65, 49, 1,  NVCV_INTERP_CUBIC, 1, false},
+                                              { 131,  99,   66, 50, 4, NVCV_INTERP_LINEAR, 1, false},
+                                              { 192, 108,   48, 96, 3,  NVCV_INTERP_CUBIC, 1, false},
+                                              {  48,  96,  192, 54, 3, NVCV_INTERP_LINEAR, 1, false},
+                                              { 128,  96,   64, 48, 3, NVCV_INTERP_LINEAR, 2,  true},
+ // Planar scalar paths and anisotropic contraction.
+                                              {  64,  48,  128, 96, 3,  NVCV_INTERP_CUBIC, 1,  true},
+                                              { 129,  97,   65, 49, 3,  NVCV_INTERP_CUBIC, 1,  true},
+                                              {  65,  49,  131, 99, 3, NVCV_INTERP_LINEAR, 1,  true},
+                                              { 192, 108,   48, 96, 4,  NVCV_INTERP_CUBIC, 1,  true},
+ // Wide spans, including the C4 cubic contraction fallback.
+                                              {1024,  48,  512, 24, 1,  NVCV_INTERP_CUBIC, 1, false},
+                                              { 512,  24, 1024, 48, 3,  NVCV_INTERP_CUBIC, 1, false},
+                                              {1024,  48,  512, 24, 3, NVCV_INTERP_LINEAR, 1, false},
+                                              { 512,  24, 1024, 48, 4, NVCV_INTERP_LINEAR, 1, false},
+                                              {1024,  48,  512, 24, 4,  NVCV_INTERP_CUBIC, 1, false},
+                                              { 512,  24, 1024, 48, 3, NVCV_INTERP_LINEAR, 1,  true},
+                                              {1024,  48,  512, 24, 3,  NVCV_INTERP_CUBIC, 1,  true},
+                                              { 512,  24, 1024, 48, 4, NVCV_INTERP_LINEAR, 1,  true},
+                                              {1024,  48,  512, 24, 4,  NVCV_INTERP_CUBIC, 1,  true},
+ // Partial horizontal groups for each scalar/vector and layout family.
+                                              { 520,  24, 1040, 48, 1, NVCV_INTERP_LINEAR, 1, false},
+                                              { 522,  24, 1044, 48, 4,  NVCV_INTERP_CUBIC, 1, false},
+                                              { 522,  24, 1044, 48, 3, NVCV_INTERP_LINEAR, 1,  true},
+                                              { 522,  24, 1044, 48, 4,  NVCV_INTERP_CUBIC, 1,  true},
+                                              {  63,   7,   31,  7, 1, NVCV_INTERP_LINEAR, 2,  true},
+                                              {  33,   9,   65,  5, 1, NVCV_INTERP_LINEAR, 2,  true},
+                                              {  17,   7,   33,  7, 1,  NVCV_INTERP_CUBIC, 2,  true},
+                                              { 257,   5,  128,  9, 1,  NVCV_INTERP_CUBIC, 2,  true},
+                                              {  65,   7,   32,  7, 3, NVCV_INTERP_LINEAR, 2,  true},
+                                              {  49,   9,   97,  5, 3, NVCV_INTERP_LINEAR, 2,  true},
+                                              {  33,   7,   65,  7, 3,  NVCV_INTERP_CUBIC, 2,  true},
+                                              { 259,   5,  129,  9, 3,  NVCV_INTERP_CUBIC, 2,  true},
+                                              { 195,   7,   97,  7, 4, NVCV_INTERP_LINEAR, 2,  true},
+                                              {  63,   9,  127,  5, 4, NVCV_INTERP_LINEAR, 2,  true},
+                                              {  65,   7,  129,  7, 4,  NVCV_INTERP_CUBIC, 2,  true},
+                                              {  67,   5,   33,  9, 4,  NVCV_INTERP_CUBIC, 2,  true},
+});
+
+TEST_P(OpPillowResizeBitExact, u8_matches_scalar_oracle)
+{
+    RunPillowBitExactCase(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(),
+                          GetParamValue<4>(), GetParamValue<5>(), GetParamValue<6>(), GetParamValue<7>());
+}
+
+namespace {
+
+void StorePillowRgbPixels(std::vector<uint8_t> &storage, const std::vector<uint8_t> &pixels, nvcv::Size2D size,
+                          bool planar, const nvcv::ImageDataStridedCuda::Buffer &buffer,
+                          const std::array<size_t, 3> &offsets)
+{
+    const int pixelBytes = planar ? 1 : 3;
+    for (int row = 0; row < size.h; ++row)
+        for (int column = 0; column < size.w; ++column)
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                const int plane = planar ? channel : 0;
+                storage[offsets[plane] + row * buffer.planes[plane].rowStride + column * pixelBytes
+                        + (planar ? 0 : channel)]
+                    = pixels[(static_cast<size_t>(row) * size.w + column) * 3 + channel];
+            }
+}
+
+void RunPillowVarShapeBitExactCase(bool planar, bool largeSupport, NVCVInterpolationType interpolation)
+{
+    std::vector<nvcv::Size2D> inputSizes{
+        {257, 129},
+        {133,  99},
+        { 31,  17},
+        {129,  65},
+        {128,  64}
+    };
+    std::vector<nvcv::Size2D> outputSizes{
+        {129, 65},
+        { 65, 49},
+        { 65, 33},
+        { 63, 31},
+        { 64, 32}
+    };
+    if (largeSupport)
+    {
+        inputSizes.push_back({65, 257});
+        outputSizes.push_back({33, 17});
+    }
+
+    const int                                                   count  = static_cast<int>(inputSizes.size());
+    const auto                                                  format = planar ? nvcv::FMT_RGB8p : nvcv::FMT_RGB8;
+    std::vector<std::unique_ptr<NVCVByte, decltype(&cudaFree)>> allocations;
+    std::vector<std::vector<uint8_t>>                           expected;
+    std::vector<NVCVByte *>                                     outputAllocations;
+    nvcv::ImageBatchVarShape                                    source(count);
+    nvcv::ImageBatchVarShape                                    destination(count);
+
+    auto makeImage = [&](nvcv::Size2D size, const std::vector<uint8_t> &pixels, int sample, bool output)
+    {
+        nvcv::ImageDataStridedCuda::Buffer buffer{};
+        buffer.numPlanes = planar ? 3 : 1;
+        std::array<size_t, 3> offsets{};
+        size_t                bytes = 3 + sample;
+        for (int plane = 0; plane < buffer.numPlanes; ++plane)
+        {
+            offsets[plane]       = bytes;
+            auto &descriptor     = buffer.planes[plane];
+            descriptor.width     = size.w;
+            descriptor.height    = size.h;
+            descriptor.rowStride = size.w * (planar ? 1 : 3) + 7 + sample + plane * 3;
+            bytes += descriptor.rowStride * size.h + 19 + plane;
+        }
+        std::vector<uint8_t> storage(bytes, 0xA5);
+        StorePillowRgbPixels(storage, pixels, size, planar, buffer, offsets);
+        NVCVByte *allocation = nullptr;
+        EXPECT_EQ(cudaSuccess, cudaMalloc(&allocation, bytes));
+        if (allocation == nullptr)
+            throw PillowResizeTestError("PillowResize pitched-image allocation failed");
+        allocations.emplace_back(allocation, &cudaFree);
+        for (int plane = 0; plane < buffer.numPlanes; ++plane)
+            buffer.planes[plane].basePtr = allocation + offsets[plane];
+        if (output)
+        {
+            expected.push_back(storage);
+            outputAllocations.push_back(allocation);
+            EXPECT_EQ(cudaSuccess, cudaMemset(allocation, 0xA5, bytes));
+        }
+        else
+        {
+            EXPECT_EQ(cudaSuccess, cudaMemcpy(allocation, storage.data(), bytes, cudaMemcpyHostToDevice));
+        }
+        return nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{format, buffer});
+    };
+
+    for (int sample = 0; sample < count; ++sample)
+    {
+        const auto           input  = inputSizes[sample];
+        const auto           output = outputSizes[sample];
+        std::vector<uint8_t> pixels(static_cast<size_t>(input.w) * input.h * 3);
+        PillowGoldFillSample(pixels, sample);
+        auto gold = PillowGoldResampleSample(pixels, input.w, input.h, output.w, output.h, 3, interpolation);
+        source.pushBack(makeImage(input, pixels, sample, false));
+        destination.pushBack(makeImage(output, gold, sample, true));
+    }
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::PillowResize op;
+    auto                 workspace
+        = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(count, inputSizes.data(), outputSizes.data(), format));
+    EXPECT_NO_THROW(op(stream, workspace.get(), source, destination, interpolation));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    for (int sample = 0; sample < count; ++sample)
+    {
+        SCOPED_TRACE(sample);
+        std::vector<uint8_t> actual(expected[sample].size());
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(actual.data(), outputAllocations[sample], actual.size(), cudaMemcpyDeviceToHost));
+        EXPECT_EQ(expected[sample], actual);
+    }
+}
+
+} // namespace
+
+TEST(OpPillowResizeBitExact, varshape_rgb_heterogeneous_pitched_tiles)
+{
+    for (bool planar : {false, true})
+        for (auto interpolation : {NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC})
+        {
+            SCOPED_TRACE(::testing::Message() << "planar=" << planar << " interpolation=" << interpolation);
+            RunPillowVarShapeBitExactCase(planar, false, interpolation);
+        }
+}
+
+TEST(OpPillowResizeBitExact, varshape_rgb_heterogeneous_large_support_fallback)
+{
+    for (bool planar : {false, true})
+        for (auto interpolation : {NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC})
+        {
+            SCOPED_TRACE(::testing::Message() << "planar=" << planar << " interpolation=" << interpolation);
+            RunPillowVarShapeBitExactCase(planar, true, interpolation);
+        }
+}
+
+namespace {
+
+nvcv::ImageDataStridedCuda::Buffer MakePillowAliasOutput(const nvcv::ImageDataStridedCuda::Buffer &target, int sample,
+                                                         int aliasMode, int shiftBytes)
+{
+    auto output = target;
+    for (int plane = 0; plane < target.numPlanes; ++plane)
+    {
+        const int targetPlane = aliasMode == 3 && sample < 2 ? (plane + 1) % target.numPlanes : plane;
+        output.planes[plane]  = target.planes[targetPlane];
+        if (sample < 2)
+            output.planes[plane].basePtr += shiftBytes;
+    }
+    return output;
+}
+
+void RunPillowVarShapeAliasCase(bool planar, NVCVInterpolationType interpolation, nvcv::Size2D size, int aliasMode)
+{
+    const nvcv::ImageFormat           format     = planar ? nvcv::FMT_RGB8p : nvcv::FMT_RGB8;
+    const int                         planes     = planar ? 3 : 1;
+    const int                         pixelBytes = planar ? 1 : 3;
+    const int                         shiftBytes = aliasMode == 2 ? 64 * pixelBytes : 0;
+    const std::array<nvcv::Size2D, 3> inputSizes{
+        size, size, nvcv::Size2D{31, 17}
+    };
+    const std::array<nvcv::Size2D, 3> outputSizes{
+        size, size, nvcv::Size2D{65, 33}
+    };
+    std::array<nvcv::ImageDataStridedCuda::Buffer, 4>           buffers{};
+    std::array<std::array<size_t, 3>, 4>                        offsets{};
+    std::array<std::vector<uint8_t>, 4>                         expected;
+    std::array<std::vector<uint8_t>, 3>                         snapshots;
+    std::vector<std::unique_ptr<NVCVByte, decltype(&cudaFree)>> allocations;
+
+    for (int storage = 0; storage < 4; ++storage)
+    {
+        const auto dimensions = storage == 3 ? outputSizes[2] : inputSizes[storage];
+        auto      &buffer     = buffers[storage];
+        buffer.numPlanes      = planes;
+        size_t bytes          = 5 + storage;
+        for (int plane = 0; plane < planes; ++plane)
+        {
+            offsets[storage][plane] = bytes;
+            auto &descriptor        = buffer.planes[plane];
+            descriptor.width        = dimensions.w;
+            descriptor.height       = dimensions.h;
+            descriptor.rowStride    = dimensions.w * pixelBytes + shiftBytes + 17 + plane * 3 + storage;
+            bytes += descriptor.rowStride * dimensions.h + 23;
+        }
+        expected[storage].assign(bytes, 0xA5);
+        if (storage < 3)
+        {
+            auto &pixels = snapshots[storage];
+            pixels.resize(static_cast<size_t>(dimensions.w) * dimensions.h * 3);
+            PillowGoldFillSample(pixels, storage + 7);
+            StorePillowRgbPixels(expected[storage], pixels, dimensions, planar, buffer, offsets[storage]);
+        }
+        NVCVByte *allocation = nullptr;
+        ASSERT_EQ(cudaSuccess, cudaMalloc(&allocation, bytes));
+        allocations.emplace_back(allocation, &cudaFree);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(allocation, expected[storage].data(), bytes, cudaMemcpyHostToDevice));
+        for (int plane = 0; plane < planes; ++plane)
+            buffer.planes[plane].basePtr = allocation + offsets[storage][plane];
+    }
+
+    nvcv::ImageBatchVarShape source(3);
+    nvcv::ImageBatchVarShape destination(3);
+    for (int sample = 0; sample < 3; ++sample)
+    {
+        source.pushBack(nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{format, buffers[sample]}));
+        int target = sample;
+        if (sample == 2)
+            target = 3;
+        else if (aliasMode == 0)
+            target = 1 - sample;
+        auto output = MakePillowAliasOutput(buffers[target], sample, aliasMode, shiftBytes);
+        auto gold   = PillowGoldResampleSample(snapshots[sample], inputSizes[sample].w, inputSizes[sample].h,
+                                               outputSizes[sample].w, outputSizes[sample].h, 3, interpolation);
+        std::array<size_t, 3> outputOffsets{};
+        for (int plane = 0; plane < planes; ++plane)
+            outputOffsets[plane] = output.planes[plane].basePtr - allocations[target].get();
+        StorePillowRgbPixels(expected[target], gold, outputSizes[sample], planar, output, outputOffsets);
+        destination.pushBack(nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{format, output}));
+    }
+
+    cudaStream_t rawStream{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&rawStream, cudaStreamNonBlocking));
+    std::unique_ptr<std::remove_pointer_t<cudaStream_t>, decltype(&cudaStreamDestroy)> stream(rawStream,
+                                                                                              &cudaStreamDestroy);
+    cvcuda::PillowResize                                                               op;
+    auto                                                                               workspace
+        = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(3, inputSizes.data(), outputSizes.data(), format));
+    ASSERT_NO_THROW(op(stream.get(), workspace.get(), source, destination, interpolation));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream.get()));
+    for (size_t storage = 0; storage < expected.size(); ++storage)
+    {
+        SCOPED_TRACE(storage);
+        std::vector<uint8_t> actual(expected[storage].size());
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(actual.data(), allocations[storage].get(), actual.size(), cudaMemcpyDeviceToHost));
+        EXPECT_EQ(expected[storage], actual);
+    }
+}
+
+} // namespace
+
+TEST(OpPillowResizeBitExact, varshape_rgb_cross_sample_alias_snapshot)
+{
+    for (bool planar : {false, true})
+        for (auto interpolation : {NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC})
+            for (auto size : {
+                     nvcv::Size2D{  1,  1},
+                     nvcv::Size2D{129, 65}
+            })
+            {
+                SCOPED_TRACE(::testing::Message() << planar << ":" << interpolation << ":" << size.w);
+                RunPillowVarShapeAliasCase(planar, interpolation, size, 0);
+            }
+}
+
+TEST(OpPillowResizeBitExact, varshape_rgb_same_view_alias_snapshot)
+{
+    for (bool planar : {false, true})
+        for (auto interpolation : {NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC})
+            RunPillowVarShapeAliasCase(planar, interpolation, {129, 65}, 1);
+}
+
+TEST(OpPillowResizeBitExact, varshape_rgb_shifted_alias_mixed_batch_snapshot)
+{
+    for (bool planar : {false, true})
+        for (auto interpolation : {NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC})
+            RunPillowVarShapeAliasCase(planar, interpolation, {129, 65}, 2);
+}
+
+TEST(OpPillowResizeBitExact, varshape_rgb_cross_plane_alias_snapshot)
+{
+    for (auto interpolation : {NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC})
+        RunPillowVarShapeAliasCase(true, interpolation, {129, 65}, 3);
+}
+
+TEST(OpPillowResizeBitExact, linear_2x_large_coordinate)
+{
+    // At output2^23, float(outX)+0.5 loses its fraction. Constant quarter taps
+    // must fall back to the established coefficient calculation for this valid width.
+    constexpr int srcX      = 1 << 22;
+    constexpr int srcW      = srcX + 2;
+    constexpr int outX      = 2 * srcX;
+    nvcv::Tensor  src       = nvcv::util::CreateTensor(1, srcW, 1, nvcv::FMT_RGB8);
+    nvcv::Tensor  dst       = nvcv::util::CreateTensor(1, 2 * srcW, 2, nvcv::FMT_RGB8);
+    auto          srcData   = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto          dstData   = dst.exportData<nvcv::TensorDataStridedCuda>();
+    auto          srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto          dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(srcAccess && dstAccess);
+    ASSERT_EQ(cudaSuccess, cudaMemset(srcAccess->sampleData(0), 0, srcAccess->sampleStride()));
+    const std::array<uint8_t, 3> white{255, 255, 255};
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(srcAccess->sampleData(0) + 3 * srcX, white.data(), white.size(), cudaMemcpyHostToDevice));
+    cvcuda::PillowResize    op;
+    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+        op.getWorkspaceRequirements(1, nvcv::Size2D{srcW, 1}, nvcv::Size2D{2 * srcW, 2}, nvcv::FMT_RGB8));
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_NO_THROW(op(stream, ws.get(), src, dst, NVCV_INTERP_LINEAR));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    std::array<uint8_t, 3> actual;
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(actual.data(), dstAccess->sampleData(0) + 3 * outX, actual.size(), cudaMemcpyDeviceToHost));
+    const float   center = (static_cast<float>(outX) + 0.5f) * 0.5f;
+    const uint8_t gold   = PillowGoldQuantize(255.0f * PillowGoldBilinearFilter(srcX - center + 0.5f));
+    for (uint8_t value : actual) EXPECT_EQ(value, gold);
+}
+
+TEST(OpPillowResizeBitExact, misaligned_destination)
+{
+    RunPillowBitExactCase(256, 8, 512, 16, 3, NVCV_INTERP_LINEAR, 2, false, 0, 0, 1);
+}
+
+TEST(OpPillowResizeBitExact, planar_single_channel_grouping)
+{
+    RunPillowBitExactCase(512, 24, 1024, 48, 1, NVCV_INTERP_LINEAR, 1, true);
+    RunPillowBitExactCase(65, 49, 131, 99, 1, NVCV_INTERP_CUBIC, 1, true);
+    RunPillowBitExactCase(55, 49, 109, 99, 1, NVCV_INTERP_CUBIC, 1, true);
+}
+
+TEST(OpPillowResizeBitExact, planar_rgb_cubic_expand_wide_rows)
+{
+    RunPillowBitExactCase(1920, 9, 3840, 18, 3, NVCV_INTERP_CUBIC, 2, true);
+    RunPillowBitExactCase(1922, 9, 3844, 18, 3, NVCV_INTERP_CUBIC, 2, true);
+    RunPillowBitExactCase(1921, 9, 3842, 18, 3, NVCV_INTERP_CUBIC, 2, true);
+}
+
+NVCV_TEST_SUITE_P(OpPillowResizePlanarCubicContract, test::ValueList<int, int, int, int>{
+                                                         {1920, 27, 960, 13},
+                                                         {1921, 27, 961, 13},
+                                                         {1920, 27, 865, 11},
+                                                         { 224, 17,  64,  9},
+                                                         { 225, 17,  64,  9},
+                                                         { 448, 17, 128,  9},
+                                                         { 449, 17, 128,  9},
+                                                         { 480, 17,  64,  9},
+                                                         { 481, 17,  64,  9},
+                                                         { 160, 17,  52,  9},
+                                                         { 160, 17,  53,  9},
+                                                         { 320, 17, 108,  9},
+                                                         { 320, 17, 109,  9},
+                                                         { 128, 31,  64,  1},
+                                                         { 128, 32,  64,  1},
+                                                         {   3,  3,   1,  1},
+                                                         {   4,  3,   1,  1},
+});
+
+TEST_P(OpPillowResizePlanarCubicContract, aligned_rgb8_matches_scalar_oracle)
+{
+    RunPillowBitExactCase(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(), 3,
+                          NVCV_INTERP_CUBIC, 2, true);
+}
+
+TEST_P(OpPillowResizePlanarCubicContract, padded_rgb8_matches_scalar_oracle)
+{
+    RunPillowBitExactCase(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(), 3,
+                          NVCV_INTERP_CUBIC, 2, true, 3, 7, 7, 5, 11, 13);
+}
+
+TEST(OpPillowResizeBitExact, planar_rgb_cubic_contract_padded_chw)
+{
+    RunPillowBitExactCase(1921, 27, 961, 13, 3, NVCV_INTERP_CUBIC, 1, true, 3, 7, 7, 5, 11, 13, true);
+}
+
+TEST(OpPillowResizeBitExact, planar_rgb_cubic_contract_aligned_chw)
+{
+    RunPillowBitExactCase(1921, 27, 961, 13, 3, NVCV_INTERP_CUBIC, 1, true, 0, 0, 0, 0, 0, 0, true);
+}
+
+TEST(OpPillowResizeBitExact, planar_rgb_cubic_contract_two_byte_aligned)
+{
+    RunPillowBitExactCase(1920, 27, 960, 13, 3, NVCV_INTERP_CUBIC, 2, true, 2);
+}
+
+TEST(OpPillowResizeBitExact, planar_rgb_cubic_contract_odd_source_base)
+{
+    constexpr int           numImages = 2;
+    constexpr nvcv::Size2D  srcSize{128, 18};
+    constexpr nvcv::Size2D  dstSize{64, 9};
+    const nvcv::TensorShape srcShape{
+        {numImages, 3, srcSize.h, srcSize.w},
+        "NCHW"
+    };
+    const nvcv::TensorShape dstShape{
+        {numImages, 3, dstSize.h, dstSize.w},
+        "NCHW"
+    };
+
+    nvcv::TensorDataStridedCuda::Buffer buffer{};
+    buffer.strides[3] = 1;
+    buffer.strides[2] = srcSize.w;
+    buffer.strides[1] = buffer.strides[2] * srcSize.h;
+    buffer.strides[0] = buffer.strides[1] * 3;
+    test::DeviceBuffer<NVCVByte> allocation(buffer.strides[0] * numImages + 1);
+    ASSERT_NE(nullptr, allocation.get());
+    buffer.basePtr = allocation.get() + 1;
+
+    nvcv::Tensor src = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{srcShape, nvcv::TYPE_U8, buffer});
+    nvcv::Tensor dst(dstShape, nvcv::TYPE_U8);
+    auto         srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto         dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, srcData);
+    ASSERT_NE(nullptr, dstData);
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(srcAccess && dstAccess);
+    ASSERT_EQ(1U, reinterpret_cast<std::uintptr_t>(srcAccess->sampleData(0)) % 2);
+    ASSERT_EQ(0, srcAccess->rowStride() % 2);
+    ASSERT_EQ(0, srcAccess->chStride() % 2);
+    ASSERT_EQ(0, srcAccess->sampleStride() % 2);
+
+    std::vector<std::vector<uint8_t>> goldHWC(numImages);
+    for (int sample = 0; sample < numImages; ++sample)
+    {
+        std::vector<uint8_t> srcHWC(srcSize.h * srcSize.w * 3);
+        PillowGoldFillSample(srcHWC, sample);
+        goldHWC[sample]
+            = PillowGoldResampleSample(srcHWC, srcSize.w, srcSize.h, dstSize.w, dstSize.h, 3, NVCV_INTERP_CUBIC);
+        test::planar::UploadPlanarSample(*srcAccess, sample,
+                                         test::planar::DeinterleaveToPlanes(srcHWC, srcSize.w, srcSize.h, 3, 1),
+                                         srcSize.w, srcSize.h, 3, 1);
+    }
+
+    test::StreamGuard stream;
+    ASSERT_NE(nullptr, stream.get());
+    cvcuda::PillowResize op;
+    auto                 workspace = cvcuda::AllocateWorkspace(
+                        op.getWorkspaceRequirements(numImages, srcSize, dstSize, PillowGoldFormat(3, true)));
+    ASSERT_NO_THROW(op(stream.get(), workspace.get(), src, dst, NVCV_INTERP_CUBIC));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream.get()));
+
+    for (int sample = 0; sample < numImages; ++sample)
+    {
+        SCOPED_TRACE(sample);
+        const auto actual = test::planar::InterleaveFromPlanes(
+            test::planar::DownloadPlanarSample(*dstAccess, sample, dstSize.w, dstSize.h, 3, 1), dstSize.w, dstSize.h, 3,
+            1);
+        ASSERT_EQ(goldHWC[sample], actual);
+    }
+}
+
+TEST(OpPillowResizeBitExact, planar_cubic_tall_vertical_support)
+{
+    RunPillowBitExactCase(64, 128, 128, 4, 3, NVCV_INTERP_CUBIC, 2, true);
+}
+
+TEST(OpPillowResizeBitExact, planar_padded_nchw_and_chw)
+{
+    constexpr int srcRowPad    = 3;
+    constexpr int srcPlanePad  = 5;
+    constexpr int srcSamplePad = 7;
+    constexpr int dstRowPad    = 7;
+    constexpr int dstPlanePad  = 11;
+    constexpr int dstSamplePad = 13;
+    for (const int channels : {1, 3, 4})
+    {
+        SCOPED_TRACE(channels);
+        RunPillowBitExactCase(33, 9, 65, 5, channels, NVCV_INTERP_LINEAR, 2, true, srcRowPad, srcSamplePad, dstRowPad,
+                              srcPlanePad, dstPlanePad, dstSamplePad);
+        RunPillowBitExactCase(33, 7, 65, 11, channels, NVCV_INTERP_CUBIC, 1, true, srcRowPad, srcSamplePad, dstRowPad,
+                              srcPlanePad, dstPlanePad, dstSamplePad, true);
+        RunPillowBitExactCase(55, 9, 109, 5, channels, NVCV_INTERP_LINEAR, 2, true, srcRowPad, srcSamplePad, dstRowPad,
+                              srcPlanePad, dstPlanePad, dstSamplePad);
+        RunPillowBitExactCase(55, 7, 109, 11, channels, NVCV_INTERP_CUBIC, 1, true, srcRowPad, srcSamplePad, dstRowPad,
+                              srcPlanePad, dstPlanePad, dstSamplePad, true);
+    }
+}
+
+NVCV_TEST_SUITE_P(OpPillowResizePlanarByteTails, test::ValueList<int, int, int, int, int, nvcv::DataKind>{
+                                                     {17, 7,  33, 7, 1, nvcv::DataKind::UNSIGNED},
+                                                     {49, 5,  97, 9, 1,   nvcv::DataKind::SIGNED},
+                                                     {33, 9,  65, 5, 3, nvcv::DataKind::UNSIGNED},
+                                                     {49, 9,  97, 5, 3,   nvcv::DataKind::SIGNED},
+                                                     {65, 9, 129, 5, 4, nvcv::DataKind::UNSIGNED},
+                                                     {33, 7,  65, 7, 4,   nvcv::DataKind::SIGNED},
+                                                     {55, 7, 109, 7, 1, nvcv::DataKind::UNSIGNED},
+                                                     {55, 5, 109, 9, 1,   nvcv::DataKind::SIGNED},
+                                                     {55, 9, 109, 5, 3, nvcv::DataKind::UNSIGNED},
+                                                     {55, 9, 109, 5, 3,   nvcv::DataKind::SIGNED},
+                                                     {55, 9, 109, 5, 4, nvcv::DataKind::UNSIGNED},
+                                                     {55, 7, 109, 7, 4,   nvcv::DataKind::SIGNED},
+});
+
+TEST_P(OpPillowResizePlanarByteTails, all_filters_match_interleaved)
+{
+    const int               srcW           = GetParamValue<0>();
+    const int               srcH           = GetParamValue<1>();
+    const int               dstW           = GetParamValue<2>();
+    const int               dstH           = GetParamValue<3>();
+    const int               channels       = GetParamValue<4>();
+    const nvcv::DataKind    kind           = GetParamValue<5>();
+    const nvcv::ImageFormat planarFmt      = PillowGoldFormat(channels, true).dataKind(kind);
+    const nvcv::ImageFormat interleavedFmt = PillowGoldFormat(channels, false).dataKind(kind);
+
+    constexpr std::array<NVCVInterpolationType, 5> interpolations{
+        NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, NVCV_INTERP_BOX, NVCV_INTERP_HAMMING, NVCV_INTERP_LANCZOS};
+    for (const auto interpolation : interpolations)
+    {
+        SCOPED_TRACE(static_cast<int>(interpolation));
+        auto invoke = [srcW, srcH, dstW, dstH, interpolation](cudaStream_t stream, const nvcv::Tensor &src,
+                                                              const nvcv::Tensor &dst, nvcv::ImageFormat fmt)
+        {
+            cvcuda::PillowResize    op;
+            cvcuda::UniqueWorkspace ws
+                = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(2, {srcW, srcH}, {dstW, dstH}, fmt));
+            EXPECT_NO_THROW(op(stream, ws.get(), src, dst, interpolation));
+        };
+        if (channels == 1)
+        {
+            test::planar::RunTensorSingleChannelLayoutParity(
+                srcW, srcH, dstW, dstH, 2, planarFmt.planeDataType(0),
+                [&invoke, &planarFmt](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst)
+                { invoke(stream, src, dst, planarFmt); });
+            continue;
+        }
+        test::planar::RunTensorParity(
+            planarFmt, interleavedFmt, srcW, srcH, dstW, dstH, 2, invoke,
+            [kind](int sample, int width, int height, int numChannels)
+            { return PillowPlanarByteTailSample(kind, sample, width, height, numChannels); },
+            [](const std::vector<uint8_t> &interleaved, const std::vector<uint8_t> &planar)
+            { EXPECT_EQ(interleaved, planar); });
+    }
+}
+
+// srcW, srcH, dstW, dstH, channels, interpolation, srcRowPad, srcSamplePad
+//
+// Padded row and sample strides drive the same oracle through the launch sites' alignment gates.
+// Independently padding both proves neither row nor sample addressing is inferred from the logical
+// image extent. Four-byte pads keep the widened and packed accesses eligible; one- and two-byte
+// pads defeat them and select the narrow and scalar fallbacks instead.
+NVCV_TEST_SUITE_P(OpPillowResizeBitExactPitched,
+                  test::ValueList<int, int, int, int, int, NVCVInterpolationType, int, int>{
+  // The profiled 1920 -> 864 horizontal contraction, at packed, aligned-pitched and
+  // misaligned-pitched strides. Equal source and destination heights make the vertical pass an
+  // identity, isolating the horizontal contraction.
+                      {1920, 9,  864,  9, 3,  NVCV_INTERP_CUBIC, 0,  0},
+                      {1920, 9,  864,  9, 3,  NVCV_INTERP_CUBIC, 8, 16},
+                      {1920, 9,  864,  9, 3,  NVCV_INTERP_CUBIC, 1, 16},
+                      {1920, 9,  960,  9, 3,  NVCV_INTERP_CUBIC, 8, 16},
+                      {1920, 9,  960,  9, 3,  NVCV_INTERP_CUBIC, 8,  2},
+ // An odd output width leaves a partial pair for the paired horizontal pass and a partial run
+  // for the widened one.
+                      {1920, 9,  865,  9, 3,  NVCV_INTERP_CUBIC, 0,  0},
+                      {1920, 9,  833,  9, 3,  NVCV_INTERP_CUBIC, 1, 16},
+ // Byte channel counts that take the widened vertical span and the per-thread horizontal run.
+                      { 512, 8, 1024, 16, 1, NVCV_INTERP_LINEAR, 4,  8},
+                      { 512, 8, 1024, 16, 4, NVCV_INTERP_LINEAR, 4,  8},
+                      { 512, 8, 1024, 16, 4,  NVCV_INTERP_CUBIC, 1,  8},
+ // Exact2x RGB8 source pitch need not be aligned; destination fallback is checked separately.
+                      { 256, 8,  512, 16, 3, NVCV_INTERP_LINEAR, 1,  0},
+});
+
+TEST_P(OpPillowResizeBitExactPitched, u8_matches_scalar_oracle)
+{
+    RunPillowBitExactCase(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(),
+                          GetParamValue<4>(), GetParamValue<5>(), 2, false, GetParamValue<6>(), GetParamValue<7>());
+}
+
+TEST(OpPillowResizePlanar, signed32_single_channel_tensor_layouts_match)
+{
+    constexpr int srcW = 37;
+    constexpr int srcH = 29;
+    constexpr int dstW = 23;
+    constexpr int dstH = 17;
+
+    test::planar::RunTensorSingleChannelLayoutParity(
+        srcW, srcH, dstW, dstH, 1, nvcv::TYPE_S32,
+        [](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst)
+        {
+            cvcuda::PillowResize    op;
+            cvcuda::UniqueWorkspace ws
+                = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(1, {srcW, srcH}, {dstW, dstH}, nvcv::FMT_S32));
+            EXPECT_NO_THROW(op(stream, ws.get(), src, dst, NVCV_INTERP_LINEAR));
+        });
+}
+
+TEST(OpPillowResizePlanar, s32_single_channel_tensor_filters_match_interleaved)
+{
+    // S32 is tensor-only; the odd output width also exercises the scalar vertical tail.
+    constexpr std::array<NVCVInterpolationType, 5> interpolations{
+        NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, NVCV_INTERP_BOX, NVCV_INTERP_HAMMING, NVCV_INTERP_LANCZOS};
+    for (const auto interpolation : interpolations)
+    {
+        SCOPED_TRACE(static_cast<int>(interpolation));
+        test::planar::RunTensorSingleChannelLayoutParity(
+            17, 13, 9, 7, 2, nvcv::TYPE_S32,
+            [interpolation](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst)
+            {
+                cvcuda::PillowResize    op;
+                cvcuda::UniqueWorkspace ws
+                    = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(2, {17, 13}, {9, 7}, nvcv::FMT_S32));
+                EXPECT_NO_THROW(op(stream, ws.get(), src, dst, interpolation));
+            });
+    }
+}
+
+TEST(OpPillowResizePlanar, rgba_float_varshape_all_filters_match_interleaved)
+{
+    constexpr std::array<NVCVInterpolationType, 5> interpolations{
+        NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, NVCV_INTERP_BOX, NVCV_INTERP_HAMMING, NVCV_INTERP_LANCZOS};
+    for (const auto interpolation : interpolations)
+    {
+        SCOPED_TRACE(static_cast<int>(interpolation));
+        RunPlanarParityVarShapeCase(nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32, 50, 40, 100, 80, interpolation, 2);
+    }
+}
+
+TEST(OpPillowResizePlanar, rgb_float_varshape_odd_width_all_filters_match_interleaved)
+{
+    constexpr std::array<NVCVInterpolationType, 5> interpolations{
+        NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, NVCV_INTERP_BOX, NVCV_INTERP_HAMMING, NVCV_INTERP_LANCZOS};
+    for (const auto interpolation : interpolations)
+    {
+        SCOPED_TRACE(static_cast<int>(interpolation));
+        // The odd RGB output width makes the non-fused VarShape vertical vector launch visit its row tail.
+        RunPlanarParityVarShapeCase(nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, 49, 37, 101, 83, interpolation, 2);
+    }
+}
+
+TEST(OpPillowResizePlanar, rgba_float_tensor_all_filters_match_interleaved)
+{
+    constexpr std::array<NVCVInterpolationType, 5> interpolations{
+        NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, NVCV_INTERP_BOX, NVCV_INTERP_HAMMING, NVCV_INTERP_LANCZOS};
+    for (const auto interpolation : interpolations)
+    {
+        SCOPED_TRACE(static_cast<int>(interpolation));
+        RunPlanarParityTensorCase(nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32, 50, 40, 100, 80, interpolation, 2);
+    }
+}
+
+TEST(OpPillowResizePlanar, filter_boundary_paths_match_interleaved)
+{
+    // These ratios make the coefficient precompute visit negative, interior, and out-of-support
+    // arguments in each filter while the shared parity helper exercises both pointer layouts.
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 2, 2, 6, 6, NVCV_INTERP_LINEAR, 1);
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 2, 2, 41, 41, NVCV_INTERP_BOX, 1);
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 2, 2, 6, 6, NVCV_INTERP_HAMMING, 1);
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 3, 3, 9, 9, NVCV_INTERP_CUBIC, 1);
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 4, 4, 12, 12, NVCV_INTERP_LANCZOS, 1);
 }
 
 static auto OpPillowResizeNegativeParams()
@@ -1819,4 +3224,97 @@ TEST(OpPillowResize_Negative, oversized_varshape_rejected)
         }
         throw;
     }
+}
+
+// The interleaved var-shape kernel uses grid.z = numImages (pass_z = batch) — the same as the
+// planar kernel, which was already guarded. Before the fix the guard was conditioned on
+// isPlanar; an interleaved batch of > 65535 images would reach the kernel launch and fail with
+// cudaErrorInvalidConfiguration rather than a clean diagnostic. The fix removes the isPlanar
+// condition so the guard covers both layouts.
+//
+// This test exercises the interleaved path (FMT_RGB8). The same check now also rejects planar
+// batches, but the original planar guard covered that case before the fix too.
+//
+// Construction: one backing image (1 × 1 RGB8) is shared across 65 536 logical batch entries
+// via handle copies. This avoids 65 536 separate CUDA allocations while giving the batch the
+// required numImages() == 65536. Because the guard fires synchronously at operator() call
+// time — before any kernel launch or workspace touch — the shared backing image does not
+// affect correctness of the test.
+TEST(OpPillowResize_Negative, varshape_batch_over_65535_rejected)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int kNumImages = 65536; // one over the CUDA grid-z limit of 65535
+
+    nvcv::Image              oneImage(nvcv::Size2D{1, 1}, nvcv::FMT_RGB8);
+    std::vector<nvcv::Image> images(kNumImages, oneImage);
+
+    nvcv::ImageBatchVarShape batchSrc(kNumImages);
+    nvcv::ImageBatchVarShape batchDst(kNumImages);
+    batchSrc.pushBack(images.begin(), images.end());
+    batchDst.pushBack(images.begin(), images.end());
+
+    std::vector<nvcv::Size2D> sizes(kNumImages, nvcv::Size2D{1, 1});
+
+    cvcuda::PillowResize    pillowResizeOp;
+    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+        pillowResizeOp.getWorkspaceRequirements(kNumImages, sizes.data(), sizes.data(), nvcv::FMT_RGB8));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { pillowResizeOp(stream, ws.get(), batchSrc, batchDst, NVCV_INTERP_LINEAR); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// The tensor kernel uses grid.z = numSamples (in_N); a batch exceeding the CUDA grid-z limit
+// of 65535 would previously reach the kernel launch and fail with
+// cudaErrorInvalidConfiguration. Before the fix no guard existed for the tensor path; the
+// var-shape guard existed only for the planar layout. This test verifies that the tensor guard
+// added by the fix fires at submission time and reports NVCV_ERROR_INVALID_ARGUMENT.
+//
+// A 65 536 × 1 × 1 × RGB8 tensor = 192 KiB; the workspace for a uniform 1 × 1 → 1 × 1
+// resize is a few MB of coefficient and intermediate buffers, well within device limits.
+TEST(OpPillowResize_Negative, tensor_batch_over_65535_rejected)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int kNumSamples = 65536; // one over the CUDA grid-z limit of 65535
+    nvcv::Tensor  src(kNumSamples, {1, 1}, nvcv::FMT_RGB8);
+    nvcv::Tensor  dst(kNumSamples, {1, 1}, nvcv::FMT_RGB8);
+
+    cvcuda::PillowResize    pillowResizeOp;
+    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+        pillowResizeOp.getWorkspaceRequirements(kNumSamples, {1, 1}, {1, 1}, nvcv::FMT_RGB8));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { pillowResizeOp(stream, ws.get(), src, dst, NVCV_INTERP_LINEAR); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Hardening: batch comes from the input and is used as the launch z extent against the output, so a
+// shorter output batch used to have a missing destination image indexed.
+TEST(OpPillowResize_Negative, rejects_varshape_image_count_mismatch)
+{
+    cvcuda::PillowResize op;
+
+    nvcv::ImageBatchVarShape src(3);
+    nvcv::ImageBatchVarShape dst(2);
+    for (int i = 0; i < 3; ++i)
+    {
+        src.pushBack(nvcv::Image(nvcv::Size2D{16, 12}, nvcv::FMT_RGB8));
+    }
+    for (int i = 0; i < 2; ++i)
+    {
+        dst.pushBack(nvcv::Image(nvcv::Size2D{8, 6}, nvcv::FMT_RGB8));
+    }
+
+    cvcuda::UniqueWorkspace ws
+        = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(3, {16, 12}, {16, 12}, nvcv::FMT_RGB8));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, ws.get(), src, dst, NVCV_INTERP_LINEAR); }));
 }

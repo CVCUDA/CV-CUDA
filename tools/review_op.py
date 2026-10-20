@@ -45,6 +45,7 @@ from _internal.baselines import (  # noqa: E402
     BaselineError,
     expected_case_keys_for_entry,
     fake_planar_pairing_issues,
+    load_sku_policies,
 )
 from operator_source_map import (  # noqa: E402
     SHARED_KERNEL_SOURCES,
@@ -854,6 +855,7 @@ def check_support(P: OpPaths, curated):
         "has_tensor": has_tensor,
         "has_vs": has_vs,
         "generic_varshape": generic_varshape,
+        "tensor_absence_is_declared": tensor_absence_is_declared,
         "bench_layout_na": P.op in bench_layout_na,
         "bench_rgb_na": P.op in bench_rgb_na,
     }
@@ -1009,7 +1011,7 @@ def check_test(P: OpPaths, support_info):
     )
 
     # TST-2 / TST-3 — a positive test on the op's (non-Negative) suite, any naming convention
-    if generic_varshape and not has_tensor:
+    if support_info.get("tensor_absence_is_declared") and not has_tensor:
         out.append(
             Finding("TST-2", "test", NA, "VarShape-only op -> tensor test N-A", "", g)
         )
@@ -1886,16 +1888,28 @@ def basic_floor(P, benched, support_info, g):
 
 
 def baseline_completeness(P, configs, g):
-    sku = load_bench_cfg(REPO / "bench/config/sku_map.json") or {}
-    skus = sorted(e["stem"] for e in sku.get("entries", []) if "stem" in e)
-    if not skus:
+    try:
+        policies = load_sku_policies(REPO / "bench/config/sku_map.json", strict=True)
+    except BaselineError as exc:
+        return Finding(
+            "BEN-7", "bench", GAP, "Invalid baseline SKU policy", str(exc), g
+        )
+    if not policies:
         return Finding(
             "BEN-7", "bench", MANUAL, "No SKUs in sku_map.json to check against", "", g
         )
+    skus = sorted(stem for stem, policy in policies.items() if policy.required)
     missing = []
     invalid = []
     total_cases = 0
+    total_entries = 0
     for k, c in configs.items():
+        tier = c.get("tier")
+        required_skus = [
+            stem
+            for stem in skus
+            if tier not in ("basic", "advanced") or tier in policies[stem].tiers
+        ]
         bl = c.get("baselines", {})
         if not isinstance(bl, dict):
             invalid.append(f"{k}: baselines must be an object keyed by case-key")
@@ -1906,6 +1920,7 @@ def baseline_completeness(P, configs, g):
             invalid.append(f"{k}: {exc}")
             continue
         total_cases += len(expected_case_keys)
+        total_entries += len(expected_case_keys) * len(required_skus)
         for case_key in expected_case_keys:
             per_sku = bl.get(case_key)
             if per_sku is None:
@@ -1916,7 +1931,7 @@ def baseline_completeness(P, configs, g):
                     f"{case_key}: baseline case payload must be an object keyed by SKU"
                 )
                 continue
-            for s in skus:
+            for s in required_skus:
                 if s not in per_sku:
                     missing.append((case_key, s))
     if not missing and not invalid:
@@ -1924,7 +1939,7 @@ def baseline_completeness(P, configs, g):
             "BEN-7",
             "bench",
             PASS,
-            f"Baselines complete for all {total_cases} case-keys × {len(skus)} SKUs",
+            f"Baselines complete for all {total_cases} case-keys ({total_entries} required case/SKU entries)",
             f"SKUs={skus}",
             g,
         )
@@ -1948,8 +1963,8 @@ def baseline_completeness(P, configs, g):
         f"e.g. {sample}",
         g,
         "If a declared case is unsupported, remove it from the config axes; otherwise "
-        "regenerate via MR baseline-regen CI for operator '%s' + "
-        "bench/_internal/update_baseline.py — never fabricate." % P.op,
+        "regenerate via MR baseline-regen CI for operator '%s', then follow "
+        "bench/README.md 'Import, Validate, and Recheck' — never fabricate." % P.op,
     )
 
 

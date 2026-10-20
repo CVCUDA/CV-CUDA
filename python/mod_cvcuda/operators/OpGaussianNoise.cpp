@@ -15,23 +15,23 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpGaussianNoise.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 #include <stdexcept>
 
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
 class GaussianNoiseError : public std::runtime_error
 {
@@ -39,112 +39,117 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-Tensor GaussianNoiseInto(Tensor &output, Tensor &input, Tensor &mu, Tensor &sigma, bool per_channel,
-                         unsigned long long seed, std::optional<Stream> pstream)
+Tensor &GaussianNoiseInto(Tensor &output, Tensor &input, Tensor &mu, Tensor &sigma, bool per_channel,
+                          unsigned long long seed, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     // HWC inputs (rank 3) have no N dim, so shape[0] is H — fall back to 1.
-    int  batchSize     = (input.shape().size() == 4) ? (int)input.shape()[0] : 1;
-    auto gaussiannoise = CreateOperator<cvcuda::GaussianNoise>(batchSize);
+    const nvcv::TensorShape inputShape    = input.impl().shape();
+    int                     batchSize     = inputShape.rank() == 4 ? static_cast<int>(inputShape[0]) : 1;
+    auto                    gaussiannoise = CreateOperator<cvcuda::GaussianNoise>(batchSize);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, mu, sigma});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussiannoise});
 
-    guard.run([&gaussiannoise, &pstream, &input, &output, &mu, &sigma, &per_channel, &seed]()
-              { gaussiannoise->submit(pstream->cudaHandle(), input, output, mu, sigma, per_channel, seed); });
-
-    return output;
-}
-
-Tensor GaussianNoise(Tensor &input, Tensor &mu, Tensor &sigma, bool per_channel, unsigned long long seed,
-                     std::optional<Stream> pstream)
-{
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
-
-    return GaussianNoiseInto(output, input, mu, sigma, per_channel, seed, pstream);
-}
-
-Tensor GaussianNoiseScalarInto(Tensor &output, Tensor &input, float mu, float sigma, bool per_channel,
-                               std::optional<unsigned long long> seed, bool clip, std::optional<Stream> pstream)
-{
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
-
-    int  batchSize     = input.shape().size() == 4 ? static_cast<int>(input.shape()[0]) : 1;
-    auto gaussiannoise = CreateOperator<cvcuda::GaussianNoise>(batchSize);
-    auto seedValue     = seed.value_or(0);
-    bool reseed        = seed.has_value();
-
-    ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_MODE_READ, {input});
-    guard.add(LockMode::LOCK_MODE_WRITE, {output});
-    guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussiannoise});
-
     guard.run(
-        [gaussiannoise, pstream, &input, &output, mu, sigma, per_channel, seedValue, reseed, clip]() {
-            gaussiannoise->submit(pstream->cudaHandle(), input, output, mu, sigma, per_channel, seedValue, reseed,
-                                  clip);
+        [&gaussiannoise, &stream, &input, &output, &mu, &sigma, &per_channel, &seed]() {
+            gaussiannoise->submit(stream.handle(), input.impl(), output.impl(), mu.impl(), sigma.impl(), per_channel,
+                                  seed);
         });
 
     return output;
 }
 
-Tensor GaussianNoiseScalar(Tensor &input, float mu, float sigma, bool per_channel,
-                           std::optional<unsigned long long> seed, bool clip, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> GaussianNoise(Tensor &input, Tensor &mu, Tensor &sigma, bool per_channel,
+                                      unsigned long long seed, std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
-    return GaussianNoiseScalarInto(output, input, mu, sigma, per_channel, seed, clip, pstream);
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
+
+    GaussianNoiseInto(*output, input, mu, sigma, per_channel, seed, pstream);
+    return output;
 }
 
-ImageBatchVarShape GaussianNoiseVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &mu,
-                                             Tensor &sigma, bool per_channel, unsigned long long seed,
-                                             std::optional<Stream> pstream)
+Tensor &GaussianNoiseScalarInto(Tensor &output, Tensor &input, float mu, float sigma, bool per_channel,
+                                std::optional<unsigned long long> seed, bool clip, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
-    auto gaussiannoise = CreateOperator<cvcuda::GaussianNoise>(input.numImages());
+    const nvcv::TensorShape inputShape    = input.impl().shape();
+    int                     batchSize     = inputShape.rank() == 4 ? static_cast<int>(inputShape[0]) : 1;
+    auto                    gaussiannoise = CreateOperator<cvcuda::GaussianNoise>(batchSize);
+    auto                    seedValue     = seed.value_or(0);
+    bool                    reseed        = seed.has_value();
 
-    ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_MODE_READ, {input, mu, sigma});
+    ResourceGuard guard(stream);
+    guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussiannoise});
 
-    guard.run([&gaussiannoise, &pstream, &input, &output, &mu, &sigma, &per_channel, &seed]()
-              { gaussiannoise->submit(pstream->cudaHandle(), input, output, mu, sigma, per_channel, seed); });
+    guard.run(
+        [gaussiannoise, &stream, &input, &output, mu, sigma, per_channel, seedValue, reseed, clip]()
+        {
+            gaussiannoise->submit(stream.handle(), input.impl(), output.impl(), mu, sigma, per_channel, seedValue,
+                                  reseed, clip);
+        });
 
     return output;
 }
 
-ImageBatchVarShape GaussianNoiseVarShape(ImageBatchVarShape &input, Tensor &mu, Tensor &sigma, bool per_channel,
-                                         unsigned long long seed, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> GaussianNoiseScalar(Tensor &input, float mu, float sigma, bool per_channel,
+                                            std::optional<unsigned long long> seed, bool clip,
+                                            std::optional<Stream *> pstream)
 {
-    auto format = input.uniqueFormat();
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
+    GaussianNoiseScalarInto(*output, input, mu, sigma, per_channel, seed, clip, pstream);
+    return output;
+}
+
+ImageBatchVarShape &GaussianNoiseVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &mu,
+                                              Tensor &sigma, bool per_channel, unsigned long long seed,
+                                              std::optional<Stream *> pstream)
+{
+    Stream &stream = native::GetStream(pstream);
+
+    auto gaussiannoise = CreateOperator<cvcuda::GaussianNoise>(input.numImages());
+
+    ResourceGuard guard(stream);
+    guard.add(LockMode::LOCK_MODE_READ, {input, mu, sigma});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussiannoise});
+
+    guard.run(
+        [&gaussiannoise, &stream, &input, &output, &mu, &sigma, &per_channel, &seed]() {
+            gaussiannoise->submit(stream.handle(), input.impl(), output.impl(), mu.impl(), sigma.impl(), per_channel,
+                                  seed);
+        });
+
+    return output;
+}
+
+std::shared_ptr<ImageBatchVarShape> GaussianNoiseVarShape(ImageBatchVarShape &input, Tensor &mu, Tensor &sigma,
+                                                          bool per_channel, unsigned long long seed,
+                                                          std::optional<Stream *> pstream)
+{
+    nvcv::ImageFormat format = input.impl().uniqueFormat();
     if (!format)
     {
         throw GaussianNoiseError("All images in input must have the same format.");
     }
 
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input, format, input.numImages());
+    auto output = CreateSameShapeImageBatch(input, format, input.numImages());
 
-    return GaussianNoiseVarShapeInto(output, input, mu, sigma, per_channel, seed, pstream);
+    GaussianNoiseVarShapeInto(*output, input, mu, sigma, per_channel, seed, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpGaussianNoise(py::module &m)
+void ExportOpGaussianNoise(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("gaussiannoise", NvtxTrace("cvcuda.gaussiannoise", &GaussianNoise), "src"_a, "mu"_a, "sigma"_a,
           "per_channel"_a, "seed"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -165,7 +170,8 @@ void ExportOpGaussianNoise(py::module &m)
     )pbdoc");
 
     m.def("gaussiannoise_into", NvtxTrace("cvcuda.gaussiannoise_into", &GaussianNoiseInto), "dst"_a, "src"_a, "mu"_a,
-          "sigma"_a, "per_channel"_a, "seed"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "sigma"_a, "per_channel"_a, "seed"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
+          R"pbdoc(
         Executes the GaussianNoise operation on the given cuda stream.
 
 
@@ -206,7 +212,7 @@ void ExportOpGaussianNoise(py::module &m)
 
     m.def("gaussiannoise_into", NvtxTrace("cvcuda.gaussiannoise_into", &GaussianNoiseScalarInto), "dst"_a, "src"_a,
           "mu"_a, "sigma"_a, "per_channel"_a, py::kw_only(), "seed"_a = std::nullopt, "clip"_a = true,
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Adds Gaussian noise using scalar mean and standard-deviation values into a supplied tensor.
 
         Args:
@@ -242,7 +248,8 @@ void ExportOpGaussianNoise(py::module &m)
     )pbdoc");
 
     m.def("gaussiannoise_into", NvtxTrace("cvcuda.gaussiannoise_into", &GaussianNoiseVarShapeInto), "dst"_a, "src"_a,
-          "mu"_a, "sigma"_a, "per_channel"_a, "seed"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "mu"_a, "sigma"_a, "per_channel"_a, "seed"_a, py::kw_only(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the GaussianNoise operation on the given cuda stream.
 
 

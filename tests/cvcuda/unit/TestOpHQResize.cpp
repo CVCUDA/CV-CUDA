@@ -17,9 +17,27 @@
 
 #include "Definitions.hpp"
 
+#include <cvcuda/priv/OpHQResizeDispatch.hpp>
 #include <cvcuda/priv/OpHQResizePolicy.hpp>
+#include <nvcv/Exception.hpp>
 
 namespace hqresize = cvcuda::priv::hq_resize;
+
+TEST(OpHQResize3D, RejectsImageBatchVarShape)
+{
+    auto impl = hqresize::makeImpl3D();
+    ASSERT_TRUE(impl);
+
+    nvcv::ImageBatchVarShape input;
+    nvcv::ImageBatchVarShape output;
+    cvcuda::Workspace        workspace{};
+    HQResizeRoisF            rois{};
+
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall(
+            [&] { (*impl)(nullptr, workspace, input, output, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR, false, rois); }));
+}
 
 TEST(OpHQResizePolicy, UsesSeparableF32CubicContract2xOnSM75)
 {

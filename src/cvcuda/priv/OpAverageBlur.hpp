@@ -25,10 +25,11 @@
 #define CVCUDA_PRIV_AVERAGEBLUR_HPP
 
 #include "IOperator.hpp"
-#include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <nvcv/BorderType.h>
 #include <nvcv/ImageBatch.hpp>
+#include <nvcv/Size.hpp>
 #include <nvcv/Tensor.hpp>
 
 namespace cvcuda::priv {
@@ -45,8 +46,10 @@ public:
                     const nvcv::Tensor &kernelSize, const nvcv::Tensor &kernelAnchor, NVCVBorderType borderMode) const;
 
 private:
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::AverageBlur>         m_legacyOp;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::AverageBlurVarShape> m_legacyOpVarShape;
+    // Construction-time caps that the operator's public contract makes observable: a kernel larger
+    // than maxKernelSize or a batch larger than maxBatchSize is rejected, not silently handled.
+    nvcv::Size2D m_maxKernelSize;
+    int          m_maxBatchSize;
 };
 
 } // namespace cvcuda::priv

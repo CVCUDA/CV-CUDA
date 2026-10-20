@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +31,8 @@ __global__ void InterpShift(DstWrapper dst, SrcWrapper src, int numBatches, floa
 {
     int3 dstCoord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
 
-    if (dstCoord.x >= dst.width(dstCoord.z) || dstCoord.y >= dst.height(dstCoord.z) || dstCoord.z >= numBatches)
+    // dstCoord.z must be bounded first: width()/height() do not bound the sample index.
+    if (dstCoord.z >= numBatches || dstCoord.x >= dst.width(dstCoord.z) || dstCoord.y >= dst.height(dstCoord.z))
     {
         return;
     }
@@ -45,6 +46,10 @@ template<class DstWrapper, class SrcWrapper>
 void DeviceRunInterpVarShapeShift(DstWrapper &dstWrap, SrcWrapper &srcWrap, int3 dstMaxSize, float2 shift,
                                   cudaStream_t &stream)
 {
+    // grid.z rounds up, so an odd dstMaxSize.z over-launches z by up to block.z - 1 samples:
+    // InterpShift must bound dstCoord.z ahead of the width/height accessors. Nothing here asserts
+    // that -- the surplus threads write nothing either way, so a regression is only visible under
+    // compute-sanitizer.
     dim3 block{32, 2, 2};
     dim3 grid{(dstMaxSize.x + block.x - 1) / block.x, (dstMaxSize.y + block.y - 1) / block.y,
               (dstMaxSize.z + block.z - 1) / block.z};

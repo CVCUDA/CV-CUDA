@@ -76,6 +76,8 @@ NVCV_TEST_INST(uint2, float2);
 NVCV_TEST_INST(uchar2, double2);
 NVCV_TEST_INST(char2, double2);
 NVCV_TEST_INST(short2, double2);
+NVCV_TEST_INST(longlong2, double2);
+NVCV_TEST_INST(ulonglong3, double3);
 
 NVCV_TEST_INST(short1, char1);
 NVCV_TEST_INST(ulonglong2, ulong2);

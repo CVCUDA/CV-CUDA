@@ -17,6 +17,7 @@
 
 #include "priv/OpResizeCropConvertReformat.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -51,6 +52,8 @@ CVCUDA_DEFINE_API(0, 10, NVCVStatus, cvcudaResizeCropConvertReformatSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &resizeDim, &interpolation, &cropPos, &manip, &scale, &offset, &srcCast]
         {
+            priv::CheckEnumArg(interpolation, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(manip, NVCV_CHANNEL_REVERSE, "channel manipulation");
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
             priv::ToDynamicRef<priv::ResizeCropConvertReformat>(handle)(stream, input.resource(), output.resource(),
@@ -68,6 +71,8 @@ CVCUDA_DEFINE_API(0, 10, NVCVStatus, cvcudaResizeCropConvertReformatVarShapeSubm
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &resizeDim, &interpolation, &cropPos, &manip, &scale, &offset, &srcCast]
         {
+            priv::CheckEnumArg(interpolation, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(manip, NVCV_CHANNEL_REVERSE, "channel manipulation");
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::TensorWrapHandle             output(out);
             priv::ToDynamicRef<priv::ResizeCropConvertReformat>(handle)(stream, input.resource(), output.resource(),

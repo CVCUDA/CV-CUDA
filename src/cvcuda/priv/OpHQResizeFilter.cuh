@@ -17,6 +17,7 @@
 #ifndef CVCUDA_PRIV_HQ_RESIZE_FILTER_CUH
 #define CVCUDA_PRIV_HQ_RESIZE_FILTER_CUH
 
+#include "OpHQResizePolicy.hpp"
 #include "PerDeviceResource.hpp"
 
 #include <cuda_runtime.h>
@@ -251,8 +252,11 @@ public:
 
     static constexpr int kTriangularSize = 3;
     static constexpr int kGaussianSize   = 65;
-    static constexpr int kCubicSize      = 129;
+    static constexpr int kCubicSize      = kCubicFilterCoefficients;
     static constexpr int kLanczosSize    = (2 * kLanczosA * kLanczosResolution + 1);
+
+    static_assert(kCubicSize != kTriangularSize && kCubicSize != kGaussianSize && kCubicSize != kLanczosSize,
+                  "The adaptive layout identifies the cubic table by its unique coefficient count");
 
     static constexpr int kTotalSize = kTriangularSize + kGaussianSize + kCubicSize + kLanczosSize;
 
@@ -264,6 +268,11 @@ public:
     int GetDeviceComputeCapability() const
     {
         return m_state.get().computeCapability;
+    }
+
+    int GetDeviceMultiprocessorCount() const
+    {
+        return m_state.get().multiprocessorCount;
     }
 
     ResamplingFilter CreateCubic(float radius = 2.0f) const
@@ -300,6 +309,7 @@ private:
         std::unique_ptr<float, std::function<void(void *)>> filterDataGpu;
         ResamplingFilter                                    filters[kNumFilters];
         int                                                 computeCapability{};
+        int                                                 multiprocessorCount{};
 
         explicit DeviceFilterState(int deviceId)
         {
@@ -307,6 +317,7 @@ private:
             int minor{};
             NVCV_CHECK_THROW(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, deviceId));
             NVCV_CHECK_THROW(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, deviceId));
+            NVCV_CHECK_THROW(cudaDeviceGetAttribute(&multiprocessorCount, cudaDevAttrMultiProcessorCount, deviceId));
             computeCapability = major * 10 + minor;
 
             std::unique_ptr<float, std::function<void(void *)>> filterDataPinned;

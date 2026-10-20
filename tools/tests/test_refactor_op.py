@@ -303,8 +303,7 @@ def test_resolve_op_attributes_legacy_kernels_to_the_owning_op():
         p.relative_to(m.REPO / "src/cvcuda/priv").as_posix()
         for p in m.resolve_op("Gaussian").priv
     }
-    assert "legacy/filter.cu" in priv
-    assert "legacy/filter_var_shape.cu" in priv
+    assert "FilterCommon.cuh" in priv
     assert not any("gaussian_noise" in p for p in priv)
 
 
@@ -349,7 +348,7 @@ def test_verify_api_rejects_reachable_binding_alias_change(monkeypatch):
     m = _module()
     baseline = (REPO / "python/mod_cvcuda/operators/OpHQResize.cpp").read_text()
     candidate = baseline.replace(
-        "using Roi  = pybind11::tuple;", "using Roi  = pybind11::list;", 1
+        "using Roi  = nanobind::tuple;", "using Roi  = nanobind::list;", 1
     )
 
     finding = _mock_binding_only_diff(m, monkeypatch, baseline, candidate)
@@ -361,8 +360,8 @@ def test_verify_api_marks_unparseable_binding_surface_manual(monkeypatch):
     m = _module()
     baseline = (REPO / "python/mod_cvcuda/operators/OpHQResize.cpp").read_text()
     candidate = baseline.replace(
-        "using Roi  = pybind11::tuple;",
-        "using Roi  = decltype([] { return pybind11::tuple{}; }());",
+        "using Roi  = nanobind::tuple;",
+        "using Roi  = decltype([] { return nanobind::tuple{}; }());",
         1,
     )
 
@@ -466,12 +465,12 @@ def test_simulate_hoist_predicts_the_red2_delta():
     data = json.loads(
         run(
             "--simulate-hoist",
-            "ValidateSrcDstTensors,ValidateSrcDstVarBatch",
+            "ClassifyElemType,ClassifyDataType",
             "--format",
             "json",
         ).stdout
     )
-    assert data["hoisted"] == ["ValidateSrcDstTensors", "ValidateSrcDstVarBatch"]
+    assert data["hoisted"] == ["ClassifyDataType", "ClassifyElemType"]
     rows = data["operators"]
     assert rows, "these helpers are duplicated, so some operator must be affected"
     assert all(r["after"] <= r["before"] for r in rows)
@@ -504,7 +503,7 @@ def test_min_block_lines_sweep_is_monotonic_and_bounded():
         counts[n] = leads(
             json.loads(
                 run(
-                    "Invert",
+                    "CopyMakeBorder",
                     "--domain",
                     "impl",
                     "--min-block-lines",
@@ -519,7 +518,9 @@ def test_min_block_lines_sweep_is_monotonic_and_bounded():
         counts[6]
     ), "floor 2 must surface small helpers floor 6 hides"
 
-    default = json.loads(run("Invert", "--domain", "impl", "--format", "json").stdout)
+    default = json.loads(
+        run("CopyMakeBorder", "--domain", "impl", "--format", "json").stdout
+    )
     assert counts[6] == leads(default)
 
 

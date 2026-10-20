@@ -19,6 +19,7 @@
 #include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
+#include <common/DeviceBuffer.hpp>
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpJointBilateralFilter.hpp>
@@ -27,6 +28,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -712,6 +714,396 @@ static std::vector<float> CPUJointBilateralFilterFloatHwc(const std::vector<floa
     return dst;
 }
 
+static std::vector<float> PadJointBilateralFloatReflect(const std::vector<float> &values, int width, int height)
+{
+    constexpr int channels     = 3;
+    constexpr int radius       = 2;
+    const int     paddedWidth  = width + 2 * radius;
+    const int     paddedHeight = height + 2 * radius;
+    const auto    reflect      = [](int coordinate, int extent)
+    {
+        const int period = 2 * extent;
+        const int folded = ((coordinate % period) + period) % period;
+        return folded < extent ? folded : period - folded - 1;
+    };
+    std::vector<float> result(static_cast<size_t>(paddedWidth) * paddedHeight * channels);
+    for (int row = 0; row < paddedHeight; ++row)
+    {
+        for (int column = 0; column < paddedWidth; ++column)
+        {
+            const int sourceIndex
+                = (reflect(row - radius, height) * width + reflect(column - radius, width)) * channels;
+            const int targetIndex = (row * paddedWidth + column) * channels;
+            for (int channel = 0; channel < channels; ++channel)
+            {
+                result[targetIndex + channel] = values[sourceIndex + channel];
+            }
+        }
+    }
+    return result;
+}
+
+static void ExpectJointBilateralFloatReflect(const std::vector<uint8_t> &output, const std::vector<float> &gold,
+                                             int width, int height)
+{
+    constexpr int channels    = 3;
+    constexpr int radius      = 2;
+    const int     paddedWidth = width + 2 * radius;
+    for (int row = 0; row < height; ++row)
+    {
+        for (int column = 0; column < width; ++column)
+        {
+            for (int channel = 0; channel < channels; ++channel)
+            {
+                float     actual;
+                const int index = (row * width + column) * channels + channel;
+                std::memcpy(&actual, output.data() + index * sizeof(float), sizeof(float));
+                const float expected = gold[((row + radius) * paddedWidth + column + radius) * channels + channel];
+                EXPECT_NEAR(actual, expected, 1e-5f) << "independent bounded FP32 reference; row=" << row
+                                                     << " column=" << column << " channel=" << channel;
+            }
+        }
+    }
+}
+
+static void RunJointBilateralFloatReflectReference(bool planar)
+{
+    constexpr int channels = 3;
+    constexpr int batch    = 2;
+    constexpr int radius   = 2;
+    const auto    format   = planar ? nvcv::FMT_RGBf32p : nvcv::FMT_RGBf32;
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::JointBilateralFilter op;
+    for (const auto size : {
+             nvcv::Size2D{  1,  1},
+             nvcv::Size2D{  3,  2},
+             nvcv::Size2D{ 63,  7},
+             nvcv::Size2D{ 64,  8},
+             nvcv::Size2D{ 65,  9},
+             nvcv::Size2D{ 64, 16},
+             nvcv::Size2D{ 65, 17},
+             nvcv::Size2D{127, 31},
+             nvcv::Size2D{128, 32},
+             nvcv::Size2D{129, 33}
+    })
+    {
+        SCOPED_TRACE(::testing::Message() << size.w << "x" << size.h << " planar=" << planar);
+        auto src       = nvcv::util::CreateTensor(batch, size.w, size.h, format);
+        auto guide     = nvcv::util::CreateTensor(batch, size.w, size.h, format);
+        auto dst       = nvcv::util::CreateTensor(batch, size.w, size.h, format);
+        auto srcData   = src.exportData<nvcv::TensorDataStridedCuda>();
+        auto guideData = guide.exportData<nvcv::TensorDataStridedCuda>();
+        auto dstData   = dst.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(srcData && guideData && dstData);
+        auto srcAccess   = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+        auto guideAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*guideData);
+        auto dstAccess   = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+        ASSERT_TRUE(srcAccess && guideAccess && dstAccess);
+
+        const int                       paddedWidth  = size.w + 2 * radius;
+        const int                       paddedHeight = size.h + 2 * radius;
+        std::vector<std::vector<float>> gold(batch);
+        for (int sample = 0; sample < batch; ++sample)
+        {
+            std::vector<float> input(size.w * size.h * channels);
+            std::vector<float> color(input.size());
+            for (size_t index = 0; index < input.size(); ++index)
+            {
+                input[index] = static_cast<float>((index * 13 + sample * 7) % 67) / 32.f - 1.f;
+                color[index] = static_cast<float>((index * 17 + sample * 11) % 71) / 32.f - 1.f;
+            }
+            const auto paddedInput = PadJointBilateralFloatReflect(input, size.w, size.h);
+            const auto paddedColor = PadJointBilateralFloatReflect(color, size.w, size.h);
+            gold[sample] = CPUJointBilateralFilterFloatHwc(paddedInput, paddedColor, paddedWidth, paddedHeight,
+                                                           channels, -1, -1.f, 1.2f);
+            auto upload  = [&](const auto &access, const std::vector<float> &values)
+            {
+                std::vector<uint8_t> bytes(values.size() * sizeof(float));
+                std::memcpy(bytes.data(), values.data(), bytes.size());
+                if (planar)
+                {
+                    auto planes
+                        = nvcv::test::planar::DeinterleaveToPlanes(bytes, size.w, size.h, channels, sizeof(float));
+                    nvcv::test::planar::UploadPlanarSample(access, sample, planes, size.w, size.h, channels,
+                                                           sizeof(float));
+                }
+                else
+                {
+                    nvcv::test::planar::UploadInterleavedSample(access, sample, bytes, size.w, size.h,
+                                                                size.w * channels * sizeof(float));
+                }
+            };
+            upload(*srcAccess, input);
+            upload(*guideAccess, color);
+        }
+        op(stream, src, guide, dst, -1, -1.f, 1.2f, NVCV_BORDER_REFLECT);
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        for (int sample = 0; sample < batch; ++sample)
+        {
+            auto output = planar ? nvcv::test::planar::InterleaveFromPlanes(
+                              nvcv::test::planar::DownloadPlanarSample(*dstAccess, sample, size.w, size.h, channels,
+                                                                       sizeof(float)),
+                              size.w, size.h, channels, sizeof(float))
+                                 : nvcv::test::planar::DownloadInterleavedSample(*dstAccess, sample, size.w, size.h,
+                                                                                 size.w * channels * sizeof(float));
+            SCOPED_TRACE(::testing::Message() << "sample=" << sample);
+            ExpectJointBilateralFloatReflect(output, gold[sample], size.w, size.h);
+        }
+    }
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpJointBilateralFilterFloat, tensor_nhwc_reflect_auto_radius_matches_cpu_reference)
+{
+    RunJointBilateralFloatReflectReference(false);
+}
+
+TEST(OpJointBilateralFilterFloat, tensor_nchw_reflect_auto_radius_matches_cpu_reference)
+{
+    RunJointBilateralFloatReflectReference(true);
+}
+
+struct JointBilateralChwReferenceInputs
+{
+    int                         width;
+    int                         height;
+    bool                        padded;
+    const std::vector<float>   &paddedInput;
+    const std::vector<float>   &paddedGuide;
+    const std::vector<uint8_t> &inputPlanes;
+    const std::vector<uint8_t> &guidePlanes;
+};
+
+static void SubmitJointBilateralFloatReflect(cvcuda::JointBilateralFilter &op, cudaStream_t stream,
+                                             const nvcv::Tensor &source, const nvcv::Tensor &guide,
+                                             const nvcv::Tensor &output, int diameter,
+                                             const std::array<float, 2> &sigmas)
+{
+    ASSERT_NO_THROW(op(stream, source, guide, output, diameter, sigmas[0], sigmas[1], NVCV_BORDER_REFLECT));
+}
+
+static std::vector<uint8_t> PackJointBilateralChwStorage(const std::vector<uint8_t> &planes, int width, int height,
+                                                         size_t rowStride, size_t planeStride, size_t allocationBytes)
+{
+    constexpr int        channels   = 3;
+    constexpr size_t     guardBytes = 32;
+    constexpr auto       canary     = uint8_t{0xA5};
+    const size_t         rowBytes   = static_cast<size_t>(width) * sizeof(float);
+    std::vector<uint8_t> bytes(allocationBytes, canary);
+    for (int channel = 0; channel < channels; ++channel)
+    {
+        for (int row = 0; row < height; ++row)
+        {
+            std::memcpy(bytes.data() + guardBytes + channel * planeStride + row * rowStride,
+                        planes.data() + (static_cast<size_t>(channel) * height + row) * rowBytes, rowBytes);
+        }
+    }
+    return bytes;
+}
+
+static void ExpectJointBilateralChwStorage(const std::array<uint8_t *, 3>            &allocations,
+                                           const std::array<size_t, 3>               &allocationBytes,
+                                           const std::array<std::vector<uint8_t>, 3> &expectedStorage)
+{
+    for (size_t role = 0; role < allocations.size(); ++role)
+    {
+        SCOPED_TRACE(::testing::Message() << "allocation=" << role);
+        std::vector<uint8_t> actual(allocationBytes[role]);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), allocations[role], actual.size(), cudaMemcpyDeviceToHost));
+        EXPECT_EQ(expectedStorage[role], actual) << "source immutability or output padding changed";
+    }
+}
+
+static void InitializeJointBilateralChwStorageLayout(int width, int height, bool padded,
+                                                     std::array<size_t, 3> &rowStrides,
+                                                     std::array<size_t, 3> &planeStrides,
+                                                     std::array<size_t, 3> &allocationBytes)
+{
+    constexpr int    channels   = 3;
+    constexpr size_t guardBytes = 32;
+    const size_t     rowBytes   = static_cast<size_t>(width) * sizeof(float);
+    for (size_t role = 0; role < rowStrides.size(); ++role)
+    {
+        rowStrides[role]      = rowBytes + (padded ? (role * 2 + 3) * sizeof(float) : 0);
+        planeStrides[role]    = rowStrides[role] * height + (padded ? (role * 4 + 5) * sizeof(float) : 0);
+        allocationBytes[role] = 2 * guardBytes + channels * planeStrides[role];
+    }
+}
+
+static nvcv::Tensor MakeJointBilateralChwTensor(int width, int height, bool chw, uint8_t *allocation, size_t rowStride,
+                                                size_t planeStride)
+{
+    constexpr int    channels   = 3;
+    constexpr size_t guardBytes = 32;
+    const auto shape = chw ? nvcv::TensorShape{{channels, height, width}, "CHW"}
+                           : nvcv::TensorShape{{1, channels, height, width}, "NCHW"};
+    nvcv::TensorDataStridedCuda::Buffer buffer{};
+    buffer.basePtr                       = reinterpret_cast<NVCVByte *>(allocation + guardBytes);
+    const int channelDimension           = chw ? 0 : 1;
+    buffer.strides[0]                    = channels * planeStride;
+    buffer.strides[channelDimension]     = planeStride;
+    buffer.strides[channelDimension + 1] = rowStride;
+    buffer.strides[channelDimension + 2] = sizeof(float);
+    return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_F32, buffer});
+}
+
+static void RunJointBilateralChwFloatReflectLayout(const JointBilateralChwReferenceInputs &inputs,
+                                                   test::StreamGuard &stream, cvcuda::JointBilateralFilter &op,
+                                                   const std::array<float, 2> &sigmas, bool chw,
+                                                   std::array<std::vector<uint8_t>, 3> &chwOutputs)
+{
+    constexpr int  channels                                                                 = 3;
+    constexpr int  radius                                                                   = 2;
+    constexpr auto canary                                                                   = uint8_t{0xA5};
+    const auto &[width, height, padded, paddedInput, paddedGuide, inputPlanes, guidePlanes] = inputs;
+    const int             paddedWidth                                                       = width + 2 * radius;
+    const int             paddedHeight                                                      = height + 2 * radius;
+    std::array<size_t, 3> rowStrides;
+    std::array<size_t, 3> planeStrides;
+    std::array<size_t, 3> allocationBytes;
+    InitializeJointBilateralChwStorageLayout(width, height, padded, rowStrides, planeStrides, allocationBytes);
+    test::DeviceBuffer<uint8_t>    sourceStorage(allocationBytes[0]);
+    test::DeviceBuffer<uint8_t>    guideStorage(allocationBytes[1]);
+    test::DeviceBuffer<uint8_t>    outputStorage(allocationBytes[2]);
+    const std::array<uint8_t *, 3> allocations{sourceStorage.get(), guideStorage.get(), outputStorage.get()};
+    for (auto allocation : allocations)
+    {
+        ASSERT_NE(nullptr, allocation);
+    }
+    const auto sourceBytes
+        = PackJointBilateralChwStorage(inputPlanes, width, height, rowStrides[0], planeStrides[0], allocationBytes[0]);
+    const auto colorBytes
+        = PackJointBilateralChwStorage(guidePlanes, width, height, rowStrides[1], planeStrides[1], allocationBytes[1]);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(sourceStorage.get(), sourceBytes.data(), sourceBytes.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(guideStorage.get(), colorBytes.data(), colorBytes.size(), cudaMemcpyHostToDevice));
+    auto sourceTensor = MakeJointBilateralChwTensor(width, height, chw, allocations[0], rowStrides[0], planeStrides[0]);
+    auto guideTensor  = MakeJointBilateralChwTensor(width, height, chw, allocations[1], rowStrides[1], planeStrides[1]);
+    auto outputTensor = MakeJointBilateralChwTensor(width, height, chw, allocations[2], rowStrides[2], planeStrides[2]);
+    const auto outputData = outputTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(outputData);
+    const auto outputAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outputData);
+    ASSERT_TRUE(outputAccess);
+    ASSERT_EQ(1, outputAccess->numSamples());
+    std::vector<uint8_t>     automaticRadiusOutput;
+    const std::array<int, 3> diameters{-1, 4, 5};
+    for (size_t parameter = 0; parameter < diameters.size(); ++parameter)
+    {
+        const int diameter = diameters[parameter];
+        SCOPED_TRACE(::testing::Message() << "diameter=" << diameter);
+        const auto gold = CPUJointBilateralFilterFloatHwc(paddedInput, paddedGuide, paddedWidth, paddedHeight, channels,
+                                                          diameter, sigmas[0], sigmas[1]);
+        ASSERT_EQ(cudaSuccess, cudaMemsetAsync(outputStorage.get(), canary, allocationBytes[2], stream.get()));
+        SubmitJointBilateralFloatReflect(op, stream.get(), sourceTensor, guideTensor, outputTensor, diameter, sigmas);
+        if (::testing::Test::HasFatalFailure())
+        {
+            return;
+        }
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream.get()));
+        const auto planes
+            = test::planar::DownloadPlanarSample(*outputAccess, 0, width, height, channels, sizeof(float));
+        const auto output = test::planar::InterleaveFromPlanes(planes, width, height, channels, sizeof(float));
+        ExpectJointBilateralFloatReflect(output, gold, width, height);
+        if (parameter == 0)
+        {
+            automaticRadiusOutput = planes;
+        }
+        else
+        {
+            EXPECT_EQ(automaticRadiusOutput, planes) << "explicit and automatic radius-2 byte parity";
+        }
+        if (chw)
+        {
+            chwOutputs[parameter] = planes;
+        }
+        else
+        {
+            EXPECT_EQ(chwOutputs[parameter], planes) << "CHW/NCHW byte parity, not the CPU oracle";
+        }
+        const std::array<std::vector<uint8_t>, 3> expectedStorage{
+            sourceBytes, colorBytes,
+            PackJointBilateralChwStorage(planes, width, height, rowStrides[2], planeStrides[2], allocationBytes[2])};
+        ExpectJointBilateralChwStorage(allocations, allocationBytes, expectedStorage);
+        if (::testing::Test::HasFatalFailure())
+        {
+            return;
+        }
+    }
+}
+
+static void RunJointBilateralChwFloatReflectReference(int width, int height, bool padded)
+{
+    constexpr int      channels = 3;
+    std::vector<float> input(static_cast<size_t>(width) * height * channels);
+    std::vector<float> guide(input.size());
+    for (size_t element = 0; element < input.size(); ++element)
+    {
+        input[element] = static_cast<float>((element * 13 + 7) % 67) / 32.f - 1.f;
+        guide[element] = static_cast<float>((element * 17 + 11) % 71) / 32.f - 1.f;
+    }
+    const auto           paddedInput = PadJointBilateralFloatReflect(input, width, height);
+    const auto           paddedGuide = PadJointBilateralFloatReflect(guide, width, height);
+    std::vector<uint8_t> inputBytes(input.size() * sizeof(float));
+    std::vector<uint8_t> guideBytes(guide.size() * sizeof(float));
+    std::memcpy(inputBytes.data(), input.data(), inputBytes.size());
+    std::memcpy(guideBytes.data(), guide.data(), guideBytes.size());
+    const auto inputPlanes = test::planar::DeinterleaveToPlanes(inputBytes, width, height, channels, sizeof(float));
+    const auto guidePlanes = test::planar::DeinterleaveToPlanes(guideBytes, width, height, channels, sizeof(float));
+
+    const JointBilateralChwReferenceInputs inputs{width,       height,      padded,     paddedInput,
+                                                  paddedGuide, inputPlanes, guidePlanes};
+    test::StreamGuard                      stream;
+    ASSERT_NE(nullptr, stream.get());
+    cvcuda::JointBilateralFilter op;
+    for (const auto sigmas : {
+             std::array<float, 2>{ -1.f,  1.2f},
+              std::array<float, 2>{ -1.f,  -1.f},
+              std::array<float, 2>{0.75f, 1.25f}
+    })
+    {
+        SCOPED_TRACE(::testing::Message() << "sigmaColor=" << sigmas[0] << " sigmaSpace=" << sigmas[1]);
+        std::array<std::vector<uint8_t>, 3> chwOutputs;
+        for (const bool chw : {true, false})
+        {
+            SCOPED_TRACE(::testing::Message() << "layout=" << (chw ? "CHW" : "NCHW"));
+            RunJointBilateralChwFloatReflectLayout(inputs, stream, op, sigmas, chw, chwOutputs);
+            if (::testing::Test::HasFatalFailure())
+            {
+                return;
+            }
+        }
+    }
+}
+
+NVCV_TEST_SUITE_P(OpJointBilateralFilterChwFloat, test::ValueList<int, int, bool>{
+                                                      {  1,  1, false},
+                                                      {  3,  2, false},
+                                                      { 63,  3, false},
+                                                      { 64,  4, false},
+                                                      { 65,  5, false},
+                                                      { 63,  7, false},
+                                                      { 64,  8, false},
+                                                      { 65,  9, false},
+                                                      {129, 17, false},
+                                                      {  1,  1,  true},
+                                                      {  3,  2,  true},
+                                                      { 63,  3,  true},
+                                                      { 64,  4,  true},
+                                                      { 65,  5,  true},
+                                                      { 63,  7,  true},
+                                                      { 64,  8,  true},
+                                                      { 65,  9,  true},
+                                                      {129, 17,  true},
+});
+
+TEST_P(OpJointBilateralFilterChwFloat, reflect_radius_two_matches_gold_and_nchw_exactly)
+{
+    RunJointBilateralChwFloatReflectReference(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>());
+}
+
 static void RunJointBilateralPackedTensorHalfReference(nvcv::ImageFormat fmt)
 {
     cudaStream_t stream;
@@ -875,6 +1267,180 @@ TEST(OpJointBilateralFilterPlanar, tensor_rgbf16_matches_interleaved)
 TEST(OpJointBilateralFilterPlanar, tensor_rgbaf16_matches_interleaved)
 {
     RunJointBilateralTensorPlanarParity(nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16p, NVCV_BORDER_CONSTANT);
+}
+
+TEST(OpJointBilateralFilterPlanar, tensor_rgbf32_matches_interleaved)
+{
+    cvcuda::JointBilateralFilter op;
+    auto invoke = [&op](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst, nvcv::ImageFormat)
+    {
+        op(stream, src, src, dst, 5, 15.f, 3.f, NVCV_BORDER_CONSTANT);
+    };
+    auto makeInput = [](int sample, int width, int height, int channels)
+    {
+        std::vector<uint8_t> input(static_cast<size_t>(width) * height * channels * sizeof(float));
+        nvcv::test::planar::FillDeterministicValues(input, static_cast<size_t>(sample) * 101 + 1, nvcv::TYPE_F32);
+        return input;
+    };
+    auto compare = [](const std::vector<uint8_t> &interleaved, const std::vector<uint8_t> &planar)
+    {
+        ASSERT_EQ(interleaved.size(), planar.size());
+        ASSERT_EQ(interleaved.size() % sizeof(float), 0);
+        for (size_t offset = 0; offset < interleaved.size(); offset += sizeof(float))
+        {
+            float interleavedValue;
+            float planarValue;
+            std::memcpy(&interleavedValue, interleaved.data() + offset, sizeof(float));
+            std::memcpy(&planarValue, planar.data() + offset, sizeof(float));
+            ASSERT_TRUE(std::isfinite(interleavedValue));
+            ASSERT_TRUE(std::isfinite(planarValue));
+            EXPECT_NEAR(interleavedValue, planarValue, 1e-4f) << "at byte offset " << offset;
+        }
+    };
+    nvcv::test::planar::RunTensorParity(nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, 33, 25, 33, 25, 2, invoke, makeInput,
+                                        compare);
+}
+
+TEST(OpJointBilateralFilter, tensor_hwc_single_sample_valid_dispatch)
+{
+    constexpr int   width        = 17;
+    constexpr int   height       = 9;
+    constexpr int   channels     = 3;
+    constexpr int   batch        = 1;
+    constexpr int   diameter     = 4;
+    constexpr float sigmaColor   = 5.f;
+    constexpr float sigmaSpace   = 3.f;
+    constexpr int   rowStride    = width * channels;
+    constexpr int   sampleStride = height * rowStride;
+
+    std::vector<uint8_t> input(sampleStride);
+    std::vector<uint8_t> inputColor(sampleStride);
+    std::vector<uint8_t> output(sampleStride, 0);
+    std::vector<uint8_t> gold(sampleStride, 0);
+    for (int i = 0; i < sampleStride; ++i)
+    {
+        input[i]      = static_cast<uint8_t>((i * 29 + 7) % 251);
+        inputColor[i] = static_cast<uint8_t>((i * 17 + 13) % 251);
+    }
+
+    nvcv::Tensor imgIn(
+        {
+            {height, width, channels},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor imgInColor(
+        {
+            {height, width, channels},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor imgOut(
+        {
+            {height, width, channels},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+
+    auto inData      = imgIn.exportData<nvcv::TensorDataStridedCuda>();
+    auto inColorData = imgInColor.exportData<nvcv::TensorDataStridedCuda>();
+    auto outData     = imgOut.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inData && inColorData && outData);
+    auto inAccess      = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
+    auto inColorAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inColorData);
+    auto outAccess     = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
+    ASSERT_TRUE(inAccess && inColorAccess && outAccess);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(inAccess->sampleData(0), inAccess->rowStride(), input.data(), rowStride,
+                                        rowStride, height, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(inColorAccess->sampleData(0), inColorAccess->rowStride(), inputColor.data(),
+                                        rowStride, rowStride, height, cudaMemcpyHostToDevice));
+
+    CPUJointBilateralFilterTensor(input, inputColor, gold, width, height, batch, rowStride, channels, sampleStride,
+                                  diameter, sigmaColor, sigmaSpace);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::JointBilateralFilter op;
+    EXPECT_NO_THROW(op(stream, imgIn, imgInColor, imgOut, diameter, sigmaColor, sigmaSpace, NVCV_BORDER_CONSTANT));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(output.data(), rowStride, outAccess->sampleData(0), outAccess->rowStride(),
+                                        rowStride, height, cudaMemcpyDeviceToHost));
+    ASSERT_TRUE(CompareTensors(output, gold, width, height, batch, rowStride, channels, sampleStride, 0.9f));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpJointBilateralFilter, tensor_chw_single_sample_valid_dispatch)
+{
+    constexpr int   width        = 17;
+    constexpr int   height       = 9;
+    constexpr int   channels     = 3;
+    constexpr int   batch        = 1;
+    constexpr int   diameter     = 4;
+    constexpr float sigmaColor   = 5.f;
+    constexpr float sigmaSpace   = 3.f;
+    constexpr int   rowStride    = width * channels;
+    constexpr int   sampleStride = height * rowStride;
+
+    std::vector<uint8_t> input(sampleStride);
+    std::vector<uint8_t> inputColor(sampleStride);
+    std::vector<uint8_t> output(sampleStride, 0);
+    std::vector<uint8_t> gold(sampleStride, 0);
+    for (int i = 0; i < sampleStride; ++i)
+    {
+        input[i]      = static_cast<uint8_t>((i * 29 + 7) % 251);
+        inputColor[i] = static_cast<uint8_t>((i * 17 + 13) % 251);
+    }
+
+    nvcv::Tensor imgIn(
+        {
+            {channels, height, width},
+            "CHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor imgInColor(
+        {
+            {channels, height, width},
+            "CHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor imgOut(
+        {
+            {channels, height, width},
+            "CHW"
+    },
+        nvcv::TYPE_U8);
+
+    auto inData      = imgIn.exportData<nvcv::TensorDataStridedCuda>();
+    auto inColorData = imgInColor.exportData<nvcv::TensorDataStridedCuda>();
+    auto outData     = imgOut.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inData && inColorData && outData);
+    auto inAccess      = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
+    auto inColorAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inColorData);
+    auto outAccess     = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
+    ASSERT_TRUE(inAccess && inColorAccess && outAccess);
+    ASSERT_EQ(1, inAccess->numSamples());
+    ASSERT_EQ(channels, inAccess->numChannels());
+    nvcv::test::planar::UploadPlanarSample(
+        *inAccess, 0, nvcv::test::planar::DeinterleaveToPlanes(input, width, height, channels, sizeof(uint8_t)), width,
+        height, channels, sizeof(uint8_t));
+    nvcv::test::planar::UploadPlanarSample(
+        *inColorAccess, 0,
+        nvcv::test::planar::DeinterleaveToPlanes(inputColor, width, height, channels, sizeof(uint8_t)), width, height,
+        channels, sizeof(uint8_t));
+
+    CPUJointBilateralFilterTensor(input, inputColor, gold, width, height, batch, rowStride, channels, sampleStride,
+                                  diameter, sigmaColor, sigmaSpace);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::JointBilateralFilter op;
+    EXPECT_NO_THROW(op(stream, imgIn, imgInColor, imgOut, diameter, sigmaColor, sigmaSpace, NVCV_BORDER_CONSTANT));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    const auto outputPlanes
+        = nvcv::test::planar::DownloadPlanarSample(*outAccess, 0, width, height, channels, sizeof(uint8_t));
+    output = nvcv::test::planar::InterleaveFromPlanes(outputPlanes, width, height, channels, sizeof(uint8_t));
+    ASSERT_TRUE(CompareTensors(output, gold, width, height, batch, rowStride, channels, sampleStride, 0.9f));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 TEST(OpJointBilateralFilterPlanar, varshape_rgbf16_matches_interleaved)
@@ -1231,6 +1797,146 @@ TEST(OpJointBilateralFilter_Negative, varshape_hasDifferentFormat)
         EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
         EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
     }
+}
+
+// JointBilateralFilter never checked that its three tensors describe the same image, while
+// BilateralFilter always rejected an input/output shape mismatch (see
+// OpBilateralFilter_Negative.rejects_mismatched_output_shape). The kernel takes rows and columns
+// from the *input* accessor and indexes the output and the guide with them, so a mismatch is not
+// merely a surprising result: when the output is the smaller tensor, the tail columns of each row
+// land past the end of the output row, and the last row writes past the end of the allocation.
+//
+// The tests below use a larger output and a larger guide instead, so the erroneous accesses stay
+// inside the allocations and the failure is observable purely as a missing rejection: before the
+// fix the operator runs and returns NVCV_SUCCESS; after it, the shape gate throws.
+TEST(OpJointBilateralFilter_Negative, rejects_mismatched_output_shape)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int   width          = 24;
+    int   height         = 24;
+    int   diameter       = 4;
+    float sigmaColor     = 5;
+    float sigmaSpace     = 3;
+    int   numberOfImages = 5;
+
+    nvcv::Tensor imgIn      = nvcv::util::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
+    nvcv::Tensor imgInColor = nvcv::util::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
+    nvcv::Tensor imgOut     = nvcv::util::CreateTensor(numberOfImages, width + 1, height, nvcv::FMT_U8);
+
+    cvcuda::JointBilateralFilter jointBilateralFilterOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&jointBilateralFilterOp, &stream, &imgIn, &imgInColor, &imgOut, &diameter, &sigmaColor, &sigmaSpace]
+                  {
+                      jointBilateralFilterOp(stream, imgIn, imgInColor, imgOut, diameter, sigmaColor, sigmaSpace,
+                                             NVCV_BORDER_CONSTANT);
+                  }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Same defect on the guide tensor, which only the joint filter has. The guide is wrapped with its
+// own strides but walked with the input's extent, so a differently shaped guide silently reads the
+// wrong pixels (and, when the guide is the smaller tensor, reads past its end).
+TEST(OpJointBilateralFilter_Negative, rejects_mismatched_color_shape)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int   width          = 24;
+    int   height         = 24;
+    int   diameter       = 4;
+    float sigmaColor     = 5;
+    float sigmaSpace     = 3;
+    int   numberOfImages = 5;
+
+    nvcv::Tensor imgIn      = nvcv::util::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
+    nvcv::Tensor imgInColor = nvcv::util::CreateTensor(numberOfImages, width + 1, height, nvcv::FMT_U8);
+    nvcv::Tensor imgOut     = nvcv::util::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
+
+    cvcuda::JointBilateralFilter jointBilateralFilterOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&jointBilateralFilterOp, &stream, &imgIn, &imgInColor, &imgOut, &diameter, &sigmaColor, &sigmaSpace]
+                  {
+                      jointBilateralFilterOp(stream, imgIn, imgInColor, imgOut, diameter, sigmaColor, sigmaSpace,
+                                             NVCV_BORDER_CONSTANT);
+                  }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// The var-shape path checked in.numImages() against out.numImages() but never inColor's, so a guide
+// batch shorter than the output batch had its image list indexed out of bounds by the trailing
+// blocks of the grid (gridDim.z comes from the output batch). This test uses a *longer* guide batch,
+// which is the same missing check with no out-of-bounds access: before the fix the operator runs and
+// returns NVCV_SUCCESS, after it the count gate throws.
+TEST(OpJointBilateralFilter_Negative, varshape_rejects_mismatched_color_image_count)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int width          = 24;
+    const int height         = 24;
+    const int numberOfImages = 5;
+
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgSrcColor;
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < numberOfImages; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{width, height}, nvcv::FMT_U8);
+        imgSrcColor.emplace_back(nvcv::Size2D{width, height}, nvcv::FMT_U8);
+        imgDst.emplace_back(nvcv::Size2D{width, height}, nvcv::FMT_U8);
+    }
+    imgSrcColor.emplace_back(nvcv::Size2D{width, height}, nvcv::FMT_U8);
+
+    nvcv::ImageBatchVarShape batchSrc(numberOfImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    nvcv::ImageBatchVarShape batchSrcColor(numberOfImages + 1);
+    batchSrcColor.pushBack(imgSrcColor.begin(), imgSrcColor.end());
+    nvcv::ImageBatchVarShape batchDst(numberOfImages);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    nvcv::Tensor diameterTensor({{numberOfImages}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor sigmaColorTensor({{numberOfImages}, "N"}, nvcv::TYPE_F32);
+    nvcv::Tensor sigmaSpaceTensor({{numberOfImages}, "N"}, nvcv::TYPE_F32);
+    {
+        std::vector<int>   vDiameter(numberOfImages, 4);
+        std::vector<float> vSigmaColor(numberOfImages, 5.f);
+        std::vector<float> vSigmaSpace(numberOfImages, 3.f);
+
+        auto devDiameter   = diameterTensor.exportData<nvcv::TensorDataStridedCuda>();
+        auto devSigmaColor = sigmaColorTensor.exportData<nvcv::TensorDataStridedCuda>();
+        auto devSigmaSpace = sigmaSpaceTensor.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(devDiameter, nullptr);
+        ASSERT_NE(devSigmaColor, nullptr);
+        ASSERT_NE(devSigmaSpace, nullptr);
+
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(devDiameter->basePtr(), vDiameter.data(), vDiameter.size() * sizeof(int),
+                                               cudaMemcpyHostToDevice, stream));
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(devSigmaColor->basePtr(), vSigmaColor.data(),
+                                               vSigmaColor.size() * sizeof(float), cudaMemcpyHostToDevice, stream));
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(devSigmaSpace->basePtr(), vSigmaSpace.data(),
+                                               vSigmaSpace.size() * sizeof(float), cudaMemcpyHostToDevice, stream));
+    }
+
+    cvcuda::JointBilateralFilter jointBilateralFilterOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&jointBilateralFilterOp, &stream, &batchSrc, &batchSrcColor, &batchDst,
+                                                &diameterTensor, &sigmaColorTensor, &sigmaSpaceTensor]
+                                               {
+                                                   jointBilateralFilterOp(stream, batchSrc, batchSrcColor, batchDst,
+                                                                          diameterTensor, sigmaColorTensor,
+                                                                          sigmaSpaceTensor, NVCV_BORDER_CONSTANT);
+                                               }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 TEST(OpJointBilateralFilter_Negative, create_null_handle)

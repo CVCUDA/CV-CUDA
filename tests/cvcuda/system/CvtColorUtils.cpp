@@ -690,9 +690,9 @@ void convertLabToRGB(vector<T> &dst, const vector<T> &src, size_t numPixels, boo
 
     for (size_t i = 0; i < numPixels; ++i)
     {
-        double lightness = static_cast<double>(src[3 * i]);
-        double a         = static_cast<double>(src[3 * i + 1]);
-        double b         = static_cast<double>(src[3 * i + 2]);
+        auto lightness = static_cast<double>(src[3 * i]);
+        auto a         = static_cast<double>(src[3 * i + 1]);
+        auto b         = static_cast<double>(src[3 * i + 2]);
         if constexpr (kIsU8)
         {
             lightness *= 100.0 / 255.0;

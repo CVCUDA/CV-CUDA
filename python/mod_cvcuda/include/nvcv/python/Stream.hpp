@@ -25,7 +25,7 @@
 
 namespace nvcvpy {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 class Stream : public py::object
 {
@@ -60,36 +60,31 @@ private:
 
 } // namespace nvcvpy
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 namespace cvpy = nvcvpy;
 
 template<>
-struct type_caster<cvpy::Stream> : type_caster_base<cvpy::Stream>
+struct type_caster<cvpy::Stream>
 {
-    PYBIND11_TYPE_CASTER(cvpy::Stream, const_name("cvcuda.Stream"));
+    NB_TYPE_CASTER(cvpy::Stream, const_name("cvcuda.Stream"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *)
     {
-        // Does it have the correct object type?
-        const PyTypeObject *srctype = Py_TYPE(src.ptr());
-        if (strcmp(name.text, srctype->tp_name) == 0)
+        if (cvpy::IsFacadeInstance<cvpy::FacadeType::STREAM>(src.ptr()))
         {
             value = cvpy::Stream(reinterpret_borrow<object>(src));
             return true;
         }
-        else
-        {
-            return false;
-        }
+        return false;
     }
 
-    static handle cast(cvpy::Stream stream, return_value_policy /* policy */, handle /*parent */)
+    static handle from_cpp(cvpy::Stream stream, rv_policy, cleanup_list *) noexcept
     {
         return stream.release();
     }
 };
 
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_STREAM_HPP

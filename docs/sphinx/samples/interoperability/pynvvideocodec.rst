@@ -21,6 +21,22 @@ PyNvVideoCodec provides Python bindings to NVIDIA's hardware-accelerated video c
 It enables efficient video decoding and encoding directly on GPU, perfect for video processing pipelines
 with CV-CUDA.
 
+The sample requirements pin PyNvVideoCodec 2.2.3 for standard CPython 3.10–3.14
+on Linux x86_64 and aarch64. The x86_64 wheels require glibc 2.28 or newer;
+aarch64 requires glibc 2.28 for Python 3.10–3.12 and glibc 2.34 for Python
+3.13–3.14. Free-threaded Python wheels are unavailable, so the sample skips
+when the dependency is missing on that interpreter.
+
+Decoding requires NVDEC-capable hardware; encoding is optional and requires
+NVENC. Upstream Jetson support covers Thor with Jetson Linux 39.2 or newer,
+not Orin/JetPack 6. See the `PyNvVideoCodec system requirements
+<https://docs.nvidia.com/video-technologies/pynvvideocodec/read-me/system-requirements-common.html>`_
+for supported hardware and platform software.
+
+PyNvVideoCodec 2.2.3 returns a list of packet dictionaries from ``Encode`` and
+``EndEncode``. The sample writes each packet's ``data`` bytes, including packets
+buffered until the encoder is flushed.
+
 **Key Points:**
 
 * Hardware-accelerated video decoding (H.264, NV12, etc.)

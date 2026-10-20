@@ -44,9 +44,15 @@ from _internal.baselines import (
     DEFAULT_CONFIG_DIR,
     DEFAULT_SKU_MAP_PATH,
     BaselineError,
+    DEVICE_NAME_COLUMN,
+    MissingClockProfileError,
+    SUPPORTED_CUDA_MAJORS,
     baseline_payload_from_dataframe,
     build_baseline_document,
     load_config_index,
+    load_sku_map,
+    required_clock_for_profile,
+    sku_map_gpu_names,
 )
 from _internal.quality import (
     BenchmarkQualityCriteria,
@@ -58,42 +64,98 @@ from _internal.quality import (
 # GPU CLOCK CONTROL — lock SM clocks during the run + log live clocks
 # =============================================================================
 #
-# Why: across the K8s GPU pool we observed individual nodes whose SM clocks did
-# not boost (entire bench wave 40–75% slower than the rest of the wave on the
-# *same* SHA + same SKU label).  Locking the SM clock to a fixed value before
-# the bench starts eliminates frequency drift as a noise source and makes
-# build-to-build comparisons deterministic.  Locking requires CAP_SYS_ADMIN
-# (or root) — we attempt it and fall back gracefully if denied.
-#
-# Independently, we sample the live SM clock + power + temperature throughout
-# the run and write JSONL next to the bench output.  Even when locking is
-# denied, the log makes it obvious in retrospect why a build's kernel times
-# drifted.
-#
-# Target clock: BENCH_LOCK_SM_CLOCK_MHZ accepts a comma-separated preference
-# list (highest-first).  We intersect it with the device's `clocks.gr.supported`
-# list and pick the highest value present in both.  Default 1095 is the
-# documented base SM clock for both A100 PCIe 40GB and H100 PCIe; we fall back
-# through {1005, 900, 750} for H100 PCIe silicon variants whose supported list
-# does not include 1095 (the driver silently clamps `-lgc 1095,1095` to the
-# closest supported value below, so we have to check ourselves).
+# Nodes with the same SHA and SKU have shown 40–75% timing spread when some
+# GPUs did not boost. Baseline-backed runs therefore request the exact clock in
+# sku_map.json and run a loaded device check immediately before every timed
+# state. This pre-state gate does not sample the timed operator itself. Clock
+# requests need CAP_SYS_ADMIN or root; local runs remain best-effort when that
+# privilege is unavailable. A background sampler preserves clock, power, and
+# temperature diagnostics for later triage.
+
+# Unmapped/best-effort runs prefer the shared A100/H100 PCIe base clock, then
+# lower H100 PCIe bins observed in the CI pool.
 
 _CLOCK_LOCK_PREFERRED_MHZ = [
     int(x)
-    for x in os.environ.get("BENCH_LOCK_SM_CLOCK_MHZ", "1095,1005,900,750").split(",")
+    for x in os.environ.get("BENCH_LOCK_SM_CLOCK_MHZ", "1005,1095,900,750").split(",")
     if x.strip()
 ]
 _CLOCK_SAMPLE_INTERVAL_S = float(os.environ.get("BENCH_CLOCK_SAMPLE_INTERVAL_S", "0.5"))
 _CLOCK_LOG_PATH = os.environ.get("BENCH_CLOCK_LOG", "")  # set after parse_args
+_CLOCK_VERIFY_MAX_ATTEMPTS = 3
+_CLOCK_RESET_ATTEMPTS = 3
+_CLOCK_INELIGIBLE_EXIT_CODE = 3
+_SM_CLOCK_VERIFIED_PREFIX = "SM clock verified:"
+_SM_CLOCK_MISMATCH_PREFIX = "SM clock mismatch:"
+_SM_CLOCK_VERIFICATION_ERROR_PREFIX = "SM clock verification error:"
+_SM_CLOCK_DEVICE_ERROR_PREFIX = "SM clock device error:"
 
-_clock_lock_acquired = False
-# Whether the lock was ever obtained. `_clock_lock_acquired` is cleared during
-# teardown, and the applied-MHz value is the free-running clock when locking
-# failed, so neither can answer "was this run locked?" after the fact.
-_clock_lock_verified = False
+_CLOCK_LOCK_OK = "ok"
+_CLOCK_LOCK_NO_TARGET = "no_target"
+_CLOCK_LOCK_QUERY_FAILED = "query_failed"
+_CLOCK_LOCK_REQUEST_FAILED = "request_failed"
+_CLOCK_LOCK_RESET_FAILED = "reset_failed"
+
+_CLOCK_OUTCOME_SUCCESS = "success"
+_CLOCK_OUTCOME_VERIFIED = "verified"
+_CLOCK_OUTCOME_MISSING_ACK = "missing_ack"
+_CLOCK_OUTCOME_MISMATCH = "mismatch"
+_CLOCK_OUTCOME_PROBE_ERROR = "probe_error"
+_CLOCK_OUTCOME_DEVICE_ERROR = "device_error"
+_CLOCK_OUTCOME_FAILURE = "failure"
+
+_clock_lock_request_accepted = False
 _clock_lock_applied_mhz: Optional[int] = None
+_clock_lock_required_mhz: Optional[int] = None
+_clock_policy_gpu_name: Optional[str] = None
+# Unlike the request state, successful device verification survives teardown
+# so artifact metadata still describes the completed run.
+_clock_lock_device_verified = False
 _clock_sampler_stop = threading.Event()
 _clock_sampler_thread: Optional[threading.Thread] = None
+
+
+class _ClockIneligibleError(RuntimeError):
+    """Raised when a node cannot apply its baseline-backed clock target."""
+
+
+class _ClockRequestError(RuntimeError):
+    """Raised when clock-control tooling cannot apply a requested target."""
+
+
+def _first_line_with(text: str, prefix: str) -> Optional[str]:
+    """Return the first stripped line starting with prefix, if any."""
+    return next(
+        (line.strip() for line in text.splitlines() if line.strip().startswith(prefix)),
+        None,
+    )
+
+
+def _classify_clock_outcome(
+    returncode: int, stdout: str, stderr: str, *, verification_required: bool
+) -> Tuple[str, Optional[str]]:
+    """Classify the benchmark child's clock-verification protocol."""
+    if returncode == 0:
+        if not verification_required:
+            return _CLOCK_OUTCOME_SUCCESS, None
+        acknowledgement = _first_line_with(
+            f"{stdout}\n{stderr}", _SM_CLOCK_VERIFIED_PREFIX
+        )
+        if acknowledgement is None:
+            return _CLOCK_OUTCOME_MISSING_ACK, None
+        return _CLOCK_OUTCOME_VERIFIED, acknowledgement
+
+    if not verification_required:
+        return _CLOCK_OUTCOME_FAILURE, None
+    for prefix, outcome in (
+        (_SM_CLOCK_MISMATCH_PREFIX, _CLOCK_OUTCOME_MISMATCH),
+        (_SM_CLOCK_DEVICE_ERROR_PREFIX, _CLOCK_OUTCOME_DEVICE_ERROR),
+        (_SM_CLOCK_VERIFICATION_ERROR_PREFIX, _CLOCK_OUTCOME_PROBE_ERROR),
+    ):
+        detail = _first_line_with(stderr, prefix)
+        if detail is not None:
+            return outcome, detail
+    return _CLOCK_OUTCOME_FAILURE, None
 
 
 def _nvidia_smi(*args: str, timeout: float = 5.0) -> Optional[str]:
@@ -116,7 +178,7 @@ def _query_supported_sm_clocks_mhz() -> Optional[List[int]]:
     reports success either way, so picking a target without consulting this
     list can land at an unintended clock.  Returns None on parse failure.
     """
-    out = _nvidia_smi("-q", "-d", "SUPPORTED_CLOCKS", "-i", "0", timeout=5.0)
+    out = _nvidia_smi("-q", "-d", "SUPPORTED_CLOCKS", "-i", "0", timeout=10.0)
     if not out:
         return None
     clocks: List[int] = []
@@ -157,42 +219,39 @@ def _query_current_sm_clock_mhz() -> Optional[int]:
         return None
 
 
-def _pick_lock_target(preferred: List[int]) -> Optional[int]:
-    """Pick the highest value from `preferred` that's in the device's
-    supported-clocks list, so `-lgc` lands deterministically.  Falls back
-    to `preferred[0]` if the supported list cannot be queried (e.g.
-    older driver), accepting the risk of silent clamping.
+def _pick_lock_target(
+    preferred: List[int], *, require_supported_clocks: bool = False
+) -> Tuple[Optional[int], bool]:
+    """Pick a preferred value that the device reports as supported.
+
+    The driver silently clamps unsupported ``-lgc`` requests, so strict callers
+    must not guess when the supported-clock query fails. Best-effort callers
+    retain the historical ``preferred[0]`` fallback. The boolean reports
+    whether the supported-clock query succeeded.
     """
     supported = _query_supported_sm_clocks_mhz()
     if supported is None:
-        return preferred[0] if preferred else None
+        fallback = (
+            None if require_supported_clocks else (preferred[0] if preferred else None)
+        )
+        return fallback, False
     supported_set = set(supported)
     for target in preferred:
         if target in supported_set:
-            return target
-    return None
+            return target, True
+    return None, True
 
 
-def _try_lock_sm_clock(preferred: List[int]) -> Tuple[bool, Optional[int]]:
-    """Attempt to lock the SM clock to a value in `preferred` that the device
-    actually supports.
+def _try_lock_sm_clock(
+    preferred: List[int], *, require_supported_clocks: bool = False
+) -> Tuple[str, Optional[int]]:
+    """Prepare clock control, then request the first supported preferred clock.
 
-    Follows the CI GPU-clock-control recipe:
-      1. -acp UNRESTRICTED   (allow per-process clock changes)
-      2. -pm ENABLED         (persistence mode — keeps the driver loaded so
-                              the lock survives idle gaps without snapping
-                              back to default boost/throttle policy)
-      3. -lgc <mhz>,<mhz>    (the actual lock)
-
-    Each step tries `sudo -n` first (CI runners with a sudoers rule) then
-    unprivileged (CI pods with SYS_ADMIN injected via the mutating
-    admission webhook).  Prep-step failures are tolerated.
-
-    Returns (locked, applied_mhz). When `locked` is True, `applied_mhz` is
-    the verified `clocks.current.sm` post-lock — which may differ from the
-    requested target if the driver clamped, so callers should trust this
-    over the requested value.  When `locked` is False, `applied_mhz` is
-    the freerunning sampled clock (best-effort) for diagnostic logging.
+    The sequence enables unrestricted clock changes (``-acp``), persistence
+    across idle gaps (``-pm``), then the graphics-clock lock (``-lgc``).
+    Each command tries ``sudo -n`` for configured CI runners before direct
+    execution for capability-enabled containers; preparation is best-effort.
+    Returns a reason code plus a diagnostic sample.
     """
 
     def _run(args):
@@ -212,56 +271,76 @@ def _try_lock_sm_clock(preferred: List[int]) -> Tuple[bool, Optional[int]]:
 
     # Prep — best effort, ignore failures
     _run(["-acp", "UNRESTRICTED", "-i", "0"])
-    _run(["-pm", "ENABLED", "-i", "0"])
+    _run(["-pm", "ENABLED", "-i", "0"])  # keep the lock across idle gaps
 
-    target = _pick_lock_target(preferred)
+    target, supported_clocks_available = _pick_lock_target(
+        preferred, require_supported_clocks=require_supported_clocks
+    )
     if target is None:
+        if not supported_clocks_available:
+            print(
+                "[clock-lock] WARN: could not query supported SM clocks",
+                file=sys.stderr,
+            )
+            return _CLOCK_LOCK_QUERY_FAILED, _query_current_sm_clock_mhz()
         print(
             f"[clock-lock] WARN: no preferred clock {preferred} is in the "
             f"device's supported list; skipping lock",
             file=sys.stderr,
         )
-        return False, _query_current_sm_clock_mhz()
+        return _CLOCK_LOCK_NO_TARGET, _query_current_sm_clock_mhz()
 
     ok, prefix = _run(["-lgc", f"{target},{target}", "-i", "0"])
     if ok:
         applied = _query_current_sm_clock_mhz()
         mode = "sudo" if prefix == ["sudo", "-n"] else "unprivileged"
-        if applied == target:
-            print(
-                f"[clock-lock] Locked SM clock to {target} MHz ({mode})",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"[clock-lock] Locked SM clock to {target} MHz ({mode}); "
-                f"driver clamped to {applied} MHz",
-                file=sys.stderr,
-            )
-        return True, applied
+        print(
+            f"[clock-lock] Lock request accepted for {target} MHz ({mode}); "
+            f"post-lock sample: {applied} MHz",
+            file=sys.stderr,
+        )
+        return _CLOCK_LOCK_OK, applied
 
     print(
-        f"[clock-lock] WARN: could not lock SM clock to {target} MHz "
-        f"(insufficient permissions); benchmarks may show frequency drift",
+        f"[clock-lock] WARN: could not request {target} MHz; "
+        "benchmarks may show frequency drift",
         file=sys.stderr,
     )
-    return False, _query_current_sm_clock_mhz()
+    return _CLOCK_LOCK_REQUEST_FAILED, _query_current_sm_clock_mhz()
 
 
-def _try_reset_sm_clock() -> None:
+def _try_reset_sm_clock() -> bool:
     """Restore default clock policy.  Safe to call even if lock failed."""
-    for prefix in (["sudo", "-n"], []):
-        try:
-            r = subprocess.run(
-                prefix + ["nvidia-smi", "-rgc"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if r.returncode == 0:
-                return
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
+    for _ in range(_CLOCK_RESET_ATTEMPTS):
+        for prefix in (["sudo", "-n"], []):
+            try:
+                r = subprocess.run(
+                    prefix + ["nvidia-smi", "-rgc", "-i", "0"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if r.returncode == 0:
+                    return True
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                continue
+    return False
+
+
+def _reapply_required_sm_clock() -> str:
+    """Reset and reapply the baseline-backed clock between process attempts."""
+    global _clock_lock_request_accepted, _clock_lock_applied_mhz
+
+    required = _clock_lock_required_mhz
+    if required is None:
+        return _CLOCK_LOCK_REQUEST_FAILED
+
+    if not _try_reset_sm_clock():
+        return _CLOCK_LOCK_RESET_FAILED
+    status, sampled = _try_lock_sm_clock([required], require_supported_clocks=True)
+    _clock_lock_request_accepted = status == _CLOCK_LOCK_OK
+    _clock_lock_applied_mhz = required if _clock_lock_request_accepted else sampled
+    return status
 
 
 def _clock_sampler_loop(out_path: str, interval_s: float) -> None:
@@ -309,44 +388,80 @@ def _clock_sampler_loop(out_path: str, interval_s: float) -> None:
         print(f"[clock-sampler] thread error: {e}", file=sys.stderr)
 
 
-def init_clock_control(out_dir: str) -> None:
+def init_clock_control(
+    out_dir: str,
+    required_mhz: Optional[int] = None,
+) -> None:
     """Lock SM clock + dump GPU fingerprint + start the live-clock sampler.
     Idempotent on cleanup.
     """
-    global _clock_lock_acquired, _clock_lock_applied_mhz, _clock_sampler_thread
-    global _clock_lock_verified
-    if _clock_lock_acquired or _clock_sampler_thread is not None:
+    global _clock_lock_request_accepted, _clock_lock_applied_mhz
+    global _clock_sampler_thread
+    global _clock_lock_required_mhz
+    global _clock_lock_device_verified
+    if _clock_lock_request_accepted or _clock_sampler_thread is not None:
         return  # already initialized
-    _clock_lock_acquired, _clock_lock_applied_mhz = _try_lock_sm_clock(
-        _CLOCK_LOCK_PREFERRED_MHZ
+    _clock_lock_device_verified = False
+    requested = (
+        [required_mhz] if required_mhz is not None else _CLOCK_LOCK_PREFERRED_MHZ
     )
-    _clock_lock_verified = _clock_lock_acquired
+    status, sampled_mhz = _try_lock_sm_clock(
+        requested, require_supported_clocks=required_mhz is not None
+    )
+    _clock_lock_request_accepted = status == _CLOCK_LOCK_OK
+    atexit.register(shutdown_clock_control)
+    _clock_lock_applied_mhz = (
+        required_mhz
+        if required_mhz is not None and status == _CLOCK_LOCK_OK
+        else sampled_mhz
+    )
     _write_gpu_fingerprint(out_dir)
+    if required_mhz is not None and status != _CLOCK_LOCK_OK:
+        if status == _CLOCK_LOCK_NO_TARGET:
+            raise _ClockIneligibleError(
+                f"required {required_mhz} MHz SM clock is not supported by this node"
+            )
+        if status == _CLOCK_LOCK_QUERY_FAILED:
+            raise _ClockRequestError(
+                f"could not query supported SM clocks for required {required_mhz} MHz"
+            )
+        raise _ClockRequestError(f"required {required_mhz} MHz SM clock request failed")
+    _clock_lock_required_mhz = required_mhz
     log_path = _CLOCK_LOG_PATH or os.path.join(out_dir, "clock_log.jsonl")
     _clock_sampler_thread = threading.Thread(
         target=_clock_sampler_loop,
         args=(log_path, _CLOCK_SAMPLE_INTERVAL_S),
         daemon=True,
     )
+    _clock_sampler_stop.clear()
     _clock_sampler_thread.start()
     print(
         f"[clock-sampler] sampling SM clock + power + temp every "
         f"{_CLOCK_SAMPLE_INTERVAL_S:.2f}s -> {log_path}",
         file=sys.stderr,
     )
-    atexit.register(shutdown_clock_control)
 
 
 def shutdown_clock_control() -> None:
     """Stop sampler thread and reset clock lock.  Safe to call multiple times."""
-    global _clock_sampler_thread, _clock_lock_acquired
+    global _clock_sampler_thread, _clock_lock_request_accepted
+    global _clock_lock_applied_mhz
+    global _clock_lock_required_mhz
     if _clock_sampler_thread is not None:
         _clock_sampler_stop.set()
         _clock_sampler_thread.join(timeout=3.0)
         _clock_sampler_thread = None
-    if _clock_lock_acquired:
-        _try_reset_sm_clock()
-        _clock_lock_acquired = False
+    if _clock_lock_request_accepted:
+        if not _try_reset_sm_clock():
+            node = os.environ.get("K8S_NODE_NAME", "unknown")
+            residual = _query_current_sm_clock_mhz()
+            log_warning(
+                "Could not reset the SM clock during benchmark cleanup; "
+                f"node={node} residual_sm_clock_mhz={residual}"
+            )
+        _clock_lock_request_accepted = False
+    _clock_lock_applied_mhz = None
+    _clock_lock_required_mhz = None
 
 
 try:
@@ -486,7 +601,13 @@ PRIORITY_COLUMNS = [
 ]
 
 # Internal nvbench scratch columns we require.
-REQUIRED_SCRATCH_COLS = {"Benchmark", "BWUtil", "Skipped", "GPU Time (sec)"}
+REQUIRED_SCRATCH_COLS = {
+    "Benchmark",
+    "BWUtil",
+    "Skipped",
+    "GPU Time (sec)",
+    DEVICE_NAME_COLUMN,
+}
 
 
 def get_config_cols(df: pd.DataFrame) -> List[str]:
@@ -499,17 +620,7 @@ _POWER_CAP_W_QUERIED = False
 
 
 def query_locked_sm_clock_mhz() -> Optional[int]:
-    """Return the SM clock the bench is effectively running at.
-
-    When init_clock_control() has applied a lock, this is the verified
-    `clocks.current.sm` post-lock (the value the driver actually committed,
-    which may differ from the requested target on H100 silicon variants
-    whose supported-clocks list does not include the requested value).
-
-    When no lock is in effect, this samples the live clock once. The JSON
-    artifact field derived from this is informational on locked runs and noisy
-    on unlocked runs; baselines should be reseeded only from locked runs.
-    """
+    """Return the configured lock target, or a best-effort diagnostic sample."""
     if _clock_lock_applied_mhz is not None:
         return _clock_lock_applied_mhz
     return _query_current_sm_clock_mhz()
@@ -706,6 +817,8 @@ class ValidationResult:
     """Result of all validation checks."""
 
     noise_errors: List[ValidationError] = field(default_factory=list)
+    # Excluded from has_errors/total_errors: an advisory row must not fail the run.
+    noise_warnings: List[ValidationError] = field(default_factory=list)
     config_errors: List[ValidationError] = field(default_factory=list)
     perf_errors: List[ValidationError] = field(default_factory=list)
 
@@ -727,8 +840,15 @@ class ResultsProcessor:
     """Processes benchmark results through a clean transform pipeline."""
 
     def __init__(
-        self, max_noise_pct: float, max_perf_diff_pct: float, max_perf_diff_us: float
+        self,
+        max_noise_pct: float,
+        max_perf_diff_pct: float,
+        max_perf_diff_us: float,
+        noise_scope: Optional[set] = None,
     ):
+        # None means every operator answers for its own noise, which is the
+        # behaviour of a run that was not told what the change under test is.
+        self.noise_scope = noise_scope
         self.quality = BenchmarkQualityCriteria(
             max_noise_pct=max_noise_pct,
             max_perf_diff_pct=max_perf_diff_pct,
@@ -750,7 +870,6 @@ class ResultsProcessor:
 
         df = pd.concat(dfs, ignore_index=True)
         df = self._normalize_dtypes(df)
-        df = self._normalize_int_columns(df)
         df = self._compute_noise_absolute(df)
         df = self._compute_status_and_parity(df, compute_parity)
         df = self._sort_results(df)
@@ -761,13 +880,6 @@ class ResultsProcessor:
         """Normalize C++ dtype names to Python names."""
         if "InOutDataType" in df.columns:
             df["InOutDataType"] = df["InOutDataType"].replace(DTYPE_MAP)
-        return df
-
-    def _normalize_int_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Convert integer columns to nullable Int64 to avoid float/int mismatches."""
-        for col in INT_COLUMNS:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
         return df
 
     def _compute_noise_absolute(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -923,7 +1035,7 @@ class ResultsProcessor:
     def validate(self, df: pd.DataFrame, check_parity: bool = True) -> ValidationResult:
         """Run all validations and return structured result."""
         result = ValidationResult()
-        result.noise_errors = self._check_noise(df)
+        result.noise_errors, result.noise_warnings = self._check_noise(df)
         if check_parity:
             result.config_errors = self._check_config_parity(df)
             result.perf_errors = self._check_perf_parity(df)
@@ -939,22 +1051,37 @@ class ResultsProcessor:
                 )
         return ", ".join(parts)
 
-    def _check_noise(self, df: pd.DataFrame) -> List[ValidationError]:
-        """Check for excessive noise/stddev in benchmark results."""
-        errors = []
+    def _check_noise(
+        self, df: pd.DataFrame
+    ) -> Tuple[List[ValidationError], List[ValidationError]]:
+        """Split excessive-noise rows into blocking errors and warnings.
+
+        Noise is a property of the measurement, not of the change under test. An
+        author cannot steady an operator their MR never touches, so outside the
+        scope the run is answering for, an unstable row is reported and not
+        blocking. Regression and parity checks stay blocking everywhere: those
+        do say something about the change.
+        """
+
+        errors: List[ValidationError] = []
+        warnings: List[ValidationError] = []
         for _, row in df.iterrows():
             noise = row.get("GPU Noise (%)", 0.0)
-            if self.quality.noise_exceeds_limit(noise):
-                lang = row.get("Language", "unknown")
-                config = f"{self._build_config_str(row)} ({lang})"
-                errors.append(
-                    ValidationError(
-                        "high_noise",
-                        config,
-                        {"stddev": noise, "threshold": self.max_noise_pct},
-                    )
-                )
-        return errors
+            if not self.quality.noise_exceeds_limit(noise):
+                continue
+            lang = row.get("Language", "unknown")
+            config = f"{self._build_config_str(row)} ({lang})"
+            error = ValidationError(
+                "high_noise",
+                config,
+                {"stddev": noise, "threshold": self.max_noise_pct},
+            )
+            operator = str(row.get("Benchmark", "")).casefold()
+            if self.noise_scope is not None and operator not in self.noise_scope:
+                warnings.append(error)
+            else:
+                errors.append(error)
+        return errors, warnings
 
     def _check_config_parity(self, df: pd.DataFrame) -> List[ValidationError]:
         """Check that each C++ config has a matching Python config."""
@@ -1014,6 +1141,18 @@ class ResultsProcessor:
                     )
                 )
         return errors
+
+    def print_noise_warnings(self, result: ValidationResult):
+        """Report advisory noise rows in the row form print_errors uses."""
+        if not result.noise_warnings:
+            return
+        threshold = result.noise_warnings[0].details["threshold"]
+        log_warning(
+            f"High noise (>{threshold}%) outside the changed-operator scope, "
+            f"not blocking:"
+        )
+        for warn in result.noise_warnings:
+            print(f"  - {warn.config}: {warn.details['stddev']:.2f}%")
 
     def print_errors(self, result: ValidationResult):
         """Print validation errors in a clear format."""
@@ -1334,6 +1473,10 @@ class BenchmarkRunner(ABC):
             env.pop(WARMUP_CAP_ENV, None)
         else:
             env[WARMUP_CAP_ENV] = str(self.warmup_cap)
+        if _clock_lock_required_mhz is None:
+            env.pop("CVCUDA_BENCH_EXPECT_SM_CLOCK_MHZ", None)
+        else:
+            env["CVCUDA_BENCH_EXPECT_SM_CLOCK_MHZ"] = str(_clock_lock_required_mhz)
         return env
 
     def run_benchmark(
@@ -1352,68 +1495,217 @@ class BenchmarkRunner(ABC):
         if VERBOSE:
             log_info(f'Running: "{" ".join(cmd_list)}"')
 
-        beg = time.time()
-
         try:
-            result = subprocess.run(
-                cmd_list,
-                shell=False,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                env=self.benchmark_env(),
+            max_attempts = (
+                _CLOCK_VERIFY_MAX_ATTEMPTS
+                if _clock_lock_required_mhz is not None
+                else 1
             )
-            elapsed = time.time() - beg
-
-            if result.returncode != 0:
-                if not QUIET:
-                    print(
-                        f"{Colors.RED}{ERROR}{Colors.RESET} "
-                        f"(exit code {result.returncode}, {elapsed:.2f}s)"
-                    )
-                    if result.stderr:
-                        print(result.stderr)
-                if os.path.exists(output_path):
-                    os.remove(output_path)
-                return None, False
-
-            # Check noise from the internal nvbench scratch output.
-            all_pass = self._check_noise_from_scratch(output_path)
-
-            return output_file, all_pass
+            for attempt in range(1, max_attempts + 1):
+                beg = time.time()
+                result = self._run_benchmark_attempt(
+                    cmd_list,
+                    benchmark_path,
+                    config_key,
+                    benchmark_name,
+                    output_file,
+                    output_path,
+                    attempt,
+                    max_attempts,
+                    beg,
+                )
+                if result is not None:
+                    return result
 
         except subprocess.TimeoutExpired:
             if not QUIET:
                 print(f"{Colors.RED}TIMEOUT{Colors.RESET} ({time.time() - beg:.2f}s)")
             return None, False
         except Exception as e:
+            from _internal.raw_capture import CaptureError
+
+            if isinstance(e, CaptureError):
+                raise
             if not QUIET:
                 print(
                     f"{Colors.RED}ERROR{Colors.RESET}: {e} ({time.time() - beg:.2f}s)"
                 )
             return None, False
 
-    def _check_noise_from_scratch(self, scratch_path: str) -> bool:
-        """Check if all noise values in internal nvbench output are within threshold."""
+    def _run_benchmark_attempt(
+        self,
+        cmd_list,
+        benchmark_path,
+        config_key,
+        benchmark_name,
+        output_file,
+        output_path,
+        attempt,
+        max_attempts,
+        beg,
+    ):
+        global _clock_lock_device_verified
+        from _internal.raw_capture import (
+            captured_run,
+            record_clock,
+            validate_native_output,
+        )
+
+        result, raw_folder = captured_run(
+            cmd_list,
+            output_path,
+            getattr(self, "raw_output_dir", None),
+            {
+                "language": self.language,
+                "config_key": config_key,
+                "benchmark": benchmark_path,
+                "clock_attempt": attempt,
+                "clock_expected_mhz": _clock_lock_required_mhz,
+                "phase": "measurement",
+            },
+            shell=False,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env=self.benchmark_env(),
+        )
+        elapsed = time.time() - beg
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        outcome, clock_detail = _classify_clock_outcome(
+            result.returncode,
+            stdout,
+            stderr,
+            verification_required=_clock_lock_required_mhz is not None,
+        )
+        record_clock(raw_folder, outcome, clock_detail)
+        if raw_folder is not None and result.returncode == 0:
+            validate_native_output(raw_folder)
+        if outcome in (_CLOCK_OUTCOME_SUCCESS, _CLOCK_OUTCOME_VERIFIED):
+            noise_pass = self._check_noise_from_scratch(output_path)
+            if outcome == _CLOCK_OUTCOME_VERIFIED:
+                _clock_lock_device_verified = True
+            return output_file, noise_pass
+        if outcome == _CLOCK_OUTCOME_MISSING_ACK and self._scratch_reports_all_skipped(
+            output_path
+        ):
+            return output_file, False
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        return self._handle_benchmark_failure(
+            outcome,
+            clock_detail,
+            benchmark_name,
+            attempt,
+            max_attempts,
+            result,
+            stderr,
+            elapsed,
+        )
+
+    @staticmethod
+    def _retry_clock_mismatch(benchmark_name, attempt, max_attempts, clock_detail):
+        log_warning(
+            f"{benchmark_name} clock attempt {attempt}/{max_attempts} "
+            f"failed: {clock_detail}"
+        )
+        if attempt == max_attempts:
+            node = os.environ.get("K8S_NODE_NAME", "").strip()
+            node_detail = f" on node {node}" if node else ""
+            log_error(
+                f"{benchmark_name} did not stabilize at "
+                f"{_clock_lock_required_mhz} MHz{node_detail}"
+            )
+            raise SystemExit(_CLOCK_INELIGIBLE_EXIT_CODE)
+        reapply_status = _reapply_required_sm_clock()
+        if reapply_status != _CLOCK_LOCK_OK:
+            log_error(
+                f"Could not reapply {_clock_lock_required_mhz} MHz "
+                "after a clock verification failure"
+            )
+            exit_code = (
+                _CLOCK_INELIGIBLE_EXIT_CODE
+                if reapply_status in (_CLOCK_LOCK_NO_TARGET, _CLOCK_LOCK_RESET_FAILED)
+                else 1
+            )
+            raise SystemExit(exit_code)
+
+    def _handle_benchmark_failure(
+        self,
+        outcome,
+        clock_detail,
+        benchmark_name,
+        attempt,
+        max_attempts,
+        result,
+        stderr,
+        elapsed,
+    ):
+        if outcome == _CLOCK_OUTCOME_MISSING_ACK:
+            log_error(f"{benchmark_name} did not report device clock verification")
+            raise SystemExit(1)
+        if outcome == _CLOCK_OUTCOME_MISMATCH:
+            self._retry_clock_mismatch(
+                benchmark_name, attempt, max_attempts, clock_detail
+            )
+            return None
+        if outcome == _CLOCK_OUTCOME_DEVICE_ERROR:
+            log_error(f"{benchmark_name}: {clock_detail}")
+            raise SystemExit(_CLOCK_INELIGIBLE_EXIT_CODE)
+        if outcome == _CLOCK_OUTCOME_PROBE_ERROR:
+            log_error(f"{benchmark_name}: {clock_detail}")
+            raise SystemExit(1)
+        if not QUIET:
+            print(
+                f"{Colors.RED}{ERROR}{Colors.RESET} "
+                f"(exit code {result.returncode}, {elapsed:.2f}s)"
+            )
+            if stderr:
+                print(stderr)
+        return None, False
+
+    @staticmethod
+    def _load_scratch_rows(scratch_path: str) -> Optional[pd.DataFrame]:
+        """Load scratch rows, or None when the file is unusable."""
         try:
             if not os.path.exists(scratch_path):
-                return False  # Missing scratch output is a failure
-            df = pd.read_csv(scratch_path)
-            if len(df) == 0:
-                return False  # Empty scratch output is a failure
-            # Filter out skipped rows
-            df = df[df.get("Skipped", "No") == "No"]
-            if len(df) == 0:
-                return False  # All configs skipped is a failure
-            if "Noise.1" in df.columns:  # GPU noise in nvbench scratch output.
+                return None
+            return pd.read_csv(scratch_path)
+        except Exception as exc:
+            log_warning(
+                f"Could not parse benchmark scratch output {scratch_path}: {exc}"
+            )
+            return None
+
+    @classmethod
+    def _scratch_reports_all_skipped(cls, scratch_path: str) -> bool:
+        """Return whether a valid scratch file contains no timed rows."""
+        rows = cls._load_scratch_rows(scratch_path)
+        return (
+            rows is not None
+            and not rows.empty
+            and "Skipped" in rows.columns
+            and rows["Skipped"].eq("Yes").all()
+        )
+
+    def _check_noise_from_scratch(self, scratch_path: str) -> bool:
+        """Check if all noise values in internal nvbench output are within threshold."""
+        rows = self._load_scratch_rows(scratch_path)
+        if rows is None or "Skipped" not in rows.columns:
+            return False
+        rows = rows[rows["Skipped"] == "No"]
+        if rows.empty:
+            return False
+        if "Noise.1" in rows.columns:  # GPU noise in nvbench scratch output.
+            try:
                 return not any(
                     exceeds_limit(float(noise) * 100.0, self.max_noise_pct)
-                    for noise in df["Noise.1"].dropna()
+                    for noise in rows["Noise.1"].dropna()
                 )
-            return True
-        except Exception:
-            return False
+            except (TypeError, ValueError):
+                return False
+        return True
 
     def collect_results(self, output_file: str, config_key: str) -> bool:
         """Collect results from an internal nvbench scratch output file."""
@@ -1425,13 +1717,15 @@ class BenchmarkRunner(ABC):
             )
             return False
 
+        entry = self.config.get(config_key, {}) if self.config else {}
         try:
-            df = pd.read_csv(filepath)
+            df = pd.read_csv(
+                filepath, dtype={axis: str for axis in entry.get("string_axes", {})}
+            )
         except Exception as e:
             VERBOSE and log_warning(f"Error reading '{output_file}': {e}")
             return False
 
-        entry = self.config.get(config_key, {}) if self.config else {}
         benchmark_name = entry.get(
             "benchmark", self.get_operator_from_benchmark_name(config_key)
         )
@@ -1442,10 +1736,34 @@ class BenchmarkRunner(ABC):
 
         if not REQUIRED_SCRATCH_COLS.issubset(df.columns):
             missing = REQUIRED_SCRATCH_COLS - set(df.columns)
-            VERBOSE and log_warning(f"Skipping {config_key}: Missing columns {missing}")
+            log_error(f"{config_key} is missing required columns: {sorted(missing)}")
             return False
 
         df_filtered = df[df["Skipped"] == "No"].copy()
+        if benchmark_name == "invert" and "inputRange" not in entry.get(
+            "string_axes", {}
+        ):
+            df_filtered = df_filtered.drop(columns=["inputRange"], errors="ignore")
+        if benchmark_name == "normalize":
+            implicit_axes = [
+                axis
+                for axis in ("paramKind", "scaleMode", "storage")
+                if axis not in entry.get("string_axes", {})
+            ]
+            df_filtered = df_filtered.drop(columns=implicit_axes, errors="ignore")
+        if benchmark_name == "histogrameq" and "method" not in entry.get(
+            "string_axes", {}
+        ):
+            df_filtered = df_filtered.drop(columns=["method"], errors="ignore")
+        int_axes = set(INT_COLUMNS).union(entry.get("int64_axes", {}))
+        int_axes.difference_update(
+            entry.get("string_axes", {}), entry.get("float64_axes", {})
+        )
+        for axis in int_axes:
+            if axis in df_filtered.columns:
+                df_filtered[axis] = pd.to_numeric(
+                    df_filtered[axis], errors="coerce"
+                ).astype("Int64")
         if len(df_filtered) == 0:
             VERBOSE and log_warning(f"No valid results found in {config_key}")
             return False
@@ -1457,6 +1775,21 @@ class BenchmarkRunner(ABC):
         # rows by tier.
         df_filtered["tier"] = entry.get("tier")
         df_filtered = self._transform_scratch_columns(df_filtered)
+        if _clock_lock_required_mhz is not None:
+            measured_names = {
+                str(name).strip()
+                for name in df_filtered[DEVICE_NAME_COLUMN].dropna().unique()
+                if str(name).strip()
+            }
+            if not measured_names:
+                log_error(f"{config_key} did not report a device name")
+                return False
+            if measured_names != {_clock_policy_gpu_name}:
+                log_error(
+                    f"{config_key} ran on {sorted(measured_names)}, but clock "
+                    f"control targeted {_clock_policy_gpu_name!r}"
+                )
+                return False
 
         has_noise_failures = False
         if "GPU Noise (%)" in df_filtered.columns:
@@ -1490,11 +1823,9 @@ class BenchmarkRunner(ABC):
         # both 350W and 310W TDP and perform ~26% apart on identical kernels.
         df["Power Cap (W)"] = query_power_cap_w()
 
-        # Stamp the actually-applied SM clock.  H100 PCIe pools contain silicon
-        # variants whose supported-clocks lists differ; even with the same
-        # `-lgc` request, half the pool can land at a different clock and
-        # produce a bimodal baseline.  Recording the committed value lets
-        # baselines route per (SKU, Power Cap, Locked SM Clock).
+        # H100 PCIe variants expose different supported clock bins. Recording
+        # the configured, device-verified target keeps the routing axis explicit
+        # and prevents measurements from a different bin entering its baseline.
         df["Locked SM Clock (MHz)"] = query_locked_sm_clock_mhz()
 
         # Stamp the vBIOS version.  Even within a single (SKU, Power Cap,
@@ -1595,16 +1926,28 @@ class PythonBenchmarkRunner(BenchmarkRunner):
             return candidate
         return None
 
+    def _benchmark_path_for_operator(self, operator: str) -> str:
+        """Resolve configured scripts from either build or source-tree layouts."""
+        spec = self.operator_manifest.get(operator)
+        if spec and spec.get("python"):
+            source_path = Path(self.bench_folder) / "python" / "ops" / spec["python"]
+            if source_path.is_file():
+                return str(source_path)
+        return super()._benchmark_path_for_operator(operator)
+
     def benchmark_env(self) -> Optional[dict]:
         env = super().benchmark_env()
+        python_paths = []
         package_path = self._python_package_path()
         if package_path is not None:
-            existing = env.get("PYTHONPATH")
-            env["PYTHONPATH"] = (
-                str(package_path)
-                if not existing
-                else os.pathsep.join([str(package_path), existing])
-            )
+            python_paths.append(str(package_path))
+        source_python = Path(self.bench_folder) / "python"
+        if source_python.is_dir():
+            python_paths.append(str(source_python))
+        if existing := env.get("PYTHONPATH"):
+            python_paths.append(existing)
+        if python_paths:
+            env["PYTHONPATH"] = os.pathsep.join(python_paths)
         return env
 
     def _verify_cuda_available(self):
@@ -1616,7 +1959,7 @@ class PythonBenchmarkRunner(BenchmarkRunner):
             # cvcuda, ensuring the patch is active when cuda.bench is loaded.
             # Note: we only check cvcuda and cuda.bench (pynvbench), not cuda.cuda
             # which requires the cuda-python package.
-            bench_dir = str(Path(__file__).parent)
+            bench_dir = str(Path(self.bench_folder) / "python")
             check_script = f"""\
 import sys
 sys.path.insert(0, {bench_dir!r})
@@ -1724,6 +2067,44 @@ def _format_unknown_operator_error(unknown: List[str], available: List[str]) -> 
     )
 
 
+def _resolve_operator_selector(raw: str, manifest, option_name: str) -> List[str]:
+    """Tokenize and manifest-check one operator selector.
+
+    Every selector that names operators answers to this, so --operator,
+    --benchmarks and --noise-scope accept exactly one syntax and report an
+    unknown name the same way. A name the manifest does not know matches no
+    benchmark row, which for --noise-scope would leave the gate advisory for
+    every operator while the run reported green.
+    """
+
+    config_dir = str(Path(__file__).parent / "config")
+    if config_dir not in sys.path:
+        sys.path.insert(0, config_dir)
+    from load_config import parse_operator_arg
+
+    def _renamed(message: str) -> str:
+        return message.replace("--operator", option_name)
+
+    try:
+        names = parse_operator_arg(raw)
+    except ValueError as exc:
+        raise ValueError(_renamed(str(exc))) from exc
+    unknown = [name for name in names if name not in manifest]
+    if unknown:
+        raise ValueError(
+            _renamed(_format_unknown_operator_error(unknown, list(manifest)))
+        )
+    return names
+
+
+def parse_noise_scope(raw: Optional[str], manifest) -> Optional[set]:
+    """Operators whose noise blocks the run; None keeps every operator blocking."""
+
+    if raw is None:
+        return None
+    return set(_resolve_operator_selector(raw, manifest, "--noise-scope"))
+
+
 def parse_args():
     """Parse command line arguments for unified benchmark runner."""
     parser = argparse.ArgumentParser(
@@ -1741,8 +2122,11 @@ Output:
 
 Exit status:
   0  A result was written and final validation passed or was skipped.
-  1  The run could not complete, output failed, or validation failed.
+  1  The run could not complete (including required clock enforcement), output
+     failed, or validation failed.
   2  Arguments or benchmark configuration could not be parsed.
+  3  The node cannot satisfy or hold its baseline-backed clock profile; exclude
+     it and retry elsewhere.
 """,
     )
     parser.add_argument(
@@ -1809,6 +2193,16 @@ Exit status:
         help="Maximum allowed noise/stddev percentage (default: %(default)s)",
     )
     parser.add_argument(
+        "--noise-scope",
+        default=None,
+        metavar="OP[,OP...]",
+        help=(
+            "Operators whose noise blocks the run. Rows outside the list are "
+            "still measured, reported and compared against baselines; only "
+            "their noise gate is advisory. Omit to block on every operator."
+        ),
+    )
+    parser.add_argument(
         "--max-perf-diff-pct",
         type=float,
         default=DEFAULT_BENCHMARK_QUALITY.max_perf_diff_pct,
@@ -1840,6 +2234,11 @@ Exit status:
         type=int,
         default=0,
         help="Max retries per operator if validation fails (default: 0)",
+    )
+    parser.add_argument(
+        "--raw-output-dir",
+        default=None,
+        help="Retain native CSV, JSONBIN samples, and metadata for every subprocess attempt",
     )
     parser.add_argument(
         "--bench-min-time",
@@ -1882,18 +2281,34 @@ Exit status:
     parser.add_argument(
         "--cuda-major",
         type=int,
-        choices=[12, 13],
+        choices=SUPPORTED_CUDA_MAJORS,
         default=None,
-        help="CUDA major used to select the JSON performance baseline.",
+        help=(
+            "CUDA major used to select the JSON performance baseline; required "
+            "for JSON output and non-local run contexts."
+        ),
+    )
+    parser.add_argument(
+        "--informative",
+        action="store_true",
+        default=False,
+        help=(
+            "Record a completed run even when the GPU is not in sku_map.json. "
+            "The JSON artifact uses an unmapped_* key and the process exits 0. "
+            "This is a measurement, not a baseline gate."
+        ),
     )
     parser.add_argument(
         "--run-context",
         type=str,
-        choices=["local", "mr", "nightly"],
+        choices=["local", "mr", "nightly-dev", "nightly", "main"],
         default="local",
         help=(
-            "Provenance recorded in the JSON artifact. Drift analysis only "
-            "consumes 'nightly' runs (default: local)."
+            "Provenance and clock policy. Non-local contexts require --cuda-major; "
+            "a mapped GPU must request and device-verify its configured SM clock. "
+            "Unknown GPU models retain best-effort clock control. Drift analysis "
+            "consumes 'nightly' runs and informative 'main' push runs "
+            "(default: local)."
         ),
     )
     parser.add_argument(
@@ -1904,6 +2319,14 @@ Exit status:
             "Branch this run was built from, recorded in the JSON artifact. CI "
             "passes it explicitly because a pinned-SHA checkout leaves no branch "
             "for the environment to report."
+        ),
+    )
+    parser.add_argument(
+        "--baseline-sku",
+        default=None,
+        help=(
+            "Explicit baseline SKU stem for devices without nvidia-smi routing "
+            "metadata (for example Jetson)."
         ),
     )
     parser.add_argument(
@@ -1968,7 +2391,6 @@ Exit status:
         load_bench_config,
         load_bench_manifest,
         parse_config_key_arg,
-        parse_operator_arg,
         parse_tier_arg,
     )
 
@@ -1985,26 +2407,22 @@ Exit status:
 
     args.operators = None
     if operator_arg:
+        option_name = "--benchmarks" if args.benchmarks else "--operator"
         try:
-            args.operators = parse_operator_arg(operator_arg)
+            args.operators = _resolve_operator_selector(
+                operator_arg, manifest, option_name
+            )
         except ValueError as e:
-            option_name = "--benchmarks" if args.benchmarks else "--operator"
-            log_error(str(e).replace("--operator", option_name))
+            log_error(str(e))
             sys.exit(2)
 
-        available = list(manifest)
-        unknown = [
-            operator_name
-            for operator_name in args.operators
-            if operator_name not in manifest
-        ]
-        if unknown:
-            option_name = "--benchmarks" if args.benchmarks else "--operator"
-            message = _format_unknown_operator_error(unknown, available).replace(
-                "--operator", option_name
-            )
-            log_error(message)
-            sys.exit(2)
+    # Resolved with the other selectors, before any benchmark work: a typo in
+    # --noise-scope must cost an argument error, not a full bench sweep.
+    try:
+        args.noise_scope = parse_noise_scope(args.noise_scope, manifest)
+    except ValueError as e:
+        log_error(str(e))
+        sys.exit(2)
 
     try:
         args.tiers = parse_tier_arg(args.tier)
@@ -2061,6 +2479,8 @@ Exit status:
         else:
             args.output = os.path.join(args.bench_folder, "bench_output.csv")
 
+    if args.run_context != "local" and args.cuda_major is None:
+        parser.error("--cuda-major is required for non-local runs")
     if Path(args.output).suffix.lower() == ".json" and args.cuda_major is None:
         parser.error("--cuda-major is required for JSON output")
 
@@ -2101,20 +2521,18 @@ def _print_banner(title: str):
     print(f"{Colors.CYAN}{'=' * 60}{Colors.RESET}\n")
 
 
-def _get_gpu_info() -> str:
-    """Get GPU name using nvidia-smi."""
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip().split("\n")[0]  # First GPU
-    except Exception:
-        pass
-    return "Unknown GPU"
+def _query_gpu_name() -> Optional[str]:
+    """Return the first usable nvidia-smi GPU name, or None."""
+    out = _nvidia_smi("--query-gpu=name", "--format=csv,noheader", "-i", "0")
+    return out.strip().splitlines()[0] if out and out.strip() else None
+
+
+def _require_gpu_name() -> str:
+    """Return the GPU identity or reject a strict run before benchmarking."""
+    gpu_name = _query_gpu_name()
+    if gpu_name is None:
+        raise _ClockIneligibleError("could not determine GPU identity")
+    return gpu_name
 
 
 def _baseline_config_paths(config_file: Optional[str]) -> Tuple[List[Path], Path]:
@@ -2146,6 +2564,28 @@ def _baseline_config_paths(config_file: Optional[str]) -> Tuple[List[Path], Path
     if not sku_map_path.is_file():
         sku_map_path = DEFAULT_SKU_MAP_PATH
     return paths, sku_map_path
+
+
+def _resolve_required_sm_clock(
+    sku_map_path: Path,
+    *,
+    gpu_name: str,
+    power_cap_w: Optional[int],
+    cuda_major: Optional[int],
+) -> Optional[int]:
+    sku_map = load_sku_map(sku_map_path, strict=True)
+    if gpu_name not in sku_map_gpu_names(sku_map):
+        return None
+    if power_cap_w is None:
+        raise _ClockIneligibleError(
+            f"could not determine power cap for mapped GPU {gpu_name}"
+        )
+    return required_clock_for_profile(
+        sku_map,
+        gpu_name=gpu_name,
+        power_cap_w=power_cap_w,
+        cuda_major=cuda_major,
+    )
 
 
 def _unique_column_value(df: pd.DataFrame, column: str):
@@ -2201,6 +2641,9 @@ def _run_metadata(args, df_combined: pd.DataFrame) -> dict:
         # which would silently drop every nightly run from the analysis.
         "run_context": args.run_context,
         "is_nightly": args.run_context == "nightly",
+        # True when the device is not a baseline SKU and the run is recorded
+        # anyway. Those artifacts are measurements, not a pass/fail gate.
+        "informative": bool(getattr(args, "informative", False)),
         "timestamp_utc": datetime.now(timezone.utc)
         .replace(microsecond=0)
         .isoformat()
@@ -2212,9 +2655,9 @@ def _run_metadata(args, df_combined: pd.DataFrame) -> dict:
         "locked_sm_clock_mhz": _unique_column_value(
             df_combined, "Locked SM Clock (MHz)"
         ),
-        # The clock value alone cannot show the lock succeeded: a failed lock
-        # still reports the free-running clock the sampler observed.
-        "sm_clock_locked": _clock_lock_verified,
+        # An accepted -lgc request is insufficient: baseline-backed child
+        # processes prove the active bin from device code before timing.
+        "sm_clock_device_verified": _clock_lock_device_verified,
         "vbios_version": _unique_column_value(df_combined, "vBIOS Version"),
         "driver_version": (driver_version or "").strip() or None,
         "k8s_node_name": os.environ.get("K8S_NODE_NAME", "").strip() or None,
@@ -2230,7 +2673,23 @@ def _write_output_json(args, df_combined: pd.DataFrame) -> None:
         cuda_major=args.cuda_major,
         sku_map_path=sku_map_path,
         source=Path(args.output),
+        baseline_sku=getattr(args, "baseline_sku", None),
+        allow_unmapped_sku=bool(getattr(args, "informative", False)),
     )
+    if getattr(args, "informative", False):
+        unmapped = sorted(
+            {
+                sku
+                for case in payload.values()
+                for sku in case
+                if str(sku).startswith("unmapped_")
+            }
+        )
+        if unmapped:
+            log_info(
+                "Informative run: device is not in sku_map.json; "
+                f"recorded as {', '.join(unmapped)}"
+            )
     document = build_baseline_document(
         payload, run_metadata=_run_metadata(args, df_combined)
     )
@@ -2296,7 +2755,7 @@ def _run_paired_benchmarks(args) -> tuple:
         sys.exit(1)
 
     _print_banner("=== Running Benchmarks ===")
-    log_info(f"GPU: {_get_gpu_info()}")
+    log_info(f"GPU: {_clock_policy_gpu_name or _query_gpu_name() or 'Unknown GPU'}")
     log_info(f"Found {len(pairs)} benchmarks")
     if args.warmup_cap is not None:
         log_info(f"Warmup iterations capped at {args.warmup_cap}")
@@ -2307,6 +2766,7 @@ def _run_paired_benchmarks(args) -> tuple:
 
     def run_one(runner, path, config_key):
         """Run a single benchmark and update runner stats. Returns df or None."""
+        runner.raw_output_dir = getattr(args, "raw_output_dir", None)
         output_file, noise_pass = runner.run_benchmark(
             path, args.bench_args, config_key
         )
@@ -2450,13 +2910,17 @@ def _process_and_validate(args, cpp_runner, python_runner) -> tuple:
 
     compute_parity = args.lang == "both" and cpp_runner and python_runner
     processor = ResultsProcessor(
-        args.max_noise_pct, args.max_perf_diff_pct, args.max_perf_diff_us
+        args.max_noise_pct,
+        args.max_perf_diff_pct,
+        args.max_perf_diff_us,
+        noise_scope=args.noise_scope,
     )
     df_combined = processor.process(all_results, compute_parity=compute_parity)
 
     validation_failed = False
     if not args.skip_validation:
         result = processor.validate(df_combined, check_parity=compute_parity)
+        processor.print_noise_warnings(result)
         if result.has_errors:
             validation_failed = True
             processor.print_errors(result)
@@ -2556,11 +3020,36 @@ def _print_final_summary(args, df_combined):
 
 
 def main():
+    global _clock_policy_gpu_name
     args = parse_args()
 
     # Lock SM clock + start clock sampler before any kernels run.  Cleanup
     # registered via atexit so we always reset the lock and flush the log.
-    init_clock_control(out_dir=str(Path(args.output).parent or "."))
+    try:
+        required_mhz = None
+        if args.run_context != "local":
+            _, sku_map_path = _baseline_config_paths(args.config_file)
+            _clock_policy_gpu_name = _require_gpu_name()
+            required_mhz = _resolve_required_sm_clock(
+                sku_map_path,
+                gpu_name=_clock_policy_gpu_name,
+                power_cap_w=query_power_cap_w(),
+                cuda_major=args.cuda_major,
+            )
+        else:
+            _clock_policy_gpu_name = None
+        out_dir = Path(args.output).parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        init_clock_control(
+            out_dir=str(out_dir),
+            required_mhz=required_mhz,
+        )
+    except (MissingClockProfileError, _ClockIneligibleError) as exc:
+        log_error(str(exc))
+        sys.exit(_CLOCK_INELIGIBLE_EXIT_CODE)
+    except (BaselineError, _ClockRequestError, OSError) as exc:
+        log_error(str(exc))
+        sys.exit(1)
 
     cpp_runner, python_runner = _run_paired_benchmarks(args)
     df_combined, validation_failed = _process_and_validate(
@@ -2591,6 +3080,12 @@ def main():
     _print_final_summary(args, df_combined)
     if validation_failed:
         log_error("Benchmarking completed with validation errors")
+    if output_failed:
+        log_error("Benchmark output was not written")
+    # A finished informative run is a measurement. Noise, parity, and an
+    # unmapped SKU stay in the log and the JSON; they do not fail the process.
+    if getattr(args, "informative", False):
+        sys.exit(0)
     sys.exit(1 if validation_failed or output_failed else 0)
 
 

@@ -19,101 +19,96 @@
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpJpegCompressionDistortion.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
 // Scalar-quality wrappers share the generic unary-elementwise plumbing; the quality tensor
 // variants are hand-rolled because the parameter tensor needs its own read lock.
 
-Tensor JpegCompressionDistortionScalarInto(Tensor &output, Tensor &input, int quality, std::optional<Stream> pstream)
+Tensor &JpegCompressionDistortionScalarInto(Tensor &output, Tensor &input, int quality, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::JpegCompressionDistortion>(output, input, pstream, quality);
 }
 
-Tensor JpegCompressionDistortionScalar(Tensor &input, int quality, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> JpegCompressionDistortionScalar(Tensor &input, int quality, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseTensor<cvcuda::JpegCompressionDistortion>(input, pstream, quality);
 }
 
-ImageBatchVarShape JpegCompressionDistortionVarShapeScalarInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                                               int quality, std::optional<Stream> pstream)
+ImageBatchVarShape &JpegCompressionDistortionVarShapeScalarInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                                                int quality, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::JpegCompressionDistortion>(output, input, pstream, quality);
 }
 
-ImageBatchVarShape JpegCompressionDistortionVarShapeScalar(ImageBatchVarShape &input, int quality,
-                                                           std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> JpegCompressionDistortionVarShapeScalar(ImageBatchVarShape &input, int quality,
+                                                                            std::optional<Stream *> pstream)
 {
     return UnaryElementwiseVarShape<cvcuda::JpegCompressionDistortion>(input, pstream, quality);
 }
 
-Tensor JpegCompressionDistortionInto(Tensor &output, Tensor &input, Tensor &quality, std::optional<Stream> pstream)
+Tensor &JpegCompressionDistortionInto(Tensor &output, Tensor &input, Tensor &quality, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<cvcuda::JpegCompressionDistortion>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, quality});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    guard.run([&op, &pstream, &input, &output, &quality]()
-              { op->submit(pstream->cudaHandle(), input, output, quality); });
+    guard.run([&op, &stream, &input, &output, &quality]()
+              { op->submit(stream.handle(), input.impl(), output.impl(), quality.impl()); });
 
-    return std::move(output);
+    return output;
 }
 
-Tensor JpegCompressionDistortion(Tensor &input, Tensor &quality, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> JpegCompressionDistortion(Tensor &input, Tensor &quality, std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = Tensor::CreateFromReqs(nvcv::Tensor::CalcRequirements(input.impl().shape(), input.dtype()));
 
-    return JpegCompressionDistortionInto(output, input, quality, pstream);
+    JpegCompressionDistortionInto(*output, input, quality, pstream);
+    return output;
 }
 
-ImageBatchVarShape JpegCompressionDistortionVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                                         Tensor &quality, std::optional<Stream> pstream)
+ImageBatchVarShape &JpegCompressionDistortionVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                                          Tensor &quality, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<cvcuda::JpegCompressionDistortion>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, quality});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    guard.run([&op, &pstream, &input, &output, &quality]()
-              { op->submit(pstream->cudaHandle(), input, output, quality); });
+    guard.run([&op, &stream, &input, &output, &quality]()
+              { op->submit(stream.handle(), input.impl(), output.impl(), quality.impl()); });
 
-    return std::move(output);
+    return output;
 }
 
-ImageBatchVarShape JpegCompressionDistortionVarShape(ImageBatchVarShape &input, Tensor &quality,
-                                                     std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> JpegCompressionDistortionVarShape(ImageBatchVarShape &input, Tensor &quality,
+                                                                      std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return JpegCompressionDistortionVarShapeInto(output, input, quality, pstream);
+    JpegCompressionDistortionVarShapeInto(*output, input, quality, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpJpegCompressionDistortion(py::module &m)
+void ExportOpJpegCompressionDistortion(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("jpeg_compression_distortion", NvtxTrace("cvcuda.jpeg_compression_distortion", &JpegCompressionDistortion),
           "src"_a, "quality"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -170,7 +165,7 @@ void ExportOpJpegCompressionDistortion(py::module &m)
 
     m.def("jpeg_compression_distortion_into",
           NvtxTrace("cvcuda.jpeg_compression_distortion_into", &JpegCompressionDistortionInto), "dst"_a, "src"_a,
-          "quality"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "quality"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the JpegCompressionDistortion operation on the given cuda stream, writing into a
         caller-provided output tensor.
@@ -194,7 +189,7 @@ void ExportOpJpegCompressionDistortion(py::module &m)
 
     m.def("jpeg_compression_distortion_into",
           NvtxTrace("cvcuda.jpeg_compression_distortion_into", &JpegCompressionDistortionScalarInto), "dst"_a, "src"_a,
-          "quality"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "quality"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the JpegCompressionDistortion operation on the given cuda stream, writing into a
         caller-provided output tensor.
@@ -267,7 +262,7 @@ void ExportOpJpegCompressionDistortion(py::module &m)
 
     m.def("jpeg_compression_distortion_into",
           NvtxTrace("cvcuda.jpeg_compression_distortion_into", &JpegCompressionDistortionVarShapeInto), "dst"_a,
-          "src"_a, "quality"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "src"_a, "quality"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the JpegCompressionDistortion operation on the given cuda stream, writing into a
         caller-provided output image batch.
@@ -292,7 +287,7 @@ void ExportOpJpegCompressionDistortion(py::module &m)
 
     m.def("jpeg_compression_distortion_into",
           NvtxTrace("cvcuda.jpeg_compression_distortion_into", &JpegCompressionDistortionVarShapeScalarInto), "dst"_a,
-          "src"_a, "quality"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "src"_a, "quality"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the JpegCompressionDistortion operation on the given cuda stream, writing into a
         caller-provided output image batch.

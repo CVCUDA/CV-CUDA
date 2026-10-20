@@ -32,6 +32,7 @@
 
 #include <cuda_runtime.h>
 #include <nvcv/ImageBatch.h>
+#include <nvcv/RoundMode.h>
 #include <nvcv/Status.h>
 #include <nvcv/Tensor.h>
 
@@ -58,8 +59,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastCreate(NVCVOperatorHandle *hand
  *
  *       out = brightnessShift + brightness * (contrastCenter + contrast * (in - contrastCenter))
  *
- * If input or output type is (u)int32, the brightness, contrast, brightness shift and contrast center must
- * have float64 type, otherwise they are expected to be of float32 type.
+ * If either input or output has type int32, int64, or float64, the brightness, contrast, brightness
+ * shift and contrast center tensors must have float64 type. For all other supported input and output
+ * types, these parameter tensors must have float32 type.
  *
  *  Limitations:
  *
@@ -75,9 +77,11 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastCreate(NVCVOperatorHandle *hand
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       64bit Unsigned | No
+ *       64bit Signed   | Yes
  *       16bit Float    | Yes
  *       32bit Float    | Yes
- *       64bit Float    | No
+ *       64bit Float    | Yes
  *
  *  Output:
  *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
@@ -91,9 +95,11 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastCreate(NVCVOperatorHandle *hand
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       64bit Unsigned | No
+ *       64bit Signed   | Yes
  *       16bit Float    | Yes
  *       32bit Float    | Yes
- *       64bit Float    | No
+ *       64bit Float    | Yes
  *
  *  Input/Output dependency
  *       Property      |  Input == Output
@@ -200,6 +206,46 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastVarShapeScalarSubmit(NVCVOperat
                                                                       double brightness, double contrast,
                                                                       double brightnessShift, double contrastCenter,
                                                                       bool clamp);
+
+/** Executes the by-value BrightnessContrast path, choosing how integer results are converted.
+ *
+ * The affine formula, clamping, layouts, and data-type support are identical to
+ * \ref cvcudaBrightnessContrastScalarSubmit; only the float-to-integer conversion is selectable.
+ * Calling this with #NVCV_ROUND_NEAREST is bit-exact with \ref cvcudaBrightnessContrastScalarSubmit.
+ *
+ * @param [in] handle Handle to the operator.
+ * @param [in] stream Handle to a valid CUDA stream.
+ * @param [in] in Input tensor.
+ * @param [out] out Output tensor.
+ * @param [in] brightness Brightness multiplier.
+ * @param [in] contrast Contrast multiplier.
+ * @param [in] brightnessShift Brightness shift.
+ * @param [in] contrastCenter Contrast center.
+ * @param [in] clamp If true, clamp to the nominal image range before conversion: `[0, 1]` for floating-point output
+ *                   and `[0, max]` for integer output. If false, preserve the existing BrightnessContrast behavior.
+ * @param [in] roundMode Rounding mode used for integer outputs, cf. \ref NVCVRoundMode.
+ *                       Use #NVCV_ROUND_NEAREST to preserve \ref cvcudaBrightnessContrastScalarSubmit's
+ *                       behavior or #NVCV_ROUND_TRUNCATE to drop the fractional part, which is what
+ *                       torchvision's ``adjust_brightness`` does. Floating-point outputs are unaffected.
+ *                       The wrap modes are rejected with #NVCV_ERROR_INVALID_ARGUMENT.
+ */
+CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastScalarRoundSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                                   NVCVTensorHandle in, NVCVTensorHandle out,
+                                                                   double brightness, double contrast,
+                                                                   double brightnessShift, double contrastCenter,
+                                                                   bool clamp, NVCVRoundMode roundMode);
+
+/** Executes the round-mode by-value BrightnessContrast path on a variable-shape image batch.
+ *
+ * Apart from input and output image batches, all parameters are the same as
+ * \ref cvcudaBrightnessContrastScalarRoundSubmit.
+ */
+CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastVarShapeScalarRoundSubmit(NVCVOperatorHandle handle,
+                                                                           cudaStream_t stream, NVCVImageBatchHandle in,
+                                                                           NVCVImageBatchHandle out, double brightness,
+                                                                           double contrast, double brightnessShift,
+                                                                           double contrastCenter, bool clamp,
+                                                                           NVCVRoundMode roundMode);
 
 #ifdef __cplusplus
 }

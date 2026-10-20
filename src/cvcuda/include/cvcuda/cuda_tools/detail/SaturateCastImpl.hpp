@@ -53,6 +53,16 @@ inline __host__ __device__ T SaturateFloatingToIntegral(U u)
 
     U out = ClampImpl(RoundImpl<U, U>(u), minT, maxT);
 
+    // An integer maximum can round up in U (e.g. INT64_MAX -> double(2^63)).
+    // Return the integer bound itself rather than casting that out-of-range floating value.
+    if (out >= maxT)
+    {
+        return TypeTraits<T>::max;
+    }
+    if (out <= minT)
+    {
+        return TypeTraits<T>::min;
+    }
     return static_cast<T>(out);
 }
 

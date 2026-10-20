@@ -373,6 +373,8 @@ def cvtcolor(state):
                 state.skip(str(exc))
                 return None
 
+        src_batch = cvcuda.ImageBatchVarShape(N)
+        dst_batch = cvcuda.ImageBatchVarShape(N)
         src = create_image_batch_varshape(
             (N, H, W, in_ch),
             0,
@@ -380,6 +382,7 @@ def cvtcolor(state):
             dtype,
             device_id,
             fill_mode="checkerboard",
+            batch=src_batch,
         )
         dst = create_image_batch_varshape(
             (N, H, W, out_ch),
@@ -388,6 +391,7 @@ def cvtcolor(state):
             dtype,
             device_id,
             fill_mode=0,
+            batch=dst_batch,
         )
 
     get_stream = create_stream_cache()

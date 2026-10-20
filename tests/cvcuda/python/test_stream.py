@@ -28,6 +28,7 @@ import pytest as t
 
 import cvcuda
 import cupy
+from cvcuda_test_utils import as_cupy_stream
 
 
 def test_stream_gcbag_vs_streamsync_race_condition():
@@ -306,6 +307,90 @@ def test_wrap_stream_int():
     assert extStream == cvcudaStream.handle
 
 
+def test_wrap_per_thread_default_stream_on_creator_thread():
+    stream = cvcuda.as_stream(2)
+    assert stream.handle == 2
+    stream.sync()
+
+
+def test_wrap_per_thread_default_stream_rejects_other_thread():
+    stream = cvcuda.as_stream(2)
+    errors = []
+
+    def sync_from_other_thread():
+        try:
+            stream.sync()
+        except Exception as error:  # noqa: BLE001 - asserted below.
+            errors.append(error)
+
+    thread = threading.Thread(target=sync_from_other_thread)
+    thread.start()
+    thread.join(timeout=10)
+
+    assert not thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert "host thread that created it" in str(errors[0])
+
+
+def test_wrap_per_thread_default_stream_rejects_after_creator_exits():
+    streams = []
+    errors = []
+
+    def create_on_other_thread():
+        streams.append(cvcuda.as_stream(2))
+
+    thread = threading.Thread(target=create_on_other_thread)
+    thread.start()
+    thread.join(timeout=10)
+
+    assert not thread.is_alive()
+    assert len(streams) == 1
+
+    def consume_on_new_thread():
+        try:
+            streams[0].sync()
+        except Exception as error:  # noqa: BLE001 - asserted below.
+            errors.append(error)
+
+    replacement = threading.Thread(target=consume_on_new_thread)
+    replacement.start()
+    replacement.join(timeout=10)
+
+    assert not replacement.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert "host thread that created it" in str(errors[0])
+
+
+def test_wrap_per_thread_default_stream_rejects_explicit_device_entrypoints():
+    stream = cvcuda.as_stream(2)
+    owner = cvcuda.Tensor((1, 1, 1, 1), np.uint8, "NHWC")
+    device = cupy.cuda.runtime.getDevice()
+    actions = [
+        lambda: cvcuda._test.ensure_not_capturing_on_device(stream, device),
+        lambda: cvcuda._test.hold_resources_on_device(stream, [owner], device),
+    ]
+
+    for action in actions:
+        errors = []
+
+        def invoke_from_other_thread():
+            try:
+                action()
+            except Exception as error:  # noqa: BLE001 - asserted below.
+                errors.append(error)
+
+        thread = threading.Thread(target=invoke_from_other_thread)
+        thread.start()
+        thread.join(timeout=10)
+
+        assert not thread.is_alive()
+        assert len(errors) == 1
+        assert isinstance(errors[0], RuntimeError)
+        assert "host thread that created it" in str(errors[0])
+
+
 def test_stream_conv_to_int():
     stream = cvcuda.Stream()
 
@@ -315,7 +400,7 @@ def test_stream_conv_to_int():
 class MockStream:
     def __init__(self, cuda_stream=None):
         if cuda_stream:
-            self.m_stream = cupy.cuda.ExternalStream(cuda_stream)
+            self.m_stream = as_cupy_stream(cuda_stream)
         else:
             self.m_stream = cupy.cuda.Stream()
 

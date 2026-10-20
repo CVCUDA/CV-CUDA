@@ -18,9 +18,7 @@
 #ifndef CVCUDA_PRIV_OP_HQ_RESIZE_PLANAR_CUH
 #define CVCUDA_PRIV_OP_HQ_RESIZE_PLANAR_CUH
 
-#include <nvcv/Exception.hpp>
-#include <nvcv/TensorData.hpp>
-#include <nvcv/TensorDataAccess.hpp>
+#include "PlanarTensorView.hpp"
 
 // Shared helpers for planar (NCHW/CHW) HQResize support. HQResize resizes spatial axes only and
 // treats channels independently, so a C-plane planar sample is equivalent to C single-channel
@@ -46,8 +44,6 @@ inline nvcv::TensorDataStridedCuda PlanarAsSingleChannelView(const nvcv::TensorD
 {
     const int64_t numSamples  = access.numSamples();
     const int64_t numChannels = access.numChannels();
-    const int64_t numRows     = access.numRows();
-    const int64_t numCols     = access.numCols();
 
     if (numSamples > 1 && access.sampleStride() != numChannels * access.chStride())
     {
@@ -55,16 +51,7 @@ inline nvcv::TensorDataStridedCuda PlanarAsSingleChannelView(const nvcv::TensorD
                               "Planar HQResize of a batched tensor requires tightly packed channel planes");
     }
 
-    nvcv::TensorDataStridedCuda::Buffer buf;
-    buf.basePtr    = reinterpret_cast<NVCVByte *>(data.basePtr());
-    buf.strides[0] = access.chStride();  // N*C flattened planes
-    buf.strides[1] = access.rowStride(); // H
-    buf.strides[2] = access.colStride(); // W
-    buf.strides[3] = access.colStride(); // C == 1
-    return nvcv::TensorDataStridedCuda{
-        nvcv::TensorShape{{numSamples * numChannels, numRows, numCols, 1}, "NHWC"},
-        data.dtype(), buf
-    };
+    return ::cvcuda::priv::PlanarAsSingleChannelView(data, access);
 }
 
 } // namespace cvcuda::priv::hq_resize::planar

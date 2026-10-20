@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import weakref
+
 import numpy as np
 import pytest as t
 
@@ -38,6 +40,17 @@ def test_datatype_repr_uses_public_type_name():
     assert repr(cvcuda.Type(np.uint8)) == "nvcv.Type.U8"
 
 
+def test_datatype_default_constructs_none():
+    assert repr(cvcuda.Type()) == "nvcv.Type.NONE"
+
+
+def test_datatype_instance_supports_weak_references():
+    datatype = cvcuda.Type(np.uint8)
+    reference = weakref.ref(datatype)
+
+    assert reference() is datatype
+
+
 @t.mark.parametrize("cv_type1", cv_types.TYPES)
 @t.mark.parametrize("cv_type2", cv_types.TYPES)
 def test_datatype_dtype_conv(cv_type1, cv_type2):
@@ -51,10 +64,19 @@ def test_datatype_dtype_conv(cv_type1, cv_type2):
             sub_check_type(cv_types.as_np_dtype(cv_type1), cv_type2)
 
 
-@t.mark.parametrize("dt", [np.dtype([("f1", np.uint64), ("f2", np.int32)]), "invalid"])
+@t.mark.parametrize(
+    "dt",
+    [np.dtype([("f1", np.uint64), ("f2", np.int32)]), np.dtype(">f2"), "invalid"],
+)
 def test_datatype_dtype_conv_error(dt):
     with t.raises(TypeError):
         cvcuda.Type(dt)
+
+
+@t.mark.parametrize("num_channels", [0, 5])
+def test_datatype_dtype_conv_rejects_invalid_subdtype_channels(num_channels):
+    with t.raises(TypeError):
+        cvcuda.Type(np.dtype((np.uint8, num_channels)))
 
 
 def test_datatype_is_hashable_and_value_consistent():

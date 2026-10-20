@@ -35,10 +35,11 @@ When you call the allocating form, CV-CUDA creates the output tensor for you:
 
     out = cvcuda.resize(src, out_shape, cvcuda.Interp.LINEAR, stream=stream)
 
-Internally this calls ``Tensor.Create``, which consults the :ref:`object_cache` for a
-previously freed tensor with matching shape, layout, and dtype.  If one is found it is
-reused; otherwise a new GPU allocation is made.  Either way, a cache lookup or
-allocation occurs on every call.
+Internally this calls ``Tensor.Create``, which consults the :ref:`object_cache` for an
+available tensor on the same device with matching layout and dtype. An exact shape
+and stride match is preferred; otherwise a sufficiently large, aligned allocation
+can be reused with the requested shape and strides. If none fits, a new GPU allocation
+is made. Either way, a cache lookup or allocation occurs on every call.
 
 How the Pre-allocated Variant Works
 -------------------------------------

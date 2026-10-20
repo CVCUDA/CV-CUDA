@@ -24,6 +24,7 @@
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpResize.hpp>
+#include <cvcuda/OpRotate.hpp> // for the NEAREST_FLOOR rejection check
 #include <cvcuda/cuda_tools/MathWrappers.hpp>
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
 #include <nvcv/Image.hpp>
@@ -35,6 +36,7 @@
 #include <cmath>
 #include <cstring>
 #include <random>
+#include <type_traits>
 #include <utility>
 
 namespace cuda = nvcv::cuda;
@@ -91,6 +93,14 @@ NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolatio
     // srcWidth, srcHeight, dstWidth, dstHeight,       interpolation, numberImages,    imageFormat
     {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_RGBA8},
     {        113,       12,       12,        36, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_RGBA8},
+    // NEAREST_FLOOR drops the half-pixel offset; downscale, upscale, and mixed axes against the
+    // host gold reference, which applies the same rule.
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST_FLOOR,     1,     nvcv::FMT_RGBA8},
+    {        113,       12,       12,        36, NVCV_INTERP_NEAREST_FLOOR,     1,     nvcv::FMT_RGBA8},
+    {        320,      320,      299,       299, NVCV_INTERP_NEAREST_FLOOR,     2,     nvcv::FMT_RGBA8},
+    {         20,       20,       23,        23, NVCV_INTERP_NEAREST_FLOOR,     1,     nvcv::FMT_RGBA8},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST_FLOOR,     1,     nvcv::FMT_U8},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST_FLOOR,     1,     nvcv::FMT_RGB8},
     {        421,      148,      223,       124, NVCV_INTERP_NEAREST,           2,     nvcv::FMT_RGBA8},
     {        313,      212,      412,       336, NVCV_INTERP_NEAREST,           3,     nvcv::FMT_RGBA8},
     {         20,       20,       23,        23, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_RGBA8},
@@ -138,6 +148,28 @@ NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolatio
     {          8,        8,        7,         7,    NVCV_INTERP_AREA,           1,     nvcv::FMT_U8},
     {         90,       60,       45,        30,    NVCV_INTERP_AREA,           1,     nvcv::FMT_RGB8},
     {         90,       60,       45,        30,    NVCV_INTERP_AREA,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4U8}},
+    // Byte non-integer UPSCALE. Every byte LINEAR/CUBIC upscale above is exactly 2x and therefore
+    // diverts to the phase-fused LinearResizeExpand2x/CubicResizeExpand2x kernels; these rows are
+    // the only host-gold coverage of the general byte upscale paths (LinearResize<true> and
+    // CubicResizeUpscaleRows). The 54x30->240x135 scale mirrors the benchmarked
+    // 864x480 -> 3840x2160 ratios (0.225 x, 0.2222 y). Destination widths 123 and 61 are not a
+    // multiple of NIX (16 for U8, 4 for RGB8/4U8), so they also exercise the scalar tail branch.
+    {         54,       30,      240,       135,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_U8},
+    {         54,       30,      240,       135,  NVCV_INTERP_LINEAR,           2,     nvcv::FMT_RGB8},
+    {         54,       30,      240,       135,  NVCV_INTERP_LINEAR,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4U8}},
+    {         37,       25,      123,        71,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_U8},
+    {         37,       25,      123,        71,  NVCV_INTERP_LINEAR,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4U8}},
+    {         40,       30,       61,        47,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_RGB8},
+    {         54,       30,      240,       135,   NVCV_INTERP_CUBIC,           1,     nvcv::FMT_U8},
+    {         54,       30,      240,       135,   NVCV_INTERP_CUBIC,           2,     nvcv::FMT_RGB8},
+    {         54,       30,      240,       135,   NVCV_INTERP_CUBIC,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4U8}},
+    {         37,       25,      123,        71,   NVCV_INTERP_CUBIC,           1,     nvcv::FMT_U8},
+    {         37,       25,      123,        71,   NVCV_INTERP_CUBIC,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4U8}},
+    {         40,       30,       61,        47,   NVCV_INTERP_CUBIC,           1,     nvcv::FMT_RGB8},
+    // Byte fractional DOWNSCALE with scale < 2, which selects LinearResize<true> (INTERSECT). The
+    // existing rows that reach it are all 4-channel; these add the uchar1 and uchar3 element types.
+    {         90,       60,       60,        40,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_U8},
+    {         90,       60,       60,        40,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_RGB8},
     // (float LINEAR/CUBIC/AREA are NOT host-gold tested here: this test compares output bytes with a
     // +/-1 tolerance, which is only meaningful for integer outputs; interpolated float is covered
     // bit-exactly by the OpResizePlanar parity test instead.)
@@ -437,7 +469,8 @@ double CubicWeight(double A, double t)
     return 0.0;
 }
 
-double ReferenceCubicPixelReplicateBorder(const std::vector<uint8_t> &src, int srcW, int srcH, int channels, int c,
+template<typename Scalar>
+double ReferenceCubicPixelReplicateBorder(const std::vector<Scalar> &src, int srcW, int srcH, int channels, int c,
                                           int ix, int iy, const std::array<double, 4> &wx,
                                           const std::array<double, 4> &wy)
 {
@@ -454,11 +487,22 @@ double ReferenceCubicPixelReplicateBorder(const std::vector<uint8_t> &src, int s
     return val;
 }
 
+template<typename Scalar>
+Scalar ConvertCubicReferenceValue(double value)
+{
+    if constexpr (std::is_same_v<Scalar, uint8_t>)
+    {
+        value = std::rint(std::max(0.0, std::min(255.0, value)));
+    }
+    return static_cast<Scalar>(value);
+}
+
 // Self-contained CPU reference for bicubic resize with replicate-border clamping.
 // Does NOT depend on ResizeUtils (which had the same bug), so the test is
 // independently correct even if both GPU kernel and ResizeUtils are broken.
-void ReferenceCubicResizeReplicateBorder(std::vector<uint8_t> &dst, int dstW, int dstH,
-                                         const std::vector<uint8_t> &src, int srcW, int srcH, int channels)
+template<typename Scalar>
+void ReferenceCubicResizeReplicateBorder(std::vector<Scalar> &dst, int dstW, int dstH,
+                                         const std::vector<Scalar> &src, int srcW, int srcH, int channels)
 {
     double scaleX = static_cast<double>(srcW) / dstW;
     double scaleY = static_cast<double>(srcH) / dstH;
@@ -485,9 +529,7 @@ void ReferenceCubicResizeReplicateBorder(std::vector<uint8_t> &dst, int dstW, in
             for (int c = 0; c < channels; c++)
             {
                 double val = ReferenceCubicPixelReplicateBorder(src, srcW, srcH, channels, c, ix, iy, wx, wy);
-                // Clamp to [0, 255], no abs().
-                val = std::rint(std::max(0.0, std::min(255.0, val)));
-                dst[dy * dstW * channels + dx * channels + c] = static_cast<uint8_t>(val);
+                dst[dy * dstW * channels + dx * channels + c] = ConvertCubicReferenceValue<Scalar>(val);
             }
         }
     }
@@ -525,6 +567,9 @@ NVCV_TEST_SUITE_P(OpResize_CubicBoundary, test::ValueList<int, int, int, int, in
     {     4,   10,   11,    7,    3},  // asymmetric: top/bottom edges stressed
     {     8,    8,    5,    5,    1},  // single channel
     {     8,    8,    5,    5,    4},  // RGBA
+    {     6,    6,   13,   13,    1},  // upscale, single channel: the general cubic upscale on uchar1
+    {     6,    6,   13,   13,    4},  // upscale, RGBA: the general cubic upscale on uchar4
+    {     7,    5,   23,   17,    3},  // anisotropic upscale: window slides across owned columns
 });
 
 // clang-format on
@@ -924,60 +969,394 @@ TEST(OpResizeRegression, wide_float_fractional_area_matches_planar_reference)
     }
 }
 
+TEST(OpResizeRegression, rgb8_planar_interleaved_boundary_kernel_paths)
+{
+    // Keep one parity test while selecting shapes for the generic LINEAR tail, exact-2x LINEAR
+    // expansion, generic CUBIC tail, and aligned exact-2x AREA vector-load paths.
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 21, 21, 42, 42, NVCV_INTERP_LINEAR, 1);
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 42, 24, 21, 12, NVCV_INTERP_LINEAR, 1);
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 32, 24, 21, 15, NVCV_INTERP_CUBIC, 1);
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 32, 24, 16, 12, NVCV_INTERP_AREA, 1);
+}
+
+TEST(OpResizeRegression, cubic_expand2x_and_fractional_area_edge_branches)
+{
+    // Non-multiple launch dimensions exercise both the valid cubic expand body and its
+    // over-provisioned-thread guard for the planar and interleaved RGB8 paths.
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 17, 15, 34, 30, NVCV_INTERP_CUBIC, 1);
+
+    // A non-integer downscale with a final source-aligned row exercises both fractional AREA
+    // endpoint cases while retaining exact planar/interleaved parity.
+    RunPlanarParityTensorCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 97, 73, 37, 29, NVCV_INTERP_AREA, 1);
+}
+
+TEST(OpResizeRegression, cubic_expand2x_scalar_planes_interior_border_and_tail)
+{
+    for (const auto &[planarFormat, interleavedFormat] : std::array{
+             std::pair{   nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+             std::pair{  nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+             std::pair{ nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+             std::pair{nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32}
+    })
+    {
+        RunPlanarParityTensorCase(planarFormat, interleavedFormat, 521, 9, 1042, 18, NVCV_INTERP_CUBIC, 2);
+    }
+}
+
+namespace {
+
+template<typename Scalar>
+void RunMisalignedPlanarCubicResizeCase(cudaStream_t stream, int numImages)
+{
+    constexpr int     srcWidth       = 521;
+    constexpr int     srcHeight      = 9;
+    constexpr int     dstWidth       = 2 * srcWidth;
+    constexpr int     dstHeight      = 2 * srcHeight;
+    constexpr int     channels       = 3;
+    constexpr size_t  guardBytes     = 64;
+    constexpr size_t  baseOffset     = guardBytes + sizeof(Scalar);
+    constexpr int64_t srcRowStride   = (srcWidth + 5) * sizeof(Scalar);
+    constexpr int64_t dstRowStride   = (dstWidth + 3) * sizeof(Scalar);
+    constexpr int64_t srcPlaneStride = srcRowStride * srcHeight + 32;
+    constexpr int64_t dstPlaneStride = dstRowStride * dstHeight + 32;
+    const auto        dtype          = std::is_same_v<Scalar, float> ? nvcv::TYPE_F32 : nvcv::TYPE_U8;
+
+    static_assert(srcRowStride % 16 != 0 && dstRowStride % 16 != 0);
+
+    SCOPED_TRACE(t::Message() << "elementBytes=" << sizeof(Scalar) << ", numImages=" << numImages);
+    const int            planes = numImages * channels;
+    std::vector<uint8_t> srcHost(baseOffset + planes * srcPlaneStride + guardBytes, 0xA5);
+    std::vector<uint8_t> expected(baseOffset + planes * dstPlaneStride + guardBytes, 0x5A);
+    std::vector<uint8_t> actual(expected.size(), 0x5A);
+
+    for (int plane = 0; plane < planes; ++plane)
+    {
+        std::vector<Scalar> input(srcWidth * srcHeight);
+        for (int row = 0; row < srcHeight; ++row)
+            for (int column = 0; column < srcWidth; ++column)
+            {
+                const int value                = (column * 13 + row * 7 + plane * 11) % 32;
+                input[row * srcWidth + column] = static_cast<Scalar>(value - (std::is_same_v<Scalar, float> ? 16 : 0));
+            }
+
+        std::vector<Scalar> gold;
+        ReferenceCubicResizeReplicateBorder(gold, dstWidth, dstHeight, input, srcWidth, srcHeight, 1);
+        for (int row = 0; row < srcHeight; ++row)
+            std::memcpy(srcHost.data() + baseOffset + plane * srcPlaneStride + row * srcRowStride,
+                        input.data() + row * srcWidth, srcWidth * sizeof(Scalar));
+        for (int row = 0; row < dstHeight; ++row)
+            std::memcpy(expected.data() + baseOffset + plane * dstPlaneStride + row * dstRowStride,
+                        gold.data() + row * dstWidth, dstWidth * sizeof(Scalar));
+    }
+
+    auto wrap = [&](NVCVByte *allocation, int width, int height, int64_t rowStride, int64_t planeStride)
+    {
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr       = allocation + baseOffset;
+        const int channelDim = numImages == 1 ? 0 : 1;
+        if (numImages > 1)
+            buffer.strides[0] = channels * planeStride;
+        buffer.strides[channelDim]     = planeStride;
+        buffer.strides[channelDim + 1] = rowStride;
+        buffer.strides[channelDim + 2] = sizeof(Scalar);
+        const auto shape = numImages == 1 ? nvcv::TensorShape{{channels, height, width}, "CHW"}
+                                         : nvcv::TensorShape{{numImages, channels, height, width}, "NCHW"};
+        auto cleanup = [allocation](const nvcv::TensorData &)
+        {
+            EXPECT_EQ(cudaSuccess, cudaFree(allocation));
+        };
+        return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, dtype, buffer},
+                                    nvcv::TensorDataCleanupCallback{cleanup});
+    };
+
+    NVCVByte *srcAllocation = nullptr;
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), srcHost.size()));
+    nvcv::Tensor src           = wrap(srcAllocation, srcWidth, srcHeight, srcRowStride, srcPlaneStride);
+    NVCVByte    *dstAllocation = nullptr;
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstAllocation), actual.size()));
+    nvcv::Tensor dst = wrap(dstAllocation, dstWidth, dstHeight, dstRowStride, dstPlaneStride);
+    ASSERT_EQ(reinterpret_cast<uintptr_t>(srcAllocation + baseOffset) % alignof(Scalar), 0);
+    ASSERT_EQ(reinterpret_cast<uintptr_t>(dstAllocation + baseOffset) % alignof(Scalar), 0);
+    ASSERT_NE(reinterpret_cast<uintptr_t>(srcAllocation + baseOffset) % 16, 0);
+    ASSERT_NE(reinterpret_cast<uintptr_t>(dstAllocation + baseOffset) % 16, 0);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcAllocation, srcHost.data(), srcHost.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstAllocation, actual.data(), actual.size(), cudaMemcpyHostToDevice));
+
+    cvcuda::Resize resizeOp;
+    ASSERT_NO_THROW(resizeOp(stream, src, dst, NVCV_INTERP_CUBIC));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), dstAllocation, actual.size(), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(expected, actual);
+
+    std::vector<uint8_t> sourceAfter(srcHost.size());
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(sourceAfter.data(), srcAllocation, sourceAfter.size(), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(srcHost, sourceAfter);
+}
+
+} // namespace
+
+TEST(OpResizeRegression, cubic_expand2x_misaligned_planar_matches_cpu_and_preserves_guards)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    RunMisalignedPlanarCubicResizeCase<uint8_t>(stream, 1);
+    RunMisalignedPlanarCubicResizeCase<uint8_t>(stream, 2);
+    RunMisalignedPlanarCubicResizeCase<float>(stream, 1);
+    RunMisalignedPlanarCubicResizeCase<float>(stream, 2);
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpResizeRegression, u8_tensor_covers_linear_cubic_and_integer_area_kernel_edges)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Resize op;
+    auto runCase = [&](int srcWidth, int srcHeight, int dstWidth, int dstHeight, NVCVInterpolationType interpolation)
+    {
+        nvcv::Tensor src = nvcv::util::CreateTensor(1, srcWidth, srcHeight, nvcv::FMT_U8);
+        nvcv::Tensor dst = nvcv::util::CreateTensor(1, dstWidth, dstHeight, nvcv::FMT_U8);
+
+        auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(nullptr, srcData);
+
+        std::vector<uint8_t> input(static_cast<size_t>(srcWidth) * srcHeight);
+        for (int y = 0; y < srcHeight; ++y)
+            for (int x = 0; x < srcWidth; ++x)
+                input[static_cast<size_t>(y) * srcWidth + x] = static_cast<uint8_t>((x * 17 + y * 31 + 11) & 0xff);
+        nvcv::util::SetImageTensorFromVector<uint8_t>(*srcData, input, 0);
+
+        EXPECT_NO_THROW(op(stream, src, dst, interpolation));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        auto                 dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+        std::vector<uint8_t> actual;
+        ASSERT_TRUE(dstData);
+        nvcv::util::GetImageVectorFromTensor<uint8_t>(*dstData, 0, actual);
+
+        std::vector<uint8_t> expected(actual.size());
+        test::Resize(expected, dstWidth, {dstWidth, dstHeight}, input, srcWidth, {srcWidth, srcHeight}, nvcv::FMT_U8,
+                     interpolation, false);
+
+        int maxAbsDiff = 0;
+        for (size_t i = 0; i < actual.size(); ++i)
+            maxAbsDiff = std::max(maxAbsDiff, abs(static_cast<int>(actual[i]) - static_cast<int>(expected[i])));
+        EXPECT_LE(maxAbsDiff, 1) << "interpolation=" << static_cast<int>(interpolation) << ", src=" << srcWidth << "x"
+                                 << srcHeight << ", dst=" << dstWidth << "x" << dstHeight;
+    };
+
+    // The fractional downscale reaches the linear tail's non-negative source-coordinate arm.
+    runCase(5, 5, 3, 3, NVCV_INTERP_LINEAR);
+    // Exact 2x expansion reaches the interior vertical interpolation arm.
+    runCase(5, 5, 10, 10, NVCV_INTERP_LINEAR);
+    // A non-expanding cubic launch reaches the valid CubicResize body.
+    runCase(5, 5, 3, 3, NVCV_INTERP_CUBIC);
+    // A 3x integer AREA reduction fills one U8 vector and reaches AreaResizeFastDirect.
+    runCase(48, 48, 16, 16, NVCV_INTERP_AREA);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpResizeRegression, padded_u8_tensor_reaches_vector_and_tail_paths)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    auto runPaddedCase = [&](NVCVInterpolationType interpolation, int srcWidth, int srcHeight, int dstWidth,
+                             int dstHeight, int srcPadding, int dstPadding)
+    {
+        const int64_t srcRowStride      = srcWidth + srcPadding;
+        const int64_t dstRowStride      = dstWidth + dstPadding;
+        const size_t  srcAllocationSize = static_cast<size_t>(srcRowStride) * srcHeight;
+        const size_t  dstAllocationSize = static_cast<size_t>(dstRowStride) * dstHeight;
+
+        NVCVByte *srcAllocation = nullptr;
+        NVCVByte *dstAllocation = nullptr;
+        ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), srcAllocationSize));
+        ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstAllocation), dstAllocationSize));
+
+        nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+        srcBuffer.basePtr    = srcAllocation;
+        srcBuffer.strides[0] = srcRowStride * srcHeight;
+        srcBuffer.strides[1] = srcRowStride;
+        srcBuffer.strides[2] = 1;
+        srcBuffer.strides[3] = 1;
+
+        nvcv::TensorDataStridedCuda::Buffer dstBuffer{};
+        dstBuffer.basePtr    = dstAllocation;
+        dstBuffer.strides[0] = dstRowStride * dstHeight;
+        dstBuffer.strides[1] = dstRowStride;
+        dstBuffer.strides[2] = 1;
+        dstBuffer.strides[3] = 1;
+
+        nvcv::Tensor src = nvcv::TensorWrapData(
+            nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{1, srcHeight, srcWidth, 1}, "NHWC"},
+                nvcv::TYPE_U8, srcBuffer
+        },
+            nvcv::TensorDataCleanupCallback{[srcAllocation](const nvcv::TensorData &)
+                                            {
+                                                EXPECT_EQ(cudaSuccess, cudaFree(srcAllocation));
+                                            }});
+        nvcv::Tensor dst = nvcv::TensorWrapData(
+            nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{1, dstHeight, dstWidth, 1}, "NHWC"},
+                nvcv::TYPE_U8, dstBuffer
+        },
+            nvcv::TensorDataCleanupCallback{[dstAllocation](const nvcv::TensorData &)
+                                            {
+                                                EXPECT_EQ(cudaSuccess, cudaFree(dstAllocation));
+                                            }});
+
+        std::vector<uint8_t> srcHost(static_cast<size_t>(srcWidth) * srcHeight);
+        for (int y = 0; y < srcHeight; ++y)
+            for (int x = 0; x < srcWidth; ++x)
+                srcHost[static_cast<size_t>(y) * srcWidth + x] = static_cast<uint8_t>((x * 17 + y * 31 + 11) & 0xff);
+
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(srcAllocation, srcRowStride, srcHost.data(), srcWidth, srcWidth, srcHeight,
+                                            cudaMemcpyHostToDevice));
+
+        cvcuda::Resize resizeOp;
+        EXPECT_NO_THROW(resizeOp(stream, src, dst, interpolation));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        std::vector<uint8_t> actual(static_cast<size_t>(dstWidth) * dstHeight);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(actual.data(), dstWidth, dstAllocation, dstRowStride, dstWidth, dstHeight,
+                                            cudaMemcpyDeviceToHost));
+
+        std::vector<uint8_t> expected(actual.size());
+        test::Resize(expected, dstWidth, {dstWidth, dstHeight}, srcHost, srcWidth, {srcWidth, srcHeight}, nvcv::FMT_U8,
+                     interpolation, false);
+
+        int maxAbsDiff = 0;
+        for (size_t i = 0; i < actual.size(); ++i)
+            maxAbsDiff = std::max(maxAbsDiff, abs(static_cast<int>(actual[i]) - static_cast<int>(expected[i])));
+        EXPECT_LE(maxAbsDiff, 1) << "interpolation=" << static_cast<int>(interpolation) << ", src=" << srcWidth << "x"
+                                 << srcHeight << ", dst=" << dstWidth << "x" << dstHeight;
+    };
+
+    // Odd row strides alternate aligned and unaligned rows while width 17 forces a 16-byte pack plus a tail.
+    runPaddedCase(NVCV_INTERP_NEAREST, 34, 8, 17, 4, 1, 1);
+    runPaddedCase(NVCV_INTERP_LINEAR, 34, 8, 17, 4, 1, 1);
+    runPaddedCase(NVCV_INTERP_LINEAR, 9, 5, 18, 10, 1, 1);
+    runPaddedCase(NVCV_INTERP_CUBIC, 34, 8, 17, 4, 1, 1);
+    runPaddedCase(NVCV_INTERP_AREA, 34, 8, 17, 4, 14, 15);
+    runPaddedCase(NVCV_INTERP_AREA, 34, 8, 17, 4, 1, 1);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 // Parameters: srcW, srcH, dstW, dstH, interpolation, numImages, planarFmt, interleavedFmt
 NVCV_TEST_SUITE_P(
     OpResizePlanar,
     test::ValueList<int, int, int, int, NVCVInterpolationType, int, nvcv::ImageFormat, nvcv::ImageFormat>{
   // RGB8 (3 channel uint8), every interpolation, expand and contract.
-        { 64,  48, 128,  96, NVCV_INTERP_NEAREST, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-        {128,  96,  64,  48,  NVCV_INTERP_LINEAR, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-        { 64,  48, 128,  96,  NVCV_INTERP_LINEAR, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-        { 64,  48, 128,  96,   NVCV_INTERP_CUBIC, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-        {128,  96,  64,  48,   NVCV_INTERP_CUBIC, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-        { 90,  60,  45,  30,   NVCV_INTERP_CUBIC, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-        {128,  96,  32,  24,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-        { 90,  60,  45,  30,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 64,  48, 128,  96,       NVCV_INTERP_NEAREST, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        {128,  96,  64,  48,        NVCV_INTERP_LINEAR, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 64,  48, 128,  96,        NVCV_INTERP_LINEAR, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 64,  48, 128,  96,         NVCV_INTERP_CUBIC, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        {128,  96,  64,  48,         NVCV_INTERP_CUBIC, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 90,  60,  45,  30,         NVCV_INTERP_CUBIC, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        {128,  96,  32,  24,          NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 90,  60,  45,  30,          NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
  // 8/7 reaches the same endpoint-rounding edge in the separate varshape-planar kernel.
-        {  8,   8,   7,   7,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-        { 97,  73,  37,  29,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
-        { 31,  23,  79,  61,    NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        {  8,   8,   7,   7,          NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 97,  73,  37,  29,          NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 31,  23,  79,  61,          NVCV_INTERP_AREA, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+ // Byte non-integer upscale and sub-2x downscale on the flattened single-channel planar view --
+  // the planar rows above are all exactly 2x or 1/2x, so these are the only parity coverage of
+  // LinearResize<true> and the general cubic upscale on a uint8 plane.
+        { 54,  30, 240, 135,        NVCV_INTERP_LINEAR, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 54,  30, 240, 135,         NVCV_INTERP_CUBIC, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 90,  60,  60,  40,        NVCV_INTERP_LINEAR, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 37,  25, 123,  71,         NVCV_INTERP_CUBIC, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
  // RGBA8 (4 channel uint8).
-        { 50,  40, 100,  80, NVCV_INTERP_NEAREST, 2,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
-        {100,  80,  50,  40,  NVCV_INTERP_LINEAR, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
-        {120,  90,  30,  22,    NVCV_INTERP_AREA, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+        { 50,  40, 100,  80,       NVCV_INTERP_NEAREST, 2,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+        {100,  80,  50,  40,        NVCV_INTERP_LINEAR, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+        {120,  90,  30,  22,          NVCV_INTERP_AREA, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+        { 54,  30, 240, 135,        NVCV_INTERP_LINEAR, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+        { 54,  30, 240, 135,         NVCV_INTERP_CUBIC, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
  // Float planar, every interpolation, expand and contract -- exercises the float kernel paths
   // (vectorized LinearResize, gated CubicResize/AreaResizeVec) bit-exactly against interleaved.
-        { 64,  48,  96,  72, NVCV_INTERP_NEAREST, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-        { 96,  72,  48,  36,  NVCV_INTERP_LINEAR, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-        { 48,  36,  96,  72,  NVCV_INTERP_LINEAR, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-        { 64,  48,  96,  72,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-        { 64,  48, 128,  96,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-        { 96,  72,  32,  24,    NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-        { 32,  24,  96,  72,    NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
-        { 64,  48, 128,  96,  NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 64,  48,  96,  72,       NVCV_INTERP_NEAREST, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 96,  72,  48,  36,        NVCV_INTERP_LINEAR, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 48,  36,  96,  72,        NVCV_INTERP_LINEAR, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 64,  48,  96,  72,         NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 64,  48, 128,  96,         NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 96,  72,  32,  24,          NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 32,  24,  96,  72,          NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 64,  48, 128,  96,        NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
  // 320/299 is non-dyadic and wide enough that one ULP of the source coordinate (2^-15 at x ~ 268)
   // exceeds the interpolation weight's significance. The planar float path packs four output columns
   // per thread while interleaved float3/float4 pack one, so the two layouts only agree here if both
   // derive every column's coordinate the same way. NEAREST additionally moves a whole pixel.
-        {320, 320, 299, 299,  NVCV_INTERP_LINEAR, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-        {320, 320, 299, 299, NVCV_INTERP_NEAREST, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-        {128,  96,  64,  48,   NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-        { 64,  48, 128,  96,   NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-        { 45,  30,  90,  60,   NVCV_INTERP_CUBIC, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-        { 31,  23,  73,  55,   NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-        {128,  96,  32,  24,    NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-        { 90,  60,  45,  30,    NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
-        { 97,  73,  29,  19,    NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        {320, 320, 299, 299,        NVCV_INTERP_LINEAR, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        {320, 320, 299, 299,       NVCV_INTERP_NEAREST, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+ // NEAREST_FLOOR shares the pack structure, so it needs the same planar/interleaved parity cover.
+        {320, 320, 299, 299, NVCV_INTERP_NEAREST_FLOOR, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 64,  48, 128,  96, NVCV_INTERP_NEAREST_FLOOR, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+        { 50,  40, 100,  80, NVCV_INTERP_NEAREST_FLOOR, 2,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+        {128,  96,  64,  48,         NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 64,  48, 128,  96,         NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 45,  30,  90,  60,         NVCV_INTERP_CUBIC, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 31,  23,  73,  55,         NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        {128,  96,  32,  24,          NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 90,  60,  45,  30,          NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 97,  73,  29,  19,          NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
  // F16 planar, every interpolation, expand and contract -- the planar path flattens planes into a
   // single-channel view, so parity with interleaved stays bit-exact; this is the mandated F16
   // coverage for the interpolations without host-gold rows (CUBIC/AREA), mirroring float above.
-        { 64,  48,  96,  72, NVCV_INTERP_NEAREST, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
-        { 96,  72,  48,  36,  NVCV_INTERP_LINEAR, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
-        { 64,  48, 128,  96,  NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
-        {128,  96,  64,  48,   NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
-        { 64,  48, 128,  96,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
-        {128,  96,  32,  24,    NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
-        { 32,  24,  96,  72,    NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
+        { 64,  48,  96,  72,       NVCV_INTERP_NEAREST, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
+        { 96,  72,  48,  36,        NVCV_INTERP_LINEAR, 2, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
+        { 64,  48, 128,  96,        NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+        {128,  96,  64,  48,         NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+        { 64,  48, 128,  96,         NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
+        {128,  96,  32,  24,          NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf16p,  nvcv::FMT_RGBf16},
+        { 32,  24,  96,  72,          NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf16p, nvcv::FMT_RGBAf16},
+ // Fractional (non-integer, sub-3x) AREA downscale. Every other wide-vector AREA row is an exact
+  // integer ratio, a zoom-in, or above the 3x bound, so these are the only coverage of
+  // AreaResizeFractional on an interleaved element whose NIX is below the group width GN (float3 and
+  // float4 both have NIX=1) and of all three compile-time interior-column bounds: x scale 1.64
+  // selects kMaxC=1, 2.62 selects kMaxC=2 and 2.90 selects kMaxC=3.
+        { 97,  73,  37,  29,          NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 90,  60,  55,  37,          NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 90,  60,  31,  21,          NVCV_INTERP_AREA, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        { 97,  73,  37,  29,          NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 90,  60,  55,  37,          NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 90,  60,  31,  21,          NVCV_INTERP_AREA, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+ // Wide exact-2x float LINEAR upscale. The float exact-2x rows above are 48x36 -> 96x72 and
+  // 64x48 -> 128x96, whose whole destination fits one 32-thread block column, so a
+  // warp-span-uniform interior predicate is false everywhere and the destination width is always a
+  // multiple of the flattened float plane's 4-element write pack. These rows are wide enough for
+  // interior blocks to exist (a warp spans 64 source columns, so block b is interior only when
+  // srcW >= 64*b + 65) and have odd source widths, so the 2-element scalar tail runs alongside the
+  // vector body.
+        {201,  67, 402, 134,        NVCV_INTERP_LINEAR, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        {135,  51, 270, 102,        NVCV_INTERP_LINEAR, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+ // Non-2x float LINEAR, both scale arms. The float LINEAR rows above are all exactly 2x or 1/2x,
+  // so they divert to the exact-2x kernels or sit exactly on the scale >= 2 boundary; these cover
+  // the general sub-2x (INTERSECT) arm, a 4x upscale, and a strictly-greater-than-2 downscale.
+  // 42 and 46 are 2 mod 4, so the flattened float plane's scalar tail runs alongside its 4-element
+  // vector body.
+        { 63,  30,  42,  20,        NVCV_INTERP_LINEAR, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 32,  24, 128,  96,        NVCV_INTERP_LINEAR, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+        {115,  50,  46,  20,        NVCV_INTERP_LINEAR, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 90,  60,  60,  40,        NVCV_INTERP_LINEAR, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+ // Exact-2x float LINEAR downscale whose destination width is 2 mod 4. The existing exact-2x float
+  // downscale rows (96x72 -> 48x36) have a destination width that is a multiple of the flattened
+  // float plane's 4-element pack, so only its aligned vector body runs; these also run the guarded
+  // per-element tail.
+        { 92,  40,  46,  20,        NVCV_INTERP_LINEAR, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        {124,  40,  62,  20,        NVCV_INTERP_LINEAR, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+ // Non-2x float CUBIC upscale with an odd destination height and a destination width that is not a
+  // multiple of the flattened float plane's write pack. The only float CUBIC upscale rows are
+  // 64x48 -> 96x72 and the exact-2x ones, all of which have an even height and a width that is a
+  // multiple of 4, so nothing covers the row-blocked kernel's odd-last-row branch or its scalar
+  // tail. The 54x30 -> 240x135 ratio mirrors the benchmarked 864x480 -> 3840x2160 upscale. Cubic
+  // kernels derive every output coordinate directly from dstX.
+        { 54,  30, 240, 135,         NVCV_INTERP_CUBIC, 1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+        { 37,  25, 123,  71,         NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
 });
 
 TEST_P(OpResizePlanar, tensor_matches_interleaved)
@@ -986,10 +1365,168 @@ TEST_P(OpResizePlanar, tensor_matches_interleaved)
                               GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(), GetParamValue<5>());
 }
 
+// Pin the reference U8 rounding where regrouping the cubic tap products changes the result.
+TEST(OpResize, cubic_preserves_reference_rounding)
+{
+    constexpr int srcW = 37;
+    constexpr int srcH = 25;
+    constexpr int dstW = 123;
+    constexpr int dstH = 71;
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    nvcv::Tensor src     = nvcv::util::CreateTensor(1, srcW, srcH, nvcv::FMT_U8);
+    nvcv::Tensor dst     = nvcv::util::CreateTensor(1, dstW, dstH, nvcv::FMT_U8);
+    auto         srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto         dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData && dstData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(dstAccess);
+
+    std::vector<uint8_t> input(srcW * srcH);
+    for (size_t i = 0; i < input.size(); ++i) input[i] = static_cast<uint8_t>((i * 73 + i / 17) % 256);
+    nvcv::util::SetImageTensorFromVector<uint8_t>(*srcData, input, 0);
+
+    cvcuda::Resize op;
+    ASSERT_NO_THROW(op(stream, src, dst, NVCV_INTERP_CUBIC));
+    uint8_t value = 0;
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(&value, dstAccess->sampleData(0) + 19 * dstAccess->rowStride() + 75,
+                                           sizeof(value), cudaMemcpyDeviceToHost, stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(value, 148);
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Non-dyadic scales must use the same rounded coordinates in both tensor layouts.
+TEST(OpResize, float_linear_non_dyadic_planar_parity)
+{
+    RunPlanarParityTensorCase(nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, 54, 30, 240, 135, NVCV_INTERP_LINEAR, 1);
+    RunPlanarParityTensorCase(nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32, 37, 25, 123, 71, NVCV_INTERP_LINEAR, 1);
+}
+
+// Large coordinates can round a fractional AREA interval up to an extra whole column.
+TEST(OpResize, wide_fractional_area_preserves_white)
+{
+    struct Case
+    {
+        int srcW;
+        int dstW;
+        int probeX;
+    };
+
+    for (const auto &c : {
+             Case{4250000, 2250000, 1110257},
+             Case{8500000, 3000000, 1480343}
+    })
+    {
+        SCOPED_TRACE(c.srcW);
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+        nvcv::Tensor src     = nvcv::util::CreateTensor(1, c.srcW, 2, nvcv::FMT_U8);
+        nvcv::Tensor dst     = nvcv::util::CreateTensor(1, c.dstW, 1, nvcv::FMT_U8);
+        auto         srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+        auto         dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(srcData && dstData);
+        auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+        auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+        ASSERT_TRUE(srcAccess && dstAccess);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemset2DAsync(srcAccess->sampleData(0), srcAccess->rowStride(), 255, c.srcW, 2, stream));
+
+        cvcuda::Resize op;
+        ASSERT_NO_THROW(op(stream, src, dst, NVCV_INTERP_AREA));
+        uint8_t value = 0;
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(&value, dstAccess->sampleData(0) + c.probeX, sizeof(value),
+                                               cudaMemcpyDeviceToHost, stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        EXPECT_EQ(value, 255) << "Constant white input must remain white at x=" << c.probeX;
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+}
+
 TEST_P(OpResizePlanar, varshape_matches_interleaved)
 {
     RunPlanarParityVarShapeCase(GetParamValue<6>(), GetParamValue<7>(), GetParamValue<0>(), GetParamValue<1>(),
                                 GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(), GetParamValue<5>());
+}
+
+// The two nearest conventions must stay observably distinct: NEAREST samples the pixel covering
+// the destination center, NEAREST_FLOOR drops the offset. They coincide whenever the scale makes
+// the half-pixel shift land inside the same source pixel, so this uses a non-integer downscale
+// where the two rules provably select different columns.
+TEST(OpResize, nearest_floor_differs_from_nearest)
+{
+    constexpr int srcW = 320;
+    constexpr int srcH = 320;
+    constexpr int dstW = 299;
+    constexpr int dstH = 299;
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor src        = nvcv::util::CreateTensor(1, srcW, srcH, nvcv::FMT_U8);
+    nvcv::Tensor dstNearest = nvcv::util::CreateTensor(1, dstW, dstH, nvcv::FMT_U8);
+    nvcv::Tensor dstFloor   = nvcv::util::CreateTensor(1, dstW, dstH, nvcv::FMT_U8);
+
+    auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, srcData);
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    ASSERT_TRUE(srcAccess);
+
+    // A horizontal ramp makes any column-selection difference visible in the output bytes.
+    std::vector<uint8_t> in(srcH * srcW);
+    for (int y = 0; y < srcH; ++y)
+        for (int x = 0; x < srcW; ++x) in[y * srcW + x] = static_cast<uint8_t>(x);
+    nvcv::util::SetImageTensorFromVector<uint8_t>(*srcData, in, 0);
+
+    cvcuda::Resize op;
+    EXPECT_NO_THROW(op(stream, src, dstNearest, NVCV_INTERP_NEAREST));
+    EXPECT_NO_THROW(op(stream, src, dstFloor, NVCV_INTERP_NEAREST_FLOOR));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint8_t> gotNearest;
+    std::vector<uint8_t> gotFloor;
+    auto                 nearestData = dstNearest.exportData<nvcv::TensorDataStridedCuda>();
+    auto                 floorData   = dstFloor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(nearestData && floorData);
+    nvcv::util::GetImageVectorFromTensor<uint8_t>(*nearestData, 0, gotNearest);
+    nvcv::util::GetImageVectorFromTensor<uint8_t>(*floorData, 0, gotFloor);
+
+    EXPECT_NE(gotNearest, gotFloor) << "NEAREST_FLOOR must not alias NEAREST";
+
+    // Pin the rules themselves rather than merely asserting inequality. The ramp stores the
+    // source column index truncated to 8 bits, so the expectation truncates the same way.
+    const float scale = static_cast<float>(srcW) / dstW;
+    for (int x = 0; x < dstW; ++x)
+    {
+        const int expNearest = std::min(static_cast<int>(std::floor((static_cast<float>(x) + 0.5f) * scale)), srcW - 1);
+        const int expFloor   = std::min(static_cast<int>(std::floor(static_cast<float>(x) * scale)), srcW - 1);
+        EXPECT_EQ(static_cast<uint8_t>(expNearest), gotNearest[x]) << "NEAREST column " << x;
+        EXPECT_EQ(static_cast<uint8_t>(expFloor), gotFloor[x]) << "NEAREST_FLOOR column " << x;
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// NEAREST_FLOOR is implemented by Resize only. Every other operator validates interpolation
+// against an allowlist, so the new value must be rejected rather than silently treated as
+// NEAREST. Rotate stands in for that group.
+TEST(OpResize_Negative, nearest_floor_rejected_by_non_resize_operators)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor src = nvcv::util::CreateTensor(1, 32, 24, nvcv::FMT_RGBA8);
+    nvcv::Tensor dst = nvcv::util::CreateTensor(1, 32, 24, nvcv::FMT_RGBA8);
+
+    cvcuda::Rotate rotateOp(0);
+    double2        shift = {0.0, 0.0};
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { rotateOp(stream, src, dst, 90.0, shift, NVCV_INTERP_NEAREST_FLOOR); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 TEST(OpResize_Negative, planar_input_interleaved_output_layout_mismatch)

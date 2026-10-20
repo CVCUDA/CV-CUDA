@@ -18,6 +18,8 @@
 set -ex
 
 REPO_ROOT=$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+# shellcheck source=versions.env
+source "$REPO_ROOT/versions.env"
 
 # Main script used to build the Docker images for the CV-CUDA project
 # Usage: ./build_dockers.sh [REGISTRY_PREFIX] [MODE]
@@ -27,7 +29,7 @@ REPO_ROOT=$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 #       - "multiarch": Build multi-architecture images (x86_64 + aarch64) and push to registry (requires REGISTRY_PREFIX)
 #       - "local": Build for native architecture only and load into local Docker
 
-export VERSION=${VERSION:-14}  # Update version when changing anything in the Dockerfiles
+export VERSION=${VERSION:-15}  # Update version when changing anything in the Dockerfiles
 export TEGRA_VERSION=${TEGRA_VERSION:-1} # Update version when changing anything in the Dockerfile.tegra-aarch64-linux.builder
 
 export REGISTRY_PREFIX=${1:-${REGISTRY_PREFIX:-}}
@@ -37,7 +39,7 @@ readonly MODE_MULTIARCH="multiarch"
 readonly MODE_LOCAL="local"
 
 # Python versions for the multi-Python devel image
-export PYTHON_VERSIONS_310_TO_314="3.10 3.11 3.12 3.13 3.14"
+export PYTHON_VERSIONS_310_TO_314="3.10 3.11 3.12 3.13 3.14 3.14t"
 
 # Parse MODE from command line argument, or auto-detect based on REGISTRY_PREFIX
 MODE="${2:-}"
@@ -98,6 +100,7 @@ export PLATFORMS
 
 # Create isolated build context
 BUILD_CONTEXT_DIR="/tmp/cvcuda_build_$$"
+python3 "$REPO_ROOT/docker/generate_sys_python_lock.py" --check
 echo "Creating isolated build context at: $BUILD_CONTEXT_DIR"
 mkdir -p "$BUILD_CONTEXT_DIR"
 
@@ -105,11 +108,8 @@ mkdir -p "$BUILD_CONTEXT_DIR"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cp "$SCRIPT_DIR"/Dockerfile.* "$BUILD_CONTEXT_DIR/"
 # Copy build requirements (docker/ is the source of truth for build dependencies)
-cp "$SCRIPT_DIR"/requirements.build.sys_python.txt "$BUILD_CONTEXT_DIR/"
+cp "$SCRIPT_DIR"/requirements.sys_python.lock "$BUILD_CONTEXT_DIR/"
 cp "$SCRIPT_DIR"/requirements.build.all_pythons.txt "$BUILD_CONTEXT_DIR/"
-
-# Copy docs requirements (single source of truth for documentation dependencies)
-cp "$SCRIPT_DIR"/../docs/requirements.docs.txt "$BUILD_CONTEXT_DIR/"
 
 # Copy test requirements (single source of truth for test dependencies)
 cp "$SCRIPT_DIR"/../tests/requirements.tests.common.txt "$BUILD_CONTEXT_DIR/"
@@ -294,6 +294,8 @@ docker buildx build \
     --build-arg "VER_CUDA=12.5.0" \
     --build-arg "VER_NUMPY_MAJOR=2" \
     --build-arg "TORCH_CUDA_SUFFIX=cu12" \
+    --build-arg "CPYTHON_314T_VERSION=${cpython_314t}" \
+    --build-arg "CPYTHON_314T_SHA256=${cpython_314t_sha256}" \
     ${REGISTRY_PREFIX:+--cache-to type=inline} \
     --platform ${PLATFORMS} \
     ${ATTESTATION_FLAGS} \
@@ -309,10 +311,12 @@ docker buildx build \
     -t ${DEVEL_U26_CU1330_NUM2} -t ${DEVEL_U26_CU1330_NUM2}:v${VERSION} \
     -f "$BUILD_CONTEXT_DIR/Dockerfile.devel.deps" \
     --build-arg "BASE=nvidia/cuda:13.3.0-devel-ubuntu26.04" \
-    --build-arg "PYTHON_VERSIONS=3.14" \
+    --build-arg "PYTHON_VERSIONS=3.14 3.14t" \
     --build-arg "VER_CUDA=13.3.0" \
     --build-arg "VER_NUMPY_MAJOR=2" \
     --build-arg "TORCH_CUDA_SUFFIX=cu13" \
+    --build-arg "CPYTHON_314T_VERSION=${cpython_314t}" \
+    --build-arg "CPYTHON_314T_SHA256=${cpython_314t_sha256}" \
     --build-arg "INSTALL_NSIGHT_COMPUTE=1" \
     ${REGISTRY_PREFIX:+--cache-to type=inline} \
     --platform ${PLATFORMS} \
@@ -332,6 +336,8 @@ docker buildx build \
     --build-arg "VER_CUDA=13.3.0" \
     --build-arg "VER_NUMPY_MAJOR=2" \
     --build-arg "TORCH_CUDA_SUFFIX=cu13" \
+    --build-arg "CPYTHON_314T_VERSION=${cpython_314t}" \
+    --build-arg "CPYTHON_314T_SHA256=${cpython_314t_sha256}" \
     --build-arg "INSTALL_NSIGHT_COMPUTE=1" \
     ${REGISTRY_PREFIX:+--cache-to type=inline} \
     --platform ${PLATFORMS} \

@@ -20,20 +20,30 @@
 #include "../NvtxRange.hpp"
 #include "Cache.hpp"
 #include "Definitions.hpp"
+#include "Resource.hpp"
 #include "StreamStack.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <common/CheckError.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
-#include <pybind11/operators.h>
+#ifdef NB_FREE_THREADED
+#    include <cuda.h>
+#endif
 
+#include <algorithm>
+#include <atomic>
+#include <cstdio>
+#include <limits>
+#include <list>
 #include <new>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
+#include <utility>
 
 namespace nvcvpy::priv {
-
 namespace {
 
 class StreamError : public std::runtime_error
@@ -42,17 +52,779 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+uint64_t &ThreadIdentitySlot() noexcept
+{
+    static thread_local uint64_t identity = 0;
+    return identity;
+}
+
+uint64_t AllocateThreadIdentity()
+{
+    static std::atomic_uint64_t next{1};
+    uint64_t                    value = next.load(std::memory_order_relaxed);
+    for (;;)
+    {
+        if (value == 0 || value == std::numeric_limits<uint64_t>::max())
+            throw StreamError("CUDA stream thread identity space exhausted");
+        if (next.compare_exchange_weak(value, value + 1, std::memory_order_relaxed, std::memory_order_relaxed))
+            return value;
+    }
+}
+
+uint64_t AssignCurrentThreadIdentity()
+{
+    uint64_t &identity = ThreadIdentitySlot();
+    if (identity == 0)
+    {
+        identity = AllocateThreadIdentity();
+    }
+    return identity;
+}
+
+uint64_t CurrentThreadIdentity() noexcept
+{
+    return ThreadIdentitySlot();
+}
+
+} // namespace
+
+StreamHandleOwner::StreamHandleOwner(cudaStream_t handle, int device, bool owns, py::object owner,
+                                     bool externalOwnerRetainsLifetime)
+    : m_handle(handle)
+    , m_device(device)
+    , m_owns(owns)
+    , m_owner(std::move(owner))
+    , m_externalOwnerRetainsLifetime(externalOwnerRetainsLifetime)
+    , m_creatorThreadIdentity(handle == cudaStreamPerThread ? AssignCurrentThreadIdentity() : 0)
+{
+#ifdef NB_FREE_THREADED
+    if (handle == cudaStreamPerThread)
+    {
+        util::CheckThrow(cudaEventCreateWithFlags(&m_perThreadCompletion, cudaEventDisableTiming));
+        auto status = capturePerThreadCompletion();
+        if (status != cudaSuccess)
+        {
+            util::CheckLog(cudaEventDestroy(m_perThreadCompletion));
+            util::CheckThrow(status);
+        }
+    }
+#endif
+}
+
+bool StreamHandleOwner::sharesQueueWith(const StreamHandleOwner &other) const noexcept
+{
+    return m_handle == other.m_handle
+        && (m_handle != cudaStreamPerThread || m_creatorThreadIdentity == other.m_creatorThreadIdentity);
+}
+
+bool StreamHandleOwner::isCurrentThreadQueue() const noexcept
+{
+    return m_handle != cudaStreamPerThread || m_creatorThreadIdentity == CurrentThreadIdentity();
+}
+
+StreamHandleOwner::~StreamHandleOwner()
+{
+    if (const bool ownsHandle = m_owns && m_handle != nullptr; !ownsHandle
+#ifdef NB_FREE_THREADED
+                                                               && !m_perThreadCompletion
+#endif
+    )
+    {
+        return;
+    }
+
+    int         savedDevice = -1;
+    cudaError_t status      = cudaGetDevice(&savedDevice);
+    if (status == cudaSuccess)
+    {
+        status = cudaSetDevice(m_device);
+    }
+    if (status != cudaSuccess)
+    {
+        // Leaking the stream is the safe failure here: without its device
+        // current, cudaStreamDestroy would not reach it. Report it and clear
+        // the sticky error, so it cannot surface out of an unrelated CUDA call
+        // made later by whoever happened to drop the last reference.
+        util::CheckLog(status);
+        (void)cudaGetLastError();
+        return;
+    }
+
+    // CUDA keeps queued work alive after this asynchronous destroy.
+#ifdef NB_FREE_THREADED
+    if (m_perThreadCompletion)
+        util::CheckLog(cudaEventDestroy(m_perThreadCompletion));
+#endif
+    if (m_owns && m_handle)
+        util::CheckLog(cudaStreamDestroy(m_handle));
+    util::CheckLog(cudaSetDevice(savedDevice));
+}
+
+namespace {
+
+uint64_t AllocateStreamObjectId()
+{
+    static std::atomic_uint64_t next{0};
+    return next.fetch_add(1, std::memory_order_relaxed);
+}
+
+class ReleaseEvent
+{
+public:
+    explicit ReleaseEvent(int device)
+        : m_device(device)
+    {
+        util::CheckThrow(cudaEventCreateWithFlags(&m_handle, cudaEventDisableTiming));
+    }
+
+    ~ReleaseEvent()
+    {
+        reset();
+    }
+
+    ReleaseEvent(const ReleaseEvent &)            = delete;
+    ReleaseEvent &operator=(const ReleaseEvent &) = delete;
+
+    cudaEvent_t handle() const
+    {
+        return m_handle;
+    }
+
+    int device() const
+    {
+        return m_device;
+    }
+
+private:
+    void reset() noexcept
+    {
+        if (m_handle == nullptr)
+        {
+            return;
+        }
+
+        int         savedDevice = -1;
+        cudaError_t status      = cudaGetDevice(&savedDevice);
+        if (status == cudaSuccess)
+        {
+            status = cudaSetDevice(m_device);
+        }
+        if (status == cudaSuccess)
+        {
+            util::CheckLog(cudaEventDestroy(m_handle));
+            util::CheckLog(cudaSetDevice(savedDevice));
+        }
+        else
+        {
+            // Same trade as ~StreamHandleOwner: leak the event rather than
+            // leave a sticky error for an unrelated later call to trip on.
+            util::CheckLog(status);
+            (void)cudaGetLastError();
+        }
+        m_handle = nullptr;
+    }
+
+    cudaEvent_t m_handle = nullptr;
+    int         m_device = -1;
+};
+
+std::atomic_bool &FailNextReleaseEventRecord()
+{
+    static std::atomic_bool fail{false};
+    return fail;
+}
+
+void RecordReleaseEvent(cudaEvent_t event, cudaStream_t stream)
+{
+    // Exercise publication rollback without poisoning the CUDA context.
+    if (std::atomic_bool &fail = FailNextReleaseEventRecord();
+        fail.load(std::memory_order_relaxed) && fail.exchange(false, std::memory_order_relaxed))
+    {
+        throw std::invalid_argument("injected pending-release event record failure");
+    }
+    util::CheckThrow(cudaEventRecord(event, stream));
+}
+
+struct PendingRelease
+{
+    explicit PendingRelease(int device)
+        : event(device)
+    {
+    }
+
+    void clearNativeOwners()
+    {
+        for (const std::shared_ptr<Resource> &resource : resources)
+        {
+            resource->releasePendingReleaseOwner(ownersBlocked);
+        }
+        resources.clear();
+        resourceSet.clear();
+        stream.reset();
+        lifetimeOwner.reset();
+        ownersBlocked = false;
+    }
+
+    bool hasPythonTeardown() const noexcept
+    {
+        return !pythonOwners.empty() || (stream && stream->handleOwner()->hasPythonOwner())
+            || (lifetimeOwner && lifetimeOwner->hasPythonOwner());
+    }
+
+    void blockNativeOwners()
+    {
+        if (ownersBlocked)
+        {
+            return;
+        }
+        for (const std::shared_ptr<Resource> &resource : resources)
+        {
+            resource->blockPendingReleaseOwner();
+        }
+        ownersBlocked = true;
+    }
+
+    bool sharesQueueWith(Stream &candidate, int device) const
+    {
+        return stream && event.device() == device && !ownersBlocked && stream->sharesQueueWith(candidate);
+    }
+
+    ReleaseEvent                             event;
+    std::shared_ptr<const Stream>            stream;
+    std::shared_ptr<const StreamHandleOwner> lifetimeOwner;
+    ResourceBag                              resources;
+    std::unordered_set<Resource *>           resourceSet;
+    PythonOwnerBag                           pythonOwners;
+    std::unordered_set<PyObject *>           pythonOwnerSet;
+    bool                                     ownersBlocked = false;
+};
+
+using ReleaseList = std::list<PendingRelease>;
+
+struct PendingReleaseState
+{
+    std::mutex           mutex;
+    std::recursive_mutex drainMutex;
+    ReleaseList          pending;
+    ReleaseList          idle;
+    ReleaseList          quarantine;
+    ReleaseList          awaitingGilCleanup;
+    std::atomic_bool     hasDeferredPythonOwners{false};
+};
+
+PendingReleaseState &PendingReleases()
+{
+    // CUDA and Python may already be shutting down when static destructors
+    // run. Cleanup drains this state explicitly; the shell stays immortal.
+    static auto *state = new PendingReleaseState; // NOSONAR: deliberately immortal
+    return *state;
+}
+
+void DrainPendingReleases();
+void ReleaseDeferredPythonOwners();
+
+void RecycleCompleted(ReleaseList completed)
+{
+    if (completed.empty())
+        return;
+    ReleaseList awaitingGil;
+    const bool  canReleasePython = util::HasPythonThreadState();
+    for (auto it = completed.begin(); it != completed.end();)
+    {
+        auto current = it++;
+        if (current->hasPythonTeardown() && !canReleasePython)
+        {
+            // Native submission may retire a legacy batch without the GIL.
+            // Keep the whole ownership set in the same global release state
+            // until a Python entry point can safely drop its wrappers.
+            current->blockNativeOwners();
+            awaitingGil.splice(awaitingGil.end(), completed, current);
+            continue;
+        }
+        current->clearNativeOwners();
+        current->pythonOwners.clear();
+        current->pythonOwnerSet.clear();
+    }
+
+    constexpr size_t     kMaxIdleEvents = 64;
+    PendingReleaseState &state          = PendingReleases();
+    {
+        std::lock_guard lock(state.mutex);
+        if (!awaitingGil.empty())
+        {
+            state.awaitingGilCleanup.splice(state.awaitingGilCleanup.end(), awaitingGil);
+            state.hasDeferredPythonOwners.store(true, std::memory_order_release);
+        }
+        while (!completed.empty() && state.idle.size() < kMaxIdleEvents)
+        {
+            state.idle.splice(state.idle.end(), completed, completed.begin());
+        }
+    }
+    try
+    {
+        Cache::PruneToLimits();
+    }
+    catch (...) // NOSONAR: ownership may already be committed; pruning records its own retry request.
+    {
+        std::fputs("[cvcuda] Cache pruning failed after release retirement; deferring budget cleanup\n", stderr);
+    }
+}
+
+void ReleaseDeferredPythonOwners()
+{
+    PendingReleaseState &state = PendingReleases();
+    if (!state.hasDeferredPythonOwners.load(std::memory_order_acquire))
+    {
+        return;
+    }
+    if (!util::HasPythonThreadState())
+    {
+        return;
+    }
+
+    ReleaseList completed;
+    {
+        std::lock_guard lock(state.mutex);
+        completed.splice(completed.end(), state.awaitingGilCleanup);
+        state.hasDeferredPythonOwners.store(false, std::memory_order_release);
+    }
+
+    for (PendingRelease &batch : completed)
+    {
+        batch.pythonOwners.clear();
+        batch.pythonOwnerSet.clear();
+    }
+    RecycleCompleted(std::move(completed));
+}
+
+// Moves every batch the GPU has provably finished with out of `pending`.
+// There are at most two native batches per active underlying stream, so
+// scanning past a busy stream is bounded by stream count and lets unrelated
+// streams retire promptly. The older batch remains a stable completion
+// checkpoint while the newer batch advances to the stream tail. When the
+// checkpoint completes, the next submission rotates in a fresh generation.
+//
+// `device` selects which batches are eligible. A batch of another device does
+// not stop the sweep, because per-device issue order is what the reasoning
+// above rests on.
+ReleaseList CollectReadyReleases(int device)
+{
+    ReleaseDeferredPythonOwners();
+    PendingReleaseState &state = PendingReleases();
+    ReleaseList          completed;
+    cudaError_t          queryError = cudaSuccess;
+
+    {
+        std::lock_guard lock(state.mutex);
+        for (auto it = state.pending.begin(); it != state.pending.end();)
+        {
+            auto current = it++;
+            if (current->event.device() != device)
+            {
+                continue;
+            }
+
+            cudaError_t status = cudaEventQuery(current->event.handle());
+            if (status == cudaErrorNotReady)
+            {
+                continue;
+            }
+            if (status == cudaSuccess)
+            {
+                completed.splice(completed.end(), state.pending, current);
+            }
+            else
+            {
+                queryError = status;
+                current->blockNativeOwners();
+                state.quarantine.splice(state.quarantine.end(), state.pending, current);
+                (void)cudaGetLastError();
+            }
+        }
+    }
+
+    if (queryError != cudaSuccess)
+    {
+        std::fprintf(stderr, "[cvcuda] CUDA event query failed (%s); quarantining pending resources\n",
+                     cudaGetErrorName(queryError));
+    }
+    return completed;
+}
+
+using ResourceSourceBag    = std::vector<std::shared_ptr<Resource> *>;
+using PythonOwnerSourceBag = std::vector<py::object *>;
+
+bool HasSameOwners(const PendingRelease &batch, const ResourceOwnerTransfer &resources,
+                   const PythonOwnerBag &pythonOwners)
+{
+    if (batch.resources.size() != resources.inlineSize + resources.overflowSize
+        || batch.pythonOwners.size() != pythonOwners.size())
+        return false;
+    for (size_t i = 0; i < resources.inlineSize; ++i)
+        if (batch.resources[i] != resources.inlineData[i])
+            return false;
+    for (size_t i = 0; i < resources.overflowSize; ++i)
+        if (batch.resources[resources.inlineSize + i] != resources.overflowData[i])
+            return false;
+    for (size_t i = 0; i < pythonOwners.size(); ++i)
+        if (batch.pythonOwners[i].ptr() != pythonOwners[i].ptr())
+            return false;
+    return true;
+}
+
+bool HasNewOwner(const PendingRelease &batch, const ResourceOwnerTransfer &resources,
+                 const PythonOwnerBag &pythonOwners)
+{
+    for (size_t i = 0; i < resources.inlineSize; ++i)
+    {
+        if (batch.resourceSet.find(resources.inlineData[i].get()) == batch.resourceSet.end())
+            return true;
+    }
+    for (size_t i = 0; i < resources.overflowSize; ++i)
+    {
+        if (batch.resourceSet.find(resources.overflowData[i].get()) == batch.resourceSet.end())
+            return true;
+    }
+    return std::any_of(pythonOwners.begin(), pythonOwners.end(),
+                       [&batch](const py::object &owner)
+                       { return batch.pythonOwnerSet.find(owner.ptr()) == batch.pythonOwnerSet.end(); });
+}
+
+template<class T>
+void ReserveForAppend(std::vector<T> &items, size_t count)
+{
+    if (count > items.max_size() - items.size())
+        throw std::length_error("pending release batch is too large");
+
+    const size_t required = items.size() + count;
+    if (required > items.capacity())
+    {
+        const size_t growth = std::min(items.capacity(), items.max_size() - items.capacity());
+        items.reserve(std::max(required, items.capacity() + growth));
+    }
+}
+
+void PublishStreamOwner(PendingRelease &batch, Stream &stream, std::shared_ptr<Stream> &streamOwner)
+{
+    // Any same-queue owner suffices. Replacing one could run Python teardown
+    // off-GIL during publication; retirement already handles that boundary.
+    if (!batch.lifetimeOwner && stream.handleOwner()->retainsHandleLifetime())
+    {
+        batch.lifetimeOwner = stream.handleOwner();
+    }
+    if (!batch.stream)
+    {
+        batch.stream = std::move(streamOwner);
+    }
+}
+
+void StageResource(PendingRelease &batch, std::shared_ptr<Resource> &resource, ResourceSourceBag &newResources)
+{
+    if (batch.resourceSet.insert(resource.get()).second)
+    {
+        newResources.push_back(&resource);
+    }
+}
+
+void RollbackStagedOwners(PendingRelease &batch, const ResourceSourceBag &newResources,
+                          const PythonOwnerSourceBag &newPythonOwners, bool pendingOwnersAcquired)
+{
+    if (pendingOwnersAcquired)
+    {
+        for (const std::shared_ptr<Resource> *resource : newResources) (*resource)->releasePendingReleaseOwner(false);
+    }
+    for (const std::shared_ptr<Resource> *resource : newResources)
+    {
+        batch.resourceSet.erase(resource->get());
+    }
+    for (const py::object *owner : newPythonOwners)
+    {
+        batch.pythonOwnerSet.erase(owner->ptr());
+    }
+}
+
+void AppendToBatch(PendingRelease &batch, Stream &stream, std::shared_ptr<Stream> &streamOwner,
+                   const ResourceOwnerTransfer &resources, PythonOwnerBag &pythonOwners)
+{
+    if (!HasNewOwner(batch, resources, pythonOwners))
+    {
+        RecordReleaseEvent(batch.event.handle(), stream.handle());
+        PublishStreamOwner(batch, stream, streamOwner);
+        return;
+    }
+
+    const size_t resourceCount = resources.inlineSize + resources.overflowSize;
+    ReserveForAppend(batch.resources, resourceCount);
+    batch.resourceSet.reserve(batch.resourceSet.size() + resourceCount);
+    ReserveForAppend(batch.pythonOwners, pythonOwners.size());
+    batch.pythonOwnerSet.reserve(batch.pythonOwnerSet.size() + pythonOwners.size());
+
+    ResourceSourceBag    newResources;
+    PythonOwnerSourceBag newPythonOwners;
+    newResources.reserve(resourceCount);
+    newPythonOwners.reserve(pythonOwners.size());
+
+    bool pendingOwnersAcquired = false;
+    try
+    {
+        for (size_t i = 0; i < resources.inlineSize; ++i)
+        {
+            StageResource(batch, resources.inlineData[i], newResources);
+        }
+        for (size_t i = 0; i < resources.overflowSize; ++i)
+        {
+            StageResource(batch, resources.overflowData[i], newResources);
+        }
+        for (py::object &owner : pythonOwners)
+        {
+            if (batch.pythonOwnerSet.insert(owner.ptr()).second)
+            {
+                newPythonOwners.push_back(&owner);
+            }
+        }
+        for (const std::shared_ptr<Resource> *resource : newResources) (*resource)->acquirePendingReleaseOwner();
+        pendingOwnersAcquired = true;
+        RecordReleaseEvent(batch.event.handle(), stream.handle());
+    }
+    catch (...) // NOSONAR: every staged owner must be rolled back before propagating any failure.
+    {
+        RollbackStagedOwners(batch, newResources, newPythonOwners, pendingOwnersAcquired);
+        throw;
+    }
+
+    PublishStreamOwner(batch, stream, streamOwner);
+    for (std::shared_ptr<Resource> *resource : newResources)
+    {
+        (*resource)->indexPendingResources();
+        batch.resources.emplace_back(std::move(*resource));
+    }
+    for (py::object *owner : newPythonOwners)
+    {
+        batch.pythonOwners.emplace_back(std::move(*owner));
+    }
+}
+
+PendingRelease *NewestBatchFor(Stream &stream, int device, ReleaseList &pending, size_t &count)
+{
+    PendingRelease *newest = nullptr;
+    count                  = 0;
+    for (PendingRelease &candidate : pending)
+    {
+        if (candidate.sharesQueueWith(stream, device))
+        {
+            newest = &candidate;
+            ++count;
+        }
+    }
+    return newest;
+}
+
+void InheritLifetimeOwner(PendingRelease &target, const PendingRelease *newest,
+                          const std::shared_ptr<const StreamHandleOwner> &completedOwner)
+{
+    if (!target.lifetimeOwner)
+        target.lifetimeOwner = newest && newest->lifetimeOwner ? newest->lifetimeOwner : completedOwner;
+}
+
+void AppendRelease(Stream &stream, std::shared_ptr<Stream> &streamOwner, const ResourceOwnerTransfer &resources,
+                   PythonOwnerBag &pythonOwners, int device, ReleaseList &completed)
+{
+    PendingReleaseState                     &state = PendingReleases();
+    std::shared_ptr<const StreamHandleOwner> completedOwner;
+    if (!stream.handleOwner()->retainsHandleLifetime())
+    {
+        // A raw alias may have queued new work while a completed record still
+        // carries the sole owner of its handle. Transfer that anchor too.
+        for (auto it = completed.rbegin(); it != completed.rend(); ++it)
+            if (it->lifetimeOwner && it->sharesQueueWith(stream, device))
+            {
+                completedOwner = it->lifetimeOwner;
+                break;
+            }
+    }
+
+    {
+        std::lock_guard lock(state.mutex);
+        size_t          generationCount;
+        PendingRelease *newest = NewestBatchFor(stream, device, state.pending, generationCount);
+        if (generationCount >= 2)
+        {
+            InheritLifetimeOwner(*newest, newest, completedOwner);
+            AppendToBatch(*newest, stream, streamOwner, resources, pythonOwners);
+            return;
+        }
+        auto reusable = std::find_if(completed.begin(), completed.end(),
+                                     [&](const PendingRelease &batch)
+                                     {
+                                         return batch.sharesQueueWith(stream, device)
+                                             && (!batch.hasPythonTeardown() || util::HasPythonThreadState())
+                                             && HasSameOwners(batch, resources, pythonOwners);
+                                     });
+        if (reusable != completed.end())
+        {
+            // Exact equality, not containment: extending a completed superset
+            // would keep unused allocations charged across later submissions.
+            InheritLifetimeOwner(*reusable, newest, completedOwner);
+            AppendToBatch(*reusable, stream, streamOwner, resources, pythonOwners);
+            state.pending.splice(state.pending.end(), completed, reusable);
+            return;
+        }
+    }
+
+    ReleaseList incoming;
+    {
+        std::lock_guard lock(state.mutex);
+        auto            idle = std::find_if(state.idle.begin(), state.idle.end(),
+                                            [device](const PendingRelease &batch) { return batch.event.device() == device; });
+        if (idle != state.idle.end())
+        {
+            incoming.splice(incoming.end(), state.idle, idle);
+        }
+    }
+    if (incoming.empty())
+    {
+        incoming.emplace_back(device);
+    }
+
+    {
+        std::lock_guard lock(state.mutex);
+        size_t          generationCount;
+        PendingRelease *newest = NewestBatchFor(stream, device, state.pending, generationCount);
+        if (generationCount >= 2)
+        {
+            InheritLifetimeOwner(*newest, newest, completedOwner);
+            AppendToBatch(*newest, stream, streamOwner, resources, pythonOwners);
+            return;
+        }
+
+        InheritLifetimeOwner(incoming.front(), newest, completedOwner);
+        AppendToBatch(incoming.front(), stream, streamOwner, resources, pythonOwners);
+        state.pending.splice(state.pending.end(), incoming);
+    }
+}
+
+void EnqueueRelease(Stream &stream, std::shared_ptr<Stream> &streamOwner, const ResourceOwnerTransfer &resources,
+                    PythonOwnerBag &pythonOwners, int submissionDevice)
+{
+    if (resources.inlineSize + resources.overflowSize == 0 && pythonOwners.empty())
+        return;
+
+    // Keep completed owners through publication so an unchanged batch snapshot
+    // does not deactivate/reactivate every time the GPU outruns the host.
+    // Recycle unused generations outside queue locks; Python teardown may defer.
+    auto completed = CollectReadyReleases(submissionDevice);
+    try
+    {
+        AppendRelease(stream, streamOwner, resources, pythonOwners, submissionDevice, completed);
+    }
+    catch (...) // NOSONAR: completed ownership must retire on every publication failure.
+    {
+        try
+        {
+            RecycleCompleted(std::move(completed));
+        }
+        catch (...) // NOSONAR: pruning must not replace the original publication failure.
+        {
+            std::fputs("[cvcuda] Cache pruning failed while unwinding pending release publication\n", stderr);
+        }
+        throw;
+    }
+    RecycleCompleted(std::move(completed));
+}
+
+template<class AfterLock>
+void DrainPendingReleasesImpl(AfterLock &&afterLock)
+{
+    ReleaseDeferredPythonOwners();
+    PendingReleaseState &state = PendingReleases();
+    std::unique_lock     drainLock(state.drainMutex, std::try_to_lock);
+    if (!drainLock.owns_lock())
+    {
+        // Another drainer may be waiting on a callback that needs the GIL.
+        py::gil_scoped_release release;
+        drainLock.lock();
+    }
+    afterLock();
+
+    ReleaseList waiting;
+    ReleaseList completed;
+    ReleaseList failed;
+    cudaError_t firstError = cudaSuccess;
+
+    for (;;)
+    {
+        {
+            std::lock_guard lock(state.mutex);
+            waiting.splice(waiting.end(), state.pending);
+            for (PendingRelease &batch : waiting)
+            {
+                batch.blockNativeOwners();
+            }
+        }
+        if (waiting.empty())
+        {
+            break;
+        }
+
+        {
+            // A callback ahead of our event may need the GIL to complete.
+            py::gil_scoped_release release;
+            for (auto it = waiting.begin(); it != waiting.end();)
+            {
+                auto        current = it++;
+                cudaError_t status  = cudaEventSynchronize(current->event.handle());
+                if (status == cudaSuccess)
+                {
+                    completed.splice(completed.end(), waiting, current);
+                    continue;
+                }
+
+                if (firstError == cudaSuccess)
+                {
+                    firstError = status;
+                }
+                failed.splice(failed.end(), waiting, current);
+                (void)cudaGetLastError();
+            }
+        }
+    }
+
+    if (!failed.empty())
+    {
+        std::lock_guard lock(state.mutex);
+        state.quarantine.splice(state.quarantine.end(), failed);
+    }
+    RecycleCompleted(std::move(completed));
+    drainLock.unlock();
+    if (firstError != cudaSuccess)
+    {
+        util::CheckThrow(firstError);
+    }
+}
+
+void DrainPendingReleases()
+{
+    DrainPendingReleasesImpl([] { /* production drains need no lock-acquired hook */ });
+}
+
+void DestroyIdleReleaseEvents()
+{
+    ReleaseDeferredPythonOwners();
+    PendingReleaseState &state = PendingReleases();
+    ReleaseList          idle;
+    {
+        std::lock_guard lock(state.mutex);
+        idle.splice(idle.end(), state.idle);
+    }
+}
+
 } // namespace
 
 // Static members initialization
-std::unordered_map<int, cudaStream_t> Stream::m_auxStreams;
-std::atomic<int>                      Stream::m_instanceCount = 0;
-std::shared_mutex                     Stream::m_auxStreamMutex;
-std::mutex                            Stream::m_gcMutex;
-std::weak_ptr<Stream>                 Stream::m_defaultStream;
+std::weak_ptr<Stream> Stream::m_defaultStream;
 
-// Here we define the representation of external cuda streams.
-// It defines pybind11's type casters from the python object
+// Here we define the representation of external CUDA streams and nanobind's
+// type casters from Python objects.
 // to the corresponding ExternalStream<E>.
 
 // Defines each external stream represetation we support.
@@ -75,10 +847,11 @@ public:
     {
     }
 
-    void setCudaStream(cudaStream_t cudaStream, py::object obj)
+    void setCudaStream(cudaStream_t cudaStream, py::object obj, bool retainsHandleLifetime = false)
     {
-        m_cudaStream = cudaStream;
-        m_wrappedObj = std::move(obj);
+        m_cudaStream            = cudaStream;
+        m_wrappedObj            = std::move(obj);
+        m_retainsHandleLifetime = retainsHandleLifetime;
     }
 
     cudaStream_t handle() const override
@@ -91,14 +864,20 @@ public:
         return m_wrappedObj;
     }
 
+    bool retainsHandleLifetime() const override
+    {
+        return m_retainsHandleLifetime;
+    }
+
 private:
     cudaStream_t m_cudaStream;
     py::object   m_wrappedObj;
+    bool         m_retainsHandleLifetime = false;
 };
 
 } // namespace nvcvpy::priv
 
-namespace PYBIND11_NAMESPACE { namespace detail {
+namespace nanobind::detail {
 
 using namespace std::literals;
 namespace util = nvcvpy::util;
@@ -107,22 +886,22 @@ namespace priv = nvcvpy::priv;
 template<>
 struct type_caster<priv::ExternalStream<priv::VOIDP>>
 {
-    PYBIND11_TYPE_CASTER(priv::ExternalStream<priv::VOIDP>, const_name("ctypes.c_void_p"));
+    NB_TYPE_CASTER(priv::ExternalStream<priv::VOIDP>, const_name("ctypes.c_void_p"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *) noexcept
     {
         if (std::string strType = util::GetFullyQualifiedName(src); strType != "ctypes.c_void_p")
         {
             return false;
         }
 
-        buffer_info info = ::pybind11::cast<buffer>(src).request();
+        nanobind::buffer_info info = nanobind::borrow<nanobind::buffer>(src).request();
 
         NVCV_ASSERT(info.itemsize == sizeof(void *));
 
         void *data = *reinterpret_cast<void **>(info.ptr);
 
-        value.setCudaStream(reinterpret_cast<cudaStream_t>(data), ::pybind11::cast<object>(src));
+        value.setCudaStream(reinterpret_cast<cudaStream_t>(data), nanobind::borrow<nanobind::object>(src));
         return true;
     }
 };
@@ -130,19 +909,19 @@ struct type_caster<priv::ExternalStream<priv::VOIDP>>
 template<>
 struct type_caster<priv::ExternalStream<priv::INT>>
 {
-    PYBIND11_TYPE_CASTER(priv::ExternalStream<priv::INT>, const_name("int"));
+    NB_TYPE_CASTER(priv::ExternalStream<priv::INT>, const_name("int"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *) noexcept
     {
         try
         {
             // REVISIT: don't know how to test if a python object
             // is convertible to a type without exceptions.
-            intptr_t data = src.cast<intptr_t>();
-            value.setCudaStream(reinterpret_cast<cudaStream_t>(data), ::pybind11::cast<object>(src));
+            intptr_t data = nanobind::cast<intptr_t>(src);
+            value.setCudaStream(reinterpret_cast<cudaStream_t>(data), nanobind::borrow<nanobind::object>(src));
             return true;
         }
-        catch (...) // NOSONAR: pybind type casters probe conversions by catching failures.
+        catch (...) // NOSONAR: binding type casters probe conversions by catching failures.
         {
             return false;
         }
@@ -152,12 +931,12 @@ struct type_caster<priv::ExternalStream<priv::INT>>
 template<>
 struct type_caster<priv::ExternalStream<priv::TORCH>>
 {
-    PYBIND11_TYPE_CASTER(priv::ExternalStream<priv::TORCH>, const_name("torch.cuda.Stream"));
+    NB_TYPE_CASTER(priv::ExternalStream<priv::TORCH>, const_name("torch.cuda.Stream"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *) noexcept
     {
-        if (std::string strType = util::GetFullyQualifiedName(src);
-            strType != "torch.cuda.streams.Stream" && strType != "torch.cuda.streams.ExternalStream")
+        std::string strType = util::GetFullyQualifiedName(src);
+        if (strType != "torch.cuda.streams.Stream" && strType != "torch.cuda.streams.ExternalStream")
         {
             return false;
         }
@@ -166,11 +945,12 @@ struct type_caster<priv::ExternalStream<priv::TORCH>>
         {
             // REVISIT: don't know how to test if a python object
             // is convertible to a type without exceptions.
-            intptr_t data = src.attr("cuda_stream").cast<intptr_t>();
-            value.setCudaStream(reinterpret_cast<cudaStream_t>(data), ::pybind11::cast<object>(src));
+            intptr_t data = nanobind::cast<intptr_t>(src.attr("cuda_stream"));
+            value.setCudaStream(reinterpret_cast<cudaStream_t>(data), nanobind::borrow<nanobind::object>(src),
+                                strType == "torch.cuda.streams.Stream");
             return true;
         }
-        catch (...) // NOSONAR: pybind type casters probe conversions by catching failures.
+        catch (...) // NOSONAR: binding type casters probe conversions by catching failures.
         {
             return false;
         }
@@ -180,30 +960,31 @@ struct type_caster<priv::ExternalStream<priv::TORCH>>
 template<>
 struct type_caster<priv::ExternalStream<priv::CUPY>>
 {
-    PYBIND11_TYPE_CASTER(priv::ExternalStream<priv::CUPY>, const_name("cupy.cuda.Stream"));
+    NB_TYPE_CASTER(priv::ExternalStream<priv::CUPY>, const_name("cupy.cuda.Stream"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *) noexcept
     {
-        if (std::string strType = util::GetFullyQualifiedName(src);
-            strType != "cupy.cuda.stream.Stream" && strType != "cupy.cuda.stream.ExternalStream")
+        std::string strType = util::GetFullyQualifiedName(src);
+        if (strType != "cupy.cuda.stream.Stream" && strType != "cupy.cuda.stream.ExternalStream")
         {
             return false;
         }
 
         try
         {
-            intptr_t data = src.attr("ptr").cast<intptr_t>();
-            value.setCudaStream(reinterpret_cast<cudaStream_t>(data), ::pybind11::cast<object>(src));
+            intptr_t data = nanobind::cast<intptr_t>(src.attr("ptr"));
+            value.setCudaStream(reinterpret_cast<cudaStream_t>(data), nanobind::borrow<nanobind::object>(src),
+                                strType == "cupy.cuda.stream.Stream");
             return true;
         }
-        catch (...) // NOSONAR: pybind type casters probe conversions by catching failures.
+        catch (...) // NOSONAR: binding type casters probe conversions by catching failures.
         {
             return false;
         }
     }
 };
 
-}} // namespace PYBIND11_NAMESPACE::detail
+} // namespace nanobind::detail
 
 namespace nvcvpy::priv {
 
@@ -234,131 +1015,36 @@ std::shared_ptr<Stream> Stream::Create()
     else
     {
         // Get the first one
-        return std::static_pointer_cast<Stream>(vcont[0]);
+        return std::static_pointer_cast<Stream>(vcont[0]->cachedObject());
     }
 }
 
 Stream::Stream()
-    : m_owns(true)
+    : m_id(AllocateStreamObjectId())
+    , m_owns(true)
     , m_size_inbytes(doComputeSizeInBytes())
 {
+    util::CheckThrow(cudaStreamCreateWithFlags(&m_handle, cudaStreamNonBlocking));
     try
     {
-        util::CheckThrow(cudaStreamCreateWithFlags(&m_handle, cudaStreamNonBlocking));
-        incrementInstanceCount();
-        GetAuxStream();
+        m_handleOwner = std::make_shared<StreamHandleOwner>(m_handle, m_key.deviceId(), true);
     }
-    catch (...) // NOSONAR: constructor cleanup must run for any exception.
+    catch (...)
     {
-        destroy();
+        util::CheckLog(cudaStreamDestroy(m_handle));
         throw;
     }
 }
 
 Stream::Stream(IExternalStream &extStream)
-    : m_handle(extStream.handle())
-    , m_wrappedObj(extStream.wrappedObject())
+    : m_id(AllocateStreamObjectId())
+    , m_handle(extStream.handle())
+    , m_handleOwner(std::make_shared<StreamHandleOwner>(m_handle, m_key.deviceId(), false, extStream.wrappedObject(),
+                                                        extStream.retainsHandleLifetime()))
 {
     if (unsigned int flags; cudaStreamGetFlags(m_handle, &flags) != cudaSuccess)
     {
         throw StreamError("Invalid cuda stream");
-    }
-
-    try
-    {
-        incrementInstanceCount();
-        GetAuxStream();
-    }
-    catch (...) // NOSONAR: constructor cleanup must run for any exception.
-    {
-        destroy();
-        throw;
-    }
-}
-
-void Stream::incrementInstanceCount()
-{
-    m_instanceCount.fetch_add(1, std::memory_order_relaxed);
-}
-
-int Stream::decrementInstanceCount()
-{
-    return m_instanceCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
-}
-
-// Returns by value intentionally: returning a reference into m_auxStreams
-// would be unsafe because a later insertion can trigger a rehash, invalidating
-// the reference after the mutex is released.
-cudaStream_t Stream::GetAuxStream()
-{
-    // Tolerate hosts with no CUDA device. The wrap-stream-0 ctor calls this
-    // at module init for cache warm-up; any real consumer of the returned
-    // handle (cudaStreamWaitEvent / cudaStreamAddCallback) requires a device
-    // and would have failed regardless. Returning nullptr here lets
-    // `import cvcuda` succeed on CPU-only build/CI hosts.
-    int         dev = 0;
-    cudaError_t err = cudaGetDevice(&dev);
-    if (err == cudaErrorNoDevice || err == cudaErrorStubLibrary)
-    {
-        (void)cudaGetLastError(); // clear sticky error
-        return nullptr;
-    }
-    util::CheckThrow(err);
-
-    // Shared lock: concurrent readers when the entry already exists.
-    {
-        std::shared_lock lock(m_auxStreamMutex);
-        auto             it = m_auxStreams.find(dev);
-        if (it != m_auxStreams.end())
-            return it->second;
-    }
-
-    // Exclusive lock: serializes the one-time insertion of a new entry.
-    std::unique_lock lock(m_auxStreamMutex);
-    auto [it, inserted] = m_auxStreams.try_emplace(dev, nullptr);
-    if (inserted)
-    {
-        cudaStream_t s = nullptr;
-        util::CheckThrow(cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking));
-        it->second = s;
-    }
-    return it->second;
-}
-
-void Stream::SyncAuxStream()
-{
-    ::cvcudapy::NvtxRange nvtxRange("cvcuda.Stream.syncAuxStream");
-    // Sync aux streams on all devices.
-    std::shared_lock      lock(m_auxStreamMutex);
-    int                   savedDev = 0;
-    util::CheckThrow(cudaGetDevice(&savedDev));
-
-    struct DeviceGuard
-    {
-        explicit DeviceGuard(int dev_)
-            : dev(dev_)
-        {
-        }
-
-        DeviceGuard(const DeviceGuard &)            = delete;
-        DeviceGuard(DeviceGuard &&)                 = delete;
-        DeviceGuard &operator=(const DeviceGuard &) = delete;
-        DeviceGuard &operator=(DeviceGuard &&)      = delete;
-
-        ~DeviceGuard()
-        {
-            util::CheckLog(cudaSetDevice(dev));
-        }
-
-        int dev;
-    };
-
-    DeviceGuard guard{savedDev};
-
-    for (const auto &[dev, auxStream] : m_auxStreams)
-    {
-        util::CheckThrow(cudaSetDevice(dev));
-        util::CheckThrow(cudaStreamSynchronize(auxStream));
     }
 }
 
@@ -367,34 +1053,13 @@ Stream::~Stream()
     destroy();
 }
 
+uint64_t Stream::id() const
+{
+    return m_id;
+}
+
 void Stream::destroy()
 {
-    if (m_owns && m_handle)
-    {
-        int savedDev = 0;
-        util::CheckLog(cudaGetDevice(&savedDev));
-        util::CheckLog(cudaSetDevice(m_key.deviceId()));
-        util::CheckLog(cudaStreamSynchronize(m_handle));
-        util::CheckLog(cudaStreamDestroy(m_handle));
-        util::CheckLog(cudaSetDevice(savedDev));
-        m_handle = nullptr;
-    }
-    {
-        std::unique_lock lock(m_auxStreamMutex);
-        if (decrementInstanceCount() == 0)
-        {
-            int savedDev = 0;
-            util::CheckLog(cudaGetDevice(&savedDev));
-            for (const auto &[dev, auxStream] : m_auxStreams)
-            {
-                util::CheckLog(cudaSetDevice(dev));
-                util::CheckLog(cudaStreamSynchronize(auxStream));
-                util::CheckLog(cudaStreamDestroy(auxStream));
-            }
-            m_auxStreams.clear();
-            util::CheckLog(cudaSetDevice(savedDev));
-        }
-    }
     {
         std::lock_guard lock(m_eventMutex);
         int             savedDev = 0;
@@ -425,12 +1090,12 @@ int64_t Stream::GetSizeInBytes() const
 
 std::shared_ptr<Stream> Stream::sharedStream()
 {
-    return std::dynamic_pointer_cast<Stream>(Object::shared_from_this());
+    return std::static_pointer_cast<Stream>(Object::shared_from_this());
 }
 
 std::shared_ptr<const Stream> Stream::sharedStream() const
 {
-    return std::dynamic_pointer_cast<const Stream>(Object::shared_from_this());
+    return std::static_pointer_cast<const Stream>(Object::shared_from_this());
 }
 
 cudaStream_t Stream::handle() const
@@ -443,6 +1108,37 @@ int Stream::deviceId() const
     return m_key.deviceId();
 }
 
+int Stream::submissionDeviceId() const
+{
+    validateCurrentThread();
+    if (m_handle != nullptr && m_handle != cudaStreamLegacy && m_handle != cudaStreamPerThread)
+    {
+        return m_key.deviceId();
+    }
+
+    int currentDevice = 0;
+    util::CheckThrow(cudaGetDevice(&currentDevice));
+    return currentDevice;
+}
+
+bool Stream::sharesQueueWith(const Stream &other) const
+{
+    return m_handleOwner->sharesQueueWith(*other.m_handleOwner);
+}
+
+void Stream::validateCurrentThread() const
+{
+    if (!m_handleOwner->isCurrentThreadQueue())
+    {
+        throw StreamError("A cudaStreamPerThread wrapper may only be used on the host thread that created it");
+    }
+}
+
+const std::shared_ptr<StreamHandleOwner> &Stream::handleOwner() const
+{
+    return m_handleOwner;
+}
+
 intptr_t Stream::pyhandle() const
 {
     return reinterpret_cast<intptr_t>(m_handle);
@@ -450,9 +1146,14 @@ intptr_t Stream::pyhandle() const
 
 void Stream::sync()
 {
-    ::cvcudapy::NvtxRange  nvtxRange("cvcuda.Stream.sync");
-    py::gil_scoped_release release;
-    util::CheckThrow(cudaStreamSynchronize(m_handle));
+    ::cvcudapy::NvtxRange nvtxRange("cvcuda.Stream.sync");
+    int                   submissionDevice = submissionDeviceId();
+    {
+        py::gil_scoped_release release;
+        util::CheckThrow(cudaStreamSynchronize(m_handle));
+    }
+
+    RecycleCompleted(CollectReadyReleases(submissionDevice));
 }
 
 void Stream::wait_stream(std::shared_ptr<Stream> other)
@@ -461,13 +1162,14 @@ void Stream::wait_stream(std::shared_ptr<Stream> other)
     if (!other)
         throw std::invalid_argument("other is null");
 
+    validateCurrentThread();
+    other->validateCurrentThread();
+
     if (other->handle() == m_handle)
         return;
 
     py::gil_scoped_release release;
-    cudaEvent_t            evt = other->getEvent();
-    util::CheckThrow(cudaEventRecord(evt, other->handle()));
-    util::CheckThrow(cudaStreamWaitEvent(m_handle, evt, 0));
+    waitFor(other->handle());
 }
 
 Stream &Stream::Current()
@@ -490,6 +1192,7 @@ Stream &Stream::Current()
 void Stream::activate()
 {
     ::cvcudapy::NvtxRange nvtxRange("cvcuda.Stream.__enter__");
+    validateCurrentThread();
     if (m_owns)
     {
         int curDev = 0;
@@ -503,10 +1206,11 @@ void Stream::activate()
     StreamStack::Instance().push(*this);
 }
 
-void Stream::deactivate(py::object exc_type, py::object, py::object) const
+void Stream::deactivate(py::handle exc_type, py::handle, py::handle) const
 {
     ::cvcudapy::NvtxRange nvtxRange("cvcuda.Stream.__exit__");
-    StreamStack          &streamStack = StreamStack::Instance();
+    validateCurrentThread();
+    StreamStack &streamStack = StreamStack::Instance();
     if (streamStack.top().get() != this)
     {
         // Raising while the with-body is already unwinding would make this the
@@ -521,173 +1225,121 @@ void Stream::deactivate(py::object exc_type, py::object, py::object) const
     streamStack.pop();
 }
 
-// Stores the data held by a cuda host callback function in a cuda stream.
-// It's used for:
-// - Extend the lifetime of the objects it contains until they aren't needed
-//   by any future cuda kernels in the stream.
-struct Stream::HostFunctionClosure
+void Stream::waitFor(cudaStream_t producer)
 {
-    // Also hold the stream reference so that it isn't destroyed before the processing is done.
-    std::shared_ptr<const Stream> stream;
-    LockResources                 resources;
-};
-
-cudaEvent_t Stream::getEvent()
-{
+    validateCurrentThread();
     int dev;
     util::CheckThrow(cudaGetDevice(&dev));
 
-    {
-        std::shared_lock lock(m_eventMutex);
-        auto             it = m_events.find(dev);
-        if (it != m_events.end())
-            return it->second;
-    }
-
-    std::unique_lock lock(m_eventMutex);
+    // A wait captures the event's current record, independently of later
+    // records. Serialize this pair so concurrent callers cannot replace it
+    // before the wait is installed, then reuse the event without a host wait.
+    std::lock_guard lock(m_eventMutex);
     auto [it, inserted] = m_events.try_emplace(dev, nullptr);
     if (inserted)
     {
         cudaEvent_t evt = nullptr;
-        util::CheckThrow(cudaEventCreateWithFlags(&evt, cudaEventDisableTiming));
+        if (auto error = cudaEventCreateWithFlags(&evt, cudaEventDisableTiming); error != cudaSuccess)
+        {
+            m_events.erase(it);
+            util::CheckThrow(error);
+        }
         it->second = evt;
     }
-    return it->second;
+    util::CheckThrow(cudaEventRecord(it->second, producer));
+    util::CheckThrow(cudaStreamWaitEvent(m_handle, it->second, 0));
 }
 
-void Stream::holdResources(LockResources usedResources)
+void Stream::holdResources(ResourceBag usedResources, int submissionDevice)
 {
-    if (!usedResources.empty())
+    validateCurrentThread();
+    auto           streamOwner = sharedStream();
+    PythonOwnerBag pythonOwners;
+    EnqueueRelease(*this, streamOwner, {usedResources.data(), usedResources.size(), nullptr, 0}, pythonOwners,
+                   submissionDevice);
+}
+
+void Stream::holdResources(ResourceBag usedResources, PythonOwnerBag pythonOwners, int submissionDevice)
+{
+    validateCurrentThread();
+    auto streamOwner = sharedStream();
+    EnqueueRelease(*this, streamOwner, {usedResources.data(), usedResources.size(), nullptr, 0}, pythonOwners,
+                   submissionDevice);
+}
+
+void Stream::holdResources(const ResourceOwnerTransfer &usedResources, std::shared_ptr<Stream> &streamOwner,
+                           int submissionDevice)
+{
+    validateCurrentThread();
+    NVCV_ASSERT(streamOwner.get() == this);
+    PythonOwnerBag pythonOwners;
+    EnqueueRelease(*this, streamOwner, usedResources, pythonOwners, submissionDevice);
+}
+
+#ifdef NB_FREE_THREADED
+void Stream::holdResources(const ResourceOwnerTransfer &resources, std::shared_ptr<Stream> &streamOwner,
+                           PythonOwnerBag &pythonOwners, int submissionDevice)
+{
+    validateCurrentThread();
+    EnqueueRelease(*this, streamOwner, resources, pythonOwners, submissionDevice);
+}
+#endif
+
+void Stream::ensureNotCapturing(int submissionDevice) const
+{
+    validateCurrentThread();
+    (void)submissionDevice;
+#ifdef NB_FREE_THREADED
+    CUstreamCaptureStatus driverStatus;
+    if (cuStreamIsCapturing(reinterpret_cast<CUstream>(m_handle), &driverStatus) == CUDA_SUCCESS
+        && driverStatus == CU_STREAM_CAPTURE_STATUS_NONE)
     {
-        // Looks like a good place to clear the gc bag, as every time we create
-        // a new closure that eventually gets added to the bag, we empty it.
-        // The bag shouldn't grow unlimited.
-        // Calling it before allocating a new closure just avoid having two
-        // closures not inside a cuda stream that are simultaneously alive, but
-        // in practice it doesn't seem to matter much.
-        ClearGCBag();
-
-        auto closure = std::make_unique<HostFunctionClosure>();
-
-        closure->stream    = this->sharedStream();
-        closure->resources = std::move(usedResources);
-
-        auto fn = [](cudaStream_t, cudaError_t, auto *userData)
-        {
-            std::unique_ptr<HostFunctionClosure> pclosure(static_cast<HostFunctionClosure *>(userData));
-            NVCV_ASSERT(pclosure != nullptr);
-            AddToGCBag(std::move(pclosure));
-        };
-
-        // If we naively execute the callback in the main stream (m_handle), the GPU will wait until the callback
-        // is executed (on host). For correctness, GPU doesn't need to wait - it's the CPU that needs
-        // to wait for the work already scheduled to complete.
-        //
-        // Naive timeline:
-        //
-        // stream        GPU_kernel1 | Callback | GPU_kernel2
-        // GPU activity  xxxxxxxxxxx              xxxxxxxxxxx
-        // CPU activity                xxxxxxxx
-        //
-        // Optimized timeline
-        //
-        //
-        //                event -----v
-        // stream        GPU_kernel1 | GPU_kernel2
-        // aux_stream     waitEvent >| Callback
-        //
-        // GPU activity  xxxxxxxxxxx   xxxxxxxxxxx
-        // CPU activity                xxxxxxxx
-
-        cudaEvent_t evt = getEvent();
-        util::CheckThrow(cudaEventRecord(evt, m_handle));           // add async record the event in the main stream
-        util::CheckThrow(cudaStreamWaitEvent(GetAuxStream(), evt)); // add async wait for the event in the aux stream
-
-        // cudaStreamAddCallback pushes a task to the given stream, which at some point (asynchonously) calls
-        // the given callback (fn), passing to it the closure we created, among other stream states.
-        // When fn is executed, the refcnt of all objects that the closure holds will eventually be decremented, which
-        // will trigger their deletion if refcnt==0. This effectively extends the objects' lifetime until
-        // all tasks that refer to them are finished.
-
-        // The callback will be executed in the singleton aux stream there may be contention with other callbacks and waitEvents from
-        // other streams. However the callback is used to release resources from the cache and should not be a performance bottleneck.
-        // This avoids opening a new aux stream for each stream object.
-
-        // NOTE: cudaStreamAddCallback is slated for deprecation, without a proper replacement (for now).
-        // The other option we could use is cudaLaunchHostFunc, but it doesn't guarantee that the callback
-        // will be called. We need this guarantee to make sure the object's refcount is eventually decremented,
-        // and the closure is freed, avoiding memory leaks.
-        // cudaLaunchHostFunc won't call the callback if the current cuda context is in error state, for instance.
-        // Ref: CUDA SDK docs for both functions.
-        util::CheckThrow(
-            cudaStreamAddCallback(GetAuxStream(), fn, closure.get(), 0)); // add async callback in the aux stream
-        closure.release();
+        return;
+    }
+    // Preserve runtime diagnostics for captures and failed driver queries.
+#endif
+    cudaStreamCaptureStatus captureStatus = cudaStreamCaptureStatusNone;
+    util::CheckThrow(cudaStreamIsCapturing(m_handle, &captureStatus));
+    if (captureStatus != cudaStreamCaptureStatusNone)
+    {
+        throw StreamError("CV-CUDA Python operators are not supported during CUDA stream capture");
     }
 }
 
-Stream::GCBag &Stream::GetGCBag()
+void Stream::DrainAllPendingReleases()
 {
-    // By defining the gcBag inside this function instead of the global scope,
-    // we guarantee that it'll be destroyed *before* the global python context
-    // is destroyed. This is due to this function being called the first time
-    // (via AddToGCBag or ClearGCBag) only after the python script (and python
-    // ctx) has already started.
-    //
-    // Multi-GPU safety: this is a single process-wide bag holding closures from
-    // all devices. This is safe because access is serialized by m_gcMutex, and
-    // each HostFunctionClosure holds a shared_ptr<const Stream> whose destroy()
-    // properly saves/restores the CUDA device before freeing device resources.
-    static GCBag gcBag;
-    return gcBag;
+    DrainPendingReleases();
 }
 
-void Stream::AddToGCBag(std::unique_ptr<HostFunctionClosure> closure)
+bool Stream::IsPendingOnly(const std::shared_ptr<Object> &resourceOwner)
 {
-    std::unique_lock lk(m_gcMutex);
-    GetGCBag().push_back(std::move(closure));
-}
-
-void Stream::ClearGCBag()
-{
-    GCBag objectsToBeDestroyed;
-
-    GCBag &gcBag = GetGCBag();
-
-    std::unique_lock lk(m_gcMutex);
-    // Do as little as possible while mutex is locked to avoid
-    // deadlocks.
-
-    // In the case here, instead of simply empting up the gc bag,
-    // which might trigger object destruction while the mutex is locked,
-    // we move its contents to a temporary local bag.
-
-    // take of benefit of ADL if available
-    using std::swap;
-    swap(objectsToBeDestroyed, gcBag);
-
-    // Now the original bag is left empty, but no objects were
-    // destroyed yet.
-    NVCV_ASSERT(gcBag.empty()); // post-condition (can't be guaranteed after unlock)
-
-    lk.unlock();
-
-    // Let the local object bag go out of scope, the objects in it
-    // will be finally destroyed with the mutex unlocked.
-}
-
-void Stream::SynchronizeAndClearGCBag()
-{
-    bool hasAuxStreams;
+    auto *resource = dynamic_cast<Resource *>(resourceOwner.get());
+    if (resource == nullptr || !util::HasPythonThreadState())
     {
-        std::shared_lock lock(m_auxStreamMutex);
-        hasAuxStreams = !m_auxStreams.empty();
+        return false;
     }
 
-    if (hasAuxStreams)
+    ReleaseDeferredPythonOwners();
+
+    const std::optional<uint64_t> pendingOwners = resource->reusablePendingReleaseOwners();
+    if (!pendingOwners.has_value())
     {
-        SyncAuxStream();
+        return false;
     }
-    ClearGCBag();
+
+    // A registered wrapper is an observable user owner. Legacy queue entries
+    // may themselves retain that wrapper, so conservatively exclude those as
+    // well instead of depending on the wrapper's exact Python refcount.
+    if (py::object pythonOwner = py::find(resource); pythonOwner.is_valid())
+    {
+        return false;
+    }
+
+    // The expected native owners are the cache's object, this function's
+    // caller, and the explicitly registered pending queue entries. Anything
+    // else is an owner that may still observe or mutate the allocation.
+    const auto expectedOwners = static_cast<long>(2 + *pendingOwners);
+    return resourceOwner.use_count() == expectedOwners && resource->pendingReleaseOwnershipMatches(*pendingOwners);
 }
 
 std::ostream &operator<<(std::ostream &out, const Stream &stream)
@@ -696,7 +1348,7 @@ std::ostream &operator<<(std::ostream &out, const Stream &stream)
 }
 
 template<ExternalStreamType E>
-static void ExportExternalStream(py::module &m)
+static void ExportExternalStream(py::module_ &m)
 {
     m.def("as_stream",
           [](ExternalStream<E> extStream)
@@ -727,7 +1379,6 @@ void Stream::CleanupAtExit(const std::shared_ptr<Stream> &globalStream)
             stream->sync();
         }
         globalStream->sync();
-        SyncAuxStream();
 
         // Nothing seeds the stack, so anything left is a context that was
         // entered and never exited. Draining it would release nothing -- the
@@ -739,9 +1390,8 @@ void Stream::CleanupAtExit(const std::shared_ptr<Stream> &globalStream)
             std::cerr << "Stream stack leak detected on cleanup thread" << std::endl;
         }
 
-        // Make sure the gc bag is also cleaned up *after* all streams are done,
-        // when all remaining items that need to be GC'd are in the bag.
-        ClearGCBag();
+        DrainPendingReleases();
+        DestroyIdleReleaseEvents();
     }
     catch (const py::error_already_set &e)
     {
@@ -785,10 +1435,10 @@ void Stream::CleanupAtExit(const std::shared_ptr<Stream> &globalStream)
     }
 }
 
-void Stream::Export(py::module &m)
+void Stream::Export(py::module_ &m)
 {
-    py::class_<Stream, std::shared_ptr<Stream>, CacheItem> stream(m, "Stream",
-                                                                  R"pbdoc(
+    py::class_<Stream> stream(m, "Stream",
+                              R"pbdoc(
         A CUDA stream that cvcuda operators can be submitted to.
 
         Streams created via ``cvcuda.Stream()`` are non-blocking
@@ -821,15 +1471,28 @@ void Stream::Export(py::module &m)
           0 and has the usual legacy-default blocking semantics; use it when
           you want implicit sync with everything else on stream 0 and don't
           need the concurrency of a dedicated stream.
-        )pbdoc");
+        )pbdoc",
+                              py::is_weak_referenceable());
 
-    stream.def(py::init(&Stream::Create),
+    stream.def(py::new_(&Stream::Create),
                "Create a new CUDA stream.  Streams created this way are non-blocking; "
                "cross-library synchronization is handled automatically via the CAI "
                "``stream`` field (see the class docstring).");
 
     py::module_ internal = m.attr(INTERNAL_SUBMODULE_NAME);
-    internal.def("syncAuxStream", &SyncAuxStream);
+    internal.def("drain_pending_releases", &Stream::DrainAllPendingReleases);
+    internal.def("syncAuxStream", &Stream::DrainAllPendingReleases);
+    internal.def("_pending_release_batch_count",
+                 []
+                 {
+                     PendingReleaseState &state = PendingReleases();
+                     std::lock_guard      lock(state.mutex);
+                     return state.pending.size();
+                 });
+    internal.def("_fail_next_release_event_record",
+                 [](bool fail) { FailNextReleaseEventRecord().store(fail, std::memory_order_relaxed); });
+    internal.def("_drain_pending_releases_with_lock_hook",
+                 [](py::object afterLock) { DrainPendingReleasesImpl([&afterLock] { afterLock(); }); });
 
     // Wrap the CUDA legacy default stream as `cvcuda.Stream.default`. It is not
     // pushed onto a stream stack: that would seed only the importing thread's,
@@ -837,11 +1500,11 @@ void Stream::Export(py::module &m)
     //
     // Skipped on hosts with no CUDA device (CPU-only build/CI nodes,
     // CUDA_VISIBLE_DEVICES=""): wrapping stream 0 unavoidably touches the
-    // CUDA runtime (e.g. the `Stream` ctor's cudaStreamGetFlags + aux-stream
-    // bookkeeping), which fails without a driver-bound device. We also skip
+    // CUDA runtime (e.g. the `Stream` ctor's cudaStreamGetFlags), which fails
+    // without a driver-bound device. We also skip
     // registering the `current` static property in that case — there is no
     // sensible value, and exposing a getter that throws breaks introspection
-    // tools (pybind11_stubgen, sphinx-autodoc) that walk class members.
+    // tools (nanobind_stubgen, sphinx-autodoc) that walk class members.
     int deviceCount = 0;
     if (cudaError_t devCntErr = cudaGetDeviceCount(&deviceCount);
         devCntErr == cudaErrorNoDevice || devCntErr == cudaErrorStubLibrary)
@@ -852,7 +1515,7 @@ void Stream::Export(py::module &m)
     std::shared_ptr<Stream> globalStream;
     if (deviceCount > 0)
     {
-        stream.def_property_readonly_static(
+        stream.def_prop_ro_static(
             "current", [](py::object) { return Current().sharedStream(); },
             "Get the current CUDA stream for this thread. Threads with no active stream context get "
             "cvcuda.Stream.default.");
@@ -868,7 +1531,7 @@ void Stream::Export(py::module &m)
         // alive, so something Python-owned has to outlast it.
         internal.attr("default_stream") = globalStream;
 
-        stream.def_property_readonly_static(
+        stream.def_prop_ro_static(
             "default", [](py::object) { return m_defaultStream.lock(); },
             "The CUDA legacy default stream (stream 0). Read-only: to run work on another stream, enter "
             "its context or pass it as the operator's stream argument.");
@@ -883,7 +1546,7 @@ void Stream::Export(py::module &m)
     fflush(stdout);
 
     stream.def("__enter__", &Stream::activate, "Activate the CUDA stream as the current stream for this thread.")
-        .def("__exit__", &Stream::deactivate,
+        .def("__exit__", &Stream::deactivate, py::arg().none(), py::arg().none(), py::arg().none(),
              "Deactivate the CUDA stream as the current stream for this thread. Raises RuntimeError if it is "
              "not the current stream on this thread, unless an exception is already propagating out of the "
              "context body, which is left to reach the caller unchanged.")
@@ -895,8 +1558,10 @@ void Stream::Export(py::module &m)
              "Cross-device usage is not supported and will raise a CUDA error.")
         .def("__int__", &Stream::pyhandle, "Cast the CUDA stream object to an integer handle.")
         .def("__repr__", &util::ToString<Stream>, "Return a string representation of the CUDA stream object.")
-        .def_property_readonly("handle", &Stream::pyhandle, "Get the integer handle for the CUDA stream object.")
-        .def_property_readonly("id", &Stream::id, "Get the unique ID for the CUDA stream object.");
+        .def_prop_ro("handle", &Stream::pyhandle, "Get the integer handle for the CUDA stream object.")
+        .def_prop_ro("id", &Stream::id, "Get the unique ID for the CUDA stream object.");
+
+    internal.def("nbytes_in_cache", [](const Stream &value) { return value.GetSizeInBytes(); });
 
     // Make sure all streams we've created are synced when script ends.
     // Also make cleanup hold the globalStream reference during script execution.

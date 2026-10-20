@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,9 +27,9 @@ def create_tensor1():
 
 
 def create_tensor2():
-    # Re-use the cache
+    # The wider, shorter tensor fits in the first allocation.
     tensor2 = cvcuda.Tensor(  # noqa: F841
-        (16, 32, 4), np.float32, cvcuda.TensorLayout.HWC
+        (4, 64, 4), np.float32, cvcuda.TensorLayout.HWC
     )
 
 

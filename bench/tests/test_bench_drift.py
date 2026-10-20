@@ -157,7 +157,7 @@ def _write_config_tree(root):
     )
 
 
-def _wave(tmp_path, values, *, nightly=True):
+def _wave(tmp_path, values, *, nightly=True, run_context=None, informative=False):
     directory = tmp_path / "wave"
     directory.mkdir(parents=True, exist_ok=True)
     for idx, cpp in enumerate(values):
@@ -178,8 +178,9 @@ def _wave(tmp_path, values, *, nightly=True):
                     }
                 },
                 run_metadata={
-                    "run_context": "nightly" if nightly else "mr",
+                    "run_context": run_context or ("nightly" if nightly else "mr"),
                     "is_nightly": nightly,
+                    "informative": informative,
                     "git_ref": "main",
                     "timestamp_utc": f"2026-08-01T{idx % 24:02d}:00:00Z",
                 },
@@ -222,7 +223,54 @@ def test_cli_ignores_non_nightly_artifacts(tmp_path, capsys):
     rc = bench_drift.main(["--from", str(wave), "--config-dir", str(config_dir)])
 
     assert rc == 1
-    assert "not nightly runs" in capsys.readouterr().out
+    assert "not nightly or main-push informative runs" in capsys.readouterr().out
+
+
+def test_cli_reads_informative_main_push_artifacts(tmp_path, capsys):
+    config_dir = tmp_path / "config"
+    _write_config_tree(config_dir)
+    wave = _wave(
+        tmp_path,
+        [BASE_US] * 45,
+        nightly=False,
+        run_context="main",
+        informative=True,
+    )
+
+    rc = bench_drift.main(["--from", str(wave), "--config-dir", str(config_dir)])
+
+    assert rc == 0
+    assert "ignoring" not in capsys.readouterr().out
+
+
+def test_cli_rejects_an_empty_input_directory_even_with_valid_input(tmp_path, capsys):
+    config_dir = tmp_path / "config"
+    _write_config_tree(config_dir)
+    wave = _wave(tmp_path, [BASE_US] * 45)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+
+    rc = bench_drift.main(
+        [
+            "--from",
+            str(wave),
+            "--from",
+            str(empty),
+            "--config-dir",
+            str(config_dir),
+        ]
+    )
+
+    assert rc == 1
+    assert "directory has no *.json files" in capsys.readouterr().err
+
+
+def test_cli_rejects_non_json_input_file(tmp_path, capsys):
+    notes = tmp_path / "notes.txt"
+    notes.write_text("not a benchmark artifact")
+
+    assert bench_drift.main(["--from", str(notes)]) == 1
+    assert "file is not a .json file" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

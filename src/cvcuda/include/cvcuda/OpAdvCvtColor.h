@@ -55,6 +55,11 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdvCvtColorCreate(NVCVOperatorHandle *handle);
  *
  *  Limitations:
  *
+ *       Color Range:    Limited-range sample scaling is not supported. Corresponding BT.601, BT.709, and BT.2020
+ *                       base and _ER specifications are bit-identical: YUV input passed with a base specification
+ *                       is interpreted as full range, and YUV output requested with a base specification is emitted
+ *                       as full range rather than the encoded limited range.
+ *
  *  Input:
  *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1, 3, 4] kNHWC/kHWC/kNCHW/kCHW semi planar 420 tensors are allowed
@@ -135,9 +140,13 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdvCvtColorCreate(NVCVOperatorHandle *handle);
  *
  * @param [in] spec color conversion spec see \p NVCVColorSpec group.
  *                   The following spec codes are available for this operator:
- *                       NVCV_COLOR_SPEC_BT601 // Color specification for SDTV (Standard Definition TV) - BT.601
- *                       NVCV_COLOR_SPEC_BT709 // Color specification for HDTV (High Definition TV) - BT.709
- *                       NVCV_COLOR_SPEC_BT2020 // Color specification for UHDTV (Ultra High Definition TV) - BT.2020
+ *                       NVCV_COLOR_SPEC_BT601 // BT.601 for SDTV
+ *                       NVCV_COLOR_SPEC_BT601_ER // Full-range BT.601 for SDTV
+ *                       NVCV_COLOR_SPEC_BT709 // BT.709 for HDTV
+ *                       NVCV_COLOR_SPEC_BT709_ER // Full-range BT.709 for HDTV
+ *                       NVCV_COLOR_SPEC_BT2020 // BT.2020 for UHDTV
+ *                       NVCV_COLOR_SPEC_BT2020_ER // Full-range BT.2020 for UHDTV
+ *                   Use an _ER specification to describe the operator's full-sample-range output explicitly.
  *
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.

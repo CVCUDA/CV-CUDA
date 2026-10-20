@@ -17,6 +17,7 @@
 
 #include "priv/OpJointBilateralFilter.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -50,6 +51,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaJointBilateralFilterSubmit,
     return nvcv::ProtectCall(
         [&in, &inColor, &out, &handle, &stream, &diameter, &sigmaColor, &sigmaSpace, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle inputColor(inColor);
             nvcv::TensorWrapHandle output(out);
@@ -68,6 +70,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaJointBilateralFilterVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &inColor, &out, &diameter, &sigmaColor, &sigmaSpace, &handle, &stream, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::ImageBatchVarShapeWrapHandle inputColor(inColor);
             nvcv::ImageBatchVarShapeWrapHandle output(out);

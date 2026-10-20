@@ -63,7 +63,13 @@ TEST(CudaDeviceUtils, CurrentDeviceSMMatchesDeviceProperties)
         ASSERT_EQ(cudaSuccess, cudaGetDeviceProperties(&properties, device));
         const int expectedSM = properties.major * 10 + properties.minor;
 
+        // The explicit-device form and the cached current-device form must agree with the
+        // properties, and the cached one must stay correct when queried again.
         int sm = 0;
+        EXPECT_EQ(cudaSuccess, cvcuda::priv::GetDeviceSM(device, sm));
+        EXPECT_EQ(expectedSM, sm);
+
+        sm = 0;
         EXPECT_EQ(cudaSuccess, cvcuda::priv::GetCurrentDeviceSM(sm));
         EXPECT_EQ(expectedSM, sm);
 
@@ -71,6 +77,17 @@ TEST(CudaDeviceUtils, CurrentDeviceSMMatchesDeviceProperties)
         EXPECT_EQ(cudaSuccess, cvcuda::priv::GetCurrentDeviceSM(sm));
         EXPECT_EQ(expectedSM, sm);
     }
+}
+
+TEST(CudaDeviceUtils, IsAdaDeviceMatchesOnlySM89)
+{
+    EXPECT_TRUE(cvcuda::priv::IsAdaDevice(89));
+
+    EXPECT_FALSE(cvcuda::priv::IsAdaDevice(80)); // A100
+    EXPECT_FALSE(cvcuda::priv::IsAdaDevice(86)); // GA10x
+    EXPECT_FALSE(cvcuda::priv::IsAdaDevice(90)); // H100
+    EXPECT_FALSE(cvcuda::priv::IsAdaDevice(100));
+    EXPECT_FALSE(cvcuda::priv::IsAdaDevice(120));
 }
 
 } // namespace

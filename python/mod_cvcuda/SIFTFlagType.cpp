@@ -21,9 +21,9 @@
 
 namespace cvcudapy {
 
-void ExportSIFTFlagType(py::module &m)
+void ExportSIFTFlagType(py::module_ &m)
 {
-    py::enum_<NVCVSIFTFlagType>(m, "SIFT", "SIFT algorithm configuration flags.", py::arithmetic())
+    py::enum_compat<NVCVSIFTFlagType>(m, "SIFT", "SIFT algorithm configuration flags.", py::is_arithmetic())
         .value("USE_ORIGINAL_INPUT", NVCV_SIFT_USE_ORIGINAL_INPUT, "Use the original input image without upscaling.")
         .value("USE_EXPANDED_INPUT", NVCV_SIFT_USE_EXPANDED_INPUT,
                "Upscale the input image 2x before processing for improved keypoint detection.");

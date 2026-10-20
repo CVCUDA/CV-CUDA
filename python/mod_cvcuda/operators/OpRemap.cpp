@@ -15,22 +15,23 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpRemap.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 #include <stdexcept>
 
 namespace cvcudapy {
 
 namespace {
+using native::Image;
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
 class RemapError : public std::runtime_error
 {
@@ -40,40 +41,37 @@ public:
 
 // Tensor into -----------------------------------------------------------------
 
-Tensor RemapInto(Tensor &dst, Tensor &src, Tensor &map, NVCVInterpolationType srcInterp,
-                 NVCVInterpolationType mapInterp, NVCVRemapMapValueType mapValueType, bool alignCorners,
-                 NVCVBorderType borderMode, const pyarray &borderValue, std::optional<Stream> pstream)
+Tensor &RemapInto(Tensor &dst, Tensor &src, Tensor &map, NVCVInterpolationType srcInterp,
+                  NVCVInterpolationType mapInterp, NVCVRemapMapValueType mapValueType, bool alignCorners,
+                  NVCVBorderType borderMode, const pyarray &borderValue, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     float4 bValue = GetFloat4FromPyArray(borderValue);
 
     auto op = CreateOperator<cvcuda::Remap>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {src, map});
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     guard.run(
-        [&op, &pstream, &src, &dst, &map, &srcInterp, &mapInterp, &mapValueType, &alignCorners, &borderMode, &bValue]()
+        [&op, &stream, &src, &dst, &map, &srcInterp, &mapInterp, &mapValueType, &alignCorners, &borderMode, &bValue]()
         {
-            op->submit(pstream->cudaHandle(), src, dst, map, srcInterp, mapInterp, mapValueType, alignCorners,
-                       borderMode, bValue);
+            op->submit(stream.handle(), src.impl(), dst.impl(), map.impl(), srcInterp, mapInterp, mapValueType,
+                       alignCorners, borderMode, bValue);
         });
 
-    return std::move(dst);
+    return dst;
 }
 
-Tensor Remap(Tensor &src, Tensor &map, NVCVInterpolationType srcInterp, NVCVInterpolationType mapInterp,
-             NVCVRemapMapValueType mapValueType, bool alignCorners, NVCVBorderType borderMode,
-             const pyarray &borderValue, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Remap(Tensor &src, Tensor &map, NVCVInterpolationType srcInterp,
+                              NVCVInterpolationType mapInterp, NVCVRemapMapValueType mapValueType, bool alignCorners,
+                              NVCVBorderType borderMode, const pyarray &borderValue, std::optional<Stream *> pstream)
 {
-    const auto &srcShape = src.shape();
-    const auto &mapShape = map.shape();
+    const nvcv::TensorShape &srcShape = src.impl().shape();
+    const nvcv::TensorShape &mapShape = map.impl().shape();
 
     if (srcShape.rank() != mapShape.rank())
     {
@@ -84,23 +82,23 @@ Tensor Remap(Tensor &src, Tensor &map, NVCVInterpolationType srcInterp, NVCVInte
 
     if (mapValueType == NVCV_REMAP_ABSOLUTE || mapValueType == NVCV_REMAP_ABSOLUTE_NORMALIZED)
     {
-        if (src.layout() == nvcv::TENSOR_HWC)
+        if (srcShape.layout() == nvcv::TENSOR_HWC)
         {
             dstShape[0] = mapShape[0];
             dstShape[1] = mapShape[1];
         }
-        else if (src.layout() == nvcv::TENSOR_NHWC)
+        else if (srcShape.layout() == nvcv::TENSOR_NHWC)
         {
             dstShape[1] = mapShape[1];
             dstShape[2] = mapShape[2];
         }
-        else if (src.layout() == nvcv::TENSOR_CHW)
+        else if (srcShape.layout() == nvcv::TENSOR_CHW)
         {
             // Planar (CHW): spatial dims follow the channel dimension; map is rank-3 (HWC).
             dstShape[1] = mapShape[0];
             dstShape[2] = mapShape[1];
         }
-        else if (src.layout() == nvcv::TENSOR_NCHW)
+        else if (srcShape.layout() == nvcv::TENSOR_NCHW)
         {
             // Planar (NCHW): spatial dims are the last two; map is rank-4 (NHWC).
             dstShape[2] = mapShape[1];
@@ -112,53 +110,52 @@ Tensor Remap(Tensor &src, Tensor &map, NVCVInterpolationType srcInterp, NVCVInte
         }
     }
 
-    Tensor dst = Tensor::Create(dstShape, src.dtype(), src.layout());
+    auto dst = Tensor::Create(dstShape, src.dtype(), srcShape.layout(), 0);
 
-    return RemapInto(dst, src, map, srcInterp, mapInterp, mapValueType, alignCorners, borderMode, borderValue, pstream);
+    RemapInto(*dst, src, map, srcInterp, mapInterp, mapValueType, alignCorners, borderMode, borderValue, pstream);
+    return dst;
 }
 
 // VarShape into ---------------------------------------------------------------
 
-ImageBatchVarShape VarShapeRemapInto(ImageBatchVarShape &dst, ImageBatchVarShape &src, Tensor &map,
-                                     NVCVInterpolationType srcInterp, NVCVInterpolationType mapInterp,
-                                     NVCVRemapMapValueType mapValueType, bool alignCorners, NVCVBorderType borderMode,
-                                     const pyarray &borderValue, std::optional<Stream> pstream)
+ImageBatchVarShape &VarShapeRemapInto(ImageBatchVarShape &dst, ImageBatchVarShape &src, Tensor &map,
+                                      NVCVInterpolationType srcInterp, NVCVInterpolationType mapInterp,
+                                      NVCVRemapMapValueType mapValueType, bool alignCorners, NVCVBorderType borderMode,
+                                      const pyarray &borderValue, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     float4 bValue = GetFloat4FromPyArray(borderValue);
 
     auto op = CreateOperator<cvcuda::Remap>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {src, map});
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     guard.run(
-        [&op, &pstream, &src, &dst, &map, &srcInterp, &mapInterp, &mapValueType, &alignCorners, &borderMode, &bValue]()
+        [&op, &stream, &src, &dst, &map, &srcInterp, &mapInterp, &mapValueType, &alignCorners, &borderMode, &bValue]()
         {
-            op->submit(pstream->cudaHandle(), src, dst, map, srcInterp, mapInterp, mapValueType, alignCorners,
-                       borderMode, bValue);
+            op->submit(stream.handle(), src.impl(), dst.impl(), map.impl(), srcInterp, mapInterp, mapValueType,
+                       alignCorners, borderMode, bValue);
         });
 
-    return std::move(dst);
+    return dst;
 }
 
-ImageBatchVarShape VarShapeRemap(ImageBatchVarShape &src, Tensor &map, NVCVInterpolationType srcInterp,
-                                 NVCVInterpolationType mapInterp, NVCVRemapMapValueType mapValueType, bool alignCorners,
-                                 NVCVBorderType borderMode, const pyarray &borderValue, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> VarShapeRemap(ImageBatchVarShape &src, Tensor &map, NVCVInterpolationType srcInterp,
+                                                  NVCVInterpolationType mapInterp, NVCVRemapMapValueType mapValueType,
+                                                  bool alignCorners, NVCVBorderType borderMode,
+                                                  const pyarray &borderValue, std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape dst = ImageBatchVarShape::Create(src.capacity());
+    auto dst = ImageBatchVarShape::Create(src.capacity());
 
-    nvcv::Size2D mapSize;
+    nvcv::Size2D mapSize{};
 
     if (mapValueType == NVCV_REMAP_ABSOLUTE || mapValueType == NVCV_REMAP_ABSOLUTE_NORMALIZED)
     {
-        auto mapAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(map.exportData());
+        auto mapAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(map.impl().exportData());
         if (!mapAccess)
         {
             throw RemapError("Incompatible map tensor layout");
@@ -168,31 +165,37 @@ ImageBatchVarShape VarShapeRemap(ImageBatchVarShape &src, Tensor &map, NVCVInter
         mapSize.h = mapAccess->numRows();
     }
 
-    for (int i = 0; i < src.numImages(); ++i)
+    for (const std::shared_ptr<Image> &srcImage : src)
     {
+        nvcvpy::priv::Size2D outputSize = srcImage->size();
         if (mapValueType == NVCV_REMAP_ABSOLUTE || mapValueType == NVCV_REMAP_ABSOLUTE_NORMALIZED)
         {
-            dst.pushBackImage(Image::Create(mapSize, src[i].format()));
+            outputSize = {mapSize.w, mapSize.h};
         }
-        else
-        {
-            dst.pushBackImage(Image::Create(src[i].size(), src[i].format()));
-        }
+        auto outputImage = Image::Create(outputSize, srcImage->format(), 0);
+        dst->pushBack(*outputImage);
     }
 
-    return VarShapeRemapInto(dst, src, map, srcInterp, mapInterp, mapValueType, alignCorners, borderMode, borderValue,
-                             pstream);
+    VarShapeRemapInto(*dst, src, map, srcInterp, mapInterp, mapValueType, alignCorners, borderMode, borderValue,
+                      pstream);
+    return dst;
 }
 
 } // namespace
 
-void ExportOpRemap(py::module &m)
+void ExportOpRemap(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
+
+    py::object emptyBorderValue = py::module_::import_("numpy").attr("empty")(0, "dtype"_a = py::str("float32"));
+    // nanobind's arg::sig replaces the displayed default rather than its type annotation. Let it use this object's
+    // repr so both the runtime default and generated signature remain the same empty float32 array.
 
     m.def("remap", NvtxTrace("cvcuda.remap", &Remap), "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST,
           "map_interp"_a = NVCV_INTERP_NEAREST, "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false,
-          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a.none() = emptyBorderValue, py::kw_only(),
+          "stream"_a = nullptr,
+          R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
 
@@ -215,8 +218,8 @@ void ExportOpRemap(py::module &m)
                 points of their corner pixels. Otherwise, they are aligned by the corner points of
                 their corner pixels.
             border (cvcuda.Border, optional): pixel extrapolation method (cvcuda.Border.CONSTANT,
-                cvcuda.Border.REPLICATE, cvcuda.Border.REFLECT, cvcuda.Border.REFLECT_101, or
-                cvcuda.Border.WRAP).
+                cvcuda.Border.REPLICATE, cvcuda.Border.REFLECT, cvcuda.Border.REFLECT_101,
+                cvcuda.Border.WRAP, or cvcuda.Border.CONSTANT_COVERAGE).
             border_value (numpy.ndarray, optional): Used to specify values for a constant border,
                 should have size <= 4 and dim of 1, where the values specify the border color for
                 each color channel.
@@ -229,7 +232,8 @@ void ExportOpRemap(py::module &m)
     m.def("remap_into", NvtxTrace("cvcuda.remap_into", &RemapInto), "dst"_a, "src"_a, "map"_a,
           "src_interp"_a = NVCV_INTERP_NEAREST, "map_interp"_a = NVCV_INTERP_NEAREST,
           "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false, "border"_a = NVCV_BORDER_CONSTANT,
-          "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "border_value"_a.none() = emptyBorderValue, py::kw_only(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
 
@@ -253,8 +257,8 @@ void ExportOpRemap(py::module &m)
                 points of their corner pixels. Otherwise, they are aligned by the corner points of
                 their corner pixels.
             border (cvcuda.Border, optional): pixel extrapolation method (cvcuda.Border.CONSTANT,
-                cvcuda.Border.REPLICATE, cvcuda.Border.REFLECT, cvcuda.Border.REFLECT_101, or
-                cvcuda.Border.WRAP).
+                cvcuda.Border.REPLICATE, cvcuda.Border.REFLECT, cvcuda.Border.REFLECT_101,
+                cvcuda.Border.WRAP, or cvcuda.Border.CONSTANT_COVERAGE).
             border_value (numpy.ndarray, optional): Used to specify values for a constant border,
                 should have size <= 4 and dim of 1, where the values specify the border color for
                 each color channel.
@@ -265,7 +269,9 @@ void ExportOpRemap(py::module &m)
     )pbdoc");
     m.def("remap", NvtxTrace("cvcuda.remap", &VarShapeRemap), "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST,
           "map_interp"_a = NVCV_INTERP_NEAREST, "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false,
-          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a.none() = emptyBorderValue, py::kw_only(),
+          "stream"_a = nullptr,
+          R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
 
@@ -289,7 +295,7 @@ void ExportOpRemap(py::module &m)
                 their corner pixels.
             border (cvcuda.Border, optional): pixel extrapolation method (cvcuda.Border.CONSTANT,
                 cvcuda.Border.REPLICATE, cvcuda.Border.REFLECT, cvcuda.Border.REFLECT_101, or
-                cvcuda.Border.WRAP).
+                cvcuda.Border.WRAP). cvcuda.Border.CONSTANT_COVERAGE is not supported for variable-shape batches.
             border_value (numpy.ndarray, optional): Used to specify values for a constant border,
                 should have size <= 4 and dim of 1, where the values specify the border color for
                 each color channel.
@@ -302,7 +308,8 @@ void ExportOpRemap(py::module &m)
     m.def("remap_into", NvtxTrace("cvcuda.remap_into", &VarShapeRemapInto), "dst"_a, "src"_a, "map"_a,
           "src_interp"_a = NVCV_INTERP_NEAREST, "map_interp"_a = NVCV_INTERP_NEAREST,
           "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false, "border"_a = NVCV_BORDER_CONSTANT,
-          "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "border_value"_a.none() = emptyBorderValue, py::kw_only(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
 
@@ -327,7 +334,7 @@ void ExportOpRemap(py::module &m)
                 their corner pixels.
             border (cvcuda.Border, optional): pixel extrapolation method (cvcuda.Border.CONSTANT,
                 cvcuda.Border.REPLICATE, cvcuda.Border.REFLECT, cvcuda.Border.REFLECT_101, or
-                cvcuda.Border.WRAP).
+                cvcuda.Border.WRAP). cvcuda.Border.CONSTANT_COVERAGE is not supported for variable-shape batches.
             border_value (numpy.ndarray, optional): Used to specify values for a constant border,
                 should have size <= 4 and dim of 1, where the values specify the border color for
                 each color channel.

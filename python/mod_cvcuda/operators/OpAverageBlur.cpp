@@ -15,93 +15,99 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpAverageBlur.hpp>
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 namespace cvcudapy {
 
 namespace {
-Tensor AverageBlurInto(Tensor &output, Tensor &input, const std::tuple<int, int> &kernel_size,
-                       const std::tuple<int, int> &kernel_anchor, NVCVBorderType border, std::optional<Stream> pstream)
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
+Tensor &AverageBlurInto(Tensor &output, Tensor &input, const std::tuple<int, int> &kernel_size,
+                        const std::tuple<int, int> &kernel_anchor, NVCVBorderType border,
+                        std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     nvcv::Size2D kernelSizeArg{std::get<0>(kernel_size), std::get<1>(kernel_size)};
     int2         kernelAnchorArg{std::get<0>(kernel_anchor), std::get<1>(kernel_anchor)};
 
     auto averageBlur = CreateOperator<cvcuda::AverageBlur>(kernelSizeArg, 0);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_WRITE, {*averageBlur});
 
-    guard.run([&averageBlur, &pstream, &input, &output, &kernelSizeArg, &kernelAnchorArg, &border]()
-              { averageBlur->submit(pstream->cudaHandle(), input, output, kernelSizeArg, kernelAnchorArg, border); });
+    guard.run(
+        [&averageBlur, &stream, &input, &output, &kernelSizeArg, &kernelAnchorArg, &border]()
+        { averageBlur->submit(stream.handle(), input.impl(), output.impl(), kernelSizeArg, kernelAnchorArg, border); });
 
     return output;
 }
 
-Tensor AverageBlur(Tensor &input, const std::tuple<int, int> &kernel_size, const std::tuple<int, int> &kernel_anchor,
-                   NVCVBorderType border, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> AverageBlur(Tensor &input, const std::tuple<int, int> &kernel_size,
+                                    const std::tuple<int, int> &kernel_anchor, NVCVBorderType border,
+                                    std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return AverageBlurInto(output, input, kernel_size, kernel_anchor, border, pstream);
+    AverageBlurInto(*output, input, kernel_size, kernel_anchor, border, pstream);
+    return output;
 }
 
-ImageBatchVarShape AverageBlurVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                           const std::tuple<int, int> &max_kernel_size, Tensor &kernel_size,
-                                           Tensor &kernel_anchor, NVCVBorderType border, std::optional<Stream> pstream)
+ImageBatchVarShape &AverageBlurVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                            const std::tuple<int, int> &max_kernel_size, Tensor &kernel_size,
+                                            Tensor &kernel_anchor, NVCVBorderType border,
+                                            std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     nvcv::Size2D maxKernelSizeArg{std::get<0>(max_kernel_size), std::get<1>(max_kernel_size)};
 
     auto averageBlur = CreateOperator<cvcuda::AverageBlur>(maxKernelSizeArg, input.capacity());
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, kernel_size, kernel_anchor});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*averageBlur});
 
-    guard.run([&averageBlur, &pstream, &input, &output, &kernel_size, &kernel_anchor, &border]()
-              { averageBlur->submit(pstream->cudaHandle(), input, output, kernel_size, kernel_anchor, border); });
+    guard.run(
+        [&averageBlur, &stream, &input, &output, &kernel_size, &kernel_anchor, &border]()
+        {
+            averageBlur->submit(stream.handle(), input.impl(), output.impl(), kernel_size.impl(), kernel_anchor.impl(),
+                                border);
+        });
 
     return output;
 }
 
-ImageBatchVarShape AverageBlurVarShape(ImageBatchVarShape &input, const std::tuple<int, int> &max_kernel_size,
-                                       Tensor &kernel_size, Tensor &kernel_anchor, NVCVBorderType border,
-                                       std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> AverageBlurVarShape(ImageBatchVarShape         &input,
+                                                        const std::tuple<int, int> &max_kernel_size,
+                                                        Tensor &kernel_size, Tensor &kernel_anchor,
+                                                        NVCVBorderType border, std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return AverageBlurVarShapeInto(output, input, max_kernel_size, kernel_size, kernel_anchor, border, pstream);
+    AverageBlurVarShapeInto(*output, input, max_kernel_size, kernel_size, kernel_anchor, border, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpAverageBlur(py::module &m)
+void ExportOpAverageBlur(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     const std::tuple<int, int> def_anchor{-1, -1};
 
@@ -126,7 +132,7 @@ void ExportOpAverageBlur(py::module &m)
 
     m.def("averageblur_into", NvtxTrace("cvcuda.averageblur_into", &AverageBlurInto), "dst"_a, "src"_a, "kernel_size"_a,
           "kernel_anchor"_a = def_anchor, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the AverageBlur operation on the given cuda stream and writes the result into the 'dst' tensor.
 
 
@@ -162,7 +168,7 @@ void ExportOpAverageBlur(py::module &m)
 
     m.def("averageblur_into", NvtxTrace("cvcuda.averageblur_into", &AverageBlurVarShapeInto), "dst"_a, "src"_a,
           "max_kernel_size"_a, "kernel_size"_a, "kernel_anchor"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
-          py::kw_only(), "stream"_a = nullptr,
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Executes the AverageBlur operation with a variable shape tensors on the given cuda stream.
 

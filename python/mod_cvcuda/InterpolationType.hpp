@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,12 +18,12 @@
 #ifndef NVCV_PYTHON_INTERPOLATIONTYPE_HPP
 #define NVCV_PYTHON_INTERPOLATIONTYPE_HPP
 
-#include <pybind11/pybind11.h>
+#include <common/Binding.hpp>
 
 namespace cvcudapy {
-namespace py = ::pybind11;
+namespace py = ::nanobind;
 
-void ExportInterpolationType(py::module &m);
+void ExportInterpolationType(py::module_ &m);
 } // namespace cvcudapy
 
 #endif // NVCV_PYTHON_INTERPOLATIONTYPE_HPP

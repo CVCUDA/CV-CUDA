@@ -636,10 +636,9 @@ NVCVChannel GetSwizzleChannel(NVCVSwizzle swizzle, int idx) noexcept
 {
     // initialize with max in case swizzle is not supported
     uint64_t swizzleBits = UINT64_MAX;
-    for (int i = 0; i < NVCV_MAX_SWIZZLE_COUNT; i++)
+    if (static_cast<unsigned>(swizzle) < swizzleBitsArray.size())
     {
-        if (swizzle == i)
-            swizzleBits = swizzleBitsArray[i];
+        swizzleBits = swizzleBitsArray[swizzle];
     }
     return (NVCVChannel)ExtractBitfield(swizzleBits, idx * 3, 3);
 }

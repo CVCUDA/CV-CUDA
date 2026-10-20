@@ -26,25 +26,60 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <cvcuda/Types.h>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 
+#include <cstddef>
+#include <cstdint>
+
 namespace cvcuda::priv {
+
+// Per-image bin counts, then the normalized CDF, live in a device buffer that is allocated once and
+// reused by every submit -- sized for the operator's maximum batch and the maximum channel count, so
+// no call has to size or allocate anything. Held behind PerDeviceResource, which makes the
+// allocation lazy per CUDA device and binds each buffer to the device it was allocated on.
+class HistogramEqScratch
+{
+public:
+    explicit HistogramEqScratch(int32_t maxBatchSize);
+    ~HistogramEqScratch();
+
+    HistogramEqScratch(const HistogramEqScratch &)            = delete;
+    HistogramEqScratch &operator=(const HistogramEqScratch &) = delete;
+
+    int32_t *data() const noexcept
+    {
+        return m_data;
+    }
+
+    size_t sizeBytes() const noexcept
+    {
+        return m_sizeBytes;
+    }
+
+private:
+    int32_t *m_data      = nullptr;
+    size_t   m_sizeBytes = 0;
+};
 
 class HistogramEq final : public IOperator
 {
 public:
     explicit HistogramEq(uint32_t maxBatchSize);
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const;
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                    NVCVHistogramEqMethod method) const;
 
-    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out) const;
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                    NVCVHistogramEqMethod method) const;
 
 private:
-    int32_t                                                               m_maxBatchSize;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::HistogramEq>         m_legacyOp;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::HistogramEqVarShape> m_legacyOpVarShape;
+    int32_t                                       m_maxBatchSize;
+    mutable PerDeviceResource<HistogramEqScratch> m_scratch;
+    mutable PerDeviceResource<HistogramEqScratch> m_scratchVarShape;
 };
 
 } // namespace cvcuda::priv

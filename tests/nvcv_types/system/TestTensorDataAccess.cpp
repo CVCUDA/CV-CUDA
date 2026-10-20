@@ -110,6 +110,17 @@ TEST_P(TensorDataAccessStrided_SampleStride_ExecTests, works)
     EXPECT_EQ(gold, info->sampleStride());
 }
 
+TEST(TensorDataAccessStrided, RejectsSampleCountThatWrapsToOne)
+{
+    const MyTensorDataStrided data(
+        {
+            {(int64_t{1} << 32) + 1, 1},
+            "NC"
+    },
+        {1, 1});
+    NVCV_EXPECT_THROW_STATUS(NVCV_ERROR_OVERFLOW, nvcv::TensorDataAccessStrided::Create(data));
+}
+
 // TensorDataAccessStrided::sampleData ========================
 
 static nvcv::Byte *TestBaseAddr()

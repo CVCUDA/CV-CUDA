@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import operator
+
 import cvcuda
 
 
@@ -21,3 +23,14 @@ def test_interpolation_type():
     assert cvcuda.Interp.LINEAR != cvcuda.Interp.CUBIC
     assert cvcuda.Interp.CUBIC != cvcuda.Interp.AREA
     assert cvcuda.Interp.AREA != cvcuda.Interp.NEAREST
+
+
+def test_interpolation_type_integer_compatibility():
+    value = cvcuda.Interp.LINEAR
+
+    assert int(value) == 1
+    assert operator.index(value) == 1
+    assert value == 1
+    assert hash(value) == hash(1)
+    assert repr(value) == "<Interp.LINEAR: 1>"
+    assert value | cvcuda.Interp.WARP_INVERSE_MAP == 17

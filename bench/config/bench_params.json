@@ -195,6 +195,11 @@
             "cpp": "bench_medianblur",
             "python": "bench_medianblur.py"
         },
+        "merge": {
+            "config": "operators/merge.json",
+            "cpp": "bench_merge",
+            "python": "bench_merge.py"
+        },
         "minarearect": {
             "config": "operators/minarearect.json",
             "cpp": "bench_minarearect",
@@ -285,6 +290,11 @@
             "cpp": "bench_solarize",
             "python": "bench_solarize.py"
         },
+        "split": {
+            "config": "operators/split.json",
+            "cpp": "bench_split",
+            "python": "bench_split.py"
+        },
         "stack": {
             "config": "operators/stack.json",
             "cpp": "bench_stack",
@@ -294,6 +304,11 @@
             "config": "operators/threshold.json",
             "cpp": "bench_threshold",
             "python": "bench_threshold.py"
+        },
+        "tvresize": {
+            "config": "operators/tvresize.json",
+            "cpp": "bench_tvresize",
+            "python": "bench_tvresize.py"
         },
         "warpaffine": {
             "config": "operators/warpaffine.json",

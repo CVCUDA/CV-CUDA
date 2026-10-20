@@ -36,6 +36,47 @@ from python_bench_utils import (  # noqa: E402
 )
 
 
+def _create_strided_planar(shape, channels, input_kind, dtype_str, device):
+    import cupy as cp
+    from python_bench_utils import _checkerboard_fill
+
+    n, h, w = shape
+    row_stride = w * 2 + 2
+    plane_stride = row_stride * h
+    sample_stride = plane_stride * channels
+    tensors_or_batches, owners = [], []
+    with cp.cuda.Device(device):
+        for side in range(2):
+            owner = cp.zeros(2 + sample_stride * n, dtype=cp.uint8)
+            array = cp.ndarray(
+                (n, channels, h, w),
+                dtype=cp.float16,
+                memptr=owner.data + 2,
+                strides=(sample_stride, plane_stride, row_stride, 2),
+            )
+            owners.extend((owner, array))
+            if input_kind == "Tensor":
+                if side == 0:
+                    _checkerboard_fill(array)
+                wrapped = cvcuda.as_tensor(array, "NCHW")
+            else:
+                wrapped = cvcuda.ImageBatchVarShape(n)
+                fmt = get_format_from_dtype(dtype_str, channels, planar=True)
+                for sample in range(n):
+                    # Explicit per-plane HWC lets as_image preserve row padding.
+                    planes = [
+                        array[sample, channel].reshape(h, w, 1)
+                        for channel in range(channels)
+                    ]
+                    if side == 0:
+                        for plane in planes:
+                            _checkerboard_fill(plane)
+                    wrapped.pushback(cvcuda.as_image(planes, fmt))
+            tensors_or_batches.append(wrapped)
+        cp.cuda.get_current_stream().synchronize()
+    return *tensors_or_batches, owners
+
+
 def normalize(state):
     """Normalize operator benchmark matching C++ BenchNormalize.cpp"""
 
@@ -67,8 +108,68 @@ def normalize(state):
         state.skip("Fake-planar (NCHW_FAKE) normalize benchmark is tensor-only")
         return None
 
-    param_samples = 1 if is_planar and input_kind == "VarShape" else N
+    # Mirrors BenchNormalize.cpp: a per-channel (base, scale) set shared by the whole
+    # batch is a different dispatch from one set per sample, and both halves of the
+    # stddev flag are separately dispatched. Both default to the value this benchmark
+    # used to hardcode, so existing configurations are unchanged.
+    try:
+        param_kind = state.get_string("paramKind")
+    except Exception:
+        param_kind = "PerSample"
+    is_broadcast = param_kind == "Broadcast"
+    is_spatial = param_kind == "RowBaseColumnScale"
+    if param_kind not in ("PerSample", "Broadcast", "RowBaseColumnScale"):
+        state.skip(
+            "Normalize benchmark supports only PerSample, Broadcast, and RowBaseColumnScale paramKind"
+        )
+        return None
+    if is_broadcast and scalar_params:
+        state.skip(
+            "Broadcast paramKind does not apply to by-value (TensorScalar) parameters"
+        )
+        return None
+
+    try:
+        scale_mode = state.get_string("scaleMode")
+    except Exception:
+        scale_mode = "stddev"
+    if scale_mode not in ("stddev", "scale"):
+        state.skip("Normalize benchmark supports only stddev and scale scaleMode")
+        return None
+
+    try:
+        storage = state.get_string("storage")
+    except Exception:
+        storage = "Native"
+    is_strided = storage == "Offset2Pitch2"
+    if storage not in ("Native", "NativePitch", "Offset2Pitch2"):
+        state.skip(
+            "Normalize benchmark supports only Native, NativePitch, and Offset2Pitch2 storage"
+        )
+        return None
+    if storage == "NativePitch" and (
+        not is_planar or scalar_params or input_kind != "Tensor"
+    ):
+        state.skip("NativePitch storage requires native planar Tensor")
+        return None
+    if (
+        is_strided
+        and (
+            not is_planar
+            or scalar_params
+            or num_channels != 3
+            or dtype != cvcuda.Type.F16
+        )
+    ) or (is_spatial and (not is_planar or scalar_params or input_kind != "Tensor")):
+        state.skip(
+            "Offset2Pitch2 requires planar F16 C3; spatial parameters require native planar Tensor"
+        )
+        return None
+
+    param_samples = 1 if is_broadcast or (is_planar and input_kind == "VarShape") else N
     param_bytes = 0 if scalar_params else param_samples * num_channels * 4 * 2
+    if is_spatial:
+        param_bytes = (N * num_channels * H + W) * 4
     bytes_ = N * H * W * dtype_size
     if is_fake_planar:
         # reformat(NCHW->NHWC) + normalize + reformat(NHWC->NCHW); normalize preserves size.
@@ -83,7 +184,7 @@ def normalize(state):
     global_scale = 1.234
     global_shift = 2.345
     epsilon = 12.34
-    flags = cvcuda.NormalizeFlags.SCALE_IS_STDDEV
+    flags = cvcuda.NormalizeFlags.SCALE_IS_STDDEV if scale_mode == "stddev" else 0
 
     if scalar_params:
         if is_fake_planar:
@@ -124,9 +225,13 @@ def normalize(state):
         else (param_samples, 1, 1, num_channels)
     )
     param_layout = "NCHW" if is_planar else "NHWC"
+    scale_shape = base_shape
+    if is_spatial:
+        base_shape = (N, num_channels, H, 1)
+        scale_shape = (1, 1, 1, W)
 
-    # base, scale: deterministic LCG over float [-1, +1], bit-identical to
-    # the C++ RandomValues<float>() GPU fast path (see BenchNormalize.cpp).
+    # Dense parameter LCG matches C++'s tight strided/spatial parameters;
+    # other C++ modes retain their padded allocation.
     base = create_tensor(
         base_shape,
         cvcuda.Type.F32,
@@ -135,12 +240,34 @@ def normalize(state):
         fill_mode="lcg",
     )
     scale = create_tensor(
-        base_shape,
+        scale_shape,
         cvcuda.Type.F32,
         device_id,
         layout=param_layout,
         fill_mode="lcg",
     )
+
+    if is_strided:
+        src, dst, owners = _create_strided_planar(
+            shape, num_channels, input_kind, dtype_str, device_id
+        )
+
+        def run_strided(launch):
+            cvcuda.normalize_into(
+                dst,
+                src,
+                base,
+                scale,
+                flags,
+                globalscale=global_scale,
+                globalshift=global_shift,
+                epsilon=epsilon,
+                stream=get_stream(launch),
+            )
+
+        # Explicitly retain the external allocations until timing and stream sync finish.
+        run_strided._storage_owners = owners
+        return run_strided
 
     if is_fake_planar:
         # Tensor-only "fake planar": planar->interleaved->normalize->interleaved->planar,
@@ -185,9 +312,21 @@ def normalize(state):
             (N, num_channels, H, W) if layout == "NCHW" else (N, H, W, num_channels)
         )
         src = create_tensor(
-            input_shape, dtype, device_id, layout=layout, fill_mode="checkerboard"
+            input_shape,
+            dtype,
+            device_id,
+            layout=layout,
+            fill_mode="checkerboard",
+            native_allocation=storage == "NativePitch",
         )
-        dst = create_tensor(input_shape, dtype, device_id, layout=layout, fill_mode=0)
+        dst = create_tensor(
+            input_shape,
+            dtype,
+            device_id,
+            layout=layout,
+            fill_mode=0,
+            native_allocation=storage == "NativePitch",
+        )
 
         def run(launch):
             cvcuda.normalize_into(

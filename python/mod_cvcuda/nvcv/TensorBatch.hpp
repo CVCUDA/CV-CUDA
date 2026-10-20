@@ -18,6 +18,7 @@
 #ifndef NVCV_PYTHON_PRIV_TENSORBATCH_HPP
 #define NVCV_PYTHON_PRIV_TENSORBATCH_HPP
 
+#include "BatchData.hpp"
 #include "Container.hpp"
 
 #include <nvcv/TensorBatch.hpp>
@@ -25,7 +26,7 @@
 #include <vector>
 
 namespace nvcvpy::priv {
-namespace py = pybind11;
+namespace py = nanobind;
 
 class Tensor;
 
@@ -34,7 +35,23 @@ class TensorBatch : public Container
     using TensorList = std::vector<std::shared_ptr<Tensor>>;
 
 public:
-    static void Export(py::module &m);
+    static void Export(py::module_ &m);
+
+#ifdef NB_FREE_THREADED
+    BatchMutex &batchMutex() const
+    {
+        return m_batchMutex;
+    }
+
+    BatchMutex *submissionBatchMutex() const override
+    {
+        return &m_batchMutex;
+    }
+
+    uint64_t                iterationVersion() const;
+    std::shared_ptr<Tensor> iterationAt(size_t &index, uint64_t version) const;
+    void                    visitSubmissionResources(LockMode mode, const SubmissionVisitor &visit) override;
+#endif
 
     static std::shared_ptr<TensorBatch> Create(int capacity);
     static std::shared_ptr<TensorBatch> WrapExternalBufferVector(std::vector<py::object>           buffers,
@@ -50,7 +67,8 @@ public:
     std::optional<nvcv::DataType>     dtype() const;
     std::optional<nvcv::TensorLayout> layout() const;
 
-    int64_t GetSizeInBytes() const override;
+    int64_t        GetSizeInBytes() const override;
+    RetainedMemory retainedMemory() const override;
 
     void pushBack(Tensor &tensor);
     void pushBackMany(std::vector<std::shared_ptr<Tensor>> &tensorList);
@@ -88,10 +106,17 @@ private:
 
     int64_t doComputeSizeInBytes(const NVCVTensorBatchRequirements &reqs) const;
 
-    Key               m_key;
-    nvcv::TensorBatch m_impl;
-    TensorList        m_list;
-    int64_t           m_size_inbytes = -1;
+#ifdef NB_FREE_THREADED
+    mutable BatchMutex m_batchMutex;
+    uint64_t           m_version = 0;
+#else
+    inline static BatchMutex m_batchMutex;
+#endif
+    Key                                     m_key;
+    BatchStorage<nvcv::TensorBatch, Tensor> m_data;
+    int64_t                                 m_size_inbytes        = -1;
+    mutable bool                            m_retainedMemoryDirty = true;
+    mutable RetainedMemory                  m_retainedMemory;
 };
 
 } // namespace nvcvpy::priv

@@ -17,6 +17,7 @@
 
 #include "priv/Types.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <cuda_runtime.h>
@@ -203,6 +204,7 @@ CVCUDA_DEFINE_API(0, 16, NVCVStatus, nvcvElementsConstruct,
                 vec[b].reserve(n);
                 for (int32_t i = 0; i < n; ++i, ++flatIdx)
                 {
+                    priv::CheckEnumArg(types[flatIdx], NVCV_OSD_MAX, "OSD element type");
                     NVCVOSDType t = types[flatIdx];
                     if (!isPODElementType(t))
                     {

@@ -21,9 +21,10 @@
 
 namespace cvcudapy {
 
-void ExportLabelType(py::module &m)
+void ExportLabelType(py::module_ &m)
 {
-    py::enum_<NVCVLabelType>(m, "LABEL", "Label assignment modes for connected-component output.", py::arithmetic())
+    py::enum_compat<NVCVLabelType>(m, "LABEL", "Label assignment modes for connected-component output.",
+                                   py::is_arithmetic())
         .value("FAST", NVCV_LABEL_FAST,
                "Labels assigned using a fast parallel algorithm; values may not be sequential.")
         .value("SEQUENTIAL", NVCV_LABEL_SEQUENTIAL, "Labels assigned sequentially starting from 1.");

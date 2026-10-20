@@ -17,16 +17,16 @@
 
 #include "Array.hpp"
 
+#include "CastUtils.hpp"
 #include "DataType.hpp"
 #include "ExternalBuffer.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <common/CheckError.hpp>
 #include <common/Hash.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
-#include <pybind11/operators.h>
-#include <pybind11/stl.h>
 
 #include <stdexcept>
 
@@ -44,10 +44,10 @@ public:
 
 std::shared_ptr<Array> Array::CreateFromReqs(const nvcv::Array::Requirements &reqs)
 {
-    std::vector<std::shared_ptr<CacheItem>> vcont = Cache::Instance().fetch(Key{reqs});
+    std::shared_ptr<CacheItem> item = Cache::Instance().fetchOne(Key{reqs});
 
     // None found?
-    if (vcont.empty())
+    if (!item)
     {
         std::shared_ptr<Array> array(new Array(reqs)); // NOSONAR: constructor is private.
         array->impl().resize(reqs.capacity);
@@ -56,8 +56,7 @@ std::shared_ptr<Array> Array::CreateFromReqs(const nvcv::Array::Requirements &re
     }
     else
     {
-        // Get the first one
-        auto array = std::static_pointer_cast<Array>(vcont[0]);
+        auto array = std::static_pointer_cast<Array>(item->acquireClaimedObject());
         NVCV_ASSERT(array->dtype() == reqs.dtype);
         return array;
     }
@@ -133,8 +132,14 @@ NVCVArrayData FillNVCVArrayDataCUDA(const DLTensor &tensor)
 
 } // namespace
 
-std::shared_ptr<Array> Array::Wrap(ExternalBuffer &buffer)
+std::shared_ptr<Array> Array::Wrap(py::object object)
 {
+    std::shared_ptr<ExternalBuffer> wrapped = cast_py_object_as<ExternalBuffer>(object);
+    if (!wrapped)
+    {
+        throw ArrayError("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
+    }
+    ExternalBuffer &buffer   = *wrapped;
     const DLTensor &dlTensor = buffer.dlTensor();
 
     nvcv::ArrayDataCuda data{FillNVCVArrayDataCUDA(dlTensor)};
@@ -148,6 +153,10 @@ std::shared_ptr<Array> Array::Wrap(ExternalBuffer &buffer)
 
     auto array = std::shared_ptr<Array>( // NOSONAR: constructor is private.
         new Array(data, py::cast(buffer.shared_from_this())));
+#ifdef NB_FREE_THREADED
+    array->setReadOnly(buffer.readOnly());
+    array->setSubmissionStates(buffer.submissionStates());
+#endif
 
     // Seed the array's Resource state with the producer stream from CAI so
     // the first cvcuda op reading this array inserts the proper cross-stream
@@ -178,6 +187,9 @@ std::shared_ptr<Array> Array::ResizeArray(Array &array, int64_t length)
     array_impl.resize(length);
 
     auto new_array = std::shared_ptr<Array>(new Array(std::move(array_impl))); // NOSONAR: constructor is private.
+#ifdef NB_FREE_THREADED
+    new_array->shareSubmissionStates(array);
+#endif
 
     // Need to add wrappers to cache so that they don't get destroyed by
     // the cuda stream when they're last used, and python script isn't
@@ -202,21 +214,27 @@ std::shared_ptr<Array> Array::Resize(Shape shape)
 }
 
 Array::Array(const nvcv::Array::Requirements &reqs)
-    : m_impl{reqs}
+    : Container(false)
+    , m_impl{reqs}
     , m_key{reqs}
     , m_size_inbytes{doComputeSizeInBytes(reqs)}
 {
+#ifdef NB_FREE_THREADED
+    setSubmissionStates({AllocationSubmissionState(m_impl.exportData<nvcv::ArrayDataCuda>()->basePtr())});
+#endif
 }
 
 Array::Array(const nvcv::ArrayData &data, py::object wrappedObject)
-    : m_impl{nvcv::ArrayWrapData(data)}
+    : Container(false)
+    , m_impl{nvcv::ArrayWrapData(data)}
     , m_size_inbytes{doComputeSizeInBytes(nvcv::Array::Requirements())}
     , m_wrappedObject(wrappedObject)
 {
 }
 
 Array::Array(nvcv::Array &&array)
-    : m_impl{std::move(array)}
+    : Container(false)
+    , m_impl{std::move(array)}
     , m_size_inbytes{doComputeSizeInBytes(nvcv::Array::Requirements())}
 {
 }
@@ -233,6 +251,11 @@ int64_t Array::GetSizeInBytes() const
     // m_size_inbytes == -1 indicates failure case and value has not been computed yet
     NVCV_ASSERT(m_size_inbytes != -1 && "Array has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
     return m_size_inbytes;
+}
+
+RetainedMemory Array::retainedMemory() const
+{
+    return m_wrappedObject ? RetainedMemory{0, 1} : Container::retainedMemory();
 }
 
 nvcv::Array &Array::impl()
@@ -316,11 +339,8 @@ auto Array::key() const -> const Key &
     return m_key;
 }
 
-static py::object ToPython(const nvcv::ArrayData &arrayData, py::object owner, cudaStream_t exportStream,
-                           bool setExportStream)
+static py::object ToPython(const nvcv::ArrayData &arrayData, py::object owner, Resource::ExportStreamState exportStream)
 {
-    py::object out;
-
     auto data = arrayData.cast<nvcv::ArrayData>();
     if (!data)
     {
@@ -328,7 +348,8 @@ static py::object ToPython(const nvcv::ArrayData &arrayData, py::object owner, c
     }
 
     DLPackTensor dlTensor(*data);
-    return ExternalBuffer::Create(std::move(dlTensor), owner, exportStream, setExportStream);
+    return ExternalBuffer::Create(std::move(dlTensor), std::move(owner), std::move(exportStream.handle),
+                                  std::move(exportStream.owner));
 }
 
 py::object Array::cuda() const
@@ -337,21 +358,20 @@ py::object Array::cuda() const
 
     // Advertise the stream the array's data was last written on via CAI
     // `stream` so downstream consumers can sync.
-    cudaStream_t lastStream = this->getLastStreamHandle();
-    bool         setStream  = lastStream != nullptr;
+    ExportStreamState exportStream = this->exportStreamState();
 
     // Note: we can't cache the returned ExternalBuffer because it is holding
     // a reference to us. Doing so would lead to mem leaks.
-    return ToPython(arrayData, py::cast(SharedContainerFrom(*this)), lastStream, setStream);
+    return ToPython(arrayData, py::cast(SharedContainerFrom(*this)), std::move(exportStream));
 }
 
 std::ostream &operator<<(std::ostream &out, const Array &array)
 {
     return out << "<nvcv.Array length=" << array.length()
-               << " dtype=" << py::str(py::cast(array.dtype())).cast<std::string>() << '>';
+               << " dtype=" << py::cast<std::string>(py::str(py::cast(array.dtype()))) << '>';
 }
 
-void Array::Export(py::module &m)
+void Array::Export(py::module_ &m)
 {
     using namespace py::literals;
 
@@ -364,17 +384,17 @@ void Array::Export(py::module &m)
     using ResizeArrayLengthPtr = std::shared_ptr<Array> (*)(Array &, int64_t DataType);
     using ResizeArrayShapePtr  = std::shared_ptr<Array> (*)(Array &, Shape);
 
-    py::class_<Array, std::shared_ptr<Array>, Container>(m, "Array", "Array")
-        .def(py::init(static_cast<CreateFromLengthPtr>(&Array::Create)), "length"_a, "dtype"_a,
+    py::class_<Array, Container>(m, "Array", "Array")
+        .def(py::new_(static_cast<CreateFromLengthPtr>(&Array::Create)), "length"_a, "dtype"_a,
              "Create a Array object with the given length and data type.")
-        .def(py::init(static_cast<CreateFromShapePtr>(&Array::Create)), "shape"_a, "dtype"_a,
+        .def(py::new_(static_cast<CreateFromShapePtr>(&Array::Create)), "shape"_a, "dtype"_a,
              "Create a Array object with the given shape and data type.")
-        .def_property_readonly("shape", &Array::shape, "The shape of the Array.")
-        .def_property_readonly("dtype", &Array::dtype, "The data type of the Array.")
+        .def_prop_ro("shape", &Array::shape, "The shape of the Array.")
+        .def_prop_ro("dtype", &Array::dtype, "The data type of the Array.")
         // numpy and others use ndim, let's be consistent with them in python.
         // It's not a requirement to be consistent between NVCV Python and C/C++.
         // Each language use whatever is appropriate (and expected) in their environment.
-        .def_property_readonly("ndim", &Array::rank, "The number of dimensions of the Array.")
+        .def_prop_ro("ndim", &Array::rank, "The number of dimensions of the Array.")
         .def("cuda", &Array::cuda, "Reference to the Array on the CUDA device.")
         .def("resize", static_cast<ResizeLengthPtr>(&Array::Resize), "length"_a,
              "Produces an array pointing to the same data but with a new length.")

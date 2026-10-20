@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <functional>
 #include <iomanip>
 #include <list>
 #include <sstream>
@@ -432,7 +433,7 @@ ValueList<TT...> UniqueSort(F extractor, ValueList<TT...> a)
 
             if (ta == tb)
             {
-                return a < b;
+                return std::less<>{}(a, b);
             }
             else
             {
@@ -530,9 +531,9 @@ ValueList<T> Difference(T a, ValueList<T> b)
 // SymmetricDifference  ----------------------------
 
 template<class... TT>
-ValueList<TT...> SymmetricDifference(ValueList<TT...> a, ValueList<TT...> b)
+ValueList<TT...> SymmetricDifference(ValueList<TT...> left, ValueList<TT...> right)
 {
-    return Concat(Difference(a, b), Difference(b, a));
+    return Concat(Difference(left, right), Difference(right, left));
 }
 
 template<class T>

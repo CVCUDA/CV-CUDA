@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,26 +25,22 @@
 #define CVCUDA_PRIV_PADANDSTACK_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <nvcv/BorderType.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
 class PadAndStack final : public IOperator
 {
 public:
-    explicit PadAndStack();
+    explicit PadAndStack() = default;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
                     const nvcv::Tensor &top, const nvcv::Tensor &left, const NVCVBorderType borderMode,
                     const float borderValue) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::PadAndStack> m_legacyOp;
 };
 
 } // namespace cvcuda::priv

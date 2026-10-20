@@ -21,4 +21,5 @@
 # - numpy and torch are installed separately
 
 pytest==${pytest}
+pillow==${pillow}
 typing-extensions>=${typing_extensions}

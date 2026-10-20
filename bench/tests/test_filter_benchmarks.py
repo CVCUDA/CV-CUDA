@@ -11,6 +11,7 @@ from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 BENCH_DIR = Path(__file__).resolve().parent.parent
@@ -37,6 +38,55 @@ def test_laplacian_f16_configs_pin_supported_kernel_size():
 
     for key in ("laplacian_half3_advanced", "laplacian_scalar_half_advanced"):
         assert config[key]["int64_axes"]["ksize"] == [1]
+
+
+@pytest.mark.parametrize("layout", ["NHWC", "NCHW"])
+@pytest.mark.parametrize(
+    "kernel_size, kernel_shape", [("3x5", (2, 5, 3)), ("9x9", (2, 9, 9))]
+)
+def test_conv2d_kernel_batch_uses_width_height_axis_order(
+    monkeypatch, layout, kernel_size, kernel_shape
+):
+    fake_cvcuda = types.ModuleType("cvcuda")
+    fake_cvcuda.Type = types.SimpleNamespace(F32="F32", S32="S32")
+    fake_cvcuda.Format = types.SimpleNamespace(F32="F32")
+    batches = []
+
+    fake_utils = types.ModuleType("python_bench_utils")
+    fake_utils.get_input_kind = lambda value: value
+    fake_utils.parse_shape = lambda _shape: (2, 17, 33)
+    fake_utils.get_dtype = lambda _dtype: "U8"
+    fake_utils.get_num_channels = lambda _dtype: 3
+    fake_utils.get_dtype_size = lambda _dtype: 3
+    fake_utils.get_format_from_dtype = lambda *_args, **_kwargs: "RGB8"
+    fake_utils.get_border_type = lambda value: value
+    fake_utils.create_tensor = lambda *_args, **_kwargs: object()
+
+    def create_image_batch(shape, _variation, image_format, dtype, _device, **kwargs):
+        batches.append((shape, image_format, dtype, kwargs["fill_mode"]))
+        return object()
+
+    fake_utils.create_image_batch_varshape = create_image_batch
+    fake_utils.create_stream_cache = lambda: lambda _launch: None
+    fake_utils.run_benchmark = lambda *_args, **_kwargs: None
+    benchmark = _load_benchmark(monkeypatch, "conv2d", fake_cvcuda, fake_utils)
+    values = {
+        "shape": "2x17x33",
+        "InOutDataType": "uchar3",
+        "kernelSize": kernel_size,
+        "inputKind": "VarShape",
+        "layout": layout,
+        "border": "REPLICATE",
+    }
+    state = types.SimpleNamespace(
+        get_string=values.__getitem__,
+        get_device=lambda: 0,
+        add_global_memory_reads=lambda _bytes: None,
+        add_global_memory_writes=lambda _bytes: None,
+    )
+
+    assert callable(benchmark.conv2d(state))
+    assert batches[-1] == (kernel_shape, "F32", "F32", "lcg")
 
 
 def test_medianblur_f16_uses_normalized_half_input(monkeypatch):

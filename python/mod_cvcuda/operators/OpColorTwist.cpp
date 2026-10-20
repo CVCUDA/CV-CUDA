@@ -15,88 +15,83 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpColorTwist.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
-inline Tensor tensorLike(Tensor &src)
+inline std::shared_ptr<Tensor> tensorLike(Tensor &src)
 {
-    const auto &srcShape = src.shape();
-    Shape       dstShape = nvcvpy::CreateShape(srcShape);
-
-    return Tensor::Create(dstShape, src.dtype(), src.layout());
+    return native::CreateTensor(src.impl().shape(), src.dtype());
 }
 
-inline ImageBatchVarShape batchLike(ImageBatchVarShape &src)
+inline std::shared_ptr<ImageBatchVarShape> batchLike(ImageBatchVarShape &src)
 {
-    ImageBatchVarShape dst = ImageBatchVarShape::Create(src.capacity());
-    for (int i = 0; i < src.numImages(); ++i)
-    {
-        dst.pushBackImage(Image::Create(src[i].size(), src[i].format()));
-    }
-    return dst;
+    return CreateSameShapeImageBatch(src);
 }
 
 template<typename Op, typename Src, typename Dst, typename Call>
-auto runGuard(Op &op, Src &src, Dst &dst, const Tensor &twist, std::optional<Stream> &pstream, Call &&call)
+auto runGuard(Op &op, Src &src, Dst &dst, Tensor &twist, std::optional<Stream *> pstream, Call &&call)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {src, twist});
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    guard.run([&call, &pstream]() { call(*pstream); });
+    guard.run([&call, &stream]() { call(stream); });
 }
 
-Tensor ColorTwistMatrixInto(Tensor &dst, Tensor &src, Tensor &twist, std::optional<Stream> pstream)
+Tensor &ColorTwistMatrixInto(Tensor &dst, Tensor &src, Tensor &twist, std::optional<Stream *> pstream)
 {
     auto op = CreateOperator<cvcuda::ColorTwist>();
     runGuard(op, src, dst, twist, pstream,
-             [&op, &src, &dst, &twist](const Stream &stream) { op->submit(stream.cudaHandle(), src, dst, twist); });
+             [&op, &src, &dst, &twist](const Stream &stream)
+             { op->submit(stream.handle(), src.impl(), dst.impl(), twist.impl()); });
     return dst;
 }
 
-Tensor ColorTwistMatrix(Tensor &src, Tensor &twist, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> ColorTwistMatrix(Tensor &src, Tensor &twist, std::optional<Stream *> pstream)
 {
     auto dst = tensorLike(src);
-    return ColorTwistMatrixInto(dst, src, twist, pstream);
-}
-
-ImageBatchVarShape VarShapeColorTwistMatrixInto(ImageBatchVarShape &dst, ImageBatchVarShape &src, Tensor &twist,
-                                                std::optional<Stream> pstream)
-{
-    auto op = CreateOperator<cvcuda::ColorTwist>();
-    runGuard(op, src, dst, twist, pstream,
-             [&op, &src, &dst, &twist](const Stream &stream) { op->submit(stream.cudaHandle(), src, dst, twist); });
+    ColorTwistMatrixInto(*dst, src, twist, pstream);
     return dst;
 }
 
-ImageBatchVarShape VarShapeColorTwistMatrix(ImageBatchVarShape &src, Tensor &twist, std::optional<Stream> pstream)
+ImageBatchVarShape &VarShapeColorTwistMatrixInto(ImageBatchVarShape &dst, ImageBatchVarShape &src, Tensor &twist,
+                                                 std::optional<Stream *> pstream)
+{
+    auto op = CreateOperator<cvcuda::ColorTwist>();
+    runGuard(op, src, dst, twist, pstream,
+             [&op, &src, &dst, &twist](const Stream &stream)
+             { op->submit(stream.handle(), src.impl(), dst.impl(), twist.impl()); });
+    return dst;
+}
+
+std::shared_ptr<ImageBatchVarShape> VarShapeColorTwistMatrix(ImageBatchVarShape &src, Tensor &twist,
+                                                             std::optional<Stream *> pstream)
 {
     auto dst = batchLike(src);
-    return VarShapeColorTwistMatrixInto(dst, src, twist, pstream);
+    VarShapeColorTwistMatrixInto(*dst, src, twist, pstream);
+    return dst;
 }
 
 } // namespace
 
-void ExportOpColorTwist(py::module &m)
+void ExportOpColorTwist(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("color_twist", NvtxTrace("cvcuda.color_twist", &ColorTwistMatrix), "src"_a, "twist"_a, py::kw_only(),
           "stream"_a = nullptr,
@@ -115,7 +110,7 @@ void ExportOpColorTwist(py::module &m)
             cvcuda.Tensor: The output tensor.
     )pbdoc");
     m.def("color_twist_into", NvtxTrace("cvcuda.color_twist_into", &ColorTwistMatrixInto), "dst"_a, "src"_a, "twist"_a,
-          py::kw_only(), "stream"_a = nullptr,
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Transforms an image by applying affine transformation to the channels extent.
 
@@ -153,7 +148,7 @@ void ExportOpColorTwist(py::module &m)
 
     )pbdoc");
     m.def("color_twist_into", NvtxTrace("cvcuda.color_twist_into", &VarShapeColorTwistMatrixInto), "dst"_a, "src"_a,
-          "twist"_a, py::kw_only(), "stream"_a = nullptr,
+          "twist"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Transforms a batch of images by applying affine transformation to the channels extent.
 

@@ -26,12 +26,11 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <cvcuda/Types.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -48,10 +47,28 @@ public:
                     const NVCVInterpolationType interpolation) const;
 
 private:
-    static std::unique_ptr<nvcv::legacy::cuda_op::Rotate> CreateLegacyOp(int deviceId);
+    // Persistent device scratch for the six-coefficient affine blocks the rotate kernels read: one
+    // block for the tensor path, one block per image for the var-shape path. Allocated once per
+    // CUDA device and freed in the destructor, rather than taken from the workspace API or
+    // allocated per call. A non-positive block count allocates nothing, which is what makes a
+    // var-shape operator built with a non-positive maximum batch size reject every submit.
+    struct AffineCoeffs
+    {
+        explicit AffineCoeffs(int numBlocks);
+        ~AffineCoeffs();
 
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::Rotate>         m_legacyOp{CreateLegacyOp};
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::RotateVarShape> m_legacyOpVarShape;
+        AffineCoeffs(const AffineCoeffs &)            = delete;
+        AffineCoeffs &operator=(const AffineCoeffs &) = delete;
+
+        float *aCoeffs = nullptr;
+    };
+
+    const int m_maxVarShapeBatchSize;
+
+    // The coefficient buffers are single-device by design. PerDeviceResource creates
+    // one instance per CUDA device for transparent multi-GPU support.
+    mutable PerDeviceResource<AffineCoeffs> m_tensorCoeffs;
+    mutable PerDeviceResource<AffineCoeffs> m_varShapeCoeffs;
 };
 
 } // namespace cvcuda::priv

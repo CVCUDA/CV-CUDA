@@ -28,3 +28,15 @@ nvcv_add_test(
     "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CVCUDA_CUDA_ARCHITECTURE_POLICY_TEST}"
     cmake
 )
+
+set(CVCUDA_PACKAGE_CONFIG_TEST cvcuda_test_package_config)
+configure_file(
+    test_package_config.py
+    "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CVCUDA_PACKAGE_CONFIG_TEST}"
+    @ONLY
+)
+
+nvcv_add_test(
+    "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CVCUDA_PACKAGE_CONFIG_TEST}"
+    cmake
+)

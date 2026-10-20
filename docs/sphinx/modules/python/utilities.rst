@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,15 @@ Utilities
 .. autofunction:: cvcuda.as_images
 
 .. autofunction:: cvcuda.as_stream
+
+.. note::
+
+   Pass an owning ``torch.cuda.Stream`` or ``cupy.cuda.Stream`` object when
+   possible. CV-CUDA retains that owner while the wrapped stream or a resource
+   carrying its stream dependency is in use. Raw CUDA stream handles and
+   ``ExternalStream`` objects remain caller-owned; their underlying stream must
+   stay valid for all CV-CUDA uses, including while resources carry dependencies
+   on it.
 
 .. autofunction:: cvcuda.as_tensor
 

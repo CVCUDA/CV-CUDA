@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,15 +18,15 @@
 #ifndef NVCV_PYTHON_PRIV_OSD_ELEMENT_HPP
 #define NVCV_PYTHON_PRIV_OSD_ELEMENT_HPP
 
-#include <pybind11/pybind11.h>
+#include <common/Binding.hpp>
 
 namespace cvcudapy {
 
-namespace py = ::pybind11;
+namespace py = ::nanobind;
 
-void ExportBoxBlur(py::module &m);
+void ExportBoxBlur(py::module_ &m);
 
-void ExportOSD(py::module &m);
+void ExportOSD(py::module_ &m);
 
 } // namespace cvcudapy
 

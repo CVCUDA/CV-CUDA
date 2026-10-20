@@ -25,13 +25,14 @@ RNG = np.random.default_rng(0)
 
 
 def invert_ref(src):
-    """Independent CPU oracle: out = bound - in, where bound is the dtype maximum
-    (255 / 65535) for unsigned integers and 1.0 for float -- mirrors the operator
-    and torchvision.transforms.v2.functional.invert / OpenCV cv::bitwise_not."""
+    """Subtract from the integer maximum with saturation, or from one for floats."""
     if np.issubdtype(src.dtype, np.floating):
         return (np.float32(1.0) - src).astype(src.dtype)
     bound = np.iinfo(src.dtype).max
-    return (bound - src.astype(np.int64)).astype(src.dtype)
+    # Python integers keep signed 64-bit boundary subtraction from overflowing.
+    return np.asarray(
+        [min(bound, bound - int(value)) for value in src.flat], dtype=src.dtype
+    ).reshape(src.shape)
 
 
 def assert_inverted(got, src):
@@ -61,6 +62,8 @@ def assert_inverted(got, src):
         ((2, 4, 16, 23), np.float32, "NCHW"),  # planar float
         ((3, 8, 8), np.float32, "CHW"),  # planar float, no batch
         ((5, 16, 23, 3), np.float16, "NHWC"),  # interleaved f16
+        ((5, 16, 23, 3), np.float64, "NHWC"),
+        ((2, 4, 16, 23), np.float64, "NCHW"),
         (
             (3, 88, 13, 1),
             np.float16,
@@ -142,7 +145,47 @@ def test_op_invert_varshape(num_images, img_format, img_size, max_pixel):
 
 
 def test_op_invert_negative_dtype():
-    # float64 is outside the supported dtype set (u8/u16/f16/f32) and must be rejected.
-    src = cvcuda.Tensor((1, 16, 16, 3), np.float64, "NHWC")
+    src = cvcuda.Tensor((1, 16, 16, 3), np.int8, "NHWC")
     with pytest.raises(RuntimeError):
         cvcuda.invert(src)
+
+
+@pytest.mark.parametrize("dtype", [np.int16, np.int32, np.int64])
+@pytest.mark.parametrize("layout", ["NHWC", "HWC", "NCHW", "CHW"])
+def test_op_invert_signed_boundaries(dtype, layout):
+    """Check signed saturation and exact subtraction through both tensor APIs."""
+    limits = np.iinfo(dtype)
+    values = np.array(
+        [limits.min, limits.min + 1, -1, 0, 1, limits.max - 1, limits.max],
+        dtype=dtype,
+    )
+    shapes = {
+        "NHWC": (1, 1, 7, 3),
+        "HWC": (1, 7, 3),
+        "NCHW": (1, 3, 1, 7),
+        "CHW": (3, 1, 7),
+    }
+    host = np.resize(values, shapes[layout])
+    src = util.to_cvcuda_tensor(host, layout)
+    assert_inverted(util.to_cpu_numpy_buffer(cvcuda.invert(src).cuda()), host)
+    dst = cvcuda.Tensor(src.shape, src.dtype, src.layout)
+    assert cvcuda.invert_into(dst, src) is dst
+    assert_inverted(util.to_cpu_numpy_buffer(dst.cuda()), host)
+
+
+@pytest.mark.parametrize("dtype", [np.int16, np.int32, np.int64])
+@pytest.mark.parametrize("channels", [1, 3, 4])
+def test_op_invert_signed_varshape(dtype, channels):
+    """Check signed boundary values in differently sized images and both APIs."""
+    limits = np.iinfo(dtype)
+    values = np.array([limits.min, -1, 0, 1, limits.max], dtype=dtype)
+    hosts = [np.resize(values, (h, w, channels)) for h, w in [(2, 7), (3, 5)]]
+    src = cvcuda.ImageBatchVarShape(len(hosts))
+    for host in hosts:
+        src.pushback(util.to_cvcuda_image(host))
+    dst = util.clone_image_batch(src)
+    allocated = cvcuda.invert(src)
+    assert cvcuda.invert_into(dst, src) is dst
+    for result in (allocated, dst):
+        for image, host in zip(result, hosts, strict=True):
+            assert_inverted(util.to_cpu_numpy_buffer(image.cuda()), host)

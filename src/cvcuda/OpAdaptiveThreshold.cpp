@@ -17,6 +17,7 @@
 
 #include "priv/OpAdaptiveThreshold.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -52,6 +53,9 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaAdaptiveThresholdSubmit,
     return nvcv::ProtectCall(
         [&out, &in, &handle, &stream, &maxValue, &adaptiveMethod, &thresholdType, &blockSize, &c]
         {
+            priv::CheckEnumArg(adaptiveMethod, NVCV_ADAPTIVE_THRESH_GAUSSIAN_C, "adaptive threshold type");
+            priv::CheckEnumArg(thresholdType, NVCV_THRESH_MASK | NVCV_THRESH_OTSU | NVCV_THRESH_TRIANGLE,
+                               "threshold type");
             nvcv::TensorWrapHandle output(out);
             nvcv::TensorWrapHandle input(in);
             priv::ToDynamicRef<priv::AdaptiveThreshold>(handle)(stream, input.resource(), output.resource(), maxValue,
@@ -68,6 +72,9 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaAdaptiveThresholdVarShapeSubmit,
     return nvcv::ProtectCall(
         [&out, &in, &maxValue, &blockSize, &c, &handle, &stream, &adaptiveMethod, &thresholdType]
         {
+            priv::CheckEnumArg(adaptiveMethod, NVCV_ADAPTIVE_THRESH_GAUSSIAN_C, "adaptive threshold type");
+            priv::CheckEnumArg(thresholdType, NVCV_THRESH_MASK | NVCV_THRESH_OTSU | NVCV_THRESH_TRIANGLE,
+                               "threshold type");
             nvcv::ImageBatchVarShapeWrapHandle output(out);
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::TensorWrapHandle             maxvalueVec(maxValue);

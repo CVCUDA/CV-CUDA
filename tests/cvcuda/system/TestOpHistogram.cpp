@@ -343,6 +343,227 @@ TEST_P(OpHistogramPlanar, output_matches_interleaved)
     ASSERT_EQ(histIVec, histPVec);
 }
 
+TEST(OpHistogram, one_pixel_kernel_handles_multiple_rows_and_batches)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int width   = 17;
+    constexpr int height  = 31;
+    constexpr int batches = 2;
+
+    nvcv::Tensor inTensor        = nvcv::util::CreateTensor(batches, width, height, nvcv::FMT_U8);
+    nvcv::Tensor maskTensor      = nvcv::util::CreateTensor(batches, width, height, nvcv::FMT_U8);
+    nvcv::Tensor histogram       = nvcv::util::CreateTensor(1, 256, batches, nvcv::FMT_S32);
+    nvcv::Tensor maskedHistogram = nvcv::util::CreateTensor(1, 256, batches, nvcv::FMT_S32);
+
+    std::vector<uint32_t> goldHistogram;
+    std::vector<uint32_t> goldMaskedHistogram;
+    for (int sample = 0; sample < batches; ++sample)
+    {
+        std::vector<uint8_t> imageVec(width * height);
+        std::vector<uint8_t> maskVec(width * height);
+        for (int i = 0; i < width * height; ++i)
+        {
+            imageVec[i] = static_cast<uint8_t>((i * 13 + sample * 7) % 64);
+            maskVec[i]  = static_cast<uint8_t>(((i + sample) % 4) != 0);
+        }
+
+        ASSERT_TRUE(SetImageTensor(inTensor, imageVec, sample));
+        ASSERT_TRUE(SetImageTensor(maskTensor, maskVec, sample));
+        computeHistogram(imageVec, goldHistogram);
+        computeHistogramWithMask(imageVec, maskVec, goldMaskedHistogram);
+    }
+
+    cvcuda::Histogram op;
+    EXPECT_NO_THROW(op(stream, inTensor, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histogram));
+    EXPECT_NO_THROW(op(stream, inTensor, nvcv::OptionalTensorConstRef{maskTensor}, maskedHistogram));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint32_t> actualHistogram;
+    std::vector<uint32_t> actualMaskedHistogram;
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(histogram.exportData(), 0, actualHistogram));
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(maskedHistogram.exportData(), 0, actualMaskedHistogram));
+    EXPECT_EQ(goldHistogram, actualHistogram);
+    EXPECT_EQ(goldMaskedHistogram, actualMaskedHistogram);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHistogram, one_pixel_kernel_handles_partial_block_and_mask)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int width   = 257;
+    constexpr int height  = 1;
+    constexpr int batches = 1;
+
+    nvcv::Tensor inTensor        = nvcv::util::CreateTensor(batches, width, height, nvcv::FMT_U8);
+    nvcv::Tensor maskTensor      = nvcv::util::CreateTensor(batches, width, height, nvcv::FMT_U8);
+    nvcv::Tensor histogram       = nvcv::util::CreateTensor(1, 256, batches, nvcv::FMT_S32);
+    nvcv::Tensor maskedHistogram = nvcv::util::CreateTensor(1, 256, batches, nvcv::FMT_S32);
+
+    std::vector<uint8_t> imageVec(width * height);
+    std::vector<uint8_t> maskVec(width * height);
+    for (int i = 0; i < width * height; ++i)
+    {
+        imageVec[i] = static_cast<uint8_t>(i % 64);
+        maskVec[i]  = static_cast<uint8_t>((i % 3) != 0);
+    }
+
+    ASSERT_TRUE(SetImageTensor(inTensor, imageVec, 0));
+    ASSERT_TRUE(SetImageTensor(maskTensor, maskVec, 0));
+
+    std::vector<uint32_t> goldHistogram;
+    std::vector<uint32_t> goldMaskedHistogram;
+    computeHistogram(imageVec, goldHistogram);
+    computeHistogramWithMask(imageVec, maskVec, goldMaskedHistogram);
+
+    cvcuda::Histogram op;
+    EXPECT_NO_THROW(op(stream, inTensor, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histogram));
+    EXPECT_NO_THROW(op(stream, inTensor, nvcv::OptionalTensorConstRef{maskTensor}, maskedHistogram));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint32_t> actualHistogram;
+    std::vector<uint32_t> actualMaskedHistogram;
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(histogram.exportData(), 0, actualHistogram));
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(maskedHistogram.exportData(), 0, actualMaskedHistogram));
+    EXPECT_EQ(goldHistogram, actualHistogram);
+    EXPECT_EQ(goldMaskedHistogram, actualMaskedHistogram);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHistogram, one_pixel_kernel_handles_single_pixel_and_empty_mask)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor inTensor        = nvcv::util::CreateTensor(1, 1, 1, nvcv::FMT_U8);
+    nvcv::Tensor maskTensor      = nvcv::util::CreateTensor(1, 1, 1, nvcv::FMT_U8);
+    nvcv::Tensor histogram       = nvcv::util::CreateTensor(1, 256, 1, nvcv::FMT_S32);
+    nvcv::Tensor maskedHistogram = nvcv::util::CreateTensor(1, 256, 1, nvcv::FMT_S32);
+
+    std::vector<uint8_t> imageVec{255};
+    std::vector<uint8_t> maskVec{0};
+    ASSERT_TRUE(SetImageTensor(inTensor, imageVec, 0));
+    ASSERT_TRUE(SetImageTensor(maskTensor, maskVec, 0));
+
+    std::vector<uint32_t> goldHistogram;
+    std::vector<uint32_t> goldMaskedHistogram;
+    computeHistogram(imageVec, goldHistogram);
+    computeHistogramWithMask(imageVec, maskVec, goldMaskedHistogram);
+
+    cvcuda::Histogram op;
+    EXPECT_NO_THROW(op(stream, inTensor, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histogram));
+    EXPECT_NO_THROW(op(stream, inTensor, nvcv::OptionalTensorConstRef{maskTensor}, maskedHistogram));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint32_t> actualHistogram;
+    std::vector<uint32_t> actualMaskedHistogram;
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(histogram.exportData(), 0, actualHistogram));
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(maskedHistogram.exportData(), 0, actualMaskedHistogram));
+    EXPECT_EQ(goldHistogram, actualHistogram);
+    EXPECT_EQ(goldMaskedHistogram, actualMaskedHistogram);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHistogram, one_pixel_kernel_handles_empty_and_populated_mask_blocks)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int width   = 257;
+    constexpr int height  = 2;
+    constexpr int batches = 2;
+
+    nvcv::Tensor inTensor        = nvcv::util::CreateTensor(batches, width, height, nvcv::FMT_U8);
+    nvcv::Tensor maskTensor      = nvcv::util::CreateTensor(batches, width, height, nvcv::FMT_U8);
+    nvcv::Tensor histogram       = nvcv::util::CreateTensor(1, 256, batches, nvcv::FMT_S32);
+    nvcv::Tensor maskedHistogram = nvcv::util::CreateTensor(1, 256, batches, nvcv::FMT_S32);
+
+    std::vector<uint32_t> goldHistogram;
+    std::vector<uint32_t> goldMaskedHistogram;
+    for (int sample = 0; sample < batches; ++sample)
+    {
+        std::vector<uint8_t> imageVec(width * height);
+        std::vector<uint8_t> maskVec(width * height);
+        for (int i = 0; i < width * height; ++i)
+        {
+            imageVec[i] = static_cast<uint8_t>((i * 37 + sample * 11) % 256);
+            maskVec[i]  = static_cast<uint8_t>(i >= width && ((i + sample) & 1) == 0);
+        }
+
+        ASSERT_TRUE(SetImageTensor(inTensor, imageVec, sample));
+        ASSERT_TRUE(SetImageTensor(maskTensor, maskVec, sample));
+        computeHistogram(imageVec, goldHistogram);
+        computeHistogramWithMask(imageVec, maskVec, goldMaskedHistogram);
+    }
+
+    cvcuda::Histogram op;
+    EXPECT_NO_THROW(op(stream, inTensor, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histogram));
+    EXPECT_NO_THROW(op(stream, inTensor, nvcv::OptionalTensorConstRef{maskTensor}, maskedHistogram));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint32_t> actualHistogram;
+    std::vector<uint32_t> actualMaskedHistogram;
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(histogram.exportData(), 0, actualHistogram));
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(maskedHistogram.exportData(), 0, actualMaskedHistogram));
+    EXPECT_EQ(goldHistogram, actualHistogram);
+    EXPECT_EQ(goldMaskedHistogram, actualMaskedHistogram);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHistogram, one_pixel_kernel_handles_exact_full_blocks_across_rows_and_batches)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int width   = 128;
+    constexpr int height  = 2;
+    constexpr int batches = 3;
+
+    nvcv::Tensor inTensor        = nvcv::util::CreateTensor(batches, width, height, nvcv::FMT_U8);
+    nvcv::Tensor maskTensor      = nvcv::util::CreateTensor(batches, width, height, nvcv::FMT_U8);
+    nvcv::Tensor histogram       = nvcv::util::CreateTensor(1, 256, batches, nvcv::FMT_S32);
+    nvcv::Tensor maskedHistogram = nvcv::util::CreateTensor(1, 256, batches, nvcv::FMT_S32);
+
+    std::vector<uint32_t> goldHistogram;
+    std::vector<uint32_t> goldMaskedHistogram;
+    for (int sample = 0; sample < batches; ++sample)
+    {
+        std::vector<uint8_t> imageVec(width * height);
+        std::vector<uint8_t> maskVec(width * height);
+        for (int i = 0; i < width * height; ++i)
+        {
+            imageVec[i] = static_cast<uint8_t>((i + sample * 53) & 0xff);
+            maskVec[i]  = static_cast<uint8_t>(((i / width + sample) & 1) != 0 ? 9 : 0);
+        }
+
+        ASSERT_TRUE(SetImageTensor(inTensor, imageVec, sample));
+        ASSERT_TRUE(SetImageTensor(maskTensor, maskVec, sample));
+        computeHistogram(imageVec, goldHistogram);
+        computeHistogramWithMask(imageVec, maskVec, goldMaskedHistogram);
+    }
+
+    cvcuda::Histogram op;
+    EXPECT_NO_THROW(op(stream, inTensor, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histogram));
+    EXPECT_NO_THROW(op(stream, inTensor, nvcv::OptionalTensorConstRef{maskTensor}, maskedHistogram));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint32_t> actualHistogram;
+    std::vector<uint32_t> actualMaskedHistogram;
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(histogram.exportData(), 0, actualHistogram));
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(maskedHistogram.exportData(), 0, actualMaskedHistogram));
+    EXPECT_EQ(goldHistogram, actualHistogram);
+    EXPECT_EQ(goldMaskedHistogram, actualMaskedHistogram);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpHistogramPlanar, reused_operator_reallocates_workspace_and_preserves_output)
 {
     cudaStream_t stream;
@@ -370,6 +591,49 @@ TEST(OpHistogramPlanar, reused_operator_reallocates_workspace_and_preserves_outp
     EXPECT_NO_THROW(op(stream, srcFirst, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histFirst));
     // Reuse the still-busy planar workspace with a different shape. The operator must wait for the
     // first use before reallocating it, and both results must remain correct.
+    EXPECT_NO_THROW(op(stream, srcSecond, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histSecond));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint32_t> actualFirst;
+    std::vector<uint32_t> actualSecond;
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(histFirst.exportData(), 0, actualFirst));
+    ASSERT_NO_THROW(util::GetImageVectorFromTensor(histSecond.exportData(), 0, actualSecond));
+    EXPECT_EQ(goldFirst, actualFirst);
+    EXPECT_EQ(goldSecond, actualSecond);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHistogramPlanar, reuses_workspace_for_same_shape_without_reallocation)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int batches = 2;
+    constexpr int width   = 13;
+    constexpr int height  = 9;
+
+    cvcuda::Histogram op;
+
+    nvcv::Tensor srcFirst   = CreateSingleChannelTensor(batches, width, height, true, true);
+    nvcv::Tensor histFirst  = nvcv::util::CreateTensor(1, 256, batches, nvcv::FMT_S32);
+    nvcv::Tensor srcSecond  = CreateSingleChannelTensor(batches, width, height, true, true);
+    nvcv::Tensor histSecond = nvcv::util::CreateTensor(1, 256, batches, nvcv::FMT_S32);
+
+    std::vector<uint32_t> goldFirst;
+    std::vector<uint32_t> goldSecond;
+    for (int sample = 0; sample < batches; ++sample)
+    {
+        auto first  = MakeHistogramParityInput(width, height, sample);
+        auto second = MakeHistogramParityInput(width, height, sample + batches);
+        ASSERT_TRUE(SetImageTensor(srcFirst, first, sample));
+        ASSERT_TRUE(SetImageTensor(srcSecond, second, sample));
+        computeHistogram(first, goldFirst);
+        computeHistogram(second, goldSecond);
+    }
+
+    EXPECT_NO_THROW(op(stream, srcFirst, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histFirst));
+    // The second call has the same planar shape and dtype while the first workspace use is still queued.
     EXPECT_NO_THROW(op(stream, srcSecond, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histSecond));
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 
@@ -473,6 +737,20 @@ TEST(OpHistogram_Negative, rejects_histogram_with_multiple_channels)
     ExpectHistogramInvalidArgument(histogram, nvcv::OptionalTensorConstRef{nvcv::NullOpt});
 }
 
+TEST(OpHistogram_Negative, rejects_non_image_and_non_interleaved_histogram_outputs)
+{
+    nvcv::Tensor nonImageHistogram({{256}, "C"}, nvcv::TYPE_S32);
+    ExpectHistogramInvalidArgument(nonImageHistogram, nvcv::OptionalTensorConstRef{nvcv::NullOpt});
+
+    nvcv::Tensor planarHistogram(
+        {
+            {1, 256, 1},
+            "CHW"
+    },
+        nvcv::TYPE_S32);
+    ExpectHistogramInvalidArgument(planarHistogram, nvcv::OptionalTensorConstRef{nvcv::NullOpt});
+}
+
 TEST(OpHistogram_Negative, rejects_invalid_mask_dtype)
 {
     nvcv::Tensor histogram = nvcv::util::CreateTensor(1, 256, 1, nvcv::FMT_S32);
@@ -525,6 +803,80 @@ TEST(OpHistogram_Negative, rejects_planar_mask_layout_different_from_input)
     cvcuda::Histogram op;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcv::ProtectCall([&] { op(nullptr, inTensor, nvcv::OptionalTensorConstRef{mask}, histogram); }));
+}
+
+TEST(OpHistogram_Negative, rejects_interleaved_mask_for_planar_input)
+{
+    nvcv::Tensor inTensor(
+        {
+            {1, 1, 2, 2},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor mask(
+        {
+            {2, 2, 1},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor histogram = nvcv::util::CreateTensor(1, 256, 1, nvcv::FMT_S32);
+
+    cvcuda::Histogram op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, inTensor, nvcv::OptionalTensorConstRef{mask}, histogram); }));
+}
+
+TEST(OpHistogram_Negative, rejects_mask_shape_mismatch)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor inTensor(
+        {
+            {2, 3, 5, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor sampleMismatch(
+        {
+            {3, 3, 5, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor channelMismatch(
+        {
+            {2, 3, 5, 2},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor rowMismatch(
+        {
+            {2, 4, 5, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor columnMismatch(
+        {
+            {2, 3, 6, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor histogram = nvcv::util::CreateTensor(1, 256, 2, nvcv::FMT_S32);
+
+    cvcuda::Histogram op;
+    auto              expectShapeError = [&](const nvcv::Tensor &mask)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { op(stream, inTensor, nvcv::OptionalTensorConstRef{mask}, histogram); }));
+    };
+
+    expectShapeError(sampleMismatch);
+    expectShapeError(channelMismatch);
+    expectShapeError(rowMismatch);
+    expectShapeError(columnMismatch);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 TEST(OpHistogram_Negative, create_null_handle)

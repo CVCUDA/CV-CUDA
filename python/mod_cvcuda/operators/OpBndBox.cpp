@@ -15,56 +15,60 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpBndBox.hpp>
 #include <cvcuda/priv/Types.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 #include <memory>
 
 namespace cvcudapy {
 
+template<>
+struct OperatorCacheUsesCompletionLease<cvcuda::BndBox> : std::true_type
+{
+};
+
 namespace {
 using BndBoxesImpl = cvcuda::priv::NVCVBndBoxesImpl;
+using native::Stream;
+using native::Tensor;
 
-Tensor BndBoxInto(Tensor &output, Tensor &input, const std::shared_ptr<BndBoxesImpl> &bboxes,
-                  std::optional<Stream> pstream)
+Tensor &BndBoxInto(Tensor &output, Tensor &input, const std::shared_ptr<BndBoxesImpl> &bboxes,
+                   std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<cvcuda::BndBox>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     auto bboxesHandle = static_cast<NVCVBndBoxesI>(static_cast<void *>(bboxes.get()));
-    guard.run([&op, &pstream, &input, &output, bboxesHandle]()
-              { op->submit(pstream->cudaHandle(), input, output, bboxesHandle); });
+    guard.run([&op, &stream, &input, &output, bboxesHandle]()
+              { op->submit(stream.handle(), input.impl(), output.impl(), bboxesHandle); });
 
-    return std::move(output);
+    return output;
 }
 
-Tensor BndBox(Tensor &input, const std::shared_ptr<BndBoxesImpl> &bboxes, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> BndBox(Tensor &input, const std::shared_ptr<BndBoxesImpl> &bboxes,
+                               std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return BndBoxInto(output, input, bboxes, pstream);
+    BndBoxInto(*output, input, bboxes, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpBndBox(py::module &m)
+void ExportOpBndBox(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("bndbox", NvtxTrace("cvcuda.bndbox", &BndBox), "src"_a, "bboxes"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
@@ -82,7 +86,7 @@ void ExportOpBndBox(py::module &m)
     )pbdoc");
 
     m.def("bndbox_into", NvtxTrace("cvcuda.bndbox_into", &BndBoxInto), "dst"_a, "src"_a, "bboxes"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the BndBox operation on the given cuda stream.
 
 

@@ -18,11 +18,11 @@
 #ifndef NVCV_PYTHON_RESOURCE_HPP
 #define NVCV_PYTHON_RESOURCE_HPP
 
-#include <pybind11/pybind11.h>
+#include <common/Binding.hpp>
 
 namespace nvcvpy {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 class Resource : public py::object
 {

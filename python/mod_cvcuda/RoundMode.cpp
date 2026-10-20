@@ -21,11 +21,17 @@
 
 namespace cvcudapy {
 
-void ExportRoundMode(py::module &m)
+void ExportRoundMode(py::module_ &m)
 {
-    py::enum_<NVCVRoundMode>(m, "Round", "Rounding modes for data-type conversion to integer types.")
+    py::enum_compat<NVCVRoundMode>(m, "Round", "Rounding modes for data-type conversion to integer types.")
         .value("NEAREST", NVCV_ROUND_NEAREST, "Round to nearest, ties to even (default)")
-        .value("TRUNCATE", NVCV_ROUND_TRUNCATE, "Truncate toward zero (drop the fractional part)");
+        .value("TRUNCATE", NVCV_ROUND_TRUNCATE, "Truncate toward zero (drop the fractional part)")
+        .value("NEAREST_WRAP", NVCV_ROUND_NEAREST_WRAP,
+               "Round to nearest (ties to even), then reduce modulo the destination range instead of saturating. "
+               "Negative intermediates map to zero for unsigned destinations.")
+        .value("TRUNCATE_WRAP", NVCV_ROUND_TRUNCATE_WRAP,
+               "Truncate toward zero, then reduce modulo the destination range instead of saturating. "
+               "Negative intermediates map to zero for unsigned destinations.");
 }
 
 } // namespace cvcudapy

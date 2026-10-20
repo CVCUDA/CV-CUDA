@@ -25,13 +25,10 @@
 #define CVCUDA_PRIV_MEDIAN_BLUR_HPP
 
 #include "IOperator.hpp"
-#include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -47,10 +44,9 @@ public:
                     const nvcv::Tensor &ksize) const;
 
 private:
-    static std::unique_ptr<nvcv::legacy::cuda_op::MedianBlur> CreateLegacyOp(int deviceId);
-
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::MedianBlur>         m_legacyOp{CreateLegacyOp};
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::MedianBlurVarShape> m_legacyOpVarShape;
+    // The only state the operator carries. Everything else the var-shape path needs is derived per
+    // call, so the same instance is safe to use concurrently and on any device.
+    const int m_maxVarShapeBatchSize;
 };
 
 } // namespace cvcuda::priv

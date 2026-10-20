@@ -16,118 +16,153 @@
  */
 
 #include "../NvtxRange.hpp"
+#include "../nvcv/Cache.hpp"
+// Select the binding module's numpy-aware caster before the public wrappers
+// can select their external-module C API adapter with the same include guard.
+#include "../nvcv/DataType.hpp"
+#include "../nvcv/Resource.hpp"
+#include "NativeResourceGuard.hpp"
 
+#include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <common/Hash.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
-#include <nvcv/python/Array.hpp>
 #include <nvcv/python/Cache.hpp>
-#include <nvcv/python/Container.hpp>
-#include <nvcv/python/ImageFormat.hpp>
 #include <nvcv/python/Shape.hpp>
 #include <nvcv/python/Size.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <nvcv/python/TensorBatch.hpp>
-#include <pybind11/pybind11.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <mutex>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include <nvcv/python/Fwd.hpp>
 
 namespace cvcudapy {
 
-using nvcvpy::Array;
-using nvcvpy::AsNvcvTensor;
 using nvcvpy::CreateNVCVTensorShape;
 using nvcvpy::CreateShape;
-using nvcvpy::Image;
-using nvcvpy::ImageBatchVarShape;
 using nvcvpy::LockMode;
-using nvcvpy::ResourceGuard;
 using nvcvpy::Shape;
-using nvcvpy::Stream;
-using nvcvpy::Tensor;
-using nvcvpy::TensorBatch;
+
+using ResourceGuard = NativeResourceGuard;
 
 namespace util = nvcvpy::util;
-namespace py   = ::pybind11;
+namespace py   = ::nanobind;
 
-void ExportOpReformat(py::module &m);
-void ExportOpResize(py::module &m);
-void ExportOpCustomCrop(py::module &m);
-void ExportOpNormalize(py::module &m);
-void ExportOpConvertTo(py::module &m);
-void ExportOpPadAndStack(py::module &m);
-void ExportOpCopyMakeBorder(py::module &m);
-void ExportOpRotate(py::module &m);
-void ExportOpErase(py::module &m);
-void ExportOpGaussian(py::module &m);
-void ExportOpMedianBlur(py::module &m);
-void ExportOpLaplacian(py::module &m);
-void ExportOpAverageBlur(py::module &m);
-void ExportOpConv2D(py::module &m);
-void ExportOpBilateralFilter(py::module &m);
-void ExportOpJointBilateralFilter(py::module &m);
-void ExportOpCenterCrop(py::module &m);
-void ExportOpWarpAffine(py::module &m);
-void ExportOpWarpPerspective(py::module &m);
-void ExportOpChannelReorder(py::module &m);
-void ExportOpMorphology(py::module &m);
-void ExportOpFlip(py::module &m);
-void ExportOpCvtColor(py::module &m);
-void ExportOpComposite(py::module &m);
-void ExportOpGammaContrast(py::module &m);
-void ExportOpPillowResize(py::module &m);
-void ExportOpThreshold(py::module &m);
-void ExportOpBndBox(py::module &m);
-void ExportOpBoxBlur(py::module &m);
-void ExportOpBrightnessContrast(py::module &m);
-void ExportOpColorTwist(py::module &m);
-void ExportOpHQResize(py::module &m);
-void ExportOpRemap(py::module &m);
-void ExportOpCropFlipNormalizeReformat(py::module &m);
-void ExportOpAdaptiveThreshold(py::module &m);
-void ExportOpNonMaximumSuppression(py::module &m);
-void ExportOpOSD(py::module &m);
-void ExportOpRandomResizedCrop(py::module &m);
-void ExportOpGaussianNoise(py::module &m);
-void ExportOpMinMaxLoc(py::module &m);
-void ExportOpSIFT(py::module &m);
-void ExportOpHistogram(py::module &m);
-void ExportOpInpaint(py::module &m);
-void ExportOpHistogramEq(py::module &m);
-void ExportOpMinAreaRect(py::module &m);
-void ExportOpAdvCvtColor(py::module &m);
-void ExportOpLabel(py::module &m);
-void ExportOpPairwiseMatcher(py::module &m);
-void ExportOpStack(py::module &m);
-void ExportOpFindHomography(py::module &m);
-void ExportOpResizeCropConvertReformat(py::module &m);
-void ExportOpCLAHE(py::module &m);
-void ExportOpInvert(py::module &m);
-void ExportOpSolarize(py::module &m);
-void ExportOpPosterize(py::module &m);
-void ExportOpAutoContrast(py::module &m);
-void ExportOpAdjustHue(py::module &m);
-void ExportOpAdjustSaturation(py::module &m);
-void ExportOpAdjustSharpness(py::module &m);
-void ExportOpAdjustContrast(py::module &m);
-void ExportOpJpegCompressionDistortion(py::module &m);
+// Operator state is shared across queued submissions by default. Operators
+// with mutable staging or workspace owned by the operator object opt into a
+// completion lease by specializing this trait for either the native operator
+// type or a custom Python operator-state type.
+template<class T, class = void>
+struct OperatorCacheUsesCompletionLease : std::false_type
+{
+};
 
-// Helper class that serves as generic python-side operator class.
+template<class T>
+struct OperatorCacheUsesCompletionLease<T, std::void_t<typename T::NativeOperator>>
+    : OperatorCacheUsesCompletionLease<typename T::NativeOperator>
+{
+};
+
+void ExportOpReformat(py::module_ &m);
+void ExportOpResize(py::module_ &m);
+void ExportOpCustomCrop(py::module_ &m);
+void ExportOpNormalize(py::module_ &m);
+void ExportOpConvertTo(py::module_ &m);
+void ExportOpPadAndStack(py::module_ &m);
+void ExportOpCopyMakeBorder(py::module_ &m);
+void ExportOpRotate(py::module_ &m);
+void ExportOpErase(py::module_ &m);
+void ExportOpGaussian(py::module_ &m);
+void ExportOpMedianBlur(py::module_ &m);
+void ExportOpLaplacian(py::module_ &m);
+void ExportOpAverageBlur(py::module_ &m);
+void ExportOpConv2D(py::module_ &m);
+void ExportOpBilateralFilter(py::module_ &m);
+void ExportOpJointBilateralFilter(py::module_ &m);
+void ExportOpCenterCrop(py::module_ &m);
+void ExportOpWarpAffine(py::module_ &m);
+void ExportOpWarpPerspective(py::module_ &m);
+void ExportOpChannelReorder(py::module_ &m);
+void ExportOpSplit(py::module_ &m);
+void ExportOpMerge(py::module_ &m);
+void ExportOpMorphology(py::module_ &m);
+void ExportOpFlip(py::module_ &m);
+void ExportOpCvtColor(py::module_ &m);
+void ExportOpComposite(py::module_ &m);
+void ExportOpGammaContrast(py::module_ &m);
+void ExportOpPillowResize(py::module_ &m);
+void ExportOpThreshold(py::module_ &m);
+void ExportOpBndBox(py::module_ &m);
+void ExportOpBoxBlur(py::module_ &m);
+void ExportOpBrightnessContrast(py::module_ &m);
+void ExportOpColorTwist(py::module_ &m);
+void ExportOpHQResize(py::module_ &m);
+void ExportOpRemap(py::module_ &m);
+void ExportOpCropFlipNormalizeReformat(py::module_ &m);
+void ExportOpAdaptiveThreshold(py::module_ &m);
+void ExportOpNonMaximumSuppression(py::module_ &m);
+void ExportOpOSD(py::module_ &m);
+void ExportOpRandomResizedCrop(py::module_ &m);
+void ExportOpGaussianNoise(py::module_ &m);
+void ExportOpMinMaxLoc(py::module_ &m);
+void ExportOpSIFT(py::module_ &m);
+void ExportOpHistogram(py::module_ &m);
+void ExportOpInpaint(py::module_ &m);
+void ExportOpHistogramEq(py::module_ &m);
+void ExportOpMinAreaRect(py::module_ &m);
+void ExportOpAdvCvtColor(py::module_ &m);
+void ExportOpLabel(py::module_ &m);
+void ExportOpPairwiseMatcher(py::module_ &m);
+void ExportOpStack(py::module_ &m);
+void ExportOpFindHomography(py::module_ &m);
+void ExportOpResizeCropConvertReformat(py::module_ &m);
+void ExportOpCLAHE(py::module_ &m);
+void ExportOpInvert(py::module_ &m);
+void ExportOpSolarize(py::module_ &m);
+void ExportOpPosterize(py::module_ &m);
+void ExportOpAutoContrast(py::module_ &m);
+void ExportOpAdjustHue(py::module_ &m);
+void ExportOpAdjustSaturation(py::module_ &m);
+void ExportOpAdjustSharpness(py::module_ &m);
+void ExportOpAdjustContrast(py::module_ &m);
+void ExportOpJpegCompressionDistortion(py::module_ &m);
+void ExportOpTvResize(py::module_ &m);
+
+class OperatorResource : public nvcvpy::priv::Resource
+{
+public:
+    std::mutex *submissionMutex() const override
+    {
+        return &m_submissionMutex;
+    }
+
+private:
+    mutable std::mutex m_submissionMutex;
+};
+
+// Native state for a generic cached operator.
 // OP: native operator class
 // CTOR: ctor signature
 template<class OP, class CTOR>
-class PyOperator;
+class OperatorState;
 
 template<class OP, class... CTOR_ARGS>
-class PyOperator<OP, void(CTOR_ARGS...)> // NOSONAR: generic operator wrappers share the cache hierarchy.
-    : public nvcvpy::Container
+class OperatorState<OP, void(CTOR_ARGS...)> : public OperatorResource
 {
 public:
+    using NativeOperator = OP;
+
     // This defines a generic cache key class for any cvcuda::OP operator.
     // It allows for reusing cache objects (instead of allocating new ones) only if the hash and key equal match.
     // By default, the hash uses the OP type (in IKey) and OP ctor args, and the equal checks if all args are equal.
-    // This may be too restrict for operators with payloads, for them it may be better to specialize PyOperator/Key.
+    // This may be too restrictive for operators with payloads; those can use
+    // a specialized native state and key.
     class Key : public nvcvpy::IKey
     {
     public:
@@ -151,9 +186,8 @@ public:
         std::tuple<std::decay_t<CTOR_ARGS>...> m_args;
     };
 
-    explicit PyOperator(CTOR_ARGS &&...args)
-        : m_key(args...)
-        , m_op{static_cast<CTOR_ARGS &&>(args)...}
+    explicit OperatorState(CTOR_ARGS &&...args)
+        : m_op{static_cast<CTOR_ARGS &&>(args)...}
     {
     }
 
@@ -163,9 +197,41 @@ public:
         m_op(std::forward<AA>(args)...);
     }
 
-    py::object container() const override
+private:
+    OP m_op;
+};
+
+template<class State, class = void>
+struct HasCacheItemRank : std::false_type
+{
+};
+
+template<class State>
+struct HasCacheItemRank<State, std::void_t<decltype(State::cacheItemRank(std::declval<const typename State::Key &>()))>>
+    : std::true_type
+{
+};
+
+// The cache owns this metadata while the global pending-release queue owns only
+// native operator state. This keeps lookup availability independent of
+// asynchronous resource lifetime. The default policy deliberately keeps one
+// shared state for operators audited as safe to reuse across ordered
+// submissions; operators with mutable in-flight workspace opt into the pool
+// below.
+template<class State, bool = OperatorCacheUsesCompletionLease<State>::value>
+class OperatorCacheItem;
+
+template<class State>
+class OperatorCacheItem<State, false> final : public nvcvpy::priv::CacheItem
+{
+public:
+    using Key = typename State::Key;
+
+    template<class... CTOR_ARGS>
+    explicit OperatorCacheItem(Key key, CTOR_ARGS &&...args)
+        : m_key(std::move(key))
+        , m_state(std::make_shared<State>(std::forward<CTOR_ARGS>(args)...))
     {
-        return py::reinterpret_borrow<py::object>(this->ptr());
     }
 
     const nvcvpy::IKey &key() const override
@@ -173,21 +239,113 @@ public:
         return m_key;
     }
 
-    // The static fetch function is used to fetch one object from a sub-set of objects from cache.
-    // All objects passed in the cache argument already match the operator object, this second-level fetch
-    // allows to choose one of them and further do cache operations on the matched items.
-    static std::shared_ptr<nvcvpy::ICacheItem> fetch(std::vector<std::shared_ptr<nvcvpy::ICacheItem>> &cache)
+    int64_t GetSizeInBytes() const override
     {
-        assert(!cache.empty());
-        // This generic operator just returns the first one found in cache.
-        return cache[0];
+        // Operator allocations are owned by the native state rather than the
+        // allocation-oriented NVCV wrapper cache.
+        return 0;
+    }
+
+    const Key &typedKey() const
+    {
+        return m_key;
+    }
+
+    const std::shared_ptr<State> &state() const
+    {
+        return m_state;
     }
 
 private:
-    // Order is important
-    Key m_key;
-    OP  m_op;
+    Key                    m_key;
+    std::shared_ptr<State> m_state;
 };
+
+template<class State>
+class OperatorCacheItem<State, true> final : public nvcvpy::priv::CacheItem
+{
+public:
+    using Key = typename State::Key;
+
+    explicit OperatorCacheItem(Key key)
+        : m_key(std::move(key))
+    {
+    }
+
+    const nvcvpy::IKey &key() const override
+    {
+        return m_key;
+    }
+
+    int64_t GetSizeInBytes() const override
+    {
+        return 0;
+    }
+
+    const Key &typedKey() const
+    {
+        return m_key;
+    }
+
+    template<class... CTOR_ARGS>
+    std::shared_ptr<State> acquire(Key requestKey, CTOR_ARGS &&...args)
+    {
+        std::lock_guard lock(m_mutex);
+
+        size_t selected = m_entries.size();
+        for (size_t i = 0; i < m_entries.size(); ++i)
+        {
+            const Entry &entry = m_entries[i];
+            // The pool is the sole owner only after the global pending-release
+            // queue has retired every submission that used this state.
+            if (entry.state.use_count() != 1 || !(requestKey == entry.key))
+            {
+                continue;
+            }
+            if constexpr (HasCacheItemRank<State>::value)
+            {
+                if (selected != m_entries.size()
+                    && State::cacheItemRank(entry.key) <= State::cacheItemRank(m_entries[selected].key))
+                {
+                    continue;
+                }
+            }
+            selected = i;
+            if constexpr (!HasCacheItemRank<State>::value)
+            {
+                break;
+            }
+        }
+
+        if (selected != m_entries.size())
+        {
+            return m_entries[selected].state;
+        }
+
+        auto state = std::make_shared<State>(std::forward<CTOR_ARGS>(args)...);
+        m_entries.push_back({std::move(requestKey), state});
+        return state;
+    }
+
+private:
+    struct Entry
+    {
+        Key                    key;
+        std::shared_ptr<State> state;
+    };
+
+    Key                m_key;
+    std::mutex         m_mutex;
+    std::vector<Entry> m_entries;
+};
+
+template<class State>
+bool PreferOperatorCacheItem(const nvcvpy::priv::CacheItem &candidate, const nvcvpy::priv::CacheItem &selected)
+{
+    using Item = OperatorCacheItem<State>;
+    return State::cacheItemRank(static_cast<const Item &>(candidate).typedKey())
+         > State::cacheItemRank(static_cast<const Item &>(selected).typedKey());
+}
 
 // Creates an operator instance.
 // Either gets it from the resource cache or creates one from scratch.
@@ -195,38 +353,66 @@ private:
 template<class PyOP, class... CTOR_ARGS>
 std::shared_ptr<PyOP> CreateOperatorEx(CTOR_ARGS &&...args)
 {
-    // The Key class is defined by the operator.
-    using Key = typename PyOP::Key;
+    using Item = OperatorCacheItem<PyOP>;
+    using Key  = typename PyOP::Key;
 
     // Creates a key out of the operator's ctor parameters
     Key key{args...};
 
-    // Try to fetch it from cache
-    std::vector<std::shared_ptr<nvcvpy::ICacheItem>> vcont = nvcvpy::Cache::fetch(key);
-
-    // None found?
-    if (vcont.empty())
+    // Operator metadata is independent of pending allocation releases, so
+    // avoid their CUDA polling on this hot path. Generic lookup selects the first
+    // match without allocating a vector; specialized states may provide a
+    // rank function to preserve their best-fit selection policy.
+    std::shared_ptr<nvcvpy::priv::CacheItem> cached;
+    if constexpr (HasCacheItemRank<PyOP>::value)
     {
-        // Creates a new one
-        auto op = std::make_shared<PyOP>(std::forward<CTOR_ARGS>(args)...);
-
-        // Adds to the resource cache
-        nvcvpy::Cache::add(*op);
-
-        return op;
+        cached = nvcvpy::priv::Cache::Instance().fetchReusableNoPoll(key, &PreferOperatorCacheItem<PyOP>);
     }
     else
     {
-        auto op = std::dynamic_pointer_cast<PyOP>(PyOP::fetch(vcont));
-        assert(op);
-        return op;
+        cached = nvcvpy::priv::Cache::Instance().fetchReusableNoPoll(key);
+    }
+
+    if (cached)
+    {
+        // Each nested Key type belongs to exactly one operator State, which
+        // makes its matching cache-item type unique. Keep this invariant: it
+        // is what makes the release-path static cast safe and avoids RTTI.
+        NVCV_ASSERT(typeid(*cached) == typeid(Item));
+        auto item = std::static_pointer_cast<Item>(std::move(cached));
+        if constexpr (OperatorCacheUsesCompletionLease<PyOP>::value)
+        {
+            return item->acquire(std::move(key), std::forward<CTOR_ARGS>(args)...);
+        }
+        else
+        {
+            return item->state();
+        }
+    }
+
+    if constexpr (OperatorCacheUsesCompletionLease<PyOP>::value)
+    {
+        // The metadata key and first pool-entry key share the device lookup.
+        // Copying a key preserves that captured device rather than constructing
+        // another IKey and calling cudaGetDevice again.
+        auto item  = std::make_shared<Item>(key);
+        auto state = item->acquire(std::move(key), std::forward<CTOR_ARGS>(args)...);
+        nvcvpy::priv::Cache::Instance().add(*item);
+        return state;
+    }
+    else
+    {
+        // Adopt the lookup key so a miss performs cudaGetDevice only once.
+        auto item = std::make_shared<Item>(std::move(key), std::forward<CTOR_ARGS>(args)...);
+        nvcvpy::priv::Cache::Instance().add(*item);
+        return item->state();
     }
 }
 
 template<class OP, class... CTOR_ARGS>
-std::shared_ptr<PyOperator<OP, void(CTOR_ARGS...)>> CreateOperator(CTOR_ARGS &&...args)
+std::shared_ptr<OperatorState<OP, void(CTOR_ARGS...)>> CreateOperator(CTOR_ARGS &&...args)
 {
-    return CreateOperatorEx<PyOperator<OP, void(CTOR_ARGS...)>>(std::forward<CTOR_ARGS>(args)...);
+    return CreateOperatorEx<OperatorState<OP, void(CTOR_ARGS...)>>(std::forward<CTOR_ARGS>(args)...);
 }
 
 } // namespace cvcudapy

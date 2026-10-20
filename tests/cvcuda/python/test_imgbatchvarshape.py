@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
+import weakref
+
 import numpy as np
 import pytest as t
 
@@ -154,6 +157,20 @@ def test_imgbatchvarshape_bulk_pushback_failure_preserves_batch():
     assert list(batch) == images[:2]
 
 
+def test_imgbatchvarshape_iterator_keeps_batch_alive():
+    batch = cvcuda.ImageBatchVarShape(2)
+    images = [cvcuda.Image((2, 2), cvcuda.Format.U8) for _ in range(2)]
+    batch.pushback(images)
+
+    iterator = iter(batch)
+    batch_ref = weakref.ref(batch)
+    del batch
+    gc.collect()
+
+    assert batch_ref() is not None
+    assert list(iterator) == images
+
+
 buffmt_common = [
     ([5, 7, 1], np.uint8, cvcuda.Format.U8),
     ([5, 7, 1], np.uint8, cvcuda.Format.U8),
@@ -236,3 +253,27 @@ def test_imagebatchvarshape_size_in_bytes():
     pt_img = cupy.asarray(np.ndarray((16, 32, 4), dtype=np.float32))
     batch_as_images = cvcuda.as_images([pt_img])
     assert cvcuda.internal.nbytes_in_cache(batch_as_images) > 0
+
+
+@t.mark.parametrize("arg", util.NON_BUFFER_SCALARS)
+def test_as_images_scalar_rejects_without_crash(arg):
+    """as_images must raise for a non-buffer scalar rather than segfault.
+
+    The registration carries keep_alive<0, 1>, and a non-buffer argument makes
+    the binding fall through to the next overload. A binding layer that runs the
+    postcall policy on that failed overload dereferences its try-next sentinel
+    and takes the process down instead of raising, so assert the rejection.
+    """
+    with t.raises(TypeError):
+        cvcuda.as_images(arg)
+
+
+# The list itself is accepted by the signature, so both rejections come from
+# inside the wrap rather than from overload resolution, and from two different
+# guards: an empty list trips the batch's own emptiness check, a list of
+# non-buffers trips ExternalBuffer::load.
+@t.mark.parametrize("arg", [[], [42]])
+def test_as_images_bad_list_rejects_without_crash(arg):
+    """as_images([non-buffer]) must raise rather than segfault."""
+    with t.raises(RuntimeError):
+        cvcuda.as_images(arg)

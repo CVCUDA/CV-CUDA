@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from itertools import product
 from types import SimpleNamespace
 
 import pandas as pd
@@ -28,7 +29,10 @@ import pytest
 import run_bench
 from _internal.baselines import (
     BaselineError,
+    MissingClockConfigurationError,
+    MissingClockProfileError,
     baseline_payload_from_dataframe,
+    baseline_updates_from_payload,
     expected_case_keys_for_entry,
     fake_planar_pairing_issues,
     load_config_index,
@@ -87,6 +91,613 @@ class DummyRunner(run_bench.BenchmarkRunner):
         return []
 
 
+def _clock_test_runner(tmp_path):
+    runner = DummyRunner(tmp_path, {}, None, "cpp")
+    runner.build_command = lambda *args, **kwargs: ["bench_test"]
+    runner._check_noise_from_scratch = lambda _path: True
+    return runner
+
+
+def test_clock_protocol_markers_must_start_the_line():
+    assert (
+        run_bench._first_line_with(
+            "note: ignoring SM clock mismatch: transient sample",
+            run_bench._SM_CLOCK_MISMATCH_PREFIX,
+        )
+        is None
+    )
+    assert (
+        run_bench._first_line_with(
+            "  SM clock mismatch: expected 1005 MHz, measured 1020 MHz",
+            run_bench._SM_CLOCK_MISMATCH_PREFIX,
+        )
+        == "SM clock mismatch: expected 1005 MHz, measured 1020 MHz"
+    )
+
+
+def test_clock_failure_relocks_and_retries_fresh_process(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    output_path = tmp_path / "out_test_config_cpp.nvbench"
+    results = iter(
+        [
+            SimpleNamespace(
+                returncode=1,
+                stdout="",
+                stderr="SM clock mismatch: expected 1005 MHz, measured 1020 MHz",
+            ),
+            SimpleNamespace(
+                returncode=0,
+                stdout="SM clock verified: 1005 MHz",
+                stderr="",
+            ),
+        ]
+    )
+    run_calls = []
+    relock_calls = []
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(run_bench, "_clock_lock_device_verified", False)
+
+    def fake_run(*args, **kwargs):
+        if not run_calls:
+            output_path.write_text("partial clock-mismatched output")
+        else:
+            assert not output_path.exists()
+        run_calls.append(args)
+        return next(results)
+
+    monkeypatch.setattr(run_bench.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        run_bench,
+        "_reapply_required_sm_clock",
+        lambda: relock_calls.append(True) or run_bench._CLOCK_LOCK_OK,
+    )
+
+    output, passed = runner.run_benchmark("bench_test", [], "test_config")
+
+    assert output == "out_test_config_cpp.nvbench"
+    assert passed is True
+    assert len(run_calls) == 2
+    assert len(relock_calls) == 1
+    assert run_bench._clock_lock_device_verified is True
+
+
+def test_third_clock_failure_is_fatal(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    run_calls = []
+    relock_calls = []
+    errors = []
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setenv("K8S_NODE_NAME", "benchmark-node-7")
+    monkeypatch.setattr(run_bench, "log_error", errors.append)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: run_calls.append(args)
+        or SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="SM clock mismatch: expected 1005 MHz, measured 1020 MHz",
+        ),
+    )
+    monkeypatch.setattr(
+        run_bench,
+        "_reapply_required_sm_clock",
+        lambda: relock_calls.append(True) or run_bench._CLOCK_LOCK_OK,
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        runner.run_benchmark("bench_test", [], "test_config")
+
+    assert exc.value.code == run_bench._CLOCK_INELIGIBLE_EXIT_CODE
+    assert len(run_calls) == 3
+    assert len(relock_calls) == 2
+    assert errors[-1].endswith("1005 MHz on node benchmark-node-7")
+
+
+@pytest.mark.parametrize("returncode", [-11, 3])
+def test_preexisting_cuda_error_is_an_ordinary_benchmark_failure(
+    monkeypatch, tmp_path, returncode
+):
+    runner = _clock_test_runner(tmp_path)
+    run_calls = []
+    relock_calls = []
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: run_calls.append(args)
+        or SimpleNamespace(
+            returncode=returncode,
+            stdout="",
+            stderr="Pre-existing CUDA error: out of memory",
+        ),
+    )
+    monkeypatch.setattr(
+        run_bench,
+        "_reapply_required_sm_clock",
+        lambda: relock_calls.append(True) or run_bench._CLOCK_LOCK_OK,
+    )
+
+    assert runner.run_benchmark("bench_test", [], "test_config") == (None, False)
+    assert len(run_calls) == 1
+    assert not relock_calls
+
+
+def test_success_without_clock_verification_ack_is_fatal(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    output_path = tmp_path / "out_test_config_cpp.nvbench"
+    output_path.write_text("Benchmark,Skipped\ntimed_state,No\n")
+    errors = []
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(run_bench, "_clock_lock_device_verified", False)
+    monkeypatch.setattr(run_bench, "log_error", errors.append)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        runner.run_benchmark("bench_test", [], "test_config")
+
+    assert exc.value.code == 1
+    assert not output_path.exists()
+    assert run_bench._clock_lock_device_verified is False
+    assert errors[-1].endswith("did not report device clock verification")
+
+
+def test_strict_clock_protocol_exception_fails_only_the_benchmark(
+    monkeypatch, tmp_path
+):
+    runner = _clock_test_runner(tmp_path)
+    output_path = tmp_path / "out_test_config_cpp.nvbench"
+    output_path.write_text("Benchmark,Skipped\ntimed_state,No\n")
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+    monkeypatch.setattr(
+        run_bench.os,
+        "remove",
+        lambda _path: (_ for _ in ()).throw(PermissionError("read-only scratch")),
+    )
+
+    assert runner.run_benchmark("bench_test", [], "test_config") == (None, False)
+
+
+def test_strict_clock_timeout_fails_only_the_benchmark(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            run_bench.subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+        ),
+    )
+
+    assert runner.run_benchmark("bench_test", [], "test_config") == (None, False)
+
+
+def test_all_skipped_states_do_not_turn_missing_ack_into_process_failure(
+    monkeypatch, tmp_path
+):
+    runner = _clock_test_runner(tmp_path)
+    output_path = tmp_path / "out_test_config_cpp.nvbench"
+    output_path.write_text("Benchmark,Skipped\nskipped_state,Yes\n")
+    runner._check_noise_from_scratch = lambda _path: False
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(run_bench, "_clock_lock_device_verified", False)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    assert runner.run_benchmark("bench_test", [], "test_config") == (
+        "out_test_config_cpp.nvbench",
+        False,
+    )
+    assert output_path.exists()
+    assert run_bench._clock_lock_device_verified is False
+
+
+def test_mixed_skipped_and_timed_states_fail_closed_without_ack(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    output_path = tmp_path / "out_test_config_cpp.nvbench"
+    output_path.write_text("Benchmark,Skipped\nskipped_state,Yes\ntimed_state,No\n")
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        runner.run_benchmark("bench_test", [], "test_config")
+
+    assert exc.value.code == 1
+    assert not output_path.exists()
+
+
+def test_all_skipped_scratch_is_read_once(monkeypatch, tmp_path):
+    scratch_path = tmp_path / "scratch.nvbench"
+    scratch_path.touch()
+    reads = []
+
+    def read_scratch(path):
+        reads.append(path)
+        if len(reads) > 1:
+            raise pd.errors.ParserError("scratch changed between reads")
+        return pd.DataFrame({"Skipped": ["Yes"]})
+
+    monkeypatch.setattr(run_bench.pd, "read_csv", read_scratch)
+
+    assert run_bench.BenchmarkRunner._scratch_reports_all_skipped(str(scratch_path))
+    assert reads == [str(scratch_path)]
+
+
+def test_non_numeric_noise_fails_only_the_benchmark(tmp_path):
+    scratch_path = tmp_path / "scratch.nvbench"
+    pd.DataFrame({"Skipped": ["No"], "Noise.1": ["invalid"]}).to_csv(
+        scratch_path, index=False
+    )
+    runner = DummyRunner(tmp_path, {}, None, "cpp")
+
+    assert runner._check_noise_from_scratch(str(scratch_path)) is False
+
+
+def test_noise_check_fails_closed_without_skipped_column(tmp_path):
+    scratch_path = tmp_path / "scratch.nvbench"
+    pd.DataFrame({"Noise.1": [0.01]}).to_csv(scratch_path, index=False)
+    runner = DummyRunner(tmp_path, {}, None, "cpp")
+
+    assert runner._check_noise_from_scratch(str(scratch_path)) is False
+
+
+def test_header_only_scratch_fails_closed_when_ack_is_missing(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    output_path = tmp_path / "out_test_config_cpp.nvbench"
+    output_path.write_text("Benchmark,Skipped\n")
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        runner.run_benchmark("bench_test", [], "test_config")
+
+    assert exc.value.code == 1
+    assert not output_path.exists()
+
+
+def test_unparseable_scratch_fails_closed_when_ack_is_missing(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    output_path = tmp_path / "out_test_config_cpp.nvbench"
+    output_path.write_text('Benchmark,Skipped\n"truncated')
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        runner.run_benchmark("bench_test", [], "test_config")
+
+    assert exc.value.code == 1
+    assert not output_path.exists()
+
+
+def test_missing_scratch_fails_closed_when_ack_is_missing(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        runner.run_benchmark("bench_test", [], "test_config")
+
+    assert exc.value.code == 1
+
+
+def test_best_effort_success_does_not_require_clock_ack(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", None)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    assert runner.run_benchmark("bench_test", [], "test_config") == (
+        "out_test_config_cpp.nvbench",
+        True,
+    )
+
+
+def test_best_effort_failure_does_not_retry_or_exclude_node(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    run_calls = []
+    relock_calls = []
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", None)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: run_calls.append(args)
+        or SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="SM clock mismatch: expected 1005 MHz, measured 1020 MHz",
+        ),
+    )
+    monkeypatch.setattr(
+        run_bench,
+        "_reapply_required_sm_clock",
+        lambda: relock_calls.append(True) or run_bench._CLOCK_LOCK_OK,
+    )
+
+    assert runner.run_benchmark("bench_test", [], "test_config") == (None, False)
+    assert len(run_calls) == 1
+    assert not relock_calls
+
+
+@pytest.mark.parametrize("device_name", ["NVIDIA Other GPU", None, "missing"])
+def test_collect_results_rejects_missing_or_mismatched_device(
+    monkeypatch, tmp_path, device_name
+):
+    output = tmp_path / "out_test_config_cpp.nvbench"
+    row = {
+        "Benchmark": "test",
+        "Skipped": "No",
+        "BWUtil": 0.5,
+        "GPU Time (sec)": 0.001,
+    }
+    if device_name != "missing":
+        row["Device Name"] = device_name
+    pd.DataFrame([row]).to_csv(output, index=False)
+    runner = DummyRunner(
+        tmp_path,
+        {"test_config": {"benchmark": "test", "tier": "basic"}},
+        None,
+        "cpp",
+    )
+    runner._transform_scratch_columns = lambda frame: frame
+    errors = []
+    monkeypatch.setattr(run_bench, "_clock_policy_gpu_name", "NVIDIA H100 PCIe")
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(run_bench, "log_error", errors.append)
+
+    assert runner.collect_results(output.name, "test_config") is False
+    assert runner.results == []
+    if device_name == "missing":
+        assert errors == ["test_config is missing required columns: ['Device Name']"]
+    elif device_name is None:
+        assert errors[-1].endswith("did not report a device name")
+    else:
+        assert "NVIDIA Other GPU" in errors[-1]
+        assert "NVIDIA H100 PCIe" in errors[-1]
+
+
+def test_collect_results_does_not_gate_device_identity_for_best_effort_run(
+    monkeypatch, tmp_path
+):
+    output = tmp_path / "out_test_config_cpp.nvbench"
+    pd.DataFrame(
+        [
+            {
+                "Benchmark": "test",
+                "Skipped": "No",
+                "BWUtil": 0.5,
+                "GPU Time (sec)": 0.001,
+                "Device Name": "NVIDIA Other GPU",
+            }
+        ]
+    ).to_csv(output, index=False)
+    runner = DummyRunner(
+        tmp_path,
+        {"test_config": {"benchmark": "test", "tier": "basic"}},
+        None,
+        "cpp",
+    )
+    runner._transform_scratch_columns = lambda frame: frame
+    monkeypatch.setattr(run_bench, "_clock_policy_gpu_name", "NVIDIA H100 PCIe")
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", None)
+
+    assert runner.collect_results(output.name, "test_config") is True
+    assert len(runner.results) == 1
+
+
+@pytest.mark.parametrize(
+    "axis_group,values,expected",
+    [
+        ("string_axes", ["5x5", "7x7"], ["5x5", "7x7"]),
+        ("int64_axes", ["3", "5.0"], [3, 5]),
+    ],
+)
+def test_results_preserve_declared_axis_types(tmp_path, axis_group, values, expected):
+    output = tmp_path / "axes.nvbench"
+    pd.DataFrame(
+        {
+            "Benchmark": "test",
+            "Skipped": "No",
+            "BWUtil": 0.5,
+            "Device Name": "test GPU",
+            "GPU Time (sec)": 0.001,
+            "GPU Time (µs)": 1000,
+            "GPU Noise (%)": 0.1,
+            "kernelSize": values,
+            "batch": [2.0, None],
+        }
+    ).to_csv(output, index=False)
+    config = {
+        "test_config": {
+            "benchmark": "test",
+            "tier": "basic",
+            axis_group: {"kernelSize": expected},
+        }
+    }
+    runner = DummyRunner(tmp_path, config, None, "cpp")
+    runner._transform_scratch_columns = lambda frame: frame
+    assert runner.collect_results(output.name, "test_config")
+
+    processor = run_bench.ResultsProcessor(10.0, 10.0, 100.0)
+    result = processor.process(runner.results, compute_parity=False)
+
+    assert result["kernelSize"].tolist() == expected
+    assert str(result["batch"].dtype) == "Int64"
+    assert result["batch"].iloc[0] == 2
+    assert pd.isna(result["batch"].iloc[1])
+    if axis_group == "int64_axes":
+        assert str(result["kernelSize"].dtype) == "Int64"
+
+
+def test_best_effort_probe_error_is_an_ordinary_benchmark_failure(
+    monkeypatch, tmp_path
+):
+    runner = _clock_test_runner(tmp_path)
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", None)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="SM clock verification error: stale child setting",
+        ),
+    )
+
+    assert runner.run_benchmark("bench_test", [], "test_config") == (None, False)
+
+
+def test_invalid_device_probe_excludes_node(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="SM clock device error: invalid multiprocessor count: 0",
+        ),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        runner.run_benchmark("bench_test", [], "test_config")
+
+    assert exc.value.code == run_bench._CLOCK_INELIGIBLE_EXIT_CODE
+
+
+def test_benchmark_env_scopes_required_clock_to_children(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    monkeypatch.setenv("CVCUDA_BENCH_EXPECT_SM_CLOCK_MHZ", "stale")
+
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    assert runner.benchmark_env()["CVCUDA_BENCH_EXPECT_SM_CLOCK_MHZ"] == "1005"
+
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", None)
+    assert "CVCUDA_BENCH_EXPECT_SM_CLOCK_MHZ" not in runner.benchmark_env()
+    assert os.environ["CVCUDA_BENCH_EXPECT_SM_CLOCK_MHZ"] == "stale"
+
+
+def test_clock_failure_stops_when_reapply_fails(monkeypatch, tmp_path):
+    runner = _clock_test_runner(tmp_path)
+    run_calls = []
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: run_calls.append(args)
+        or SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="SM clock mismatch: expected 1005 MHz, measured 1020 MHz",
+        ),
+    )
+    monkeypatch.setattr(
+        run_bench,
+        "_reapply_required_sm_clock",
+        lambda: run_bench._CLOCK_LOCK_RESET_FAILED,
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        runner.run_benchmark("bench_test", [], "test_config")
+
+    assert exc.value.code == run_bench._CLOCK_INELIGIBLE_EXIT_CODE
+    assert len(run_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "reapply_status,expected_exit",
+    [
+        (
+            run_bench._CLOCK_LOCK_QUERY_FAILED,
+            1,
+        ),
+        (
+            run_bench._CLOCK_LOCK_REQUEST_FAILED,
+            1,
+        ),
+        (run_bench._CLOCK_LOCK_NO_TARGET, run_bench._CLOCK_INELIGIBLE_EXIT_CODE),
+    ],
+)
+def test_clock_reapply_status_controls_retry_classification(
+    monkeypatch, tmp_path, reapply_status, expected_exit
+):
+    runner = _clock_test_runner(tmp_path)
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="SM clock mismatch: expected 1005 MHz, measured 1020 MHz",
+        ),
+    )
+    monkeypatch.setattr(run_bench, "_reapply_required_sm_clock", lambda: reapply_status)
+
+    with pytest.raises(SystemExit) as exc:
+        runner.run_benchmark("bench_test", [], "test_config")
+
+    assert exc.value.code == expected_exit
+
+
+def test_strict_generic_failure_preserves_the_wave_and_removes_stale_output(
+    monkeypatch, tmp_path
+):
+    runner = _clock_test_runner(tmp_path)
+    output_path = tmp_path / "out_test_config_cpp.nvbench"
+    output_path.write_text("stale")
+    run_calls = []
+    relock_calls = []
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *args, **kwargs: run_calls.append(args)
+        or SimpleNamespace(returncode=2, stdout="", stderr="benchmark failed"),
+    )
+    monkeypatch.setattr(
+        run_bench,
+        "_reapply_required_sm_clock",
+        lambda: relock_calls.append(True) or run_bench._CLOCK_LOCK_OK,
+    )
+
+    assert runner.run_benchmark("bench_test", [], "test_config") == (None, False)
+    assert len(run_calls) == 1
+    assert not relock_calls
+    assert not output_path.exists()
+
+
 def _touch(path):
     path.write_text("")
 
@@ -104,16 +715,16 @@ def _write_baseline_config_tree(root):
                 {
                     "gpu_name": "NVIDIA Test GPU",
                     "power_cap_w": 250,
-                    "locked_sm_clock_mhz": 1095,
+                    "locked_sm_clock_mhz": 1005,
                     "cuda_major": 13,
-                    "stem": "A100_PCIE_40GB_250W_1095MHz",
+                    "stem": "A100_PCIE_40GB_250W_1005MHz",
                 },
                 {
                     "gpu_name": "NVIDIA Test GPU",
                     "power_cap_w": 250,
-                    "locked_sm_clock_mhz": 1095,
+                    "locked_sm_clock_mhz": 1005,
                     "cuda_major": 12,
-                    "stem": "A100_PCIE_40GB_250W_1095MHz_CUDA12",
+                    "stem": "A100_PCIE_40GB_250W_1005MHz_CUDA12",
                 },
             ]
         },
@@ -151,7 +762,7 @@ def _baseline_row(language="cpp", gpu_us=525.7525, noise_us=1.2, bwutil=0.42):
         "BWUtil": bwutil,
         "Device Name": "NVIDIA Test GPU",
         "Power Cap (W)": 250,
-        "Locked SM Clock (MHz)": 1095,
+        "Locked SM Clock (MHz)": 1005,
         "InOutDataType": "uchar3",
         "shape": "32x1080x1920",
         "resizeType": "CONTRACT",
@@ -676,12 +1287,87 @@ _RESIZE_EXISTING_BASIC_ANISOTROPIC_SIGNATURES = {
 }
 
 
+@pytest.mark.parametrize("operator", ["split", "merge"])
+def test_channel_copy_configuration_counts(operator):
+    entries = {
+        key: entry
+        for key, entry in load_bench_config().items()
+        if entry.get("benchmark") == operator
+    }
+    counts = {
+        tier: sum(
+            len(expected_case_keys_for_entry(key, entry))
+            for key, entry in entries.items()
+            if entry["tier"] == tier
+        )
+        for tier in ("basic", "advanced")
+    }
+    assert counts == {"basic": 12, "advanced": 42}
+    assert sum(counts.values()) == {"split": 54, "merge": 54}[operator]
+    assert len(entries) == 15
+    assert fake_planar_pairing_issues(entries) == ()
+    baseline_index = load_config_index()
+    tensor_counts = {"basic": 0, "advanced": 0}
+    varshape_cases = set()
+    for key, entry in entries.items():
+        assert isinstance(baseline_index.require(key).entry["baselines"], dict)
+        assert set(entry["string_axes"]) == {"shape", "layout", "inputKind"}
+        assert set(entry["int64_axes"]) == {"channels"}
+        for case in expected_case_keys_for_entry(key, entry):
+            axes = dict(parse_case_key(case)[1])
+            if axes["inputKind"] == "Tensor":
+                tensor_counts[entry["tier"]] += 1
+                assert "@" not in axes["shape"]
+                continue
+            assert axes["layout"] in ("NHWC", "NCHW")
+            shape, separator, variation = axes["shape"].partition("@")
+            dtype = {"uchar3": "uint8", "float3": "float32"}.get(
+                axes["InOutDataType"], axes["InOutDataType"]
+            )
+            variant = (
+                dtype,
+                int(axes["channels"]),
+                axes["layout"],
+                int(variation) if separator else 0,
+            )
+            assert variant not in varshape_cases
+            varshape_cases.add(variant)
+            if entry["tier"] == "basic":
+                tensor = entries[key.replace("_varshape_", "_")]
+                assert shape in tensor["string_axes"]["shape"]
+                assert axes["channels"] == "3"
+                assert dtype in ("uint8", "float32")
+    assert tensor_counts == {"basic": 4, "advanced": 22}
+    assert varshape_cases == {
+        (dtype, 3, layout, variation)
+        for dtype in ("uint8", "float32")
+        for layout in ("NHWC", "NCHW")
+        for variation in (0, 17)
+    } | {
+        ("uint8", channels, layout, 17)
+        for channels in (1, 2, 4)
+        for layout in ("NHWC", "NCHW")
+    } | {
+        (dtype, 3, layout, 17)
+        for dtype in (
+            "int8",
+            "uint16",
+            "int16",
+            "uint32",
+            "int32",
+            "float16",
+            "float64",
+        )
+        for layout in ("NHWC", "NCHW")
+    }
+
+
 @pytest.mark.parametrize(
     "operator,basic_rows,advanced_rows",
     [
-        ("resize", 22, 227),
+        ("resize", 22, 233),
         ("pillowresize", 22, 247),
-        ("hqresize", 26, 128),
+        ("hqresize", 26, 132),
     ],
 )
 def test_resize_family_anisotropic_coverage_mirrors_isotropic_matrix(
@@ -817,12 +1503,17 @@ def test_reformat_single_call_calibration_case_keys_are_stable():
     expected = {
         "reformat_uint8_pitched_fallback_advanced": (
             "reformat_uint8_pitched_fallback_advanced"
-            "[InOutDataType=uint8][shape=512x480x640]"
+            "[InOutDataType=uint8][shape=3072x480x640]"
             "[inputKind=Tensor][rowAlignment=256]"
         ),
         "reformat_uint8_pitched_large_image_advanced": (
             "reformat_uint8_pitched_large_image_advanced"
-            "[InOutDataType=uint8][shape=128x1080x1920]"
+            "[InOutDataType=uint8][shape=160x1080x1920]"
+            "[inputKind=Tensor][rowAlignment=256]"
+        ),
+        "reformat_uint8_pitched_large_image_b448_advanced": (
+            "reformat_uint8_pitched_large_image_b448_advanced"
+            "[InOutDataType=uint8][shape=448x1080x1920]"
             "[inputKind=Tensor][rowAlignment=256]"
         ),
     }
@@ -1038,7 +1729,7 @@ def test_baseline_payload_from_dataframe_emits_raw_baselines_json(tmp_path):
     )
     assert payload == {
         case: {
-            "A100_PCIE_40GB_250W_1095MHz_CUDA12": {
+            "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
                 "n_runs": 1,
                 "gpu_time_us_cpp": 525.7525,
                 "gpu_time_us_python": 535.7935,
@@ -1049,6 +1740,78 @@ def test_baseline_payload_from_dataframe_emits_raw_baselines_json(tmp_path):
             }
         }
     }
+
+
+def test_informative_payload_records_an_unmapped_sku(tmp_path):
+    config_dir = tmp_path / "config"
+    _write_baseline_config_tree(config_dir)
+    index = load_config_index(config_dir / "operators")
+    row = _baseline_row(language="cpp")
+    row["Device Name"] = "NVIDIA A10"
+    row["Power Cap (W)"] = 150
+    row["Locked SM Clock (MHz)"] = 345
+    df = pd.DataFrame([row])
+    source = tmp_path / "bench_output.json"
+
+    with pytest.raises(BaselineError, match=r"is not in sku_map\.json"):
+        baseline_payload_from_dataframe(
+            df,
+            index=index,
+            sku_map_path=config_dir / "sku_map.json",
+            cuda_major=12,
+            source=source,
+        )
+
+    payload = baseline_payload_from_dataframe(
+        df,
+        index=index,
+        sku_map_path=config_dir / "sku_map.json",
+        cuda_major=12,
+        source=source,
+        allow_unmapped_sku=True,
+    )
+    case_key, by_sku = next(iter(payload.items()))
+    assert list(by_sku) == ["unmapped_NVIDIA_A10_150W_345MHz_CUDA12"]
+
+    updates = baseline_updates_from_payload(
+        payload,
+        index=index,
+        sku_stem_set=set(),
+        source=source,
+    )
+    assert [update.sku for update in updates] == [
+        "unmapped_NVIDIA_A10_150W_345MHz_CUDA12"
+    ]
+
+    renamed = {case_key: {"not_a_sku": next(iter(by_sku.values()))}}
+    with pytest.raises(BaselineError, match="unknown SKU"):
+        baseline_updates_from_payload(
+            renamed,
+            index=index,
+            sku_stem_set=set(),
+            source=source,
+        )
+
+
+def test_parse_args_accepts_informative(monkeypatch, tmp_path):
+    out = tmp_path / "bench_output.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_bench.py",
+            "--informative",
+            "--output",
+            str(out),
+            "--cuda-major",
+            "12",
+        ],
+    )
+
+    args = run_bench.parse_args()
+
+    assert args.informative is True
+    assert args.output == str(out)
 
 
 def test_baseline_payload_from_dataframe_allows_single_language(tmp_path):
@@ -1070,6 +1833,43 @@ def test_baseline_payload_from_dataframe_allows_single_language(tmp_path):
         "gpu_time_us_cpp": 525.7525,
         "gpu_noise_us_cpp": 1.2,
         "gpu_bwutil_cpp": 0.42,
+    }
+
+
+def test_baseline_payload_from_dataframe_accepts_explicit_sku(tmp_path):
+    config_dir = tmp_path / "config"
+    _write_baseline_config_tree(config_dir)
+    sku_map_path = config_dir / "sku_map.json"
+    sku_map = json.loads(sku_map_path.read_text())
+    sku_map["entries"].append(
+        {
+            "routing": "explicit",
+            "cuda_major": 12,
+            "stem": "Jetson_Orin_R36_2_MAXN_CUDA12",
+            "baseline": {"languages": ["python"], "n_runs": 5},
+        }
+    )
+    _write_json(sku_map_path, sku_map)
+    row = _baseline_row(language="python")
+    for column in ("Device Name", "Power Cap (W)", "Locked SM Clock (MHz)"):
+        row.pop(column)
+
+    payload = baseline_payload_from_dataframe(
+        pd.DataFrame([row]),
+        index=load_config_index(config_dir / "operators"),
+        sku_map_path=sku_map_path,
+        cuda_major=12,
+        source=tmp_path / "bench_output.json",
+        baseline_sku="Jetson_Orin_R36_2_MAXN_CUDA12",
+    )
+
+    metrics_by_sku = next(iter(payload.values()))
+    assert list(metrics_by_sku) == ["Jetson_Orin_R36_2_MAXN_CUDA12"]
+    assert set(metrics_by_sku["Jetson_Orin_R36_2_MAXN_CUDA12"]) == {
+        "n_runs",
+        "gpu_time_us_python",
+        "gpu_noise_us_python",
+        "gpu_bwutil_python",
     }
 
 
@@ -1122,6 +1922,19 @@ def test_parse_args_accepts_cuda_major_for_json(monkeypatch, tmp_path):
     assert run_bench.parse_args().cuda_major == 12
 
 
+@pytest.mark.parametrize("run_context", ["mr", "nightly-dev", "nightly", "main"])
+def test_parse_args_requires_cuda_major_for_non_local_runs(
+    monkeypatch, capsys, run_context
+):
+    monkeypatch.setattr(sys, "argv", ["run_bench.py", "--run-context", run_context])
+
+    with pytest.raises(SystemExit) as exc:
+        run_bench.parse_args()
+
+    assert exc.value.code == 2
+    assert "--cuda-major is required for non-local runs" in capsys.readouterr().err
+
+
 def test_baseline_config_paths_uses_run_manifest(tmp_path):
     config_dir = tmp_path / "config"
     _write_baseline_config_tree(config_dir)
@@ -1144,6 +1957,749 @@ def test_baseline_config_paths_uses_run_manifest(tmp_path):
 
     assert paths == [(config_dir / "operators" / "resize.json").resolve()]
     assert sku_map_path == config_dir / "sku_map.json"
+
+
+def test_mapped_lock_target_uses_sku_map(tmp_path):
+    sku_map = tmp_path / "sku_map.json"
+    entries = [
+        {
+            "gpu_name": "NVIDIA H100 PCIe",
+            "power_cap_w": 350,
+            "locked_sm_clock_mhz": 1005,
+            "cuda_major": 13,
+            "stem": "target",
+        },
+        *[
+            {
+                "gpu_name": name,
+                "power_cap_w": power,
+                "locked_sm_clock_mhz": clock,
+                "cuda_major": cuda,
+                "stem": f"decoy_{index}",
+            }
+            for index, (name, power, clock, cuda) in enumerate(
+                [
+                    ("NVIDIA A100-PCIE-40GB", 350, 1095, 13),
+                    ("NVIDIA H100 PCIe", 310, 900, 13),
+                    ("NVIDIA H100 PCIe", 350, 1095, 12),
+                ]
+            )
+        ],
+    ]
+    _write_json(
+        sku_map,
+        {"entries": entries},
+    )
+
+    assert (
+        run_bench._resolve_required_sm_clock(
+            sku_map,
+            gpu_name="NVIDIA H100 PCIe",
+            power_cap_w=350,
+            cuda_major=13,
+        )
+        == 1005
+    )
+
+
+def test_unknown_gpu_has_no_required_sm_clock(tmp_path):
+    sku_map = tmp_path / "sku_map.json"
+    _write_json(sku_map, {"entries": []})
+
+    assert (
+        run_bench._resolve_required_sm_clock(
+            sku_map,
+            gpu_name="Unknown GPU",
+            power_cap_w=None,
+            cuda_major=13,
+        )
+        is None
+    )
+
+
+def test_mapped_gpu_must_match_a_baseline_profile(tmp_path):
+    sku_map = tmp_path / "sku_map.json"
+    _write_json(
+        sku_map,
+        {
+            "entries": [
+                {
+                    "gpu_name": "NVIDIA H100 PCIe",
+                    "power_cap_w": 350,
+                    "locked_sm_clock_mhz": 1005,
+                    "cuda_major": 13,
+                    "stem": "H100_PCIe_350W_1005MHz",
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(BaselineError, match="no baseline-backed SM clock target"):
+        run_bench._resolve_required_sm_clock(
+            sku_map,
+            gpu_name="NVIDIA H100 PCIe",
+            power_cap_w=310,
+            cuda_major=13,
+        )
+
+    with pytest.raises(
+        run_bench._ClockIneligibleError, match="could not determine power cap"
+    ):
+        run_bench._resolve_required_sm_clock(
+            sku_map,
+            gpu_name="NVIDIA H100 PCIe",
+            power_cap_w=None,
+            cuda_major=13,
+        )
+
+
+def test_mapped_power_profile_missing_cuda_major_is_configuration_error(tmp_path):
+    sku_map = tmp_path / "sku_map.json"
+    _write_json(
+        sku_map,
+        {
+            "entries": [
+                {
+                    "gpu_name": "NVIDIA H100 PCIe",
+                    "power_cap_w": 350,
+                    "locked_sm_clock_mhz": 1095,
+                    "cuda_major": 12,
+                    "stem": "H100_CUDA12",
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(BaselineError, match=r"configured CUDA majors: \[12\]") as exc:
+        run_bench._resolve_required_sm_clock(
+            sku_map,
+            gpu_name="NVIDIA H100 PCIe",
+            power_cap_w=350,
+            cuda_major=13,
+        )
+
+    assert not isinstance(exc.value, MissingClockProfileError)
+
+
+def test_clock_control_uses_required_clock_despite_idle_readback(monkeypatch, tmp_path):
+    requests = []
+    monkeypatch.setattr(run_bench, "_clock_lock_request_accepted", False)
+    monkeypatch.setattr(run_bench, "_clock_lock_applied_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_sampler_thread", None)
+    monkeypatch.setattr(
+        run_bench,
+        "_try_lock_sm_clock",
+        lambda preferred, **_kwargs: requests.append(preferred)
+        or (run_bench._CLOCK_LOCK_OK, 375),
+    )
+    monkeypatch.setattr(run_bench, "_write_gpu_fingerprint", lambda _out_dir: None)
+    monkeypatch.setattr(run_bench.threading.Thread, "start", lambda _self: None)
+
+    run_bench.init_clock_control(out_dir=str(tmp_path), required_mhz=1005)
+
+    assert requests == [[1005]]
+    assert run_bench._clock_lock_required_mhz == 1005
+    assert run_bench._clock_lock_applied_mhz == 1005
+    assert run_bench._clock_lock_request_accepted is True
+
+
+def test_clock_cleanup_is_registered_before_post_lock_setup(monkeypatch, tmp_path):
+    events = []
+    monkeypatch.setattr(run_bench, "_clock_lock_request_accepted", False)
+    monkeypatch.setattr(run_bench, "_clock_lock_applied_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_sampler_thread", None)
+    monkeypatch.setattr(
+        run_bench,
+        "_try_lock_sm_clock",
+        lambda *_args, **_kwargs: events.append("lock")
+        or (run_bench._CLOCK_LOCK_OK, 1005),
+    )
+    monkeypatch.setattr(
+        run_bench.atexit,
+        "register",
+        lambda callback: events.append(("register", callback)),
+    )
+
+    def fail_fingerprint(_out_dir):
+        events.append("fingerprint")
+        raise RuntimeError("unwritable diagnostics")
+
+    monkeypatch.setattr(run_bench, "_write_gpu_fingerprint", fail_fingerprint)
+
+    with pytest.raises(RuntimeError, match="unwritable diagnostics"):
+        run_bench.init_clock_control(str(tmp_path), required_mhz=1005)
+
+    assert events == [
+        "lock",
+        ("register", run_bench.shutdown_clock_control),
+        "fingerprint",
+    ]
+
+
+def test_gpu_info_classifies_missing_binary_as_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+
+    assert run_bench._query_gpu_name() is None
+    with pytest.raises(run_bench._ClockIneligibleError, match="determine GPU"):
+        run_bench._require_gpu_name()
+
+
+def test_supported_clock_query_uses_preflight_timeout(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        run_bench,
+        "_nvidia_smi",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or None,
+    )
+
+    assert run_bench._query_supported_sm_clocks_mhz() is None
+    assert calls == [(("-q", "-d", "SUPPORTED_CLOCKS", "-i", "0"), {"timeout": 10.0})]
+
+
+@pytest.mark.parametrize(
+    "supported,lock_accepted,expected_status,expect_lock_command",
+    [
+        (None, False, run_bench._CLOCK_LOCK_QUERY_FAILED, False),
+        ([900], False, run_bench._CLOCK_LOCK_NO_TARGET, False),
+        ([1005], False, run_bench._CLOCK_LOCK_REQUEST_FAILED, True),
+        ([1005], True, run_bench._CLOCK_LOCK_OK, True),
+    ],
+)
+def test_strict_clock_lock_reports_direct_outcome(
+    monkeypatch,
+    supported,
+    lock_accepted,
+    expected_status,
+    expect_lock_command,
+):
+    commands = []
+
+    def run_command(command, **_kwargs):
+        commands.append(command)
+        accepted = lock_accepted and "-lgc" in command
+        return SimpleNamespace(returncode=0 if accepted else 1)
+
+    monkeypatch.setattr(run_bench.subprocess, "run", run_command)
+    monkeypatch.setattr(run_bench, "_query_supported_sm_clocks_mhz", lambda: supported)
+    monkeypatch.setattr(run_bench, "_query_current_sm_clock_mhz", lambda: 375)
+
+    status, sampled = run_bench._try_lock_sm_clock(
+        [1005], require_supported_clocks=True
+    )
+
+    assert status == expected_status
+    assert sampled == 375
+    lock_command = [
+        "sudo",
+        "-n",
+        "nvidia-smi",
+        "-lgc",
+        "1005,1005",
+        "-i",
+        "0",
+    ]
+    assert (lock_command in commands) is expect_lock_command
+
+
+def test_gpu_name_query_targets_clock_control_device(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        run_bench,
+        "_nvidia_smi",
+        lambda *args: calls.append(args) or "NVIDIA H100 PCIe\n",
+    )
+
+    assert run_bench._query_gpu_name() == "NVIDIA H100 PCIe"
+    assert calls == [("--query-gpu=name", "--format=csv,noheader", "-i", "0")]
+
+
+def test_gpu_info_classifies_nonzero_exit_as_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=1, stdout="", stderr="NVML failed"
+        ),
+    )
+
+    assert run_bench._query_gpu_name() is None
+
+
+def test_clock_control_shutdown_resets_state_and_allows_sampler_restart(
+    monkeypatch, tmp_path
+):
+    stop_event = run_bench.threading.Event()
+    stop_event.set()
+    starts = []
+    joins = []
+
+    class FakeThread:
+        def __init__(self, **_kwargs):
+            pass
+
+        def start(self):
+            starts.append(stop_event.is_set())
+
+        def join(self, timeout):
+            joins.append(timeout)
+
+    monkeypatch.setattr(run_bench, "_clock_lock_request_accepted", False)
+    monkeypatch.setattr(run_bench, "_clock_lock_applied_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_lock_device_verified", False)
+    monkeypatch.setattr(run_bench, "_clock_sampler_stop", stop_event)
+    monkeypatch.setattr(run_bench, "_clock_sampler_thread", None)
+    monkeypatch.setattr(
+        run_bench,
+        "_try_lock_sm_clock",
+        lambda _preferred, **_kwargs: (run_bench._CLOCK_LOCK_OK, 375),
+    )
+    monkeypatch.setattr(run_bench, "_try_reset_sm_clock", lambda: True)
+    monkeypatch.setattr(run_bench, "_write_gpu_fingerprint", lambda _out_dir: None)
+    monkeypatch.setattr(run_bench.threading, "Thread", FakeThread)
+    monkeypatch.setattr(run_bench.atexit, "register", lambda _callback: None)
+
+    run_bench.init_clock_control(out_dir=str(tmp_path), required_mhz=1005)
+    monkeypatch.setattr(run_bench, "_clock_lock_device_verified", True)
+    run_bench.shutdown_clock_control()
+
+    assert stop_event.is_set()
+    assert run_bench._clock_sampler_thread is None
+    assert run_bench._clock_lock_request_accepted is False
+    assert run_bench._clock_lock_applied_mhz is None
+    assert run_bench._clock_lock_required_mhz is None
+    assert run_bench._clock_lock_device_verified is True
+
+    run_bench.init_clock_control(out_dir=str(tmp_path), required_mhz=1005)
+
+    assert starts == [False, False]
+    assert joins == [3.0]
+    assert run_bench._clock_lock_device_verified is False
+
+
+def test_clock_control_shutdown_warns_when_reset_fails(monkeypatch):
+    warnings = []
+    monkeypatch.setattr(run_bench, "_clock_sampler_thread", None)
+    monkeypatch.setattr(run_bench, "_clock_lock_request_accepted", True)
+    monkeypatch.setattr(run_bench, "_try_reset_sm_clock", lambda: False)
+    monkeypatch.setattr(run_bench, "_query_current_sm_clock_mhz", lambda: 1005)
+    monkeypatch.setattr(run_bench, "log_warning", warnings.append)
+    monkeypatch.setenv("K8S_NODE_NAME", "gpu-node-7")
+
+    run_bench.shutdown_clock_control()
+
+    assert warnings == [
+        "Could not reset the SM clock during benchmark cleanup; "
+        "node=gpu-node-7 residual_sm_clock_mhz=1005"
+    ]
+    assert run_bench._clock_lock_request_accepted is False
+
+
+def test_clock_control_requires_lock_request(monkeypatch, tmp_path):
+    fingerprints = []
+    monkeypatch.setattr(run_bench, "_clock_lock_request_accepted", False)
+    monkeypatch.setattr(run_bench, "_clock_lock_applied_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_sampler_thread", None)
+    monkeypatch.setattr(
+        run_bench,
+        "_try_lock_sm_clock",
+        lambda preferred, **_kwargs: (run_bench._CLOCK_LOCK_REQUEST_FAILED, 375),
+    )
+    monkeypatch.setattr(
+        run_bench,
+        "_query_supported_sm_clocks_mhz",
+        lambda: pytest.fail("init must use the lock attempt's reason"),
+    )
+    monkeypatch.setattr(run_bench, "_write_gpu_fingerprint", fingerprints.append)
+
+    with pytest.raises(RuntimeError, match="required 1005 MHz"):
+        run_bench.init_clock_control(out_dir=str(tmp_path), required_mhz=1005)
+
+    assert run_bench._clock_lock_applied_mhz == 375
+    assert fingerprints == [str(tmp_path)]
+
+
+def test_clock_control_classifies_unsupported_required_clock_as_ineligible(
+    monkeypatch, tmp_path
+):
+    fingerprints = []
+    monkeypatch.setattr(run_bench, "_clock_lock_request_accepted", False)
+    monkeypatch.setattr(run_bench, "_clock_lock_applied_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_sampler_thread", None)
+    monkeypatch.setattr(
+        run_bench,
+        "_try_lock_sm_clock",
+        lambda preferred, **_kwargs: (run_bench._CLOCK_LOCK_NO_TARGET, 375),
+    )
+    monkeypatch.setattr(
+        run_bench,
+        "_query_supported_sm_clocks_mhz",
+        lambda: pytest.fail("init must use the lock attempt's reason"),
+    )
+    monkeypatch.setattr(run_bench, "_write_gpu_fingerprint", fingerprints.append)
+
+    with pytest.raises(run_bench._ClockIneligibleError, match="not supported"):
+        run_bench.init_clock_control(out_dir=str(tmp_path), required_mhz=1005)
+
+    assert run_bench._clock_lock_applied_mhz == 375
+    assert fingerprints == [str(tmp_path)]
+
+
+def test_best_effort_clock_control_tolerates_lock_failure(monkeypatch, tmp_path):
+    requests = []
+    monkeypatch.setattr(run_bench, "_clock_lock_request_accepted", False)
+    monkeypatch.setattr(run_bench, "_clock_lock_applied_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_sampler_thread", None)
+    monkeypatch.setattr(
+        run_bench,
+        "_try_lock_sm_clock",
+        lambda preferred, **_kwargs: requests.append(preferred)
+        or (run_bench._CLOCK_LOCK_REQUEST_FAILED, 375),
+    )
+    monkeypatch.setattr(run_bench, "_write_gpu_fingerprint", lambda _out_dir: None)
+    monkeypatch.setattr(run_bench.threading.Thread, "start", lambda _self: None)
+    monkeypatch.setattr(run_bench.atexit, "register", lambda _callback: None)
+
+    run_bench.init_clock_control(out_dir=str(tmp_path), required_mhz=None)
+
+    assert requests == [run_bench._CLOCK_LOCK_PREFERRED_MHZ]
+    assert run_bench._clock_lock_required_mhz is None
+    assert run_bench._clock_lock_applied_mhz == 375
+    assert run_bench._clock_lock_request_accepted is False
+
+
+def test_strict_clock_control_rejects_unqueryable_supported_clocks(
+    monkeypatch, tmp_path
+):
+    fingerprints = []
+    monkeypatch.setattr(run_bench, "_clock_lock_request_accepted", False)
+    monkeypatch.setattr(run_bench, "_clock_lock_applied_mhz", None)
+    monkeypatch.setattr(run_bench, "_clock_sampler_thread", None)
+    monkeypatch.setattr(
+        run_bench,
+        "_try_lock_sm_clock",
+        lambda preferred, **_kwargs: (run_bench._CLOCK_LOCK_QUERY_FAILED, 375),
+    )
+    monkeypatch.setattr(run_bench, "_write_gpu_fingerprint", fingerprints.append)
+
+    with pytest.raises(run_bench._ClockRequestError, match="required 1005 MHz"):
+        run_bench.init_clock_control(out_dir=str(tmp_path), required_mhz=1005)
+
+    assert run_bench._clock_lock_applied_mhz == 375
+    assert fingerprints == [str(tmp_path)]
+
+
+def test_lock_target_requires_supported_clock_query_only_for_strict_runs(monkeypatch):
+    monkeypatch.setattr(run_bench, "_query_supported_sm_clocks_mhz", lambda: None)
+
+    assert run_bench._pick_lock_target([1005]) == (1005, False)
+    assert run_bench._pick_lock_target([1005], require_supported_clocks=True) == (
+        None,
+        False,
+    )
+
+
+def test_best_effort_lock_prefers_baseline_clock(monkeypatch):
+    monkeypatch.setattr(
+        run_bench, "_query_supported_sm_clocks_mhz", lambda: [1005, 1095]
+    )
+
+    assert run_bench._pick_lock_target(run_bench._CLOCK_LOCK_PREFERRED_MHZ) == (
+        1005,
+        True,
+    )
+
+
+def test_clock_reset_retries_and_targets_gpu_zero(monkeypatch):
+    commands = []
+    monkeypatch.setattr(
+        run_bench.subprocess,
+        "run",
+        lambda command, **_kwargs: commands.append(command)
+        or SimpleNamespace(returncode=0 if len(commands) == 3 else 1),
+    )
+
+    assert run_bench._try_reset_sm_clock() is True
+
+    assert commands == [
+        ["sudo", "-n", "nvidia-smi", "-rgc", "-i", "0"],
+        ["nvidia-smi", "-rgc", "-i", "0"],
+        ["sudo", "-n", "nvidia-smi", "-rgc", "-i", "0"],
+    ]
+
+
+def test_reapply_required_clock_resets_before_locking(monkeypatch):
+    calls = []
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(run_bench, "_clock_lock_request_accepted", True)
+    monkeypatch.setattr(run_bench, "_clock_lock_applied_mhz", 1005)
+    monkeypatch.setattr(
+        run_bench, "_try_reset_sm_clock", lambda: calls.append("reset") or True
+    )
+    monkeypatch.setattr(
+        run_bench,
+        "_try_lock_sm_clock",
+        lambda preferred, **_kwargs: calls.append(("lock", preferred))
+        or (run_bench._CLOCK_LOCK_OK, 375),
+    )
+
+    assert run_bench._reapply_required_sm_clock() == run_bench._CLOCK_LOCK_OK
+    assert calls == ["reset", ("lock", [1005])]
+    assert run_bench._clock_lock_applied_mhz == 1005
+    assert run_bench._clock_lock_request_accepted is True
+
+
+def test_reapply_required_clock_stops_when_reset_fails(monkeypatch):
+    monkeypatch.setattr(run_bench, "_clock_lock_required_mhz", 1005)
+    monkeypatch.setattr(run_bench, "_try_reset_sm_clock", lambda: False)
+    monkeypatch.setattr(
+        run_bench,
+        "_try_lock_sm_clock",
+        lambda _preferred, **_kwargs: pytest.fail(
+            "lock must not run after reset failure"
+        ),
+    )
+
+    assert run_bench._reapply_required_sm_clock() == run_bench._CLOCK_LOCK_RESET_FAILED
+
+
+@pytest.mark.parametrize(
+    "run_context,resolved_clock,expected_clock",
+    [
+        ("local", 1005, None),
+        ("mr", 1005, 1005),
+        ("nightly-dev", 1005, 1005),
+        ("nightly", 1005, 1005),
+        ("mr", None, None),
+    ],
+)
+def test_main_applies_clock_policy(
+    monkeypatch, tmp_path, run_context, resolved_clock, expected_clock
+):
+    class StopAfterClockSetup(Exception):
+        pass
+
+    args = SimpleNamespace(
+        config_file=None,
+        cuda_major=13,
+        output=str(tmp_path / "nested" / "output.json"),
+        run_context=run_context,
+    )
+    resolve_calls = []
+    init_calls = []
+    monkeypatch.setattr(run_bench, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        run_bench,
+        "_baseline_config_paths",
+        lambda _path: ([], tmp_path / "sku_map.json"),
+    )
+    monkeypatch.setattr(run_bench, "_query_gpu_name", lambda: "NVIDIA H100 PCIe")
+    monkeypatch.setattr(run_bench, "query_power_cap_w", lambda: 350)
+    monkeypatch.setattr(
+        run_bench,
+        "_resolve_required_sm_clock",
+        lambda *_args, **_kwargs: resolve_calls.append(None) or resolved_clock,
+    )
+
+    def record_clock_control(**kwargs):
+        assert os.path.isdir(kwargs["out_dir"])
+        init_calls.append(kwargs)
+
+    monkeypatch.setattr(run_bench, "init_clock_control", record_clock_control)
+    monkeypatch.setattr(
+        run_bench,
+        "_run_paired_benchmarks",
+        lambda _args: (_ for _ in ()).throw(StopAfterClockSetup()),
+    )
+    monkeypatch.setenv("CVCUDA_BENCH_EXPECT_SM_CLOCK_MHZ", "stale")
+
+    with pytest.raises(StopAfterClockSetup):
+        run_bench.main()
+
+    assert len(resolve_calls) == (run_context != "local")
+    if run_context == "local":
+        assert run_bench._clock_policy_gpu_name is None
+    else:
+        assert run_bench._clock_policy_gpu_name == "NVIDIA H100 PCIe"
+    assert init_calls == [
+        {"out_dir": str(tmp_path / "nested"), "required_mhz": expected_clock}
+    ]
+    assert os.environ["CVCUDA_BENCH_EXPECT_SM_CLOCK_MHZ"] == "stale"
+
+
+def test_main_reports_output_directory_error_as_execution_failure(
+    monkeypatch, tmp_path
+):
+    output_parent = tmp_path / "not-a-directory"
+    output_parent.write_text("occupied")
+    args = SimpleNamespace(
+        config_file=None,
+        output=str(output_parent / "bench_output.csv"),
+        run_context="local",
+    )
+    monkeypatch.setattr(run_bench, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        run_bench,
+        "init_clock_control",
+        lambda **_kwargs: pytest.fail("clock setup must not run"),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        run_bench.main()
+
+    assert exc.value.code == 1
+
+
+def test_main_does_not_hide_unexpected_clock_setup_error(monkeypatch, tmp_path):
+    args = SimpleNamespace(
+        config_file=None,
+        output=str(tmp_path / "bench_output.csv"),
+        run_context="local",
+    )
+    monkeypatch.setattr(run_bench, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        run_bench,
+        "init_clock_control",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("unexpected defect")),
+    )
+
+    with pytest.raises(RuntimeError, match="unexpected defect"):
+        run_bench.main()
+
+
+def test_main_classifies_missing_mapped_profile_as_node_ineligible(
+    monkeypatch, tmp_path
+):
+    args = SimpleNamespace(
+        config_file=None,
+        cuda_major=13,
+        output=str(tmp_path / "output.json"),
+        run_context="mr",
+    )
+    monkeypatch.setattr(run_bench, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        run_bench,
+        "_baseline_config_paths",
+        lambda _path: ([], tmp_path / "sku_map.json"),
+    )
+    monkeypatch.setattr(run_bench, "_query_gpu_name", lambda: "NVIDIA H100 PCIe")
+    monkeypatch.setattr(run_bench, "query_power_cap_w", lambda: None)
+    monkeypatch.setattr(
+        run_bench,
+        "_resolve_required_sm_clock",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            MissingClockProfileError("no mapped profile")
+        ),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        run_bench.main()
+
+    assert exc.value.code == run_bench._CLOCK_INELIGIBLE_EXIT_CODE
+
+
+def test_main_classifies_missing_cuda_clock_as_configuration_error(
+    monkeypatch, tmp_path
+):
+    args = SimpleNamespace(
+        config_file=None,
+        cuda_major=13,
+        output=str(tmp_path / "output.json"),
+        run_context="mr",
+    )
+    monkeypatch.setattr(run_bench, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        run_bench,
+        "_baseline_config_paths",
+        lambda _path: ([], tmp_path / "sku_map.json"),
+    )
+    monkeypatch.setattr(run_bench, "_query_gpu_name", lambda: "NVIDIA H100 PCIe")
+    monkeypatch.setattr(run_bench, "query_power_cap_w", lambda: 350)
+    monkeypatch.setattr(
+        run_bench,
+        "_resolve_required_sm_clock",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            MissingClockConfigurationError("CUDA 13 profile missing")
+        ),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        run_bench.main()
+
+    assert exc.value.code == 1
+
+
+def test_main_excludes_unresolvable_strict_gpu_identity_before_benchmark(
+    monkeypatch, tmp_path
+):
+    args = SimpleNamespace(
+        config_file=None,
+        cuda_major=13,
+        output=str(tmp_path / "output.json"),
+        run_context="mr",
+    )
+    monkeypatch.setattr(run_bench, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        run_bench,
+        "_baseline_config_paths",
+        lambda _path: ([], tmp_path / "sku_map.json"),
+    )
+    monkeypatch.setattr(run_bench, "_query_gpu_name", lambda: None)
+    monkeypatch.setattr(
+        run_bench,
+        "_run_paired_benchmarks",
+        lambda _args: pytest.fail("benchmarks must not run without a GPU identity"),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        run_bench.main()
+
+    assert exc.value.code == run_bench._CLOCK_INELIGIBLE_EXIT_CODE
+
+
+def test_clock_ineligible_exit_propagates_through_paired_runner(monkeypatch, tmp_path):
+    class ExitRunner:
+        def __init__(self, *_args, **_kwargs):
+            self.summary = SimpleNamespace(total=0, successful=0, failed=0)
+            self.results = []
+
+        def run_benchmark(self, *_args, **_kwargs):
+            raise SystemExit(run_bench._CLOCK_INELIGIBLE_EXIT_CODE)
+
+    args = SimpleNamespace(
+        bench_folder=str(tmp_path),
+        operators=[],
+        keep_outputs=False,
+        max_noise_pct=10.0,
+        config_file=None,
+        tiers=None,
+        config_keys=None,
+        warmup_cap=None,
+        lang="cpp",
+        max_perf_diff_pct=10.0,
+        max_perf_diff_us=100.0,
+        max_retries=0,
+        bench_args=[],
+    )
+    monkeypatch.setattr(run_bench, "CppBenchmarkRunner", ExitRunner)
+    monkeypatch.setattr(
+        run_bench,
+        "discover_operator_pairs",
+        lambda *_args: [("test_config", "bench_test", None)],
+    )
+    monkeypatch.setattr(run_bench, "_query_gpu_name", lambda: "NVIDIA H100 PCIe")
+
+    with pytest.raises(SystemExit) as exc:
+        run_bench._run_paired_benchmarks(args)
+
+    assert exc.value.code == run_bench._CLOCK_INELIGIBLE_EXIT_CODE
 
 
 def test_write_output_json_writes_enveloped_payload(tmp_path):
@@ -1197,6 +2753,50 @@ def test_write_output_json_writes_enveloped_payload(tmp_path):
         "[layout=NHWC]"
         "[inputKind=Tensor]"
     )
+
+
+def test_run_metadata_records_device_verification_not_lock_request(monkeypatch):
+    args = SimpleNamespace(
+        cuda_major=13,
+        git_ref="test-ref",
+        run_context="mr",
+        tier="basic",
+    )
+    monkeypatch.setattr(run_bench, "_git_revision", lambda: "deadbeef")
+    monkeypatch.setattr(run_bench, "_nvidia_smi", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(run_bench, "_clock_lock_request_accepted", True)
+    monkeypatch.setattr(run_bench, "_clock_lock_device_verified", False)
+
+    metadata = run_bench._run_metadata(args, pd.DataFrame([_baseline_row()]))
+
+    assert metadata["sm_clock_device_verified"] is False
+    monkeypatch.setattr(run_bench, "_clock_lock_device_verified", True)
+    assert (
+        run_bench._run_metadata(args, pd.DataFrame([_baseline_row()]))[
+            "sm_clock_device_verified"
+        ]
+        is True
+    )
+
+
+@pytest.mark.parametrize(
+    "run_context,is_nightly", [("nightly-dev", False), ("nightly", True)]
+)
+def test_run_metadata_distinguishes_nightly_rehearsals(
+    monkeypatch, run_context, is_nightly
+):
+    args = SimpleNamespace(
+        cuda_major=13,
+        git_ref="test-ref",
+        run_context=run_context,
+        tier="basic",
+    )
+    monkeypatch.setattr(run_bench, "_git_revision", lambda: "deadbeef")
+    monkeypatch.setattr(run_bench, "_nvidia_smi", lambda *_args, **_kwargs: None)
+
+    metadata = run_bench._run_metadata(args, pd.DataFrame([_baseline_row()]))
+
+    assert metadata["is_nightly"] is is_nightly
 
 
 def test_write_output_csv_writes_legacy_combined_csv(tmp_path):
@@ -1314,3 +2914,218 @@ def test_discover_operator_pairs_with_config_keys_supports_mixed_operators(tmp_p
         ("resize_advanced", "bench_resize", "bench_resize.py"),
         ("gaussian_advanced", "bench_gaussian", "bench_gaussian.py"),
     ]
+
+
+def test_tvresize_calibrated_anchors_preserve_diagnostics_and_layout_pairs():
+    configs = {
+        key: entry
+        for key, entry in load_bench_config().items()
+        if entry.get("benchmark") == "tvresize"
+    }
+    anchors = {key: entry for key, entry in configs.items() if "_calibrated_" in key}
+    assert len(anchors) == 8
+    assert {entry["dtypes"][0] for entry in anchors.values()} == {
+        "uchar3",
+        "half3",
+        "float3",
+        "uint16",
+        "int16",
+        "uchar4",
+        "half4",
+        "float4",
+    }
+    diagnostics = {key: entry for key, entry in configs.items() if key not in anchors}
+    for tier, expected in (("basic", 54), ("advanced", 121)):
+        assert (
+            sum(
+                len(expected_case_keys_for_entry(key, entry))
+                for key, entry in diagnostics.items()
+                if entry["tier"] == tier
+            )
+            == expected
+        )
+    assert (
+        sum(
+            len(expected_case_keys_for_entry(key, entry))
+            for key, entry in configs.items()
+        )
+        == 199
+    )
+    assert fake_planar_pairing_issues(configs) == ()
+    heterogeneous = {
+        key: entry
+        for key, entry in configs.items()
+        if key.startswith("tvresize_heterogeneous_varshape_")
+    }
+    assert {dtype for entry in heterogeneous.values() for dtype in entry["dtypes"]} == {
+        "uchar3",
+        "float3",
+    }
+    for entry in heterogeneous.values():
+        axes = entry["string_axes"]
+        count, height, width = map(int, axes["shape"][0].split("x"))
+        assert count > 0 and count % 3 == 0
+        assert (height, width) == (1080, 1920)
+        assert axes["batchCase"] == ["ordinary", "mixed-singleton"]
+    geometry_outputs = set()
+    for key, entry in diagnostics.items():
+        axes = entry["string_axes"]
+        if key in heterogeneous:
+            continue
+        count, height, width = map(int, axes["shape"][0].split("x"))
+        assert count >= 1
+        assert (height, width) == (1080, 1920)
+        if key.startswith("tvresize_geometry_"):
+            assert len(axes["outputShape"]) == 1
+            geometry_outputs.update(axes["outputShape"])
+        else:
+            assert axes["outputShape"] == ["720x1280"]
+    assert geometry_outputs == {
+        "1080x1920",
+        "1653x2950",
+        "507x2950",
+        "1653x1405",
+        "1x1",
+    }
+    for key, entry in anchors.items():
+        assert entry["tier"] == "advanced"
+        assert len(entry["dtypes"]) == 1
+        assert len(expected_case_keys_for_entry(key, entry)) == 3
+        axes = entry["string_axes"]
+        assert axes["layout"] == ["NHWC", "NCHW", "NCHW_FAKE"]
+        assert len(axes["shape"]) == 1
+        count, height, width = map(int, axes["shape"][0].split("x"))
+        assert count >= 1
+        assert (height, width) == (1080, 1920)
+        assert axes["outputShape"] == ["720x1280"]
+        assert axes["inputKind"] == ["Tensor"]
+        assert axes["batchCase"] == ["uniform"]
+        assert axes["interpolation"] == ["LINEAR"]
+        assert entry["int64_axes"]["antialias"] == [1]
+        dtype = entry["dtypes"][0]
+        channels = int(dtype[-1]) if dtype[-1] in "34" else 1
+        assert entry["int64_axes"]["numChannels"] == [channels]
+
+
+def test_tvresize_recalibration_preserves_dtype_and_layout_workloads():
+    configs = {
+        key: entry
+        for key, entry in load_bench_config().items()
+        if entry.get("benchmark") == "tvresize"
+    }
+    batches_by_workload = {}
+    lane_bytes = {
+        "uchar": 1,
+        "uint8": 1,
+        "half": 2,
+        "float": 4,
+        "uint16": 2,
+        "int16": 2,
+    }
+    for key, entry in configs.items():
+        assert len(entry["dtypes"]) == 1
+        dtype = entry["dtypes"][0]
+        base_dtype = dtype[:-1] if dtype[-1] in "34" else dtype
+        axes = entry["string_axes"]
+        assert len(axes["shape"]) == 1
+        count, height, width = map(int, axes["shape"][0].split("x"))
+        for output, kind, batch_case, interpolation, channels, antialias in product(
+            axes["outputShape"],
+            axes["inputKind"],
+            axes["batchCase"],
+            axes["interpolation"],
+            entry["int64_axes"]["numChannels"],
+            entry["int64_axes"]["antialias"],
+        ):
+            workload = (
+                "_calibrated_" in key,
+                dtype,
+                height,
+                width,
+                output,
+                kind,
+                batch_case,
+                interpolation,
+                channels,
+                antialias,
+            )
+            assert batches_by_workload.setdefault(workload, count) == count
+            if kind == "Tensor":
+                output_height, output_width = map(int, output.split("x"))
+                pixels = max(height * width, output_height * output_width)
+                assert count * pixels * channels * lane_bytes[base_dtype] < 2**31
+        assert entry["warmup_iterations"] == 10
+
+
+def test_invert_default_axis_does_not_expand_old_configs():
+    old = {"invert_uchar3_basic": {"benchmark": "invert", "dtypes": ["uchar3"]}}
+    args = generate_axis_args("invert_uchar3_basic", old)
+    assert "inputRange=nonnegative" in args
+    explicit = {"invert": {"string_axes": {"inputRange": ["nonnegative", "mixed"]}}}
+    args = generate_axis_args("invert", explicit)
+    assert "inputRange=[nonnegative,mixed]" in args
+    assert "inputRange=nonnegative" not in args
+
+
+@pytest.mark.parametrize(
+    "explicit",
+    [
+        {},
+        {"scaleMode": ["scale", "stddev"]},
+        {"storage": ["Offset2Pitch2"]},
+        {"paramKind": ["RowBaseColumnScale"]},
+    ],
+)
+def test_normalize_optional_axes_preserve_implicit_defaults(explicit):
+    entry = {"benchmark": "normalize", "string_axes": explicit}
+    args = generate_axis_args("normalize_case", {"normalize_case": entry})
+    for axis, default in (
+        ("paramKind", "PerSample"),
+        ("scaleMode", "stddev"),
+        ("storage", "Native"),
+    ):
+        actual = [arg for arg in args if arg.startswith(f"{axis}=")]
+        values = explicit.get(axis, [default])
+        expected = values[0] if len(values) == 1 else f"[{','.join(values)}]"
+        assert actual == [f"{axis}={expected}"]
+
+
+@pytest.mark.parametrize(
+    "explicit",
+    [
+        {},
+        {"storage": ["Offset2Pitch2"]},
+        {"paramKind": ["RowBaseColumnScale"]},
+        {"scaleMode": ["scale"]},
+    ],
+)
+def test_normalize_results_keep_only_declared_optional_axes(tmp_path, explicit):
+    output = tmp_path / "normalize.nvbench"
+    row = {
+        "Benchmark": "normalize",
+        "Skipped": "No",
+        "BWUtil": 0.5,
+        "GPU Time (sec)": 0.001,
+        "Device Name": "test GPU",
+        "paramKind": "PerSample",
+        "scaleMode": "stddev",
+        "storage": "Native",
+    }
+    row.update({axis: values[0] for axis, values in explicit.items()})
+    pd.DataFrame([row]).to_csv(output, index=False)
+    runner = DummyRunner(
+        tmp_path,
+        {
+            "normalize_case": {
+                "benchmark": "normalize",
+                "tier": "advanced",
+                "string_axes": explicit,
+            }
+        },
+        None,
+        "cpp",
+    )
+    assert runner.collect_results(output.name, "normalize_case")
+    result = runner.results[0]
+    for axis in ("paramKind", "scaleMode", "storage"):
+        assert (axis in result.columns) == (axis in explicit)

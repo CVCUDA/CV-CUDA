@@ -32,6 +32,7 @@ closed in production cvcuda.  This test pins both halves of the fix.
 """
 
 import gc
+import sysconfig
 
 import cupy
 import pytest
@@ -53,6 +54,73 @@ extern "C" __global__ void cvcuda_test_busy_wait(unsigned long long cycles) {
 )
 
 
+class _AdvertisedDefaultStream:
+    def __init__(self, array, stream):
+        self._array = array
+        self._stream = stream
+
+    @property
+    def __cuda_array_interface__(self):
+        interface = dict(self._array.__cuda_array_interface__)
+        interface["stream"] = self._stream
+        return interface
+
+
+@pytest.mark.parametrize("sentinel", [1, 2])
+def test_seeded_default_sentinel_synchronizes_consumer(sentinel):
+    """GIL sentinel fallback and FT producer capture both order a distinct stream."""
+    cvcuda.clear_cache()
+    free_threaded = bool(sysconfig.get_config_var("Py_GIL_DISABLED"))
+    consumer = (
+        cvcuda.Stream()
+        if free_threaded and sentinel == 2
+        else cvcuda.as_stream(sentinel)
+    )
+
+    warm_src = cvcuda.Tensor((1, 8, 8, 3), cvcuda.Type.U8, "NHWC")
+    warm_dst = cvcuda.Tensor((1, 8, 8, 1), cvcuda.Type.U8, "NHWC")
+    cvcuda.cvtcolor_into(
+        src=warm_src,
+        dst=warm_dst,
+        code=cvcuda.ColorConversion.BGR2GRAY,
+        stream=consumer,
+    )
+    consumer.sync()
+
+    producer = (
+        cupy.cuda.Stream.ptds
+        if free_threaded and sentinel == 2
+        else cupy.cuda.Stream(non_blocking=True)
+    )
+    src = cupy.zeros((1, 8, 8, 3), dtype=cupy.uint8)
+    cupy.cuda.get_current_stream().synchronize()
+    if not free_threaded:
+        src_nv = cvcuda.as_tensor(_AdvertisedDefaultStream(src, sentinel), "NHWC")
+    dst = cvcuda.Tensor((1, 8, 8, 1), cvcuda.Type.U8, "NHWC")
+
+    with producer:
+        _DELAY_KERNEL((1,), (1,), (300_000_000,))
+        src.fill(100)
+
+    if free_threaded:
+        # Free-threaded imports capture the advertised producer at wrap time.
+        # The per-thread sentinel must describe the actual producing thread.
+        src_nv = cvcuda.as_tensor(_AdvertisedDefaultStream(src, sentinel), "NHWC")
+
+    cvcuda.cvtcolor_into(
+        src=src_nv,
+        dst=dst,
+        code=cvcuda.ColorConversion.BGR2GRAY,
+        stream=consumer,
+    )
+    consumer.sync()
+
+    result = cupy.asarray(dst.cuda()).get()
+    assert (
+        result == 100
+    ).all(), f"raw CAI sentinel {sentinel} bypassed defensive producer synchronization"
+
+
 def _warm_up_varshape_autocontrast(shape, consumer_stream):
     """Prime AutoContrast while keeping its warm-up resources alive."""
     size = (shape[1], shape[0])
@@ -64,6 +132,95 @@ def _warm_up_varshape_autocontrast(shape, consumer_stream):
         cvcuda.autocontrast_into(warm_dst, warm_src, stream=consumer_stream)
     consumer_stream.sync()
     return size, (warm_src, warm_dst)
+
+
+def _external_stream(stream):
+    class StreamProtocol:
+        def __cuda_stream__(self):
+            return 0, int(stream.handle)
+
+    if hasattr(cupy.cuda.Stream, "from_external"):
+        return cupy.cuda.Stream.from_external(StreamProtocol())
+    return cupy.cuda.ExternalStream(stream.handle)
+
+
+def test_written_wrapped_image_exports_its_latest_stream():
+    """A downstream DLPack reader must wait for a wrapped-image writer."""
+    cvcuda.clear_cache()
+    shape = (128, 128, 3)
+    writer = cvcuda.Stream()
+    _size, _warm_batches = _warm_up_varshape_autocontrast(shape, writer)
+
+    src = cupy.full(shape, fill_value=100, dtype=cupy.uint8)
+    dst = cupy.full(shape, fill_value=7, dtype=cupy.uint8)
+    observed = cupy.empty_like(dst)
+    src_image = cvcuda.as_image(src)
+    dst_image = cvcuda.as_image(dst)
+    src_batch = cvcuda.ImageBatchVarShape(1)
+    dst_batch = cvcuda.ImageBatchVarShape(1)
+    src_batch.pushback(src_image)
+    dst_batch.pushback(dst_image)
+    cupy.cuda.runtime.deviceSynchronize()
+
+    # Claim the wrapped Image on writer before parking it. Its first use would
+    # otherwise conservatively synchronize the device for the import-time CAI
+    # default-stream sentinel and accidentally consume the delay below.
+    cvcuda.autocontrast_into(dst_batch, src_batch, stream=writer)
+    writer.sync()
+    dst.fill(7)
+    cupy.cuda.runtime.deviceSynchronize()
+
+    exported_before = dst_image.cuda()
+    with _external_stream(writer):
+        _DELAY_KERNEL((1,), (1,), (2_000_000_000,))
+    cvcuda.autocontrast_into(dst_batch, src_batch, stream=writer)
+    exported_after = dst_image.cuda()
+    assert exported_after is exported_before
+
+    reader = cupy.cuda.Stream(non_blocking=True)
+    capsule = exported_after.__dlpack__(stream=reader.ptr)
+    view = cupy.from_dlpack(capsule)
+    with reader:
+        cupy.copyto(observed, view)
+    reader.synchronize()
+    writer.sync()
+
+    assert cupy.all(
+        observed == 100
+    ), "the DLPack reader overtook the CV-CUDA writer for a wrapped image"
+
+
+@pytest.mark.skipif(
+    cupy.cuda.runtime.getDeviceCount() < 2,
+    reason="requires a second GPU to differ from the ambient CUDA device",
+)
+def test_dlpack_sync_uses_the_exported_buffer_device():
+    """DLPack event creation must not depend on the caller's current GPU."""
+    with cupy.cuda.Device(1):
+        default = cvcuda.Stream.default
+        src = cvcuda.Tensor((1, 32, 32, 1), cvcuda.Type.U8, "NHWC")
+        dst = cvcuda.Tensor((1, 32, 32, 1), cvcuda.Type.U8, "NHWC")
+        cupy.asarray(src.cuda()).fill(91)
+        cupy.asarray(dst.cuda()).fill(0)
+        consumer = cupy.cuda.Stream(non_blocking=True)
+        observed = cupy.empty_like(cupy.asarray(dst.cuda()))
+        cupy.cuda.runtime.deviceSynchronize()
+
+        with cupy.cuda.Stream.null:
+            _DELAY_KERNEL((1,), (1,), (500_000_000,))
+        cvcuda.flip_into(dst, src, 0, stream=default)
+        exported = dst.cuda()
+
+    with cupy.cuda.Device(0):
+        capsule = exported.__dlpack__(stream=consumer.ptr)
+
+    with cupy.cuda.Device(1):
+        view = cupy.from_dlpack(capsule)
+        with consumer:
+            cupy.copyto(observed, view)
+        consumer.synchronize()
+        default.sync()
+        assert cupy.all(observed == 91)
 
 
 def _use_then_release_external_image_wrapper(
@@ -86,7 +243,7 @@ def _use_then_release_external_image_wrapper(
     batch.clear()
     del batch, image, buffer
     gc.collect()
-    cvcuda.internal.syncAuxStream()
+    cvcuda.internal.drain_pending_releases()
     return wrapper_id
 
 

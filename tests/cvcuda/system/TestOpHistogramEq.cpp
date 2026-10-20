@@ -178,6 +178,85 @@ TEST_P(OpHistogramEq, HistogramEq_correct_output)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+// Widths cover 32-byte-aligned packed rows, padded rows with 16-byte carrier tails, and multi-tile runs.
+// clang-format off
+NVCV_TEST_SUITE_P(OpHistogramEqStream, test::ValueList<int, int, NVCVImageFormat, int>
+{
+    {    1920,      4,  NVCV_IMAGE_FORMAT_RGB8,       2},
+    {      17,      5,  NVCV_IMAGE_FORMAT_RGB8,       2},
+    {      49,      7,  NVCV_IMAGE_FORMAT_RGB8,       3},
+    {       1,      1,  NVCV_IMAGE_FORMAT_RGB8,       1},
+    {      32,      3, NVCV_IMAGE_FORMAT_BGRA8,       2},
+    {      13,      9, NVCV_IMAGE_FORMAT_BGRA8,       2},
+    {      64,      4,    NVCV_IMAGE_FORMAT_U8,       2},
+    {      21,      6,    NVCV_IMAGE_FORMAT_U8,       3},
+    {      32,      3,   NVCV_IMAGE_FORMAT_2U8,       2},
+    {      19,      5,   NVCV_IMAGE_FORMAT_2U8,       2},
+});
+
+// clang-format on
+
+TEST_P(OpHistogramEqStream, matches_cpu_gold)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int         width  = GetParamValue<0>();
+    const int         height = GetParamValue<1>();
+    nvcv::ImageFormat format{GetParamValue<2>()};
+    const int         batches = GetParamValue<3>();
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, format);
+
+    const auto channels = static_cast<int>(inTensor.shape()[inTensor.shape().rank() - 1]);
+
+    auto uploadSample = [&inTensor, &outTensor, width, height, channels](int i)
+    {
+        std::vector<uint8_t> imageVec(static_cast<size_t>(width) * height * channels);
+        // Distinct peak frequencies expose channel and sample swaps after equalization.
+        for (size_t p = 0; p < static_cast<size_t>(width) * height; ++p)
+        {
+            for (int c = 0; c < channels; ++c)
+            {
+                const size_t period        = 2 + i * channels + c;
+                const size_t ramp          = p % period == period - 1 ? 0 : p - p / period;
+                imageVec[p * channels + c] = static_cast<uint8_t>((ramp + 17 + 37 * i + 53 * c) % 256);
+            }
+        }
+        EXPECT_NO_THROW(util::SetImageTensorFromVector<uint8_t>(inTensor.exportData(), imageVec, i));
+
+        std::vector<uint8_t> sentinel(static_cast<size_t>(width) * height * channels, 0xCD);
+        EXPECT_NO_THROW(util::SetImageTensorFromVector<uint8_t>(outTensor.exportData(), sentinel, i));
+    };
+    for (int i = 0; i < batches; ++i)
+    {
+        ASSERT_NO_FATAL_FAILURE(uploadSample(i));
+    }
+
+    cvcuda::HistogramEq op(batches);
+    EXPECT_NO_THROW(op(stream, inTensor, outTensor));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    auto compareSample = [&inTensor, &outTensor, width, height, channels](int i)
+    {
+        SCOPED_TRACE(i);
+        std::vector<uint8_t> input;
+        std::vector<uint8_t> outImage;
+        std::vector<uint8_t> goldImage;
+        EXPECT_NO_THROW(util::GetImageVectorFromTensor(inTensor.exportData(), i, input));
+        histogramEqualization(input, width, height, channels, goldImage);
+        EXPECT_NO_THROW(util::GetImageVectorFromTensor(outTensor.exportData(), i, outImage));
+        EXPECT_EQ(outImage, goldImage);
+    };
+    for (int i = 0; i < batches; ++i)
+    {
+        ASSERT_NO_FATAL_FAILURE(compareSample(i));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpHistogramEq, tensor_c1_nchw_widened_body_and_tail)
 {
     constexpr int width   = 16 * 8 + 3;
@@ -408,7 +487,7 @@ TEST_P(OpHistogramEqPlanarVarShape, varshape_matches_interleaved)
 // clang-format off
 NVCV_TEST_SUITE_P(OpHistogramEq_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
     {nvcv::FMT_RGB8, nvcv::FMT_RGBf16},
-    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16},
+    {nvcv::FMT_RGBf32, nvcv::FMT_S32},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8p},
 });
 
@@ -416,7 +495,7 @@ NVCV_TEST_SUITE_P(OpHistogramEqVarshape_Negative, test::ValueList<nvcv::ImageFor
     {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 2, 2},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 2, 2},
     {nvcv::FMT_RGB8, nvcv::FMT_RGBf16, 2, 2},
-    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, 2, 2},
+    {nvcv::FMT_RGBf32, nvcv::FMT_S32, 2, 2},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 4, 3},
 });
 
@@ -648,4 +727,277 @@ TEST(OpHistogramEqVarshape_Negative, varshape_hasDifferentFormat)
     }
 
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Hardening: the element-format check compares kind and bit width only, so an RGB8 input against an
+// RGBA8 output passed it while both wrappers were built with the input's channel count.
+TEST(OpHistogramEq_Negative, rejects_varshape_channel_count_mismatch)
+{
+    constexpr int kBatch = 2;
+
+    nvcv::ImageBatchVarShape src(kBatch);
+    nvcv::ImageBatchVarShape dst(kBatch);
+    for (int i = 0; i < kBatch; ++i)
+    {
+        src.pushBack(nvcv::Image(nvcv::Size2D{16, 12}, nvcv::FMT_RGB8));
+        dst.pushBack(nvcv::Image(nvcv::Size2D{16, 12}, nvcv::FMT_RGBA8));
+    }
+
+    cvcuda::HistogramEq op(kBatch);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, src, dst); }));
+}
+
+// Hardening: the histogram is built from the source extent but the lookup bounds on the destination,
+// so a larger output image used to read past the source.
+TEST(OpHistogramEq_Negative, rejects_varshape_per_image_size_mismatch)
+{
+    constexpr int kBatch = 2;
+
+    nvcv::ImageBatchVarShape src(kBatch);
+    nvcv::ImageBatchVarShape dst(kBatch);
+    src.pushBack(nvcv::Image(nvcv::Size2D{16, 12}, nvcv::FMT_U8));
+    src.pushBack(nvcv::Image(nvcv::Size2D{16, 12}, nvcv::FMT_U8));
+    dst.pushBack(nvcv::Image(nvcv::Size2D{16, 12}, nvcv::FMT_U8));
+    dst.pushBack(nvcv::Image(nvcv::Size2D{24, 20}, nvcv::FMT_U8));
+
+    cvcuda::HistogramEq op(kBatch);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, src, dst); }));
+}
+
+TEST(OpHistogramEq, tensor_c1_hwc_dispatch)
+{
+    constexpr int width   = 19;
+    constexpr int height  = 7;
+    constexpr int batches = 1;
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, nvcv::FMT_U8);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, nvcv::FMT_U8);
+
+    std::vector<uint8_t> input(width * height);
+    test::planar::FillDeterministicValues(input, 37, nvcv::TYPE_U8);
+    ASSERT_NO_THROW(util::SetImageTensorFromVector<uint8_t>(inTensor.exportData(), input, 0));
+
+    cvcuda::HistogramEq op(batches);
+    EXPECT_NO_THROW(op(stream, inTensor, outTensor));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint8_t> output;
+    std::vector<uint8_t> gold;
+    EXPECT_NO_THROW(util::GetImageVectorFromTensor(outTensor.exportData(), 0, output));
+    histogramEqualization(input, width, height, 1, gold);
+    EXPECT_EQ(output, gold);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHistogramEq_Negative, rejects_mixed_width_tensor_dtype)
+{
+    const nvcv::DataType mixedWidth{nvcv::DataKind::UNSIGNED, static_cast<nvcv::Packing>(NVCV_PACKING_X32_Y24b8)};
+    nvcv::Tensor         inTensor(
+                {
+                    {1, 5, 5, 2},
+                    "NHWC"
+    },
+                mixedWidth);
+    nvcv::Tensor outTensor(
+        {
+            {1, 5, 5, 2},
+            "NHWC"
+    },
+        mixedWidth);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::HistogramEq op(1);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, inTensor, outTensor); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Pillow's table, computed on the host from the documented formula rather than by calling the
+// operator. The image is deliberately skewed -- a flat histogram equalizes to itself under either
+// scheme, which would not tell the two methods apart.
+TEST(OpHistogramEq, pillow_method_matches_the_reference_table)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int kW    = 32;
+    constexpr int kH    = 32;
+    const size_t  count = static_cast<size_t>(kW) * kH;
+
+    std::vector<uint8_t> input(count);
+    uint32_t             lcg = 12345;
+    for (size_t i = 0; i < count; ++i)
+    {
+        lcg = lcg * 1103515245u + 12345u;
+
+        input[i] = static_cast<uint8_t>((i % 3 == 0) ? (lcg >> 16) % 256 : (lcg >> 16) % 64);
+    }
+
+    input.back() = 255;
+
+    std::array<int, 256> hist{};
+    for (uint8_t v : input)
+    {
+        ++hist[v];
+    }
+    std::array<int, 256> cumulative{};
+    int                  running = 0;
+    for (int i = 0; i < 256; ++i)
+    {
+        running       = running + hist[i];
+        cumulative[i] = running;
+    }
+    const int total   = cumulative[255];
+    int       tallest = 0;
+    for (int k = 0; k < 256; ++k)
+    {
+        if (cumulative[k] == total)
+        {
+            tallest = hist[k];
+            break;
+        }
+    }
+    const int            step = (total - tallest) / 255;
+    std::array<int, 256> lut{};
+    for (int k = 0; k < 256; ++k)
+    {
+        if (step == 0)
+        {
+            lut[k] = k; // Pillow passes a channel through rather than dividing by zero
+        }
+        else
+        {
+            lut[k] = k == 0 ? 0 : std::clamp((cumulative[k - 1] + step / 2) / step, 0, 255);
+        }
+    }
+
+    nvcv::Tensor in(1, {kW, kH}, nvcv::FMT_U8);
+    nvcv::Tensor out(1, {kW, kH}, nvcv::FMT_U8);
+    auto         inData  = in.exportData<nvcv::TensorDataStridedCuda>();
+    auto         outData = out.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inData);
+    ASSERT_TRUE(outData);
+    ASSERT_NO_THROW(nvcv::util::SetImageTensorFromVector<uint8_t>(*inData, input, 0));
+
+    cvcuda::HistogramEq op(1);
+    ASSERT_NO_THROW(op(stream, in, out, NVCV_HISTOGRAM_EQ_PILLOW));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint8_t> got;
+    nvcv::util::GetImageVectorFromTensor<uint8_t>(*outData, 0, got);
+    for (size_t i = 0; i < count; ++i)
+    {
+        ASSERT_EQ(static_cast<uint8_t>(lut[input[i]]), got[i]) << "at " << i;
+    }
+
+    // The two methods must actually differ, or this proves nothing about the selection.
+    ASSERT_NO_THROW(op(stream, in, out, NVCV_HISTOGRAM_EQ_OPENCV));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    std::vector<uint8_t> openCv;
+    nvcv::util::GetImageVectorFromTensor<uint8_t>(*outData, 0, openCv);
+    EXPECT_NE(got, openCv);
+
+    // Omitting the method keeps the released OpenCV behavior.
+    ASSERT_NO_THROW(op(stream, in, out));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    std::vector<uint8_t> byDefault;
+    nvcv::util::GetImageVectorFromTensor<uint8_t>(*outData, 0, byDefault);
+    EXPECT_EQ(openCv, byDefault);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpHistogramEqPillow, test::ValueList<int, int, int, bool>
+{
+    {16, 16, 1, false}, {32, 32, 1, false}, {64, 64, 3, false}, {128, 128, 4, false},
+    {16, 16, 1, true}, {32, 32, 1, true}, {64, 64, 3, true}, {128, 128, 4, true}
+});
+
+// clang-format on
+
+TEST_P(OpHistogramEqPillow, batched_reference)
+{
+    const int  width = GetParamValue<0>(), height = GetParamValue<1>(), channels = GetParamValue<2>();
+    const bool planar = GetParamValue<3>();
+    const int  pixels = width * height;
+    const auto shape  = planar ? nvcv::TensorShape{{2, channels, height, width}, "NCHW"}
+                              : nvcv::TensorShape{{2, height, width, channels}, "NHWC"};
+    nvcv::Tensor in(shape, nvcv::TYPE_U8), out(shape, nvcv::TYPE_U8);
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    std::vector<std::vector<uint8_t>> inputs(2, std::vector<uint8_t>(pixels * channels));
+    auto                              index = [=](int p, int c)
+    {
+        return planar ? c * pixels + p : p * channels + c;
+    };
+    for (int sample = 0; sample < 2; ++sample)
+    {
+        for (int c = 0; c < channels; ++c)
+        {
+            for (int p = 0; p < pixels; ++p)
+            {
+                inputs[sample][index(p, c)] = static_cast<uint8_t>((p * 13 + c * 7 + sample * 11) % 64);
+            }
+            inputs[sample][index(pixels - 1, c)] = 255;
+        }
+        util::SetImageTensorFromVector<uint8_t>(in.exportData(), inputs[sample], sample);
+    }
+    cvcuda::HistogramEq op(2);
+    ASSERT_NO_THROW(op(stream, in, out, NVCV_HISTOGRAM_EQ_PILLOW));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    for (int sample = 0; sample < 2; ++sample)
+    {
+        std::vector<uint8_t> got;
+        util::GetImageVectorFromTensor<uint8_t>(out.exportData(), sample, got);
+        for (int c = 0; c < channels; ++c)
+        {
+            std::array<int, 256> hist{};
+            for (int p = 0; p < pixels; ++p)
+            {
+                ++hist[inputs[sample][index(p, c)]];
+            }
+            int last = 255;
+            while (hist[last] == 0)
+            {
+                --last;
+            }
+            const int                step = (pixels - hist[last]) / 255;
+            int                      sum  = step / 2;
+            std::array<uint8_t, 256> lut{};
+            for (int v = 0; v < 256; ++v)
+            {
+                lut[v] = static_cast<uint8_t>(step == 0 ? v : std::min(sum / step, 255));
+                sum += hist[v];
+            }
+            for (int p = 0; p < pixels; ++p)
+            {
+                ASSERT_EQ(got[index(p, c)], lut[inputs[sample][index(p, c)]])
+                    << "sample=" << sample << " channel=" << c << " pixel=" << p;
+            }
+        }
+    }
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpHistogramEq_Negative, rejects_invalid_method)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor in(1, {16, 16}, nvcv::FMT_U8);
+    nvcv::Tensor out(1, {16, 16}, nvcv::FMT_U8);
+
+    cvcuda::HistogramEq op(1);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, in, out, NVCV_HISTOGRAM_EQ_INVALID); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

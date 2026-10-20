@@ -25,4 +25,4 @@ build==${build}
 patchelf==${patchelf}
 auditwheel==${auditwheel}
 flake8==${flake8}
-pybind11-stubgen==${pybind11_stubgen}
+nanobind==${nanobind}

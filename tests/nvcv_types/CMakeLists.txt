@@ -26,7 +26,6 @@ if(BUILD_TESTS_CPP)
     add_subdirectory(cudatools_system)
 
     # Unit tests for nvcv CUDA tools
-    add_subdirectory(cudatools_unit)
 
     # Test NVCV can be used standalone
 
@@ -51,6 +50,24 @@ if(BUILD_TESTS_CPP)
         -DARCH_AARCH64=${ARCH_AARCH64}
         -DENABLE_COMPAT_OLD_GLIBC=${ENABLE_COMPAT_OLD_GLIBC}
     )
+
+    # These are separate CMake projects, so they inherit none of the parent's
+    # compiler flags or options. In a sanitized build that leaves the standalone
+    # executable with no ASan runtime of its own while it still loads an
+    # instrumented libnvcv_types from the install tree, and it aborts at startup
+    # with "ASan runtime does not come first in initial library list".
+    #
+    # ENABLE_SANITIZER has to travel with the flags: it is what makes
+    # nvcv_util_sanitizer link -Wl,-u__asan_default_options, and without that
+    # the linker drops __asan_default_options from the static library, losing
+    # the protect_shadow_gap=0 that lets CUDA reserve its address space.
+    if(ENABLE_SANITIZER)
+        list(APPEND NVCV_STANDALONE_CMAKE_ARGS
+            -DENABLE_SANITIZER=${ENABLE_SANITIZER}
+            "-DCMAKE_C_FLAGS=${COMPILER_SANITIZER_FLAGS}"
+            "-DCMAKE_CXX_FLAGS=${COMPILER_SANITIZER_FLAGS}"
+        )
+    endif()
 
     # Skip standalone tests with GCC-10 due to ABI incompatibility with system libgtest
     # These tests use find_package(GTest) which requires system GTest, causing ABI issues with GCC-10

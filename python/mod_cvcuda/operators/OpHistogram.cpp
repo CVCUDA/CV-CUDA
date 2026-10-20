@@ -15,67 +15,69 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpHistogram.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 #include <array>
 
 namespace cvcudapy {
 
 namespace {
+using native::Stream;
+using native::Tensor;
 
-Tensor HistogramInto(Tensor &histogram, Tensor &input, std::optional<Tensor> mask, std::optional<Stream> pstream)
+Tensor &HistogramInto(Tensor &histogram, Tensor &input, std::optional<Tensor *> mask, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
-    if (mask && mask->shape() != input.shape())
+    if (mask && *mask && (*mask)->impl().shape() != input.impl().shape())
     {
         throw std::invalid_argument("Mask must have the same shape as input");
     }
 
     auto op = CreateOperator<cvcuda::Histogram>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {histogram});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    if (mask)
+    if (mask && *mask)
     {
-        guard.add(LockMode::LOCK_MODE_READ, {*mask});
-        guard.run([&op, &pstream, &input, &mask, &histogram]()
-                  { op->submit(pstream->cudaHandle(), input, nvcv::OptionalTensorConstRef{*mask}, histogram); });
+        guard.add(LockMode::LOCK_MODE_READ, {**mask});
+        guard.run(
+            [&op, &stream, &input, &mask, &histogram]() {
+                op->submit(stream.handle(), input.impl(), nvcv::OptionalTensorConstRef{(*mask)->impl()},
+                           histogram.impl());
+            });
     }
     else
     {
         guard.run(
-            [&op, &pstream, &input, &histogram]()
-            { op->submit(pstream->cudaHandle(), input, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histogram); });
+            [&op, &stream, &input, &histogram]() {
+                op->submit(stream.handle(), input.impl(), nvcv::OptionalTensorConstRef{nvcv::NullOpt},
+                           histogram.impl());
+            });
     }
-    return std::move(histogram);
+    return histogram;
 }
 
-Tensor Histogram(Tensor &input, const std::optional<Tensor> &mask, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Histogram(Tensor &input, std::optional<Tensor *> mask, std::optional<Stream *> pstream)
 {
     std::array<ssize_t, 3> shape;
     // check for non batched tensors
-    if (input.shape().size() == 3)
+    if (const nvcv::TensorShape &inputShape = input.impl().shape(); inputShape.rank() == 3)
     {
         shape[0] = 1;
         shape[1] = 256;
         shape[2] = 1;
     }
-    else if (input.shape().size() == 4)
+    else if (inputShape.rank() == 4)
     {
-        shape[0] = input.shape()[0];
+        shape[0] = inputShape[0];
         shape[1] = 256;
         shape[2] = 1;
     }
@@ -84,15 +86,17 @@ Tensor Histogram(Tensor &input, const std::optional<Tensor> &mask, std::optional
         throw std::invalid_argument("Input tensor must be HWC, NHWC, CHW, or NCHW");
     }
 
-    Tensor histogram = Tensor::Create(nvcv::TensorShape(shape.data(), shape.size(), nvcv::TENSOR_HWC), nvcv::TYPE_S32);
-    return HistogramInto(histogram, input, mask, pstream);
+    auto histogram
+        = native::CreateTensor(nvcv::TensorShape(shape.data(), shape.size(), nvcv::TENSOR_HWC), nvcv::TYPE_S32);
+    HistogramInto(*histogram, input, mask, pstream);
+    return histogram;
 }
 
 } // namespace
 
-void ExportOpHistogram(py::module &m)
+void ExportOpHistogram(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("histogram", NvtxTrace("cvcuda.histogram", &Histogram), "src"_a, "mask"_a = nullptr, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
@@ -110,7 +114,7 @@ void ExportOpHistogram(py::module &m)
     )pbdoc");
 
     m.def("histogram_into", NvtxTrace("cvcuda.histogram_into", &HistogramInto), "histogram"_a, "src"_a,
-          "mask"_a = nullptr, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "mask"_a = nullptr, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes an histogram operation on the given cuda stream.
 
 

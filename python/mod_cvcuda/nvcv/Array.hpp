@@ -21,29 +21,28 @@
 #include "Container.hpp"
 #include "Size.hpp"
 
+#include <common/Binding.hpp>
 #include <nvcv/Array.hpp>
 #include <nvcv/Shape.hpp>
 #include <nvcv/TensorLayout.hpp>
 #include <nvcv/python/Shape.hpp>
-#include <pybind11/numpy.h>
-#include <pybind11/pytypes.h>
 
 namespace nvcvpy::priv {
-namespace py = pybind11;
+namespace py = nanobind;
 
 class ExternalBuffer;
 
 class Array : public Container
 {
 public:
-    static void Export(py::module &m);
+    static void Export(py::module_ &m);
 
     static std::shared_ptr<Array> Create(int64_t length, nvcv::DataType dtype);
     static std::shared_ptr<Array> Create(const Shape &shape, nvcv::DataType dtype);
 
     static std::shared_ptr<Array> CreateFromReqs(const nvcv::Array::Requirements &reqs);
 
-    static std::shared_ptr<Array> Wrap(ExternalBuffer &buffer);
+    static std::shared_ptr<Array> Wrap(py::object buffer);
     static std::shared_ptr<Array> ResizeArray(Array &array, Shape shape);
     static std::shared_ptr<Array> ResizeArray(Array &array, int64_t length);
 
@@ -80,7 +79,8 @@ public:
 
     const Key &key() const override;
 
-    int64_t GetSizeInBytes() const override;
+    int64_t        GetSizeInBytes() const override;
+    RetainedMemory retainedMemory() const override;
 
     py::object cuda() const;
 

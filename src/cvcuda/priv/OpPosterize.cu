@@ -18,10 +18,12 @@
 #include "Nvtx.hpp"
 #include "OpPosterize.hpp"
 
+#include "ElementStreamCommon.cuh"
 #include "SameShapeCommon.cuh"
 
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
+#include <cvcuda/cuda_tools/SaturateCast.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
 #include <cvcuda/cuda_tools/TensorWrap.hpp>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
@@ -35,22 +37,81 @@
 
 #include <type_traits>
 
-namespace cuda       = nvcv::cuda;
-namespace util       = nvcv::util;
-namespace same_shape = cvcuda::priv::same_shape;
+namespace cuda        = nvcv::cuda;
+namespace elem_stream = cvcuda::priv::elem_stream;
+namespace util        = nvcv::util;
+namespace same_shape  = cvcuda::priv::same_shape;
 
 namespace {
 
-// out = in & mask, per channel component (mask keeps the top `bits` bits of each value).
-template<typename T, typename BT>
-inline __device__ T PosterizeElem(T pixel, BT mask)
+struct PosterizeFloatParam
+{
+    float levels;
+    float reciprocal;
+};
+
+template<typename BT>
+using PosterizeParamT = std::conditional_t<cuda::detail::IsFloatingPointV<BT>, PosterizeFloatParam, BT>;
+
+template<typename BT>
+inline __device__ BT PosterizeValue(BT v, PosterizeParamT<BT> param)
+{
+    if constexpr (std::is_same_v<BT, double>)
+    {
+        const uint32_t high      = static_cast<uint32_t>(__double2hiint(v));
+        const uint32_t low       = static_cast<uint32_t>(__double2loint(v));
+        const uint32_t magnitude = high & 0x7fffffffu;
+        if (magnitude > 0x7ff00000u || (magnitude == 0x7ff00000u && low != 0))
+        {
+            return v + v;
+        }
+
+        // Quantized results have at most eight significant bits, all in the high word.
+        // Clearing the fractional significand bits implements floor(v * 2^bits) / 2^bits
+        // without routing conversions through the low-throughput FP64 pipeline.
+        const int bits   = (__float_as_uint(param.levels) >> 23) - 127;
+        uint32_t  result = 0;
+        if (high < 0x3ff00000u)
+        {
+            const int exponent        = high >> 20;
+            const int minimumExponent = 1023 - bits;
+            if (exponent >= minimumExponent)
+            {
+                result = high & (0xffffffffu << (minimumExponent + 20 - exponent));
+            }
+        }
+        else if (high <= 0x7ff00000u)
+        {
+            result = bits == 0 ? 0 : 0x3ff00000u - (1u << (21 - bits));
+        }
+        if (magnitude == 0 && low == 0)
+        {
+            result = high;
+        }
+        return __hiloint2double(result, 0);
+    }
+    else if constexpr (cuda::detail::IsFloatingPointV<BT>)
+    {
+        const float value = static_cast<float>(v);
+        float       q     = ::floorf(value * param.levels);
+        q                 = q < 0.f ? 0.f : (q > param.levels - 1.f ? param.levels - 1.f : q);
+        return cuda::SaturateCast<BT>(q * param.reciprocal);
+    }
+    else
+    {
+        return static_cast<BT>(v & param);
+    }
+}
+
+template<typename T, typename Param>
+inline __device__ T PosterizeElem(T pixel, Param param)
 {
     static constexpr int numChannels = cuda::NumElements<T>;
     T                    out{};
 #pragma unroll
     for (int c = 0; c < numChannels; ++c)
     {
-        cuda::GetElement(out, c) = static_cast<BT>(cuda::GetElement(pixel, c) & mask);
+        cuda::GetElement(out, c) = PosterizeValue<cuda::BaseType<T>>(cuda::GetElement(pixel, c), param);
     }
     return out;
 }
@@ -69,6 +130,17 @@ inline __device__ void DoPosterize(SrcWrapper src, DstWrapper dst, const int2 si
     {
         return;
     }
+    if constexpr (!IsPlanar && alignof(SrcT) > alignof(cuda::BaseType<SrcT>))
+    {
+        const auto *srcPixel = src.ptr(nhwCoord.z, nhwCoord.y, nhwCoord.x);
+        auto       *dstPixel = dst.ptr(nhwCoord.z, nhwCoord.y, nhwCoord.x);
+        if ((reinterpret_cast<uintptr_t>(srcPixel) | reinterpret_cast<uintptr_t>(dstPixel)) % alignof(SrcT) != 0)
+        {
+            same_shape::StoreUnalignedPixel(dstPixel,
+                                            PosterizeElem<DstT>(same_shape::LoadUnalignedPixel(srcPixel), mask));
+            return;
+        }
+    }
     auto coord = same_shape::GetCoordForLayout<IsPlanar>(nhwCoord, p);
     dst[coord] = PosterizeElem<DstT>(src[coord], mask);
 }
@@ -79,174 +151,281 @@ inline __device__ void DoPosterize(SrcWrapper src, DstWrapper dst, const int2 si
 template<bool isPlanar, class SrcWrapper, class DstWrapper, typename BT>
 __global__ void Posterize(SrcWrapper src, DstWrapper dst, int2 size, int numPlanes, BT mask)
 {
-    assert(isPlanar || numPlanes == 1);
-    if constexpr (!isPlanar)
-    {
-        DoPosterize<isPlanar>(src, dst, size, 0, mask);
-    }
-    else
-    {
-        for (int p = 0; p < numPlanes; p++)
-        {
-            DoPosterize<isPlanar>(src, dst, size, p, mask);
-        }
-    }
+    same_shape::ForEachPlane<isPlanar>(numPlanes, [=](int p) { DoPosterize<isPlanar>(src, dst, size, p, mask); });
 }
 
 // VarShape variant
 template<bool isPlanar, class SrcWrapper, class DstWrapper, typename BT>
 __global__ void Posterize(SrcWrapper src, DstWrapper dst, int numPlanes, BT mask)
 {
-    assert(isPlanar || numPlanes == 1);
     int  z = blockIdx.z;
     int2 size{dst.width(z), dst.height(z)};
 
-    if constexpr (!isPlanar)
-    {
-        DoPosterize<isPlanar>(src, dst, size, 0, mask);
-    }
-    else
-    {
-        for (int p = 0; p < numPlanes; p++)
-        {
-            DoPosterize<isPlanar>(src, dst, size, p, mask);
-        }
-    }
+    same_shape::ForEachPlane<isPlanar>(numPlanes, [=](int p) { DoPosterize<isPlanar>(src, dst, size, p, mask); });
 }
 
-// Compute the posterize mask for a base type given bits-to-keep. Uses a wide intermediate so the
-// shift never hits the type-width UB (bits == 0 -> mask 0; bits == W -> all ones).
+// Floating-point levels and their reciprocal are powers of two, so both are exact.
+// The integer path uses a wide intermediate so the shift
+// never hits the type-width UB (bits == 0 -> mask 0; bits == W -> all ones).
 template<typename BT>
-inline BT PosterizeMask(int bits)
+inline PosterizeParamT<BT> PosterizeParam(int bits)
 {
-    constexpr int W = static_cast<int>(sizeof(BT) * 8);
-    uint32_t      m;
-    if (bits <= 0)
+    if constexpr (cuda::detail::IsFloatingPointV<BT>)
     {
-        m = 0u;
-    }
-    else if (bits >= W)
-    {
-        m = ~0u;
+        const float levels = static_cast<float>(1u << bits);
+        return {levels, 1.f / levels};
     }
     else
     {
-        m = ~((1u << (W - bits)) - 1u);
+        constexpr int W = static_cast<int>(sizeof(BT) * 8);
+        uint32_t      m;
+        if (bits <= 0)
+        {
+            m = 0u;
+        }
+        else if (bits >= W)
+        {
+            m = ~0u;
+        }
+        else
+        {
+            m = ~((1u << (W - bits)) - 1u);
+        }
+        return static_cast<BT>(m);
     }
-    return static_cast<BT>(m);
 }
 
-// Vectorized planar / 1-channel kernels --------------------------------------------------
+// Vectorized planar / 1-channel element map ----------------------------------------------
 //
-// The scalar kernels above move one element/thread/plane, leaving the planar and 1-channel-interleaved
-// paths memory-latency bound (long-scoreboard stalls, low BWUtil) -- each warp has a single outstanding
-// load. These map each (sample, plane) to grid.z and have each thread issue NGROUP wide vector loads
-// (uchar4 / ushort4) before compute, raising memory-level parallelism. Pure bitwise (in & mask), so no
-// extra compute; per element bit-identical to PosterizeElem. Modeled on OpNormalize.cu's planar vector body;
-// caller guards sizeof(Vec4)-aligned base+strides with a scalar fallback; per-thread tail handles width%4.
-template<int NGROUP, typename BT>
-__global__ void PosterizePlanarVec4Kernel(cuda::Tensor4DWrap<const BT, int32_t> src,
-                                          cuda::Tensor4DWrap<BT, int32_t> dst, int4 inout_size, BT mask)
+// Wider loads keep multiple requests outstanding on planar and single-channel paths;
+// using the scalar value operation also keeps partial vector groups exact.
+template<typename BT>
+struct PosterizeVec4Op
 {
-    const int g0      = blockIdx.x * blockDim.x * NGROUP + threadIdx.x;
-    const int src_y   = blockIdx.y * blockDim.y + threadIdx.y;
-    const int nc      = blockIdx.z;
-    const int batch   = nc / inout_size.y;
-    const int channel = nc % inout_size.y;
-    const int width   = inout_size.w;
+    using Param = PosterizeParamT<BT>;
 
-    if (g0 * 4 >= width || src_y >= inout_size.z)
+    Param mask;
+
+    inline __device__ explicit PosterizeVec4Op(Param m)
+        : mask(m)
     {
-        return;
     }
 
-    using Vec4 = cuda::MakeType<BT, 4>;
-
-    int  cx[NGROUP];
-    bool full[NGROUP];
-    Vec4 in4[NGROUP];
-#pragma unroll
-    for (int i = 0; i < NGROUP; ++i)
+    inline __device__ BT operator()(BT v) const
     {
-        cx[i]   = (g0 + i * blockDim.x) * 4;
-        full[i] = cx[i] + 4 <= width;
-        if (full[i])
-        {
-            in4[i] = *reinterpret_cast<const Vec4 *>(src.ptr(batch, channel, src_y, cx[i]));
-        }
+        return PosterizeValue<BT>(v, mask);
+    }
+};
+
+// Every element uses the same parameter, so carriers may cross pixel and channel boundaries.
+constexpr int kPosterizeStreamGrps = 2;
+
+template<typename BT, typename Enable = void>
+struct PosterizeStreamCarrier : elem_stream::DecliningCarrier
+{
+};
+
+template<typename BT>
+struct PosterizeStreamCarrier<BT,
+                              std::enable_if_t<std::is_same_v<BT, unsigned char> || std::is_same_v<BT, unsigned short>>>
+{
+    static constexpr bool kSupported = true;
+    using type                       = uint4;
+
+    struct Param
+    {
+        uint32_t maskWord;
+    };
+
+    static Param MakeParam(BT mask)
+    {
+        return Param{elem_stream::BroadcastToWord(mask)};
     }
 
-#pragma unroll
-    for (int i = 0; i < NGROUP; ++i)
+    inline static __device__ type Apply(type v, Param p)
     {
-        if (full[i])
+        return type{v.x & p.maskWord, v.y & p.maskWord, v.z & p.maskWord, v.w & p.maskWord};
+    }
+
+    inline static __device__ void Tail(const unsigned char *s, unsigned char *d, int bytes, Param p)
+    {
+        elem_stream::TailElementwise<BT>(
+            s, d, bytes, [p](BT v) { return static_cast<BT>(v & elem_stream::NarrowFromWord<BT>(p.maskWord)); });
+    }
+};
+
+template<typename BT>
+struct PosterizeStreamCarrier<BT, std::enable_if_t<std::is_same_v<BT, float> || std::is_same_v<BT, double>>>
+{
+    static constexpr bool kSupported = true;
+    // Native vectors retain wide memory instructions; aligned arrays are scalarized by nvcc.
+    using type  = uint4;
+    using Param = PosterizeFloatParam;
+
+    static Param MakeParam(Param param)
+    {
+        return param;
+    }
+
+    inline static __device__ type Apply(type v, Param param)
+    {
+        if constexpr (std::is_same_v<BT, double>)
         {
-            Vec4 out4;
-            out4.x                                                           = static_cast<BT>(in4[i].x & mask);
-            out4.y                                                           = static_cast<BT>(in4[i].y & mask);
-            out4.z                                                           = static_cast<BT>(in4[i].z & mask);
-            out4.w                                                           = static_cast<BT>(in4[i].w & mask);
-            *reinterpret_cast<Vec4 *>(dst.ptr(batch, channel, src_y, cx[i])) = out4;
-        }
-        else if (cx[i] < width)
-        {
-            for (int x = cx[i]; x < width; ++x)
+#pragma unroll
+            for (int i = 0; i < 4; i += 2)
             {
-                *dst.ptr(batch, channel, src_y, x) = static_cast<BT>(*src.ptr(batch, channel, src_y, x) & mask);
+                const double value         = __hiloint2double(cuda::GetElement(v, i + 1), cuda::GetElement(v, i));
+                const double result        = PosterizeValue<double>(value, param);
+                cuda::GetElement(v, i)     = __double2loint(result);
+                cuda::GetElement(v, i + 1) = __double2hiint(result);
             }
         }
+        else
+        {
+#pragma unroll
+            for (int i = 0; i < 4; ++i)
+            {
+                const uint32_t word    = cuda::GetElement(v, i);
+                cuda::GetElement(v, i) = __float_as_uint(PosterizeValue<float>(__uint_as_float(word), param));
+            }
+        }
+        return v;
     }
-}
 
-template<int NGROUP, typename BT>
-__global__ void PosterizePlanarVarShapeVec4Kernel(cuda::ImageBatchVarShapeWrap<const BT> src,
-                                                  cuda::ImageBatchVarShapeWrap<BT> dst, int num_channels, BT mask)
+    inline static __device__ void Tail(const unsigned char *s, unsigned char *d, int bytes, Param param)
+    {
+        elem_stream::TailElementwise<BT>(s, d, bytes, [param](BT v) { return PosterizeValue<BT>(v, param); });
+    }
+};
+
+template<typename BT>
+struct PosterizeStreamCarrier<BT, std::enable_if_t<cuda::detail::IsHalfV<BT>>>
 {
-    const int g0      = blockIdx.x * blockDim.x * NGROUP + threadIdx.x;
-    const int dst_y   = blockIdx.y * blockDim.y + threadIdx.y;
-    const int nc      = blockIdx.z;
-    const int batch   = nc / num_channels;
-    const int channel = nc % num_channels;
-    const int width   = dst.width(batch, channel);
+    static constexpr bool kSupported = true;
+    using type                       = uint4;
 
-    if (g0 * 4 >= width || dst_y >= dst.height(batch, channel))
+    struct Param
+    {
+        __half2             levels;
+        __half2             reciprocal;
+        __half2             upper;
+        PosterizeFloatParam scalar;
+    };
+
+    static Param MakeParam(PosterizeFloatParam param)
+    {
+        return {__float2half2_rn(param.levels), __float2half2_rn(param.reciprocal),
+                __float2half2_rn(param.levels - 1.f), param};
+    }
+
+    inline static __device__ type Apply(type v, Param param)
+    {
+#pragma unroll
+        for (int i = 0; i < 4; ++i)
+        {
+            const uint32_t word = cuda::GetElement(v, i);
+            const __half2  pair{
+                __half2_raw{static_cast<uint16_t>(word), static_cast<uint16_t>(word >> 16)}
+            };
+            const __half2  zero         = __float2half2_rn(0.f);
+            const uint32_t zeroSigns    = __heq2_mask(pair, zero) & word & 0x80008000u;
+            __half2        q            = h2floor(__hmul2(pair, param.levels));
+            q                           = __hmin2_nan(__hmax2_nan(q, zero), param.upper);
+            const __half2_raw quantized = __hmul2(q, param.reciprocal);
+            // min/max choose positive zero; retain an input negative zero as the scalar path does.
+            cuda::GetElement(v, i) = quantized.x | (static_cast<uint32_t>(quantized.y) << 16) | zeroSigns;
+        }
+        return v;
+    }
+
+    inline static __device__ void Tail(const unsigned char *s, unsigned char *d, int bytes, Param param)
+    {
+        elem_stream::TailElementwise<BT>(s, d, bytes, [param](BT v) { return PosterizeValue<BT>(v, param.scalar); });
+    }
+};
+
+// Posterize is cheap enough that independently loading the var-shape plane descriptor in every lane
+// dominates the useful work. One x-warp owns a row, broadcasts that descriptor, and keeps four word
+// loads in flight per lane; wrapped images retain a scalar path whenever a row is not word-aligned.
+template<int NGroups>
+__global__ void PosterizePlanarVarShapePacked(cuda::ImageBatchVarShapeWrap<const unsigned char> src,
+                                              cuda::ImageBatchVarShapeWrap<unsigned char> dst, int numPlanes,
+                                              uint32_t maskWord)
+{
+    const int              g0        = blockIdx.x * blockDim.x * NGroups + threadIdx.x;
+    const int              y         = blockIdx.y * blockDim.y + threadIdx.y;
+    const int              nc        = blockIdx.z;
+    const int              batch     = nc / numPlanes;
+    const int              channel   = nc % numPlanes;
+    constexpr unsigned int kFullWarp = 0xffffffffu;
+    const bool             leader    = threadIdx.x == 0;
+    NVCVImagePlaneStrided  srcPlane{};
+    NVCVImagePlaneStrided  dstPlane{};
+    if (leader)
+    {
+        srcPlane = src.plane(batch, channel);
+        dstPlane = dst.plane(batch, channel);
+    }
+
+    const int       width     = __shfl_sync(kFullWarp, dstPlane.width, 0);
+    const int       height    = __shfl_sync(kFullWarp, dstPlane.height, 0);
+    const int       srcStride = __shfl_sync(kFullWarp, srcPlane.rowStride, 0);
+    const int       dstStride = __shfl_sync(kFullWarp, dstPlane.rowStride, 0);
+    const uintptr_t srcBase
+        = __shfl_sync(kFullWarp, leader ? reinterpret_cast<uintptr_t>(srcPlane.basePtr) : uintptr_t{0}, 0);
+    const uintptr_t dstBase
+        = __shfl_sync(kFullWarp, leader ? reinterpret_cast<uintptr_t>(dstPlane.basePtr) : uintptr_t{0}, 0);
+
+    if (g0 * 4 >= width || y >= height)
     {
         return;
     }
 
-    using Vec4 = uchar4; // 1-byte planes only (caller guards sizeof(BT) == 1)
+    const unsigned char *srow = reinterpret_cast<const unsigned char *>(srcBase + static_cast<int64_t>(y) * srcStride);
+    unsigned char       *drow = reinterpret_cast<unsigned char *>(dstBase + static_cast<int64_t>(y) * dstStride);
+    const bool           wordAligned = (reinterpret_cast<uintptr_t>(srow) | reinterpret_cast<uintptr_t>(drow)) % 4 == 0;
 
-    int  cx[NGROUP];
-    bool full[NGROUP];
-    Vec4 in4[NGROUP];
-#pragma unroll
-    for (int i = 0; i < NGROUP; ++i)
+    if (!wordAligned)
     {
-        cx[i]   = (g0 + i * blockDim.x) * 4;
-        full[i] = cx[i] + 4 <= width;
+#pragma unroll
+        for (int i = 0; i < NGroups; ++i)
+        {
+            const int begin = (g0 + i * blockDim.x) * 4;
+            const int end   = min(begin + 4, width);
+            for (int x = begin; x < end; ++x)
+            {
+                drow[x] = static_cast<unsigned char>(srow[x] & maskWord);
+            }
+        }
+        return;
+    }
+
+    int      begin[NGroups];
+    bool     full[NGroups];
+    uint32_t value[NGroups];
+#pragma unroll
+    for (int i = 0; i < NGroups; ++i)
+    {
+        begin[i] = (g0 + i * blockDim.x) * 4;
+        full[i]  = begin[i] + 4 <= width;
         if (full[i])
         {
-            in4[i] = *reinterpret_cast<const Vec4 *>(src.ptr(batch, channel, dst_y, cx[i]));
+            value[i] = *reinterpret_cast<const uint32_t *>(srow + begin[i]);
         }
     }
 
 #pragma unroll
-    for (int i = 0; i < NGROUP; ++i)
+    for (int i = 0; i < NGroups; ++i)
     {
         if (full[i])
         {
-            Vec4 out4;
-            out4.x                                                           = static_cast<BT>(in4[i].x & mask);
-            out4.y                                                           = static_cast<BT>(in4[i].y & mask);
-            out4.z                                                           = static_cast<BT>(in4[i].z & mask);
-            out4.w                                                           = static_cast<BT>(in4[i].w & mask);
-            *reinterpret_cast<Vec4 *>(dst.ptr(batch, channel, dst_y, cx[i])) = out4;
+            *reinterpret_cast<uint32_t *>(drow + begin[i]) = value[i] & maskWord;
         }
-        else if (cx[i] < width)
+        else if (begin[i] < width)
         {
-            for (int x = cx[i]; x < width; ++x)
+            for (int x = begin[i]; x < width; ++x)
             {
-                *dst.ptr(batch, channel, dst_y, x) = static_cast<BT>(*src.ptr(batch, channel, dst_y, x) & mask);
+                drow[x] = static_cast<unsigned char>(srow[x] & maskWord);
             }
         }
     }
@@ -257,120 +436,63 @@ __global__ void PosterizePlanarVarShapeVec4Kernel(cuda::ImageBatchVarShapeWrap<c
 template<bool isPlanar, typename ValueT, class SrcData, class DstData>
 inline void RunPosterize(cudaStream_t stream, const SrcData &srcData, const DstData &dstData, int bits)
 {
-    using BT        = cuda::BaseType<ValueT>;
-    constexpr int W = static_cast<int>(sizeof(BT) * 8);
-    if (bits < 0 || bits > W)
+    using BT                   = cuda::BaseType<ValueT>;
+    constexpr bool kIsIntegral = std::is_integral_v<BT>;
+    // Integers admit one level per value bit. Floating point has no bit layout to keep, so the
+    // range is the reference's: torchvision posterizes a float image into at most 2^8 levels.
+    constexpr int  kMaxBits = kIsIntegral ? static_cast<int>(sizeof(BT) * 8) : 8;
+    if (bits < 0 || bits > kMaxBits)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Posterize 'bits' must be in [0, %d] for this data type", W);
+                              "Posterize 'bits' must be in [0, %d] for this data type", kMaxBits);
     }
-    const BT mask = PosterizeMask<BT>(bits);
+    const auto mask = PosterizeParam<BT>(bits);
 
     dim3 block(32, 4, 1);
     if constexpr (std::is_same_v<SrcData, nvcv::TensorDataStridedCuda>)
     {
-        auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(srcData);
-        auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(dstData);
-        int2 size      = cuda::StaticCast<int>(long2{srcAccess->numCols(), srcAccess->numRows()});
+        auto       srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(srcData);
+        auto       dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(dstData);
+        const auto prep      = same_shape::MakeTensorLaunchPrep(*srcAccess, *dstAccess);
+        const int2 size      = prep.size;
 
-        // Each sample maps to one grid.z block (planar channels looped inside); grid.z cap 65535.
-        if (srcAccess->numSamples() > 65535)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Batch size exceeds the CUDA grid.z limit of 65535");
-        }
-        dim3 grid(util::DivUp(size.x, block.x), util::DivUp(size.y, block.y), srcAccess->numSamples());
-
-        int64_t inMaxStride  = srcAccess->sampleStride() * srcAccess->numSamples();
-        int64_t outMaxStride = dstAccess->sampleStride() * dstAccess->numSamples();
-        if (std::max(inMaxStride, outMaxStride) > cuda::TypeTraits<int32_t>::max)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Input or output size exceeds %d. Tensor is too large.",
-                                  cuda::TypeTraits<int32_t>::max);
-        }
         using StrideType = int32_t;
+
+        if (elem_stream::TryRunCarrier<kPosterizeStreamGrps, PosterizeStreamCarrier, isPlanar, ValueT>(
+                stream, srcData, dstData, *srcAccess, *dstAccess, mask))
+        {
+            return;
+        }
 
         if constexpr (!isPlanar)
         {
             bool launchedVec = false;
-            // 1-channel interleaved (U16) is byte-identical to a single plane and latency-bound; route
-            // it through the vectorized planar kernel (C == 1). Multi-channel interleaved (uchar3/
-            // uchar4) already moves 3-4 B/thread at the bandwidth ridge -> keep the scalar kernel.
+            // A single interleaved channel is byte-identical to a plane; use the same
+            // vector fallback when the wider element stream cannot describe its strides.
             if constexpr (cuda::NumElements<ValueT> == 1)
             {
-                using Vec4            = cuda::MakeType<BT, 4>;
-                constexpr int NGROUP  = 4;
-                const int64_t sStride = srcAccess->sampleStride(), rStride = srcAccess->rowStride();
-                const int64_t dsStride = dstAccess->sampleStride(), drStride = dstAccess->rowStride();
-                const bool    aligned = reinterpret_cast<uintptr_t>(srcData.basePtr()) % sizeof(Vec4) == 0
-                                  && reinterpret_cast<uintptr_t>(dstData.basePtr()) % sizeof(Vec4) == 0
-                                  && sStride % sizeof(Vec4) == 0 && rStride % sizeof(Vec4) == 0
-                                  && dsStride % sizeof(Vec4) == 0 && drStride % sizeof(Vec4) == 0;
-                if (aligned)
-                {
-                    auto srcV = cuda::Tensor4DWrap<const BT, StrideType>(srcData.basePtr(), static_cast<int>(sStride),
-                                                                         static_cast<int>(sStride),
-                                                                         static_cast<int>(rStride));
-                    auto dstV
-                        = cuda::Tensor4DWrap<BT, StrideType>(dstData.basePtr(), static_cast<int>(dsStride),
-                                                             static_cast<int>(dsStride), static_cast<int>(drStride));
-                    dim3 vgrid(util::DivUp(util::DivUp(size.x, 4), static_cast<int>(block.x) * NGROUP),
-                               util::DivUp(size.y, block.y), srcAccess->numSamples());
-                    PosterizePlanarVec4Kernel<NGROUP, BT><<<vgrid, block, 0, stream>>>(
-                        srcV, dstV, int4{static_cast<int>(srcAccess->numSamples()), 1, size.y, size.x}, mask);
-                    launchedVec = true;
-                }
+                constexpr int NGROUP = 4;
+                launchedVec          = same_shape::TryRunVec4TensorFor<NGROUP, BT, StrideType, PosterizeVec4Op<BT>>(
+                    stream, false, srcData.basePtr(), dstData.basePtr(), *srcAccess, *dstAccess, size, block, mask);
             }
             if (!launchedVec)
             {
                 auto src = cuda::CreateTensorWrapNHW<const ValueT, StrideType>(srcData);
                 auto dst = cuda::CreateTensorWrapNHW<ValueT, StrideType>(dstData);
-                Posterize<isPlanar><<<grid, block, 0, stream>>>(src, dst, size, 1, mask);
+                Posterize<isPlanar><<<prep.scalarGrid(block), block, 0, stream>>>(src, dst, size, 1, mask);
             }
         }
         else
         {
-            const int numPlanes   = srcAccess->numPlanes();
-            const int numSamples  = static_cast<int>(srcAccess->numSamples());
-            bool      launchedVec = false;
-            if constexpr (sizeof(BT) == 1 || sizeof(BT) == 2)
-            {
-                using Vec4            = cuda::MakeType<BT, 4>;
-                constexpr int NGROUP  = 4;
-                const int64_t planes  = static_cast<int64_t>(numSamples) * numPlanes;
-                const int64_t sStride = srcAccess->sampleStride(), pStride = srcAccess->planeStride(),
-                              rStride  = srcAccess->rowStride();
-                const int64_t dsStride = dstAccess->sampleStride(), dpStride = dstAccess->planeStride(),
-                              drStride = dstAccess->rowStride();
-                const bool aligned
-                    = planes <= 65535 && reinterpret_cast<uintptr_t>(srcData.basePtr()) % sizeof(Vec4) == 0
-                   && reinterpret_cast<uintptr_t>(dstData.basePtr()) % sizeof(Vec4) == 0 && sStride % sizeof(Vec4) == 0
-                   && pStride % sizeof(Vec4) == 0 && rStride % sizeof(Vec4) == 0 && dsStride % sizeof(Vec4) == 0
-                   && dpStride % sizeof(Vec4) == 0 && drStride % sizeof(Vec4) == 0;
-                if (aligned)
-                {
-                    auto srcV = cuda::Tensor4DWrap<const BT, StrideType>(srcData.basePtr(), static_cast<int>(sStride),
-                                                                         static_cast<int>(pStride),
-                                                                         static_cast<int>(rStride));
-                    auto dstV
-                        = cuda::Tensor4DWrap<BT, StrideType>(dstData.basePtr(), static_cast<int>(dsStride),
-                                                             static_cast<int>(dpStride), static_cast<int>(drStride));
-                    dim3 vgrid(util::DivUp(util::DivUp(size.x, 4), static_cast<int>(block.x) * NGROUP),
-                               util::DivUp(size.y, block.y), static_cast<unsigned int>(planes));
-                    PosterizePlanarVec4Kernel<NGROUP, BT>
-                        <<<vgrid, block, 0, stream>>>(srcV, dstV, int4{numSamples, numPlanes, size.y, size.x}, mask);
-                    launchedVec = true;
-                }
-            }
+            const int     numPlanes   = srcAccess->numPlanes();
+            constexpr int NGROUP      = 4;
+            const bool    launchedVec = same_shape::TryRunVec4TensorFor<NGROUP, BT, StrideType, PosterizeVec4Op<BT>>(
+                stream, true, srcData.basePtr(), dstData.basePtr(), *srcAccess, *dstAccess, size, block, mask);
             if (!launchedVec)
             {
-                auto src = cuda::Tensor4DWrap<const ValueT, StrideType>(
-                    srcData.basePtr(), static_cast<int>(srcAccess->sampleStride()),
-                    static_cast<int>(srcAccess->planeStride()), static_cast<int>(srcAccess->rowStride()));
-                auto dst = cuda::Tensor4DWrap<ValueT, StrideType>(
-                    dstData.basePtr(), static_cast<int>(dstAccess->sampleStride()),
-                    static_cast<int>(dstAccess->planeStride()), static_cast<int>(dstAccess->rowStride()));
-                Posterize<isPlanar><<<grid, block, 0, stream>>>(src, dst, size, numPlanes, mask);
+                auto [src, dst] = same_shape::MakePlanarWrapPair<ValueT, ValueT, StrideType>(srcData, *srcAccess,
+                                                                                             dstData, *dstAccess);
+                Posterize<isPlanar><<<prep.scalarGrid(block), block, 0, stream>>>(src, dst, size, numPlanes, mask);
             }
         }
         NVCV_CHECK_THROW(cudaGetLastError());
@@ -378,71 +500,49 @@ inline void RunPosterize(cudaStream_t stream, const SrcData &srcData, const DstD
     else
     {
         static_assert(std::is_same_v<SrcData, nvcv::ImageBatchVarShapeDataStridedCuda>);
-        if (dstData.numImages() > 65535)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Batch size exceeds the CUDA grid.z limit of 65535");
-        }
-        int3 dstMaxSize{dstData.maxSize().w, dstData.maxSize().h, dstData.numImages()};
-        dim3 grid(util::DivUp(dstMaxSize.x, block.x), util::DivUp(dstMaxSize.y, block.y), dstMaxSize.z);
+        const auto prep = same_shape::MakeVarShapeLaunchPrep(dstData);
 
         const int numPlanes = dstData.uniqueFormat().numPlanes();
 
-        // Vectorized planar var-shape path for 1-byte planes (uchar4; NVCV row pitch is >= 4-byte
-        // aligned). u16 var-shape stays scalar (ushort4 8-byte alignment not guaranteed on var-shape).
-        if constexpr (isPlanar && sizeof(BT) == 1)
+        // U8 benefits from broadcasting its plane descriptor, while U16 and F16
+        // keep one vector group live at a time to bound register residency.
+        if constexpr (cuda::NumElements<ValueT> == 1 && sizeof(BT) <= 2
+                      && (isPlanar || std::is_same_v<BT, unsigned short> || cuda::detail::IsHalfV<BT>))
         {
-            constexpr int NGROUP = 4;
-            const int64_t planes = static_cast<int64_t>(dstData.numImages()) * numPlanes;
-            if (planes <= 65535)
+            if constexpr (std::is_same_v<BT, unsigned char>)
             {
-                cuda::ImageBatchVarShapeWrap<const BT> srcV(srcData);
-                cuda::ImageBatchVarShapeWrap<BT>       dstV(dstData);
-                dim3 vgrid(util::DivUp(util::DivUp(dstMaxSize.x, 4), static_cast<int>(block.x) * NGROUP),
-                           util::DivUp(dstMaxSize.y, block.y), static_cast<unsigned int>(planes));
-                PosterizePlanarVarShapeVec4Kernel<NGROUP, BT><<<vgrid, block, 0, stream>>>(srcV, dstV, numPlanes, mask);
-                NVCV_CHECK_THROW(cudaGetLastError());
-                return;
+                constexpr int NGroups = 4;
+                const dim3    packedBlock(32, 16, 1);
+                if (same_shape::TryRunVec4VarShape<NGroups, BT>(
+                        srcData, dstData, numPlanes, prep.maxSize, packedBlock,
+                        [&](auto srcV, auto dstV, int planes, dim3 grid)
+                        {
+                            PosterizePlanarVarShapePacked<NGroups><<<grid, packedBlock, 0, stream>>>(
+                                srcV, dstV, planes, elem_stream::BroadcastToWord(mask));
+                        }))
+                {
+                    NVCV_CHECK_THROW(cudaGetLastError());
+                    return;
+                }
+            }
+            else
+            {
+                static_assert(std::is_same_v<BT, unsigned short> || cuda::detail::IsHalfV<BT>);
+                constexpr int NGroups = 4;
+                if (same_shape::TryRunVec4VarShapeFor<NGroups, BT, PosterizeVec4Op<BT>, /*Serial=*/true>(
+                        stream, srcData, dstData, numPlanes, prep.maxSize, block, mask))
+                {
+                    NVCV_CHECK_THROW(cudaGetLastError());
+                    return;
+                }
             }
         }
 
         cuda::ImageBatchVarShapeWrap<const ValueT> src(srcData);
         cuda::ImageBatchVarShapeWrap<ValueT>       dst(dstData);
-        Posterize<isPlanar><<<grid, block, 0, stream>>>(src, dst, numPlanes, mask);
+        Posterize<isPlanar><<<prep.scalarGrid(block), block, 0, stream>>>(src, dst, numPlanes, mask);
         NVCV_CHECK_THROW(cudaGetLastError());
     }
-}
-
-// Dispatch over base data type (u8 / u16 only — integer) and channel count (1 / 3 / 4) ---
-
-template<typename Cb>
-inline void RunTypeSwitch(nvcv::DataType dType, const Cb &cb)
-{
-    using uchar  = unsigned char;
-    using ushort = unsigned short;
-
-#define NVCV_POSTERIZE_RUN_TYPED(DYN_BASE_TYPE, STATIC_BASE_TYPE)                     \
-    ((dType == nvcv::TYPE_4##DYN_BASE_TYPE) || (dType == nvcv::TYPE_3##DYN_BASE_TYPE) \
-     || (dType == nvcv::TYPE_2##DYN_BASE_TYPE) || (dType == nvcv::TYPE_##DYN_BASE_TYPE)) cb(STATIC_BASE_TYPE{});
-
-    // clang-format off
-    if NVCV_POSTERIZE_RUN_TYPED(U8, uchar)
-    else if NVCV_POSTERIZE_RUN_TYPED(U16, ushort)
-    else
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid data type: Posterize supports 8-bit and 16-bit unsigned integers only");
-    }
-        // clang-format on
-
-#undef NVCV_POSTERIZE_RUN_TYPED
-}
-
-template<typename Cb>
-inline void RunChannelSwitch(int numChannels, int numPlanes, nvcv::DataType dType, const Cb &cb)
-{
-    RunTypeSwitch(dType, [&](auto dummyVal)
-                  { same_shape::DispatchChannels<decltype(dummyVal)>(numChannels, numPlanes, "Posterize", cb); });
 }
 
 } // anonymous namespace
@@ -455,20 +555,18 @@ Posterize::Posterize() {}
 void Posterize::operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst, int32_t bits) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::Posterize::operator()[Tensor]");
-    int            numInterleavedChannels;
-    int            numPlanes;
-    nvcv::DataType dtype;
-    auto           srcData = src.exportData<nvcv::TensorDataStridedCuda>();
-    auto           dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
-    same_shape::ValidateSrcDstTensors(numInterleavedChannels, numPlanes, dtype, srcData, dstData);
+    auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    auto info    = same_shape::ValidateSrcDstTensors(srcData, dstData);
 
-    RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
-                     [&stream, &srcData, &dstData, bits](auto dummyVal, auto isPlanar)
-                     {
-                         using ValueT   = decltype(dummyVal);
-                         using IsPlanar = decltype(isPlanar);
-                         RunPosterize<IsPlanar::value, ValueT>(stream, *srcData, *dstData, bits);
-                     });
+    same_shape::DispatchTypeWithF64AndChannels(info.numInterleavedChannels, info.numPlanes, info.srcDtype, "Posterize",
+                                               [&stream, &srcData, &dstData, bits](auto dummyVal, auto isPlanar)
+                                               {
+                                                   using ValueT   = decltype(dummyVal);
+                                                   using IsPlanar = decltype(isPlanar);
+                                                   RunPosterize<IsPlanar::value, ValueT>(stream, *srcData, *dstData,
+                                                                                         bits);
+                                               });
 }
 
 // VarShape input variant
@@ -481,14 +579,15 @@ void Posterize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &
     nvcv::DataType dtype;
     auto srcDstData = same_shape::ValidateSrcDstVarBatch(numInterleavedChannels, numPlanes, dtype, stream, src, dst);
 
-    RunChannelSwitch(numInterleavedChannels, numPlanes, dtype,
-                     [&stream, &srcDstData, bits](auto dummyVal, auto isPlanar)
-                     {
-                         using ValueT             = decltype(dummyVal);
-                         using IsPlanar           = decltype(isPlanar);
-                         auto &[srcData, dstData] = srcDstData;
-                         RunPosterize<IsPlanar::value, ValueT>(stream, *srcData, *dstData, bits);
-                     });
+    same_shape::DispatchTypeWithF64AndChannels(numInterleavedChannels, numPlanes, dtype, "Posterize",
+                                               [&stream, &srcDstData, bits](auto dummyVal, auto isPlanar)
+                                               {
+                                                   using ValueT             = decltype(dummyVal);
+                                                   using IsPlanar           = decltype(isPlanar);
+                                                   auto &[srcData, dstData] = srcDstData;
+                                                   RunPosterize<IsPlanar::value, ValueT>(stream, *srcData, *dstData,
+                                                                                         bits);
+                                               });
 }
 
 } // namespace cvcuda::priv

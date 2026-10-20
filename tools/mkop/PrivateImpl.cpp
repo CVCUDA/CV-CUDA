@@ -17,15 +17,11 @@
 
 #include "Nvtx.hpp"
 #include "Op__OPNAME__.hpp"
-#include "legacy/CvCudaLegacy.h"
-#include "legacy/CvCudaLegacyHelpers.hpp"
 
 #include <nvcv/Exception.hpp>
 #include <util/CheckError.hpp>
 
 namespace cvcuda::priv {
-
-namespace legacy = nvcv::legacy::cuda_op;
 
 __OPNAME__::__OPNAME__()
 {

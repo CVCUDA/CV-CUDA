@@ -21,9 +21,9 @@
 
 namespace cvcudapy {
 
-void ExportMorphologyType(py::module &m)
+void ExportMorphologyType(py::module_ &m)
 {
-    py::enum_<NVCVMorphologyType>(m, "MorphologyType", "Morphological operation types.")
+    py::enum_compat<NVCVMorphologyType>(m, "MorphologyType", "Morphological operation types.")
         .value("ERODE", NVCV_ERODE, "Replaces each pixel with the minimum over the structuring element.")
         .value("DILATE", NVCV_DILATE, "Replaces each pixel with the maximum over the structuring element.")
         .value("OPEN", NVCV_OPEN, "Erosion followed by dilation; removes small bright regions.")

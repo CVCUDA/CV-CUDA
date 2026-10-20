@@ -33,7 +33,6 @@ from python_bench_utils import (  # noqa: E402
     run_benchmark,
 )
 
-
 FLAGS_MODES = {
     "normal": 0,
     "stddev": cvcuda.NormalizeFlags.SCALE_IS_STDDEV,
@@ -53,6 +52,10 @@ def cropflipnormalizereformat(state):
     input_kind = get_input_kind(state.get_string("inputKind"))
     src_layout = state.get_string("srcLayout")
     dst_layout = state.get_string("layout")
+    out_type = state.get_string("outType")
+    out_shape = state.get_string("outShape")
+    param_channels = state.get_int64("paramChannels")
+    out_h, out_w = H, W
 
     if input_kind == "Tensor":  # Tensor mode
         state.skip("Tensor not implemented for this benchmark")
@@ -68,6 +71,15 @@ def cropflipnormalizereformat(state):
     if flags_mode not in FLAGS_MODES:
         state.skip(f"Invalid flagsMode: {flags_mode}")
         return None
+    if out_type not in ("same", "float32") or param_channels not in (1, num_channels):
+        state.skip("Invalid output type or normalization channel count")
+        return None
+    if out_shape != "same":
+        out_h, out_w = parse_shape(out_shape)
+        if crop_mode != "full" or not (0 < out_h <= H and 0 < out_w <= W):
+            state.skip("Output shape must fit the full source crop")
+            return None
+    dst_dtype = dtype if out_type == "same" else cvcuda.Type.F32
 
     device_id = state.get_device()
 
@@ -78,8 +90,12 @@ def cropflipnormalizereformat(state):
     borderValue = 0.0
 
     dtype_size = get_dtype_size(dtype_str)
-    state.add_global_memory_reads(N * H * W * dtype_size + N * 4 + N * 4 + N * 4 * 4)
-    state.add_global_memory_writes(N * H * W * dtype_size)
+    state.add_global_memory_reads(
+        N * out_h * out_w * dtype_size + N * param_channels * 8 + N * 4 * 4
+    )
+    state.add_global_memory_writes(
+        N * out_h * out_w * get_dtype_size(dst_dtype) * num_channels
+    )
 
     src_planar = src_layout == "NCHW"
     dst_planar = dst_layout == "NCHW"
@@ -93,17 +109,21 @@ def cropflipnormalizereformat(state):
         device_id,
         fill_mode="checkerboard",
     )
-    dst_shape = (N, num_channels, H, W) if dst_planar else (N, H, W, num_channels)
-    dst = create_tensor(dst_shape, dtype, device_id, layout=dst_layout, fill_mode=0)
+    dst_shape = (
+        (N, num_channels, out_h, out_w)
+        if dst_planar
+        else (N, out_h, out_w, num_channels)
+    )
+    dst = create_tensor(dst_shape, dst_dtype, device_id, layout=dst_layout, fill_mode=0)
 
-    crop_x = -16 if crop_mode == "padded16" else 0
-    crop_y = -16 if crop_mode == "padded16" else 0
+    crop_x = -16 if crop_mode == "padded16" else (W - out_w) // 2
+    crop_y = -16 if crop_mode == "padded16" else (H - out_h) // 2
     rect = create_tensor(
         (N, 1, 1, 4),
         cvcuda.Type.S32,
         device_id,
         layout="NHWC",
-        fill_mode=[crop_x, crop_y, W, H],
+        fill_mode=[crop_x, crop_y, out_w, out_h],
     )
     flip_code = create_tensor(
         (N,), cvcuda.Type.S32, device_id, layout="N", fill_mode=-1
@@ -112,10 +132,18 @@ def cropflipnormalizereformat(state):
     # base and scale: deterministic LCG over float [-1, +1], bit-identical to
     # the C++ RandomValues<float>() GPU fast path (see BenchCropFlipNormalizeReformat.cpp).
     base = create_tensor(
-        (N, 1, 1, 1), cvcuda.Type.F32, device_id, layout="NHWC", fill_mode="lcg"
+        (N, 1, 1, param_channels),
+        cvcuda.Type.F32,
+        device_id,
+        layout="NHWC",
+        fill_mode="lcg",
     )
     scale = create_tensor(
-        (N, 1, 1, 1), cvcuda.Type.F32, device_id, layout="NHWC", fill_mode="lcg"
+        (N, 1, 1, param_channels),
+        cvcuda.Type.F32,
+        device_id,
+        layout="NHWC",
+        fill_mode="lcg",
     )
 
     get_stream = create_stream_cache()

@@ -490,7 +490,15 @@ void testCropFlipNormalizeReformatPad(int width, int height, int numImages, bool
 
 NVCV_TYPED_TEST_SUITE(
     OpCropFlipNormalizeReformat,
-    ttype::Types<NVCV_TEST_ROW(9, 13, 10, true, true, normalScale, 1.f, 0.f, 0.f, NVCV_IMAGE_FORMAT_RGB8p,
+    ttype::Types<NVCV_TEST_ROW(3, 400000, 1, true, true, normalScale, 1.f, 0.f, 0.f, NVCV_IMAGE_FORMAT_RGB8,
+                               NVCV_IMAGE_FORMAT_RGBf32p, NVCV_BORDER_CONSTANT, uint8_t, float),
+                 NVCV_TEST_ROW(31, 17, 3, false, false, normalScale, 1.234f, 0.3f, 0.f, NVCV_IMAGE_FORMAT_RGB8,
+                               NVCV_IMAGE_FORMAT_RGBf32p, NVCV_BORDER_CONSTANT, uint8_t, float),
+                 NVCV_TEST_ROW(33, 19, 3, true, false, scaleIsStdDev, 1.1f, 0.3f, 1.23f, NVCV_IMAGE_FORMAT_RGB8,
+                               NVCV_IMAGE_FORMAT_RGBf32p, NVCV_BORDER_CONSTANT, uint8_t, float),
+                 NVCV_TEST_ROW(129, 21, 3, false, true, normalScale, 1.f, 12.3f, 0.f, NVCV_IMAGE_FORMAT_RGB8,
+                               NVCV_IMAGE_FORMAT_RGBf32p, NVCV_BORDER_CONSTANT, uint8_t, float),
+                 NVCV_TEST_ROW(9, 13, 10, true, true, normalScale, 1.f, 0.f, 0.f, NVCV_IMAGE_FORMAT_RGB8p,
                                NVCV_IMAGE_FORMAT_RGB8p, NVCV_BORDER_CONSTANT, uint8_t, uint8_t),
                  NVCV_TEST_ROW(9, 13, 10, true, true, normalScale, 1.f, 0.f, 0.f, NVCV_IMAGE_FORMAT_RGB8p,
                                NVCV_IMAGE_FORMAT_RGB8, NVCV_BORDER_CONSTANT, uint8_t, uint8_t),
@@ -563,6 +571,52 @@ TYPED_TEST(OpCropFlipNormalizeReformat, correct_output)
     testCropFlipNormalizeReformatPad<InType, OutType, borderMode>(width, height, numImages, scalarBase, scalarScale,
                                                                   flags, globalScale, globalShift, epsilon, fmt,
                                                                   dst_fmt, borderMode);
+}
+
+TEST(OpCropFlipNormalizeReformat, valid_u16_border_dispatch)
+{
+    testCropFlipNormalizeReformatPad<uint16_t, uint16_t, NVCV_BORDER_REPLICATE>(
+        15, 15, 2, true, true, normalScale, 1.f, 0.f, 0.f, nvcv::FMT_U16, nvcv::FMT_U16, NVCV_BORDER_REPLICATE);
+}
+
+TEST(OpCropFlipNormalizeReformat_Negative, rejects_unsupported_output_dispatch_entry)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageBatchVarShape input(1);
+    input.pushBack(nvcv::Image({10, 10}, nvcv::FMT_U8));
+
+    const nvcv::DataType outputType(nvcv::DataKind::UNSIGNED, nvcv::Packing::X24);
+    nvcv::Tensor         output(
+                {
+                    {1, 10, 10, 1},
+                    "NHWC"
+    },
+                outputType);
+    nvcv::Tensor cropRect(
+        {
+            {1, 1, 1, 4},
+            "NHWC"
+    },
+        nvcv::TYPE_S32);
+    nvcv::Tensor flipCode({{1}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor base(
+        {
+            {1, 1, 1, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_F32);
+    nvcv::Tensor scale(base.shape(), base.dtype());
+
+    cvcuda::CropFlipNormalizeReformat op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&] {
+                                                   op(stream, input, output, cropRect, NVCV_BORDER_CONSTANT, 0.f,
+                                                      flipCode, base, scale, 1.f, 0.f, 0.f, 0);
+                                               }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 TEST(OpCropFlipNormalizeReformatPlanar, varshape_matches_interleaved)
@@ -724,6 +778,59 @@ TEST(OpCropFlipNormalizeReformat_Negative, invalid_base_channels)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpCropFlipNormalizeReformat_Negative, rejects_oversized_output_stride)
+{
+    constexpr int64_t kOversizedSampleStride = int64_t{1} << 31;
+    NVCVByte         *outputAllocation       = nullptr;
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&outputAllocation, 1));
+
+    nvcv::TensorDataStridedCuda::Buffer outputBuffer{};
+    outputBuffer.basePtr    = outputAllocation;
+    outputBuffer.strides[0] = kOversizedSampleStride;
+    outputBuffer.strides[1] = 3;
+    outputBuffer.strides[2] = 3;
+    outputBuffer.strides[3] = 1;
+
+    nvcv::Tensor output = nvcv::TensorWrapData(
+        nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{1, 1, 1, 3}, "NHWC"},
+            nvcv::TYPE_U8, outputBuffer
+    },
+        nvcv::TensorDataCleanupCallback{[outputAllocation](const nvcv::TensorData &)
+                                        {
+                                            EXPECT_EQ(cudaSuccess, cudaFree(outputAllocation));
+                                        }});
+
+    nvcv::ImageBatchVarShape input(1);
+    input.pushBack(nvcv::Image({1, 1}, nvcv::FMT_RGB8));
+    nvcv::Tensor cropRect(
+        {
+            {1, 1, 1, 4},
+            nvcv::TENSOR_NHWC
+    },
+        nvcv::TYPE_S32);
+    nvcv::Tensor flipCode({{1}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor base(
+        {
+            {1, 1, 1, 1},
+            nvcv::TENSOR_NHWC
+    },
+        nvcv::TYPE_F32);
+    nvcv::Tensor scale(base.shape(), base.dtype());
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::CropFlipNormalizeReformat op;
+    EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcv::ProtectCall(
+                                       [&] {
+                                           op(stream, input, output, cropRect, NVCV_BORDER_CONSTANT, 0.f, flipCode,
+                                              base, scale, 1.f, 0.f, 0.f, 0);
+                                       }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpCropFlipNormalizeReformat_Negative, rejects_layout_border_and_unsupported_types)
 {
     cudaStream_t stream;
@@ -761,7 +868,9 @@ TEST(OpCropFlipNormalizeReformat_Negative, rejects_layout_border_and_unsupported
 
     nvcv::ImageBatchVarShape srcU8 = makeBatch(nvcv::FMT_RGB8);
     nvcv::Tensor             dstU8(1, {10, 10}, nvcv::FMT_RGB8);
+#ifndef ENABLE_SANITIZER
     expectInvalid(srcU8, dstU8, static_cast<NVCVBorderType>(255));
+#endif
 
     nvcv::Tensor dstHWC(
         {

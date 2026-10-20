@@ -27,7 +27,7 @@ The ``/make-op`` skill
 ----------------------
 
 This page is the narrative how-to.  For an assisted, gated workflow, use the **make-op skill**
-family (defined under ``.agents/skills/make-op*/SKILL.md``), whose checklist and
+family (defined under ``.agents/skills/op-tools/skills/make-op*/SKILL.md``), whose checklist and
 definition-of-done live in
 ``.agents/guidance/MAKE_OP_GUIDELINES.md`` and are enforced by the deterministic checker
 ``tools/make_op.py``.  Two modes:
@@ -377,7 +377,7 @@ rows by hand; you only replace the placeholder text with real content:
 
 2. **Python API reference** — the ``autofunction`` directives in
    ``docs/sphinx/modules/python/operators.rst`` are already in place; confirm
-   they render once the pybind docstrings (written with the binding in Step 2) are in place.
+   they render once the binding docstrings (written with the binding in Step 2) are in place.
 
 3. **Release notes** — replace the ``TODO(make-op)`` text in the generated
    "New Features and Enhancements" bullet of the latest

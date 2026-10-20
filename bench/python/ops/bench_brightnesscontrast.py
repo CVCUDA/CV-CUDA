@@ -69,7 +69,12 @@ def brightnesscontrast(state):
 
     dtype_size = get_dtype_size(dtype_str)
     bytes_ = N * H * W * dtype_size
-    arg_bytes = N * 4 * 4
+    arg_dtype = (
+        cvcuda.Type.F64
+        if dtype in (cvcuda.Type.S32, cvcuda.Type.S64, cvcuda.Type.F64)
+        else cvcuda.Type.F32
+    )
+    arg_bytes = N * 4 * get_dtype_size(arg_dtype)
     if is_fake_planar:
         state.add_global_memory_reads(3 * bytes_ + arg_bytes)
         state.add_global_memory_writes(3 * bytes_)
@@ -77,17 +82,13 @@ def brightnesscontrast(state):
         state.add_global_memory_reads(bytes_ + arg_bytes)
         state.add_global_memory_writes(bytes_)
 
-    brightness = create_tensor(
-        (N,), cvcuda.Type.F32, device_id, layout="N", fill_mode="lcg"
-    )
-    contrast = create_tensor(
-        (N,), cvcuda.Type.F32, device_id, layout="N", fill_mode="lcg"
-    )
+    brightness = create_tensor((N,), arg_dtype, device_id, layout="N", fill_mode="lcg")
+    contrast = create_tensor((N,), arg_dtype, device_id, layout="N", fill_mode="lcg")
     brightness_shift = create_tensor(
-        (N,), cvcuda.Type.F32, device_id, layout="N", fill_mode="lcg"
+        (N,), arg_dtype, device_id, layout="N", fill_mode="lcg"
     )
     contrast_center = create_tensor(
-        (N,), cvcuda.Type.F32, device_id, layout="N", fill_mode="lcg"
+        (N,), arg_dtype, device_id, layout="N", fill_mode="lcg"
     )
 
     get_stream = create_stream_cache()

@@ -161,16 +161,16 @@ DLPackTensor::DLPackTensor(const nvcv::TensorDataStrided &tensorData)
         tensor.dtype = ToDLDataType(tensorData.dtype());
 
         // Set up strides
-        auto strides = std::make_unique<int64_t[]>(tensor.ndim);
+        auto      strides     = std::make_unique<int64_t[]>(tensor.ndim);
+        const int elementSize = tensorData.dtype().strideBytes();
         for (int i = 0; i < tensor.ndim; ++i)
         {
-            if (int64_t stride = tensorData.cdata().buffer.strided.strides[i];
-                stride % tensorData.dtype().strideBytes() != 0)
+            if (int64_t stride = tensorData.cdata().buffer.strided.strides[i]; stride % elementSize != 0)
             {
                 throw DLPackError("Stride must be a multiple of the element size in bytes");
             }
 
-            strides[i] = tensorData.cdata().buffer.strided.strides[i] / tensorData.dtype().strideBytes();
+            strides[i] = tensorData.cdata().buffer.strided.strides[i] / elementSize;
         }
         tensor.strides = strides.release();
     }
@@ -292,40 +292,12 @@ bool IsCudaAccessible(DLDeviceType devType)
 
 nvcv::DataType ToNVCVDataType(const DLDataType &dtype)
 {
-    nvcv::PackingParams pp;
-    pp.byteOrder = nvcv::ByteOrder::MSB;
-
-    int lanes = dtype.lanes;
-    int bits  = dtype.bits;
-
-    switch (lanes)
+    if (dtype.lanes < 1 || dtype.lanes > 4)
     {
-    case 1:
-        pp.swizzle = nvcv::Swizzle::S_X000;
-        break;
-    case 2:
-        pp.swizzle = nvcv::Swizzle::S_XY00;
-        break;
-    case 3:
-        pp.swizzle = nvcv::Swizzle::S_XYZ0;
-        break;
-    case 4:
-        pp.swizzle = nvcv::Swizzle::S_XYZW;
-        break;
-    default:
         throw DLPackError("DLPack buffer's data type must have at most 4 lanes");
     }
 
-    for (int i = 0; i < lanes; ++i)
-    {
-        pp.bits[i] = bits;
-    }
-    for (int i = lanes; i < 4; ++i)
-    {
-        pp.bits[i] = 0;
-    }
-
-    nvcv::Packing packing = nvcv::MakePacking(pp);
+    nvcv::Packing packing = MakeHomogeneousPacking(dtype.bits, dtype.lanes);
 
     nvcv::DataKind kind;
 
@@ -351,12 +323,13 @@ nvcv::DataType ToNVCVDataType(const DLDataType &dtype)
     return nvcv::DataType(kind, packing);
 }
 
-DLDataType ToDLDataType(const nvcv::DataType &dataType)
+DLDataType ToDLDataType(nvcv::DataKind kind, int bits, int lanes)
 {
     DLDataType dt = {};
-    dt.lanes      = static_cast<uint16_t>(dataType.numChannels());
+    dt.lanes      = static_cast<uint16_t>(lanes);
+    dt.bits       = static_cast<uint8_t>(bits);
 
-    switch (dataType.dataKind())
+    switch (kind)
     {
     case nvcv::DataKind::UNSIGNED:
         dt.code = kDLUInt;
@@ -374,6 +347,12 @@ DLDataType ToDLDataType(const nvcv::DataType &dataType)
         throw DLPackError("Data kind not supported, must be UNSIGNED, SIGNED, FLOAT or COMPLEX");
     }
 
+    return dt;
+}
+
+DLDataType ToDLDataType(const nvcv::DataType &dataType)
+{
+    DLDataType             dt  = ToDLDataType(dataType.dataKind(), 0, dataType.numChannels());
     std::array<int32_t, 4> bpc = dataType.bitsPerChannel();
 
     for (int i = 1; i < dataType.numChannels(); ++i)

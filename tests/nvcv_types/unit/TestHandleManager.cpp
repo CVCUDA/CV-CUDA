@@ -21,6 +21,7 @@
 #include <nvcv/src/priv/HandleManager.hpp>
 #include <nvcv/src/priv/HandleManagerImpl.hpp>
 
+#include <cstdlib>
 #include <stdexcept>
 #include <unordered_set>
 
@@ -54,12 +55,26 @@ public:
 class Object : public IObject
 {
 public:
-    explicit Object(int val)
+    explicit Object(int val, int *destructionCount = nullptr)
         : m_value(val)
+        , m_destructionCount(destructionCount)
     {
         if (val == FORCE_FAILURE)
         {
             throw HandleManagerTestError("Forced failure");
+        }
+    }
+
+    Object(const Object &)            = delete;
+    Object(Object &&)                 = delete;
+    Object &operator=(const Object &) = delete;
+    Object &operator=(Object &&)      = delete;
+
+    ~Object() override
+    {
+        if (m_destructionCount != nullptr)
+        {
+            ++*m_destructionCount;
         }
     }
 
@@ -69,7 +84,40 @@ public:
     }
 
 private:
-    int m_value;
+    int  m_value;
+    int *m_destructionCount;
+};
+
+class DependentObject final : public IObject
+{
+public:
+    DependentObject(priv::HandleManager<IObject> &manager, IObjectHandle parent, int &destructionCount)
+        : m_manager(manager)
+        , m_parent(parent)
+        , m_destructionCount(destructionCount)
+    {
+    }
+
+    DependentObject(const DependentObject &)            = delete;
+    DependentObject(DependentObject &&)                 = delete;
+    DependentObject &operator=(const DependentObject &) = delete;
+    DependentObject &operator=(DependentObject &&)      = delete;
+
+    ~DependentObject() override
+    {
+        EXPECT_NO_THROW(m_manager.decRef(m_parent));
+        ++m_destructionCount;
+    }
+
+    int value() const override
+    {
+        return 0;
+    }
+
+private:
+    priv::HandleManager<IObject> &m_manager;
+    IObjectHandle                 m_parent;
+    int                          &m_destructionCount;
 };
 } // namespace
 
@@ -77,7 +125,7 @@ namespace nvcv::priv {
 template<>
 struct ResourceStorage<IObject>
 {
-    using type = CompatibleStorage<Object>;
+    using type = CompatibleStorage<Object, DependentObject>;
 };
 } // namespace nvcv::priv
 
@@ -207,4 +255,41 @@ TEST(HandleManager, smoke_no_handle_leak_if_object_creation_throws)
     IObjectHandle h = nullptr;
     ASSERT_NO_THROW(h = mgr.create<Object>(1).first);
     mgr.decRef(h);
+}
+
+TEST(HandleManager, clear_destroys_objects_with_dependent_handles)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT(
+        {
+            // Let forced cleanup run instead of stopping at the test runner's leak-abort policy.
+            if (::setenv("NVCV_LEAK_DETECTION", "warn", 1) != 0)
+            {
+                std::_Exit(2);
+            }
+
+            int parentDestructions    = 0;
+            int dependentDestructions = 0;
+            {
+                priv::HandleManager<IObject> mgr("Object");
+                IObjectHandle                parent = mgr.create<Object>(0, &parentDestructions).first;
+                if (mgr.incRef(parent) != 2)
+                {
+                    std::_Exit(3);
+                }
+                (void)mgr.create<DependentObject>(mgr, parent, dependentDestructions);
+            }
+
+            if (parentDestructions != 1)
+            {
+                std::_Exit(4);
+            }
+            if (dependentDestructions != 1)
+            {
+                std::_Exit(5);
+            }
+
+            std::_Exit(::testing::Test::HasFailure() ? 6 : 0);
+        },
+        ::testing::ExitedWithCode(0), "Object leak detection: 2 handles still in use");
 }

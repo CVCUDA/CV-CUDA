@@ -15,23 +15,24 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpStack.hpp>
-#include <nvcv/python/Image.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <nvcv/python/TensorBatch.hpp>
 
 #include <array>
+#include <memory>
 #include <stdexcept>
 
 namespace cvcudapy {
 
 namespace {
+
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+using native::TensorBatch;
 
 class StackError : public std::runtime_error
 {
@@ -39,8 +40,48 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-void checkTensorList(std::vector<Tensor> &tensorList, std::array<int64_t, 4> &outputShape, nvcv::TensorLayout &layout,
-                     nvcv::DataType &dtype)
+void updateInputMetadata(const nvcv::Tensor &tensor, bool first, int32_t &totalTensors,
+                         std::array<int64_t, 4> &outputShape, nvcv::TensorLayout &layout, nvcv::DataType &dtype)
+{
+    if (tensor.rank() < 3 || tensor.rank() > 4)
+    {
+        throw StackError("Invalid input tensor shape");
+    }
+
+    nvcv::TensorLayout tensorLayout;
+    if (tensor.layout() == nvcv::TENSOR_CHW || tensor.layout() == nvcv::TENSOR_NCHW)
+    {
+        tensorLayout = nvcv::TENSOR_NCHW;
+    }
+    else if (tensor.layout() == nvcv::TENSOR_HWC || tensor.layout() == nvcv::TENSOR_NHWC)
+    {
+        tensorLayout = nvcv::TENSOR_NHWC;
+    }
+    else
+    {
+        throw StackError("Invalid input tensor layout");
+    }
+
+    const int32_t sampleOffset = tensor.rank() == 4 ? 1 : 0;
+    if (first)
+    {
+        outputShape[1] = tensor.shape()[sampleOffset];
+        outputShape[2] = tensor.shape()[sampleOffset + 1];
+        outputShape[3] = tensor.shape()[sampleOffset + 2];
+        layout         = tensorLayout;
+        dtype          = tensor.dtype();
+    }
+    else if (outputShape[1] != tensor.shape()[sampleOffset] || outputShape[2] != tensor.shape()[sampleOffset + 1]
+             || outputShape[3] != tensor.shape()[sampleOffset + 2] || layout != tensorLayout || dtype != tensor.dtype())
+    {
+        throw StackError("Input tensors must have the same sample shape, layout family, and data type");
+    }
+
+    totalTensors += tensor.rank() == 4 ? tensor.shape()[0] : 1;
+}
+
+void checkTensorList(const std::vector<std::shared_ptr<Tensor>> &tensorList, std::array<int64_t, 4> &outputShape,
+                     nvcv::TensorLayout &layout, nvcv::DataType &dtype)
 {
     int32_t totalTensors = 0;
 
@@ -49,69 +90,100 @@ void checkTensorList(std::vector<Tensor> &tensorList, std::array<int64_t, 4> &ou
         throw StackError("Invalid input tensor list");
     }
 
+    bool first = true;
     for (const auto &tensor : tensorList)
     {
-        if (tensor.shape().rank() < 3 || tensor.shape().rank() > 4)
+        if (!tensor)
         {
-            throw StackError("Invalid input tensor shape");
-        }
-        if (tensor.shape().rank() == 4)
-        {
-            totalTensors += tensor.shape()[0];
-            outputShape[1] = tensor.shape()[1];
-            outputShape[2] = tensor.shape()[2];
-            outputShape[3] = tensor.shape()[3];
-        }
-        else
-        {
-            totalTensors++;
-            outputShape[1] = tensor.shape()[0];
-            outputShape[2] = tensor.shape()[1];
-            outputShape[3] = tensor.shape()[2];
+            throw py::type_error("stack input tensor list cannot contain None");
         }
 
-        if (tensor.shape().layout() == nvcv::TENSOR_CHW || tensor.shape().layout() == nvcv::TENSOR_NCHW)
-            layout = nvcv::TENSOR_NCHW;
-        else
-            layout = nvcv::TENSOR_NHWC;
+        updateInputMetadata(tensor->impl(), first, totalTensors, outputShape, layout, dtype);
+        first = false;
     }
     outputShape[0] = totalTensors; // set N to total number of tensors
-    dtype          = tensorList[0].dtype();
+}
+
+void checkTensorBatch(TensorBatch &tensorBatch, std::array<int64_t, 4> &outputShape, nvcv::TensorLayout &layout,
+                      nvcv::DataType &dtype)
+{
+    if (tensorBatch.numTensors() == 0)
+    {
+        throw StackError("Invalid input tensor batch: empty batch");
+    }
+
+    int32_t totalTensors = 0;
+    for (int32_t i = 0; i < tensorBatch.numTensors(); ++i)
+    {
+        updateInputMetadata(tensorBatch.at(i)->impl(), i == 0, totalTensors, outputShape, layout, dtype);
+    }
+    outputShape[0] = totalTensors;
+}
+
+void checkTensorBatchInto(TensorBatch &tensorBatch, std::array<int64_t, 4> &outputShape, nvcv::TensorLayout &layout,
+                          nvcv::DataType &dtype)
+{
+    const int32_t numTensors = tensorBatch.numTensors();
+    if (numTensors == 0)
+    {
+        throw StackError("Invalid input tensor batch: empty batch");
+    }
+
+    // Native Stack validates every input tensor during submission. For a rank-3 batch,
+    // its output cardinality is already known, so another full scan here is redundant.
+    if (tensorBatch.rank() == 3)
+    {
+        int32_t totalTensors = 0;
+        updateInputMetadata(tensorBatch.at(0)->impl(), true, totalTensors, outputShape, layout, dtype);
+        outputShape[0] = numTensors;
+        return;
+    }
+
+    checkTensorBatch(tensorBatch, outputShape, layout, dtype);
 }
 
 void checkOutputMetadata(const Tensor &output, nvcv::TensorLayout layout, nvcv::DataType dtype)
 {
-    if (output.shape().layout() != layout || output.dtype() != dtype)
+    if (output.impl().layout() != layout || output.impl().dtype() != dtype)
     {
         throw StackError("Output tensor layout and data type must match the input tensors");
     }
 }
 
-void StackIntoInternal(Tensor &output, std::vector<Tensor> &tensorList, std::optional<Stream> pstream,
-                       int32_t numberOfTensors)
+void checkOutputShape(const Tensor &output, const std::array<int64_t, 4> &expectedShape)
 {
-    if (!pstream)
+    const nvcv::TensorShape &shape = output.impl().shape();
+    if (shape.rank() != 4 || shape[0] != expectedShape[0] || shape[1] != expectedShape[1]
+        || shape[2] != expectedShape[2] || shape[3] != expectedShape[3])
     {
-        pstream = Stream::Current();
+        throw StackError("Invalid output tensor shape");
     }
+}
 
-    nvcvpy::TensorBatch inTensorBatch = nvcvpy::TensorBatch::Create(numberOfTensors);
+void StackIntoInternal(Tensor &output, const std::vector<std::shared_ptr<Tensor>> &tensorList,
+                       std::optional<Stream *> pstream, int32_t numberOfTensors)
+{
+    Stream &stream = native::GetStream(pstream);
+
+    auto inTensorBatch = TensorBatch::Create(numberOfTensors);
 
     for (const auto &tensor : tensorList)
     {
-        inTensorBatch.pushBackTensor(tensor);
+        inTensorBatch->pushBack(*tensor);
     }
 
     auto op = CreateOperator<cvcuda::Stack>();
 
-    ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_MODE_READ, {inTensorBatch});
+    ResourceGuard guard(stream);
+    guard.add(LockMode::LOCK_MODE_READ, {*inTensorBatch});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
-    guard.run([&op, &pstream, &inTensorBatch, &output]() { op->submit(pstream->cudaHandle(), inTensorBatch, output); });
+    guard.run([&op, &stream, &inTensorBatch, &output]()
+              { op->submit(stream.handle(), inTensorBatch->impl(), output.impl()); });
 }
 
-Tensor StackInto(Tensor &output, std::vector<Tensor> &tensorList, std::optional<Stream> pstream)
+Tensor &StackInto(Tensor &output, const std::vector<std::shared_ptr<Tensor>> &tensorList,
+                  std::optional<Stream *> pstream)
 {
     std::array<int64_t, 4> outputShape = {}; // NCHW/NHWC
     nvcv::TensorLayout     layout      = nvcv::TENSOR_CHW;
@@ -119,19 +191,17 @@ Tensor StackInto(Tensor &output, std::vector<Tensor> &tensorList, std::optional<
 
     checkTensorList(tensorList, outputShape, layout, dtype);
 
-    if (output.shape().layout() != nvcv::TENSOR_NCHW && output.shape().layout() != nvcv::TENSOR_NHWC)
+    if (output.impl().layout() != nvcv::TENSOR_NCHW && output.impl().layout() != nvcv::TENSOR_NHWC)
         throw StackError("Invalid output tensor shape");
 
-    if (output.shape()[0] != outputShape[0])
-        throw StackError("Invalid output tensor shape");
-
+    checkOutputShape(output, outputShape);
     checkOutputMetadata(output, layout, dtype);
 
     StackIntoInternal(output, tensorList, pstream, static_cast<int32_t>(outputShape[0]));
-    return std::move(output);
+    return output;
 }
 
-Tensor Stack(std::vector<Tensor> &tensorList, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Stack(const std::vector<std::shared_ptr<Tensor>> &tensorList, std::optional<Stream *> pstream)
 {
     std::array<int64_t, 4> outputShape = {}; // NCHW/NHWC
     nvcv::TensorLayout     layout      = nvcv::TENSOR_CHW;
@@ -139,135 +209,85 @@ Tensor Stack(std::vector<Tensor> &tensorList, std::optional<Stream> pstream)
     checkTensorList(tensorList, outputShape, layout, dtype);
 
     //create new output tensor
-    Tensor output = Tensor::Create(
-        {
-            {outputShape[0], outputShape[1], outputShape[2], outputShape[3]},
-            layout
-    },
-        dtype);
-    StackIntoInternal(output, tensorList, pstream, static_cast<int32_t>(outputShape[0]));
+    auto output = native::CreateTensor({outputShape.data(), static_cast<int32_t>(outputShape.size()), layout}, dtype);
+    StackIntoInternal(*output, tensorList, pstream, static_cast<int32_t>(outputShape[0]));
     return output;
 }
 
-// TensorBatch direct input functions
-Tensor StackTensorBatchInto(Tensor &output, nvcvpy::TensorBatch &inTensorBatch, std::optional<Stream> pstream)
+void StackTensorBatchIntoInternal(Tensor &output, TensorBatch &inTensorBatch, std::optional<Stream *> pstream)
 {
-    if (inTensorBatch.numTensors() > 0)
-    {
-        nvcv::TensorLayout inputLayout = inTensorBatch.layout();
-        if (inputLayout == nvcv::TENSOR_CHW || inputLayout == nvcv::TENSOR_NCHW)
-        {
-            checkOutputMetadata(output, nvcv::TENSOR_NCHW, inTensorBatch.dtype());
-        }
-        else if (inputLayout == nvcv::TENSOR_HWC || inputLayout == nvcv::TENSOR_NHWC)
-        {
-            checkOutputMetadata(output, nvcv::TENSOR_NHWC, inTensorBatch.dtype());
-        }
-    }
-
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<cvcuda::Stack>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {inTensorBatch});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
-    guard.run([&op, &pstream, &inTensorBatch, &output]() { op->submit(pstream->cudaHandle(), inTensorBatch, output); });
-    return std::move(output);
+    guard.run([&op, &stream, &inTensorBatch, &output]()
+              { op->submit(stream.handle(), inTensorBatch.impl(), output.impl()); });
 }
 
-Tensor StackTensorBatch(nvcvpy::TensorBatch &inTensorBatch, std::optional<Stream> pstream)
+// TensorBatch direct input functions
+Tensor &StackTensorBatchInto(Tensor &output, TensorBatch &inTensorBatch, std::optional<Stream *> pstream)
 {
-    if (inTensorBatch.numTensors() == 0)
-    {
-        throw StackError("Invalid input tensor batch: empty batch");
-    }
-
-    // Get info from the first tensor to determine output shape and layout
-    int64_t                totalTensors = 0;
-    std::array<int64_t, 4> outputShape  = {};
-    nvcv::TensorLayout     layout       = nvcv::TENSOR_NHWC;
+    std::array<int64_t, 4> outputShape = {};
+    nvcv::TensorLayout     layout      = nvcv::TENSOR_CHW;
     nvcv::DataType         dtype;
+    checkTensorBatchInto(inTensorBatch, outputShape, layout, dtype);
+    checkOutputShape(output, outputShape);
+    checkOutputMetadata(output, layout, dtype);
 
-    for (int32_t i = 0; i < inTensorBatch.numTensors(); ++i)
-    {
-        nvcv::Tensor tensor = inTensorBatch[i];
-        if (tensor.rank() < 3 || tensor.rank() > 4)
-        {
-            throw StackError("Invalid input tensor shape");
-        }
-        if (tensor.rank() == 4)
-        {
-            totalTensors += tensor.shape()[0];
-            outputShape[1] = tensor.shape()[1];
-            outputShape[2] = tensor.shape()[2];
-            outputShape[3] = tensor.shape()[3];
-        }
-        else
-        {
-            totalTensors++;
-            outputShape[1] = tensor.shape()[0];
-            outputShape[2] = tensor.shape()[1];
-            outputShape[3] = tensor.shape()[2];
-        }
-        if (tensor.layout() == nvcv::TENSOR_CHW || tensor.layout() == nvcv::TENSOR_NCHW)
-            layout = nvcv::TENSOR_NCHW;
-        else
-            layout = nvcv::TENSOR_NHWC;
-        if (i == 0)
-            dtype = tensor.dtype();
-    }
-    outputShape[0] = totalTensors;
+    StackTensorBatchIntoInternal(output, inTensorBatch, pstream);
+    return output;
+}
 
-    Tensor output = Tensor::Create(
-        {
-            {outputShape[0], outputShape[1], outputShape[2], outputShape[3]},
-            layout
-    },
-        dtype);
-    return StackTensorBatchInto(output, inTensorBatch, pstream);
+std::shared_ptr<Tensor> StackTensorBatch(TensorBatch &inTensorBatch, std::optional<Stream *> pstream)
+{
+    std::array<int64_t, 4> outputShape = {};
+    nvcv::TensorLayout     layout      = nvcv::TENSOR_NHWC;
+    nvcv::DataType         dtype;
+    checkTensorBatch(inTensorBatch, outputShape, layout, dtype);
+
+    auto output = native::CreateTensor({outputShape.data(), static_cast<int32_t>(outputShape.size()), layout}, dtype);
+    StackTensorBatchIntoInternal(*output, inTensorBatch, pstream);
+    return output;
 }
 
 // ImageBatchVarShape input functions
-Tensor StackVarShapeInto(Tensor &output, ImageBatchVarShape &input, std::optional<Stream> pstream)
+Tensor &StackVarShapeInto(Tensor &output, ImageBatchVarShape &input, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<cvcuda::Stack>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
-    guard.run([&op, &pstream, &input, &output]() { op->submit(pstream->cudaHandle(), input, output); });
-    return std::move(output);
+    guard.run([&op, &stream, &input, &output]() { op->submit(stream.handle(), input.impl(), output.impl()); });
+    return output;
 }
 
-Tensor StackVarShape(ImageBatchVarShape &input, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> StackVarShape(ImageBatchVarShape &input, std::optional<Stream *> pstream)
 {
-    nvcv::ImageFormat fmt = input.uniqueFormat();
+    nvcv::ImageFormat fmt = input.impl().uniqueFormat();
     if (fmt == nvcv::FMT_NONE)
     {
         throw StackError("All images in the input must have the same format");
     }
 
-    Tensor output = Tensor::CreateForImageBatch(input.numImages(), input.maxSize(), fmt);
+    auto output = Tensor::CreateForImageBatch(input.numImages(), input.maxSize(), fmt, 0);
 
-    return StackVarShapeInto(output, input, pstream);
+    StackVarShapeInto(*output, input, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpStack(py::module &m)
+void ExportOpStack(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     // ImageBatchVarShape overloads (register first - most specific type)
     m.def("stack", NvtxTrace("cvcuda.stack", &StackVarShape), "src"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -284,7 +304,7 @@ void ExportOpStack(py::module &m)
     )pbdoc");
 
     m.def("stack_into", NvtxTrace("cvcuda.stack_into", &StackVarShapeInto), "dst"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Stack operation on the given cuda stream. This takes an ImageBatchVarShape and combines images into a N(HWC/CHW) tensor.
 
 
@@ -312,7 +332,7 @@ void ExportOpStack(py::module &m)
     )pbdoc");
 
     m.def("stack_into", NvtxTrace("cvcuda.stack_into", &StackTensorBatchInto), "dst"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Stack operation on the given cuda stream. This takes a TensorBatch and combines tensors into a N(HWC/CHW) tensor.
 
 
@@ -340,7 +360,7 @@ void ExportOpStack(py::module &m)
     )pbdoc");
 
     m.def("stack_into", NvtxTrace("cvcuda.stack_into", &StackInto), "dst"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Stack operation on the given cuda stream. This takes input tensors and combines them into a N(HWC/CHW) tensor.
 
 

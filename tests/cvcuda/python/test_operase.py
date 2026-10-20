@@ -26,7 +26,7 @@ def _zeroed(tensor):
     # cvcuda.Tensor leaves device memory uninitialized; erase validates its anchor, so zero the
     # parameter tensors to give it well-defined (no-op) values instead of whatever the allocator
     # pool happens to hold.
-    cupy.asarray(tensor.cuda())[...] = 0
+    cupy.asarray(tensor.cuda()).view(cupy.uint8)[...] = 0
     return tensor
 
 

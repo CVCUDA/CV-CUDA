@@ -17,6 +17,7 @@
 
 #include "priv/OpCropFlipNormalizeReformat.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -53,6 +54,7 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaCropFlipNormalizeReformatSubmit,
         [&base, &scale, &flipCode, &cropRect, &out, &in, &handle, &stream, &borderMode, &borderValue, &global_scale,
          &shift, &epsilon, &flags]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::TensorWrapHandle             baseWrap(base);
             nvcv::TensorWrapHandle             scaleWrap(scale);
             nvcv::TensorWrapHandle             flipCodeWrap(flipCode);

@@ -30,6 +30,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace test = nvcv::test;
@@ -627,6 +628,14 @@ TEST_P(OpJpegCompressionDistortionPlanar, varshape_matches_interleaved)
         { EXPECT_NO_THROW(invokeQuality(50)(s, src, dst)); });
 }
 
+TEST(OpJpegCompressionDistortionPlanarSingleChannel, tensor_matches_interleaved)
+{
+    test::planar::RunTensorSingleChannelLayoutParity(
+        37, 29, 37, 29, 2, nvcv::TYPE_U8,
+        [](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst)
+        { EXPECT_NO_THROW(invokeQuality(50)(stream, src, dst)); });
+}
+
 // Negative tests: the complement of the support matrix must be rejected -------------------------
 // clang-format off
 NVCV_TEST_SUITE_P(OpJpegCompressionDistortion_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
@@ -655,6 +664,66 @@ TEST(OpJpegCompressionDistortion_Negative, rejects_too_tall_image)
 {
     // 1x1048576 grayscale: the luma grid needs DivUp(1048576, 16) = 65536 rows, past the CUDA grid.y limit.
     ew::ExpectRejected(nvcv::FMT_U8, nvcv::FMT_U8, invokeQuality(50), 1, 1048576);
+}
+
+TEST(OpJpegCompressionDistortion_Negative, tensor_batch_over_65535_rejected)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    // One-past-limit 1x1 samples keep allocation small while reaching the synchronous host guard.
+    constexpr int kNumSamples = 65536;
+    nvcv::Tensor  src         = nvcv::util::CreateTensor(kNumSamples, 1, 1, nvcv::FMT_U8);
+    nvcv::Tensor  dst         = nvcv::util::CreateTensor(kNumSamples, 1, 1, nvcv::FMT_U8);
+
+    cvcuda::JpegCompressionDistortion op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, src, dst, 50); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpJpegCompressionDistortion_Negative, tensor_sample_stride_span_overflow_rejected)
+{
+    constexpr int64_t kSamples      = 2;
+    constexpr int64_t kRows         = 32768;
+    constexpr int64_t kRowStride    = kRows;
+    constexpr int64_t kSampleStride = kRows * kRowStride;
+
+    NVCVByte *srcPtr = nullptr;
+    NVCVByte *dstPtr = nullptr;
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcPtr), 1024));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstPtr), 1024));
+
+    // Two 32768x32768 samples have a 2^31-byte span, but the guard returns before reading it.
+    auto wrap = [](NVCVByte *base)
+    {
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = base;
+        buffer.strides[0] = kSampleStride;
+        buffer.strides[1] = kRowStride;
+        buffer.strides[2] = 1;
+        buffer.strides[3] = 1;
+        return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{kSamples, kRows, kRows, 1}, "NHWC"},
+            nvcv::TYPE_U8, buffer
+        });
+    };
+
+    {
+        nvcv::Tensor src = wrap(srcPtr);
+        nvcv::Tensor dst = wrap(dstPtr);
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+        cvcuda::JpegCompressionDistortion op;
+        EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcv::ProtectCall([&] { op(stream, src, dst, 50); }));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaFree(srcPtr));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstPtr));
 }
 
 TEST(OpJpegCompressionDistortion_Negative, rejects_non_rgb_varshape_formats)
@@ -748,6 +817,42 @@ TEST(OpJpegCompressionDistortion_Negative, rejects_mismatched_varshape_image_siz
         EXPECT_EQ(nvcv::Status::ERROR_INVALID_ARGUMENT, e.code());
         EXPECT_STREQ("Input and output image 1 sizes must match: input is 31x37, output is 23x29", e.msg());
     }
+}
+
+TEST(OpJpegCompressionDistortion_Negative, rejects_varshape_plane_offset_overflow)
+{
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), 1));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstAllocation), 1));
+
+    nvcv::ImageDataStridedCuda::Buffer srcBuffer{};
+    srcBuffer.numPlanes           = 1;
+    srcBuffer.planes[0].width     = 2;
+    srcBuffer.planes[0].height    = 2;
+    srcBuffer.planes[0].rowStride = std::numeric_limits<int32_t>::max();
+    srcBuffer.planes[0].basePtr   = srcAllocation;
+    auto dstBuffer                = srcBuffer;
+    dstBuffer.planes[0].basePtr   = dstAllocation;
+
+    {
+        nvcv::Image              srcImage = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, srcBuffer});
+        nvcv::Image              dstImage = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, dstBuffer});
+        nvcv::ImageBatchVarShape srcBatch(1);
+        nvcv::ImageBatchVarShape dstBatch(1);
+        srcBatch.pushBack(srcImage);
+        dstBatch.pushBack(dstImage);
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+        cvcuda::JpegCompressionDistortion op;
+        EXPECT_EQ(NVCV_ERROR_OVERFLOW,
+                  nvcv::ProtectCall([&op, stream, &srcBatch, &dstBatch] { op(stream, srcBatch, dstBatch, 50); }));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaFree(srcAllocation));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstAllocation));
 }
 
 TEST(OpJpegCompressionDistortion_Negative, create_null_handle)

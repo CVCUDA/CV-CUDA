@@ -15,17 +15,15 @@
  * limitations under the License.
  */
 
+#include "../nvcv/ImageBatch.hpp"
+#include "../nvcv/Tensor.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpErase.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 #include <stdexcept>
 
@@ -39,54 +37,59 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-Tensor EraseInto(Tensor &output, Tensor &input, Tensor &anchor, Tensor &erasing, Tensor &values, Tensor &imgIdx,
-                 bool random, unsigned int seed, std::optional<Stream> pstream)
+nvcvpy::priv::Tensor &EraseInto(nvcvpy::priv::Tensor &output, nvcvpy::priv::Tensor &input, nvcvpy::priv::Tensor &anchor,
+                                nvcvpy::priv::Tensor &erasing, nvcvpy::priv::Tensor &values,
+                                nvcvpy::priv::Tensor &imgIdx, bool random, unsigned int seed,
+                                std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    nvcvpy::priv::Stream &stream = pstream && *pstream ? **pstream : nvcvpy::priv::Stream::Current();
 
-    if (anchor.layout().rank() != 1 || anchor.layout()[0] != 'N')
+    if (anchor.impl().layout().rank() != 1 || anchor.impl().layout()[0] != 'N')
     {
         throw EraseError("Layout of anchor must be 'N'.");
     }
 
-    nvcv::TensorShape shape = anchor.shape();
+    nvcv::TensorShape shape = anchor.impl().shape();
 
     auto erase = CreateOperator<cvcuda::Erase>((int)shape[0]);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, anchor, erasing, values, imgIdx});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*erase});
 
-    guard.run([&erase, &pstream, &input, &output, &anchor, &erasing, &values, &imgIdx, &random, &seed]()
-              { erase->submit(pstream->cudaHandle(), input, output, anchor, erasing, values, imgIdx, random, seed); });
+    guard.run(
+        [&erase, &stream, &input, &output, &anchor, &erasing, &values, &imgIdx, &random, &seed]()
+        {
+            erase->submit(stream.handle(), input.impl(), output.impl(), anchor.impl(), erasing.impl(), values.impl(),
+                          imgIdx.impl(), random, seed);
+        });
 
     return output;
 }
 
-Tensor Erase(Tensor &input, Tensor &anchor, Tensor &erasing, Tensor &values, Tensor &imgIdx, bool random,
-             unsigned int seed, std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::Tensor> Erase(nvcvpy::priv::Tensor &input, nvcvpy::priv::Tensor &anchor,
+                                            nvcvpy::priv::Tensor &erasing, nvcvpy::priv::Tensor &values,
+                                            nvcvpy::priv::Tensor &imgIdx, bool random, unsigned int seed,
+                                            std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output
+        = nvcvpy::priv::Tensor::CreateFromReqs(nvcv::Tensor::CalcRequirements(input.impl().shape(), input.dtype()));
 
-    return EraseInto(output, input, anchor, erasing, values, imgIdx, random, seed, pstream);
+    EraseInto(*output, input, anchor, erasing, values, imgIdx, random, seed, pstream);
+    return output;
 }
 
-Tensor EraseRegionInto(Tensor &output, Tensor &input, int64_t i, int64_t j, int64_t h, int64_t w, Tensor &values,
-                       std::optional<Stream> pstream)
+nvcvpy::priv::Tensor &EraseRegionInto(nvcvpy::priv::Tensor &output, nvcvpy::priv::Tensor &input, int64_t i, int64_t j,
+                                      int64_t h, int64_t w, nvcvpy::priv::Tensor &values,
+                                      std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    nvcvpy::priv::Stream &stream = pstream && *pstream ? **pstream : nvcvpy::priv::Stream::Current();
 
     auto erase = CreateOperator<cvcuda::Erase>(0);
 
-    ResourceGuard guard(*pstream);
-    if (static_cast<const nvcv::Tensor &>(input).handle() == static_cast<const nvcv::Tensor &>(output).handle())
+    ResourceGuard guard(stream);
+    if (input.impl().handle() == output.impl().handle())
     {
         guard.add(LockMode::LOCK_MODE_READWRITE, {input});
     }
@@ -98,67 +101,77 @@ Tensor EraseRegionInto(Tensor &output, Tensor &input, int64_t i, int64_t j, int6
     guard.add(LockMode::LOCK_MODE_READ, {values});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*erase});
 
-    guard.run([&erase, &pstream, &input, &output, i, j, h, w, &values]
-              { erase->submit(pstream->cudaHandle(), input, output, i, j, h, w, values); });
+    guard.run([&erase, &stream, &input, &output, i, j, h, w, &values]
+              { erase->submit(stream.handle(), input.impl(), output.impl(), i, j, h, w, values.impl()); });
 
     return output;
 }
 
-Tensor EraseRegion(Tensor &input, int64_t i, int64_t j, int64_t h, int64_t w, Tensor &values,
-                   std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::Tensor> EraseRegion(nvcvpy::priv::Tensor &input, int64_t i, int64_t j, int64_t h,
+                                                  int64_t w, nvcvpy::priv::Tensor &values,
+                                                  std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
-    return EraseRegionInto(output, input, i, j, h, w, values, pstream);
+    auto output
+        = nvcvpy::priv::Tensor::CreateFromReqs(nvcv::Tensor::CalcRequirements(input.impl().shape(), input.dtype()));
+    EraseRegionInto(*output, input, i, j, h, w, values, pstream);
+    return output;
 }
 
-ImageBatchVarShape EraseVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &anchor,
-                                     Tensor &erasing, Tensor &values, Tensor &imgIdx, bool random, unsigned int seed,
-                                     std::optional<Stream> pstream)
+nvcvpy::priv::ImageBatchVarShape &EraseVarShapeInto(nvcvpy::priv::ImageBatchVarShape &output,
+                                                    nvcvpy::priv::ImageBatchVarShape &input,
+                                                    nvcvpy::priv::Tensor &anchor, nvcvpy::priv::Tensor &erasing,
+                                                    nvcvpy::priv::Tensor &values, nvcvpy::priv::Tensor &imgIdx,
+                                                    bool random, unsigned int seed,
+                                                    std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    nvcvpy::priv::Stream &stream = pstream && *pstream ? **pstream : nvcvpy::priv::Stream::Current();
 
-    if (anchor.layout().rank() != 1 || anchor.layout()[0] != 'N')
+    if (anchor.impl().layout().rank() != 1 || anchor.impl().layout()[0] != 'N')
     {
         throw EraseError("Layout of anchor must be 'N'.");
     }
 
-    nvcv::TensorShape shape = anchor.shape();
+    nvcv::TensorShape shape = anchor.impl().shape();
 
     auto erase = CreateOperator<cvcuda::Erase>((int)shape[0]);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, anchor, erasing, values, imgIdx});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*erase});
 
-    guard.run([&erase, &pstream, &input, &output, &anchor, &erasing, &values, &imgIdx, &random, &seed]()
-              { erase->submit(pstream->cudaHandle(), input, output, anchor, erasing, values, imgIdx, random, seed); });
+    guard.run(
+        [&erase, &stream, &input, &output, &anchor, &erasing, &values, &imgIdx, &random, &seed]()
+        {
+            erase->submit(stream.handle(), input.impl(), output.impl(), anchor.impl(), erasing.impl(), values.impl(),
+                          imgIdx.impl(), random, seed);
+        });
 
     return output;
 }
 
-ImageBatchVarShape EraseVarShape(ImageBatchVarShape &input, Tensor &anchor, Tensor &erasing, Tensor &values,
-                                 Tensor &imgIdx, bool random, unsigned int seed, std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::ImageBatchVarShape> EraseVarShape(
+    nvcvpy::priv::ImageBatchVarShape &input, nvcvpy::priv::Tensor &anchor, nvcvpy::priv::Tensor &erasing,
+    nvcvpy::priv::Tensor &values, nvcvpy::priv::Tensor &imgIdx, bool random, unsigned int seed,
+    std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    auto format = input.uniqueFormat();
+    nvcv::ImageFormat format = input.impl().uniqueFormat();
     if (!format)
     {
         throw EraseError("All images in input must have the same format.");
     }
 
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input, format, input.numImages());
+    auto output = CreateSameShapeImageBatch(input, format, input.numImages());
 
-    return EraseVarShapeInto(output, input, anchor, erasing, values, imgIdx, random, seed, pstream);
+    EraseVarShapeInto(*output, input, anchor, erasing, values, imgIdx, random, seed, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpErase(py::module &m)
+void ExportOpErase(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("erase", NvtxTrace("cvcuda.erase", &EraseRegion), "src"_a, "i"_a, "j"_a, "h"_a, "w"_a, "v"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
@@ -182,7 +195,7 @@ void ExportOpErase(py::module &m)
     )pbdoc");
 
     m.def("erase_into", NvtxTrace("cvcuda.erase_into", &EraseRegionInto), "dst"_a, "src"_a, "i"_a, "j"_a, "h"_a, "w"_a,
-          "v"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "v"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Writes the torchvision-compatible single-region erase result into ``dst``.
 
         Passing the same tensor as ``src`` and ``dst`` performs the operation in place.
@@ -225,7 +238,8 @@ void ExportOpErase(py::module &m)
     )pbdoc");
 
     m.def("erase_into", NvtxTrace("cvcuda.erase_into", &EraseInto), "dst"_a, "src"_a, "anchor"_a, "erasing"_a,
-          "values"_a, "imgIdx"_a, py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
+          "values"_a, "imgIdx"_a, py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Erase operation on the given cuda stream.
 
 
@@ -272,7 +286,8 @@ void ExportOpErase(py::module &m)
     )pbdoc");
 
     m.def("erase_into", NvtxTrace("cvcuda.erase_into", &EraseVarShapeInto), "dst"_a, "src"_a, "anchor"_a, "erasing"_a,
-          "values"_a, "imgIdx"_a, py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
+          "values"_a, "imgIdx"_a, py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Erase operation on the given cuda stream.
 
 

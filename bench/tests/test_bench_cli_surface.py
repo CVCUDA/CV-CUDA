@@ -15,7 +15,10 @@ import pytest
 BENCH_DIR = Path(__file__).resolve().parent.parent
 
 
-@pytest.mark.parametrize("script", ("update_baseline.py", "validate_baselines.py"))
+@pytest.mark.parametrize(
+    "script",
+    ("baseline_stability.py", "update_baseline.py", "validate_baselines.py"),
+)
 def test_baseline_maintenance_commands_are_internal(script):
     assert not (BENCH_DIR / script).exists()
     assert (BENCH_DIR / "_internal" / script).is_file()
@@ -27,6 +30,8 @@ def test_baseline_maintenance_commands_are_internal(script):
         ("run_bench.py", ("BENCH_FOLDER",)),
         ("compare_wheels.py", ("REFERENCE_WHEEL", "CANDIDATE_WHEEL")),
         ("compare_to_baseline.py", ("--current", "JSON")),
+        ("binding_bench.py", ("--case", "--object-iterations", "--output")),
+        ("compare_binding_bench.py", ("--reference", "--candidate", "--junit")),
     ],
 )
 def test_supported_command_help_is_self_contained(tmp_path, script, signatures):

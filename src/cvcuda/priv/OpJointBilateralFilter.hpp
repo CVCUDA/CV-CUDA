@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,12 +25,11 @@
 #define CVCUDA_PRIV_JOINT_BILATERAL_FILTER_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <nvcv/BorderType.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -45,10 +44,6 @@ public:
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &inColor,
                     const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &diameter, const nvcv::Tensor &sigmaColor,
                     const nvcv::Tensor &sigmaSpace, NVCVBorderType borderMode) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::JointBilateralFilter>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::JointBilateralFilterVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

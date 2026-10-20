@@ -20,5 +20,4 @@
 # - used by both Manylinux builder and Ubuntu devel Docker images
 # - numpy, torch, and test dependencies are in separate requirements files
 
-pybind11==${pybind11}
-pybind11-stubgen==${pybind11_stubgen}
+nanobind==${nanobind}

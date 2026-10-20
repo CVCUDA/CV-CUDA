@@ -99,6 +99,80 @@ globals().update(
         supported_dtypes={cvcuda.Type.U8, cvcuda.Type.F16, cvcuda.Type.F32},
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
         supported_channels={1, 3},
-        extra_params_negative={"contrast_factor": {-0.5}},
+        extra_params_negative={
+            "contrast_factor": {
+                -0.5,
+                float("nan"),
+            }
+        },
     )
 )
+
+
+@pytest.mark.parametrize(
+    "round_mode,expected", [(cvcuda.Round.NEAREST, 128), (cvcuda.Round.TRUNCATE, 127)]
+)
+@pytest.mark.parametrize(
+    "shape,layout",
+    [
+        ((1, 2, 1, 1), "NHWC"),
+        ((2, 32, 64, 1), "NHWC"),
+        ((32, 64, 1), "HWC"),
+        ((2, 1, 32, 64), "NCHW"),
+        ((1, 32, 64), "CHW"),
+    ],
+)
+def test_op_adjust_contrast_round_mode(round_mode, expected, shape, layout):
+    h_src = np.resize(np.array([0, 255], dtype=np.uint8), shape)
+    src = util.to_cvcuda_tensor(h_src, layout)
+
+    # factor 0 collapses every pixel onto the mean, which is exactly 127.5.
+    out = cvcuda.adjust_contrast(src, 0.0, round=round_mode)
+    got = util.to_cpu_numpy_buffer(out.cuda())
+    np.testing.assert_array_equal(got, np.full_like(h_src, expected))
+
+    dst = util.to_cvcuda_tensor(np.zeros_like(h_src), layout)
+    returned = cvcuda.adjust_contrast_into(
+        dst=dst, src=src, contrast_factor=0.0, round=round_mode
+    )
+    assert returned is dst
+    np.testing.assert_array_equal(
+        util.to_cpu_numpy_buffer(dst.cuda()), np.full_like(h_src, expected)
+    )
+
+
+def test_op_adjust_contrast_round_mode_varshape():
+    hosts = [np.array([[[0]], [[255]]], dtype=np.uint8)]
+    src = cvcuda.ImageBatchVarShape(1)
+    src.pushback(util.to_cvcuda_image(hosts[0]))
+
+    for mode, expected in [(cvcuda.Round.NEAREST, 128), (cvcuda.Round.TRUNCATE, 127)]:
+        out = cvcuda.adjust_contrast(src, 0.0, round=mode)
+        np.testing.assert_array_equal(
+            util.to_cpu_numpy_buffer(next(iter(out)).cuda()),
+            np.full(hosts[0].shape[:2], expected, dtype=np.uint8),
+        )
+        dst = util.clone_image_batch(src)
+        assert cvcuda.adjust_contrast_into(dst, src, 0.0, round=mode) is dst
+        np.testing.assert_array_equal(
+            util.to_cpu_numpy_buffer(next(iter(dst)).cuda()),
+            np.full(hosts[0].shape[:2], expected, dtype=np.uint8),
+        )
+
+
+def test_op_adjust_contrast_rejects_wrap_round_mode():
+    src = cvcuda.Tensor((1, 2, 2, 1), np.uint8, "NHWC")
+    with pytest.raises(RuntimeError):
+        cvcuda.adjust_contrast(src, 1.0, round=cvcuda.Round.NEAREST_WRAP)
+
+
+def test_op_adjust_contrast_round_mode_defaults_to_nearest():
+    h_src = np.array([[[[0]], [[255]]]], dtype=np.uint8)
+    src = util.to_cvcuda_tensor(h_src, "NHWC")
+
+    np.testing.assert_array_equal(
+        util.to_cpu_numpy_buffer(cvcuda.adjust_contrast(src, 0.0).cuda()),
+        util.to_cpu_numpy_buffer(
+            cvcuda.adjust_contrast(src, 0.0, round=cvcuda.Round.NEAREST).cuda()
+        ),
+    )

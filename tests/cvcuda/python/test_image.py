@@ -38,6 +38,15 @@ def test_image_is_cached():
         del img
 
 
+def test_as_image_accepts_a_tuple_of_external_buffers():
+    source = cupy.zeros((3, 4, 3), dtype=cupy.uint8)
+
+    image = cvcuda.as_image((source,))
+
+    assert image.size == (4, 3)
+    assert image.format == cvcuda.Format.RGB8
+
+
 def test_failed_image_rebind_preserves_stream_state():
     import subprocess
     import sys
@@ -132,6 +141,20 @@ def test_image_creation_arg_keywords():
     assert img.height == 5
     assert img.size == (7, 5)
     assert img.format == cvcuda.Format.NV12
+
+
+@t.mark.parametrize(
+    "size",
+    [
+        ((1 << 32) + 7, 5),
+        (7, (1 << 32) + 5),
+        (-(1 << 32) + 7, 5),
+        (7, -(1 << 32) + 5),
+    ],
+)
+def test_image_creation_rejects_dimensions_outside_int_range(size):
+    with t.raises(TypeError, match=r"incompatible (?:function|constructor) arguments"):
+        cvcuda.Image(size, cvcuda.Format.U8)
 
 
 buffmt_common = [
@@ -423,8 +446,15 @@ def test_image_create_zeros_packed():
 
 
 def test_image_create_from_host_packed():
-    img = cvcuda.Image(np.ndarray((11, 37), np.uint8), rowalign=1)
+    cvcuda.clear_cache()
+    backing = cvcuda.Image((74, 22), cvcuda.Format.U8, rowalign=1)
+    pointer = backing.cuda().__cuda_array_interface__["data"][0]
+    del backing
+    gold = np.arange(11 * 37, dtype=np.uint8).reshape(11, 37)
+    img = cvcuda.Image(gold, rowalign=1)
     assert img.cuda().strides == (37, 1)
+    assert img.cuda().__cuda_array_interface__["data"][0] == pointer
+    np.testing.assert_array_equal(img.cpu(), gold)
 
 
 @t.mark.parametrize(
@@ -556,7 +586,7 @@ def test_image_is_kept_alive_by_cuda_array_interface():
 
     del img1
 
-    img2 = cvcuda.Image((640, 480), cvcuda.Format.U8)
+    img2 = cvcuda.Image((320, 240), cvcuda.Format.U8)
     assert img2.cuda().__cuda_array_interface__["data"][0] != data_buffer1
 
     del img2
@@ -611,6 +641,45 @@ def test_image_size_in_bytes():
 
     img_wrap_external_buffer_vector = cvcuda.as_image([pt_img, pt_img])
     assert cvcuda.internal.nbytes_in_cache(img_wrap_external_buffer_vector) == 0
+
+
+@t.mark.parametrize("arg", util.NON_BUFFER_SCALARS)
+def test_as_image_scalar_rejects_without_crash(arg):
+    """as_image must raise for a non-buffer scalar rather than segfault.
+
+    The registration carries keep_alive<0, 1>, and a non-buffer argument makes
+    the binding fall through to the next overload. A binding layer that runs the
+    postcall policy on that failed overload dereferences its try-next sentinel
+    and takes the process down instead of raising, so assert the rejection.
+    """
+    with t.raises(TypeError):
+        cvcuda.as_image(arg)
+
+
+# The vector overload accepts the list itself, so both rejections come from
+# inside it rather than from overload resolution -- and they come from different
+# places: an empty list fails the plane-count check, while a list of non-buffers
+# fails ExternalBuffer::load.
+@t.mark.parametrize(
+    "arg,expected",
+    [
+        ([], ValueError),
+        ([42], RuntimeError),
+    ],
+)
+def test_as_image_list_rejects_without_crash(arg, expected):
+    """as_image([non-buffer]) must raise rather than segfault."""
+    with t.raises(expected):
+        cvcuda.as_image(arg)
+
+
+def test_as_image_vector_overload_works():
+    """The vector overload still wraps a real buffer list — negatives above must
+    not come at the cost of the positive path."""
+    pt_img = cupy.asarray(np.random.rand(4, 4).astype(np.float32))
+    img = cvcuda.as_image([pt_img, pt_img])
+    assert isinstance(img, cvcuda.Image)
+    assert img.size == (4, 4)
 
 
 def test_as_image_does_not_leak_wrappers():

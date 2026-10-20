@@ -24,6 +24,190 @@ import cvcuda_tools as cv_tools
 
 
 @pytest.mark.parametrize(
+    "dtype, layout",
+    [
+        pytest.param(np.float64, "NCHW", id="Tensor-NCHW-f64"),
+        pytest.param(np.int32, "NCHW", id="Tensor-NCHW-s32"),
+        pytest.param(np.float64, "NHWC", id="Tensor-NHWC-f64"),
+    ],
+)
+@pytest.mark.parametrize(
+    "border_mode, numpy_mode",
+    [
+        pytest.param(cvcuda.Border.CONSTANT, "constant", id="constant"),
+        pytest.param(cvcuda.Border.REPLICATE, "edge", id="replicate"),
+        pytest.param(cvcuda.Border.WRAP, "wrap", id="wrap"),
+        pytest.param(cvcuda.Border.REFLECT, "symmetric", id="reflect"),
+        pytest.param(cvcuda.Border.REFLECT101, "reflect", id="reflect101"),
+    ],
+)
+def test_op_copymakeborder_tensor_numpy_reference(
+    dtype, layout, border_mode, numpy_mode
+):
+    source = np.arange(2 * 5 * 7 * 3, dtype=np.int32).reshape(2, 5, 7, 3) - 100
+    if dtype == np.float64:
+        source = source.astype(dtype) + 0.125 + 2**-30
+    else:
+        source *= 1048577
+    top, bottom, left, right = 2, 3, 4, 1
+    if layout == "NCHW":
+        source = np.ascontiguousarray(source.transpose(0, 3, 1, 2))
+        pad_width = ((0, 0), (0, 0), (top, bottom), (left, right))
+    else:
+        pad_width = ((0, 0), (top, bottom), (left, right), (0, 0))
+    pad_options = {"constant_values": 23} if numpy_mode == "constant" else {}
+    reference = np.pad(source, pad_width, mode=numpy_mode, **pad_options)
+    src = util.to_cvcuda_tensor(source, layout)
+
+    out = cvcuda.copymakeborder(
+        src,
+        top=top,
+        bottom=bottom,
+        left=left,
+        right=right,
+        border_mode=border_mode,
+        border_value=[23, 23, 23],
+    )
+    np.testing.assert_array_equal(util.to_cpu_numpy_buffer(out.cuda()), reference)
+
+    dst = util.to_cvcuda_tensor(np.full(reference.shape, -7, dtype=dtype), layout)
+    assert (
+        cvcuda.copymakeborder_into(
+            src=src,
+            dst=dst,
+            top=top,
+            left=left,
+            border_mode=border_mode,
+            border_value=[23, 23, 23],
+        )
+        is dst
+    )
+    np.testing.assert_array_equal(util.to_cpu_numpy_buffer(dst.cuda()), reference)
+
+
+@pytest.mark.parametrize(
+    "dtype, image_format",
+    [
+        pytest.param(np.float64, cvcuda.Format.F64, id="VarShape-NHWC-f64"),
+        pytest.param(np.int16, cvcuda.Format.S16, id="VarShape-NHWC-s16"),
+        pytest.param(np.int32, cvcuda.Format.S32, id="VarShape-NHWC-s32"),
+        pytest.param(np.uint16, cvcuda.Format.U16, id="VarShape-NHWC-u16"),
+    ],
+)
+@pytest.mark.parametrize(
+    "border_mode, numpy_mode",
+    [
+        pytest.param(cvcuda.Border.CONSTANT, "constant", id="constant"),
+        pytest.param(cvcuda.Border.REPLICATE, "edge", id="replicate"),
+        pytest.param(cvcuda.Border.WRAP, "wrap", id="wrap"),
+        pytest.param(cvcuda.Border.REFLECT, "symmetric", id="reflect"),
+        pytest.param(cvcuda.Border.REFLECT101, "reflect", id="reflect101"),
+    ],
+)
+def test_op_copymakeborder_varshape_numpy_reference(
+    dtype, image_format, border_mode, numpy_mode
+):
+    src = cvcuda.ImageBatchVarShape(2)
+    dst = cvcuda.ImageBatchVarShape(2)
+    references = []
+    tops, lefts = [2, 1], [4, 2]
+    pad_options = {"constant_values": 23} if numpy_mode == "constant" else {}
+    for index, (height, width) in enumerate([(5, 7), (8, 4)]):
+        values = np.arange(height * width, dtype=np.int32).reshape(height, width, 1)
+        source = (values * 17 + 257).astype(dtype)
+        if np.issubdtype(dtype, np.signedinteger):
+            source -= 500
+        if dtype == np.int32:
+            source *= 65537
+        if dtype == np.float64:
+            source += 0.125 + 2**-30
+        image = util.to_cvcuda_image(source)
+        assert image.format == image_format
+        src.pushback(image)
+        reference = np.pad(
+            source,
+            ((tops[index], 3), (lefts[index], 1), (0, 0)),
+            mode=numpy_mode,
+            **pad_options,
+        )
+        references.append(reference)
+        dst.pushback(util.to_cvcuda_image(np.full(reference.shape, 7, dtype=dtype)))
+    top = util.to_cvcuda_tensor(
+        np.array(tops, dtype=np.int32).reshape(1, 1, 2, 1), "NHWC"
+    )
+    left = util.to_cvcuda_tensor(
+        np.array(lefts, dtype=np.int32).reshape(1, 1, 2, 1), "NHWC"
+    )
+
+    out = cvcuda.copymakeborder(
+        src,
+        top=top,
+        left=left,
+        out_heights=[reference.shape[0] for reference in references],
+        out_widths=[reference.shape[1] for reference in references],
+        border_mode=border_mode,
+        border_value=[23],
+    )
+    assert len(out) == len(references)
+    for image, reference in zip(out, references):
+        np.testing.assert_array_equal(
+            util.to_cpu_numpy_buffer(image.cuda("HWC")), reference
+        )
+
+    assert (
+        cvcuda.copymakeborder_into(
+            src=src,
+            dst=dst,
+            top=top,
+            left=left,
+            border_mode=border_mode,
+            border_value=[23],
+        )
+        is dst
+    )
+    for image, reference in zip(dst, references):
+        np.testing.assert_array_equal(
+            util.to_cpu_numpy_buffer(image.cuda("HWC")), reference
+        )
+
+
+def test_op_copymakeborder_hwc_rgb8_constant_correct_output():
+    source = np.arange(7 * 9 * 3, dtype=np.uint8).reshape(7, 9, 3)
+    src = util.to_cvcuda_tensor(source, "HWC")
+    top, bottom, left, right = 2, 3, 5, 4
+    border_value = [13, 57, 211]
+    expected = np.empty((7 + top + bottom, 9 + left + right, 3), dtype=np.uint8)
+    expected[...] = border_value
+    y_end, x_end = top + source.shape[0], left + source.shape[1]
+    expected[top:y_end, left:x_end] = source
+
+    out = cvcuda.copymakeborder(
+        src,
+        top=top,
+        bottom=bottom,
+        left=left,
+        right=right,
+        border_mode=cvcuda.Border.CONSTANT,
+        border_value=border_value,
+    )
+    np.testing.assert_array_equal(util.to_cpu_numpy_buffer(out.cuda()), expected)
+
+    dst = util.to_cvcuda_tensor(np.full(expected.shape, 0xA5, dtype=np.uint8), "HWC")
+    assert (
+        cvcuda.copymakeborder_into(
+            src=src,
+            dst=dst,
+            top=top,
+            left=left,
+            border_mode=cvcuda.Border.CONSTANT,
+            border_value=border_value,
+        )
+        is dst
+    )
+    np.testing.assert_array_equal(util.to_cpu_numpy_buffer(dst.cuda()), expected)
+
+
+@pytest.mark.parametrize(
     "input_args, top, bottom, left, right, border_mode, border_value",
     [
         (
@@ -301,19 +485,27 @@ globals().update(
         keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
         supported_dtypes={
             cvcuda.Type.U8,
+            cvcuda.Type.S8,
             cvcuda.Type.U16,
             cvcuda.Type.S16,
+            cvcuda.Type.S32,
+            cvcuda.Type.S64,
             cvcuda.Type.F16,
             cvcuda.Type.F32,
+            cvcuda.Type.F64,
         },
         supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
         supported_channels={1, 2, 3, 4},
         # 2 channels only supported for U8
         exclude_dlc=[
+            (cvcuda.Type.S8, None, 2),
             (cvcuda.Type.U16, None, 2),
             (cvcuda.Type.S16, None, 2),
+            (cvcuda.Type.S32, None, 2),
+            (cvcuda.Type.S64, None, 2),
             (cvcuda.Type.F16, None, 2),
             (cvcuda.Type.F32, None, 2),
+            (cvcuda.Type.F64, None, 2),
             (None, "NCHW", 2),
             (None, "CHW", 2),
         ],

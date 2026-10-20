@@ -17,6 +17,7 @@
 
 #include "Nvtx.hpp"
 #include "OpCropFlipNormalizeReformat.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cvcuda/cuda_tools/BorderVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
@@ -74,7 +75,8 @@ __device__ void transfer_data(cuda::BorderVarShapeWrap<const T1, B> srcWrap, Dst
             float base  = get_base_value(baseWrap, c, base_channels);
             float scale = get_scale_value(scaleWrap, c, scale_channels, epsilon, flags);
             dstWrap[(int4){dst_idx.x, dst_idx.y, c, batchidx}] = cuda::SaturateCast<DstWrapper::ValueType>(
-                (srcWrap[(int4){src_idx.x, src_idx.y, c, batchidx}] - base) * scale * global_scale + global_shift);
+                (srcWrap.value((int4){src_idx.x, src_idx.y, c, batchidx}) - base) * scale * global_scale
+                + global_shift);
         }
     }
     else
@@ -84,7 +86,8 @@ __device__ void transfer_data(cuda::BorderVarShapeWrap<const T1, B> srcWrap, Dst
             float base  = get_base_value(baseWrap, c, base_channels);
             float scale = get_scale_value(scaleWrap, c, scale_channels, epsilon, flags);
             dstWrap[(int4){c, dst_idx.x, dst_idx.y, batchidx}] = cuda::SaturateCast<DstWrapper::ValueType>(
-                (srcWrap[(int4){src_idx.x, src_idx.y, c, batchidx}] - base) * scale * global_scale + global_shift);
+                (srcWrap.value((int4){src_idx.x, src_idx.y, c, batchidx}) - base) * scale * global_scale
+                + global_shift);
         }
     }
 }
@@ -102,7 +105,8 @@ __device__ void transfer_data(cuda::BorderVarShapeWrapNHWC<const T1, B> srcWrap,
             float base  = get_base_value(baseWrap, c, base_channels);
             float scale = get_scale_value(scaleWrap, c, scale_channels, epsilon, flags);
             dstWrap[(int4){dst_idx.x, dst_idx.y, c, batchidx}] = cuda::SaturateCast<DstWrapper::ValueType>(
-                (srcWrap[(int4){batchidx, src_idx.y, src_idx.x, c}] - base) * scale * global_scale + global_shift);
+                (srcWrap.value((int4){batchidx, src_idx.y, src_idx.x, c}) - base) * scale * global_scale
+                + global_shift);
         }
     }
     else
@@ -112,7 +116,8 @@ __device__ void transfer_data(cuda::BorderVarShapeWrapNHWC<const T1, B> srcWrap,
             float base  = get_base_value(baseWrap, c, base_channels);
             float scale = get_scale_value(scaleWrap, c, scale_channels, epsilon, flags);
             dstWrap[(int4){c, dst_idx.x, dst_idx.y, batchidx}] = cuda::SaturateCast<DstWrapper::ValueType>(
-                (srcWrap[(int4){batchidx, src_idx.y, src_idx.x, c}] - base) * scale * global_scale + global_shift);
+                (srcWrap.value((int4){batchidx, src_idx.y, src_idx.x, c}) - base) * scale * global_scale
+                + global_shift);
         }
     }
 }
@@ -198,6 +203,85 @@ __global__ void slice_flip_normalize(SrcWrapper srcWrap, DstWrapper dstWrap, Fli
     }
 }
 
+template<class SrcWrapper, class DstWrapper, class TensorWrapper, class FlipWrapper, class CropRectWrap>
+__global__ void slice_flip_normalize_rgb8_tile(SrcWrapper srcWrap, DstWrapper dstWrap, FlipWrapper flipCodeWrap,
+                                               TensorWrapper baseWrap, TensorWrapper scaleWrap, CropRectWrap cropRect,
+                                               float global_scale, float global_shift, float epsilon, uint32_t flags,
+                                               int base_ch, int scale_ch, int3 out_size)
+{
+    __shared__ uint32_t packed[4][32 * 3];
+    const int           batch = blockIdx.z;
+    const int           y     = blockIdx.y * blockDim.y + threadIdx.y;
+    if (y >= out_size.y)
+        return;
+
+    const int4     crop    = *reinterpret_cast<const int4 *>(cropRect.ptr(batch, 0, 0, 0));
+    const int      flip    = flipCodeWrap[batch];
+    const bool     flip_x  = flip == 1 || flip == -1;
+    const bool     flip_y  = flip == 0 || flip == -1;
+    const int      tile_x  = blockIdx.x * 128;
+    const int      group_x = tile_x + threadIdx.x * 4;
+    unsigned char *tile    = reinterpret_cast<unsigned char *>(packed[threadIdx.y]);
+    if (group_x < out_size.x && group_x < crop.z && y < crop.w)
+    {
+        const int            span  = min(4, min(out_size.x, crop.z) - group_x);
+        const int            src_y = crop.y + (flip_y ? crop.w - 1 - y : y);
+        const int            src_x = crop.x + (flip_x ? crop.z - 1 - (group_x + span - 1) : group_x);
+        const unsigned char *pixel = srcWrap.ptr(batch, src_y, src_x, 0);
+        // Four RGB pixels occupy three aligned words; the tile restores planar-store coalescing.
+        if (span == 4 && pixel && src_x <= srcWrap.imageBatchWrap().width(batch, 0) - 4
+            && (reinterpret_cast<uintptr_t>(pixel) & 3) == 0)
+        {
+            const uint3 words                        = *reinterpret_cast<const uint3 *>(pixel);
+            packed[threadIdx.y][threadIdx.x * 3]     = words.x;
+            packed[threadIdx.y][threadIdx.x * 3 + 1] = words.y;
+            packed[threadIdx.y][threadIdx.x * 3 + 2] = words.z;
+        }
+        else
+        {
+#pragma unroll
+            for (int i = 0; i < 4; ++i)
+            {
+                if (i >= span)
+                    break;
+                const unsigned char *src_pixel = srcWrap.ptr(batch, src_y, src_x + i, 0);
+                const int            offset    = flip_x ? 4 - span + i : i;
+#pragma unroll
+                for (int c = 0; c < 3; ++c)
+                    tile[threadIdx.x * 12 + offset * 3 + c]
+                        = src_pixel ? src_pixel[c] : srcWrap.value((int4){batch, src_y, src_x + i, c});
+            }
+        }
+    }
+    __syncwarp();
+
+    float bases[3], scales[3];
+#pragma unroll
+    for (int c = 0; c < 3; ++c)
+    {
+        bases[c]  = get_base_value(baseWrap, c, base_ch);
+        scales[c] = get_scale_value(scaleWrap, c, scale_ch, epsilon, flags);
+    }
+#pragma unroll
+    for (int i = 0; i < 4; ++i)
+    {
+        const int local_x = threadIdx.x + i * 32;
+        const int x       = tile_x + local_x;
+        if (x >= out_size.x)
+            break;
+        if (x >= crop.z || y >= crop.w)
+        {
+            set_data(dstWrap, (int2){x, y}, batch, 3, 0, true);
+            continue;
+        }
+        const int src_local_x = flip_x ? local_x ^ 3 : local_x;
+#pragma unroll
+        for (int c = 0; c < 3; ++c)
+            dstWrap[(int4){x, y, c, batch}]
+                = (tile[src_local_x * 3 + c] - bases[c]) * scales[c] * global_scale + global_shift;
+    }
+}
+
 template<class T_Src, class T_Dst, NVCVBorderType B, class StrideType>
 void RunCropFlipNormalizeReformatS(cudaStream_t stream, const nvcv::ImageBatchVarShapeDataStridedCuda &srcData,
                                    const nvcv::TensorDataStridedCuda &dstData,
@@ -236,6 +320,24 @@ void RunCropFlipNormalizeReformatS(cudaStream_t stream, const nvcv::ImageBatchVa
 
     auto launch = [&](auto &srcBorderWrap, auto &dstWrap)
     {
+        if constexpr (std::is_same_v<T_Src, unsigned char> && std::is_same_v<T_Dst, float> && B == NVCV_BORDER_CONSTANT)
+        {
+            if (channel == 3 && !src_planar && dst_planar)
+            {
+                dim3 tileBlock(32, 4);
+                dim3 tileGrid(out_size.x / 128 + (out_size.x % 128 != 0), out_size.y / 4 + (out_size.y % 4 != 0),
+                              grid.z);
+                // Preserve the generic kernel's taller-image range at CUDA's grid.y limit.
+                if (tileGrid.y <= 65535)
+                {
+                    slice_flip_normalize_rgb8_tile<<<tileGrid, tileBlock, 0, stream>>>(
+                        srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap, cropRectWrap, global_scale, shift,
+                        epsilon, flags, base_channels, scale_channels, out_size);
+                    NVCV_CHECK_THROW(cudaGetLastError());
+                    return;
+                }
+            }
+        }
         if constexpr (supportsBatchedPath)
         {
             if (useScalarWidePath)
@@ -435,40 +537,11 @@ void CropFlipNormalizeReformat::operator()(cudaStream_t stream, const nvcv::Imag
                               "Input must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto flipCodeData = flipCode.exportData<nvcv::TensorDataStridedCuda>();
-    if (flipCodeData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input flipCode must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto baseData = base.exportData<nvcv::TensorDataStridedCuda>();
-    if (baseData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input base must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto scaleData = scale.exportData<nvcv::TensorDataStridedCuda>();
-    if (scaleData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input scale must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto cropRectData = cropRect.exportData<nvcv::TensorDataStridedCuda>();
-    if (cropRectData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input cropRect must be cuda-accessible, pitch-linear tensor");
-    }
+    auto outData      = RequireCudaTensor(out, "Output");
+    auto flipCodeData = RequireCudaTensor(flipCode, "Input flipCode");
+    auto baseData     = RequireCudaTensor(base, "Input base");
+    auto scaleData    = RequireCudaTensor(scale, "Input scale");
+    auto cropRectData = RequireCudaTensor(cropRect, "Input cropRect");
 
     nvcv::ImageFormat fmt       = inData->uniqueFormat();
     int32_t           channels  = fmt.numChannels();

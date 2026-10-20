@@ -20,6 +20,9 @@ from __future__ import annotations
 import json
 
 import pytest
+import pandas as pd
+
+from _internal import baselines
 
 from _internal.baselines import (
     BaselineError,
@@ -27,11 +30,13 @@ from _internal.baselines import (
     case_key_from_axis_values,
     load_config_index,
     load_sku_map,
+    load_sku_policies,
     parse_case_key,
+    profiles_for_gpu,
+    sku_map_gpu_names,
     sku_stems,
 )
 from compare_to_baseline import (
-    CONSOLE_SECTION_ROWS,
     CompareResult,
     MissingRow,
     RowResult,
@@ -341,11 +346,25 @@ def test_load_sku_map_skips_invalid_entries_when_not_strict(tmp_path):
     path.write_text(
         '{"entries": ['
         '{"gpu_name": "bad", "power_cap_w": 1},'
-        '{"gpu_name": "NVIDIA Test GPU", "power_cap_w": 350, '
+        '{"gpu_name": " NVIDIA Test GPU ", "power_cap_w": 350, '
         '"locked_sm_clock_mhz": 1095, "cuda_major": 13, "stem": "TESTSKU"}'
         "]}"
     )
     assert load_sku_map(path) == {("NVIDIA Test GPU", 350, 1095, 13): "TESTSKU"}
+    with pytest.raises(BaselineError, match="invalid sku_map.json entry #0"):
+        load_sku_map(path, strict=True)
+
+
+def test_sku_loaders_reject_non_object_root(tmp_path):
+    path = tmp_path / "sku_map.json"
+    path.write_text("[]")
+
+    assert load_sku_map(path) == {}
+    assert load_sku_policies(path) == {}
+    with pytest.raises(BaselineError, match="root must be an object"):
+        load_sku_map(path, strict=True)
+    with pytest.raises(BaselineError, match="root must be an object"):
+        load_sku_policies(path, strict=True)
 
 
 def test_load_sku_map_keeps_same_hardware_for_distinct_cuda_majors(tmp_path):
@@ -362,6 +381,129 @@ def test_load_sku_map_keeps_same_hardware_for_distinct_cuda_majors(tmp_path):
         ("NVIDIA Test GPU", 350, 1095, 12): "TEST_CUDA12",
         ("NVIDIA Test GPU", 350, 1095, 13): "TEST_CUDA13",
     }
+
+
+def test_load_sku_map_rejects_unsupported_cuda_major(tmp_path):
+    path = tmp_path / "sku_map.json"
+    path.write_text(
+        '{"entries": ['
+        '{"gpu_name": "NVIDIA Test GPU", "power_cap_w": 350, '
+        '"locked_sm_clock_mhz": 1095, "cuda_major": 11, "stem": "TEST_CUDA11"}'
+        "]}"
+    )
+
+    assert load_sku_map(path) == {}
+    with pytest.raises(BaselineError, match="unsupported CUDA major 11"):
+        load_sku_map(path, strict=True)
+
+
+def test_load_sku_map_rejects_different_stems_for_same_hardware(tmp_path):
+    path = tmp_path / "sku_map.json"
+    _write_sku_map(
+        path,
+        ("NVIDIA Test GPU", 350, 1095, "TEST_A"),
+        ("NVIDIA Test GPU", 350, 1095, "TEST_B"),
+    )
+
+    with pytest.raises(BaselineError, match="multiple SKU stems match hardware"):
+        load_sku_map(path, strict=True)
+
+
+def test_load_sku_map_drops_ambiguous_hardware_when_not_strict(tmp_path):
+    path = tmp_path / "sku_map.json"
+    _write_sku_map(
+        path,
+        ("NVIDIA Test GPU", 350, 1095, "TEST_A"),
+        ("NVIDIA Test GPU", 350, 1095, "TEST_B"),
+        ("NVIDIA Test GPU", 350, 1095, "TEST_A"),
+    )
+
+    assert load_sku_map(path) == {}
+
+
+def test_strict_sku_map_rejects_multiple_clocks_for_one_profile(tmp_path):
+    path = tmp_path / "sku_map.json"
+    _write_sku_map(
+        path,
+        ("NVIDIA Test GPU", 350, 1095, "TEST_1095"),
+        ("NVIDIA Test GPU", 350, 1005, "TEST_1005"),
+    )
+
+    sku_map = load_sku_map(path)
+    assert sku_map == {
+        ("NVIDIA Test GPU", 350, 1095, 13): "TEST_1095",
+        ("NVIDIA Test GPU", 350, 1005, 13): "TEST_1005",
+    }
+    with pytest.raises(BaselineError, match="multiple SM clock targets"):
+        load_sku_map(path, strict=True)
+
+
+def test_sku_map_enumeration_helpers():
+    sku_map = {
+        ("NVIDIA Test GPU", 350, 1095, 13): "TEST_13",
+        ("NVIDIA Test GPU", 350, 1005, 12): "TEST_12",
+        ("Other GPU", 300, 900, 13): "OTHER",
+    }
+
+    assert sku_map_gpu_names(sku_map) == {"NVIDIA Test GPU", "Other GPU"}
+    assert profiles_for_gpu(sku_map, "NVIDIA Test GPU") == [
+        (350, 1005, 12),
+        (350, 1095, 13),
+    ]
+
+
+@pytest.mark.parametrize("cuda_major", [12, 13])
+@pytest.mark.parametrize("power_cap", [250, 310, 350, 400])
+def test_h100_routing_ignores_power_but_preserves_clock_and_cuda(cuda_major, power_cap):
+    sku_map = load_sku_map(strict=True)
+    expected = "H100_PCIe_350W_1005MHz" + ("_CUDA12" if cuda_major == 12 else "")
+    metadata = {
+        "gpu_name": "NVIDIA H100 PCIe",
+        "power_cap_w": power_cap,
+        "locked_sm_clock_mhz": 1005,
+        "cuda_major": cuda_major,
+    }
+    assert baselines.resolve_sku_from_metadata(metadata, sku_map) == expected
+    row = pd.Series(
+        {
+            baselines.DEVICE_NAME_COLUMN: metadata["gpu_name"],
+            baselines.POWER_CAP_COLUMN: power_cap,
+            baselines.LOCKED_CLOCK_COLUMN: 1005,
+        }
+    )
+    assert baselines.resolve_sku_for_row(row, sku_map, cuda_major) == expected
+    metadata["locked_sm_clock_mhz"] = 900
+    assert baselines.resolve_sku_from_metadata(metadata, sku_map) is None
+    row[baselines.LOCKED_CLOCK_COLUMN] = 900
+    with pytest.raises(BaselineError, match="is not in sku_map.json"):
+        baselines.resolve_sku_for_row(row, sku_map, cuda_major)
+
+
+def test_power_wildcard_is_explicit_and_other_gpus_remain_power_scoped():
+    sku_map = load_sku_map(strict=True)
+    metadata = {
+        "gpu_name": "NVIDIA A100-PCIE-40GB",
+        "power_cap_w": 310,
+        "locked_sm_clock_mhz": 1005,
+        "cuda_major": 13,
+    }
+    assert baselines.resolve_sku_from_metadata(metadata, sku_map) is None
+    metadata.update(gpu_name="NVIDIA H100 PCIe", power_cap_w=None)
+    assert baselines.resolve_sku_from_metadata(metadata, sku_map) is None
+    metadata.pop("power_cap_w")
+    assert baselines.resolve_sku_from_metadata(metadata, sku_map) is None
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_sku_map_rejects_overlapping_power_profiles(tmp_path, reverse):
+    path = tmp_path / "sku_map.json"
+    entries = [
+        ("NVIDIA Test GPU", None, 1005, "ANY_POWER"),
+        ("NVIDIA Test GPU", 350, 1005, "FIXED_POWER"),
+    ]
+    _write_sku_map(path, *(reversed(entries) if reverse else entries))
+    with pytest.raises(BaselineError, match="overlapping power profiles"):
+        load_sku_map(path, strict=True)
 
 
 def test_markdown_summary_reports_delta_stats(tmp_path):
@@ -455,9 +597,10 @@ def _bulk_result(count):
     return result
 
 
-def test_console_copy_caps_rows_per_section(tmp_path):
-    """A bootstrap run flags thousands of rows; the log must stay readable."""
-    count = CONSOLE_SECTION_ROWS + 7
+def test_rows_per_section_cap_is_opt_in(tmp_path):
+    """The default lists every row; a caller may still cap explicitly."""
+    cap = 25
+    count = cap + 7
     result = _bulk_result(count)
 
     full = format_markdown(
@@ -469,13 +612,13 @@ def test_console_copy_caps_rows_per_section(tmp_path):
         "operators",
         tmp_path / "cur.json",
         Thresholds(),
-        max_rows_per_section=CONSOLE_SECTION_ROWS,
+        max_rows_per_section=cap,
     )
 
     # Both report the true totals; only the listed rows differ.
     assert f"Unexpected improvements ({count})" in full
     assert f"Unexpected improvements ({count})" in capped
     assert full.count("- resize_basic_") == count
-    assert capped.count("- resize_basic_") == CONSOLE_SECTION_ROWS
-    assert capped.count("...and 7 more") == 2
     assert "...and" not in full
+    assert capped.count("- resize_basic_") == cap
+    assert capped.count("...and 7 more") == 2

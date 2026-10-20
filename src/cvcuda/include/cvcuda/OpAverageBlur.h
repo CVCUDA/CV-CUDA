@@ -141,6 +141,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAverageBlurSubmit(NVCVOperatorHandle handle, cuda
 /**
  * Executes the AverageBlur operation on a batch of images.
  *
+ * Input and output batches must contain the same number of images, and each corresponding
+ * input/output image pair must have the same width and height.
+ *
  * @param[in] in Input image batch.
  * @param[out] out Output image batch.
  * @param[in] kernelSize Average blur kernel size as a Tensor of int2.

@@ -18,12 +18,12 @@
 #ifndef NVCV_PYTHON_ROUND_MODE_HPP
 #define NVCV_PYTHON_ROUND_MODE_HPP
 
-#include <pybind11/pybind11.h>
+#include <common/Binding.hpp>
 
 namespace cvcudapy {
-namespace py = ::pybind11;
+namespace py = ::nanobind;
 
-void ExportRoundMode(py::module &m);
+void ExportRoundMode(py::module_ &m);
 
 } // namespace cvcudapy
 

@@ -22,16 +22,16 @@
 
 #include <nvcv/DataType.hpp>
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 namespace cvpy = nvcvpy;
 
 template<>
 struct type_caster<nvcv::DataType>
 {
-    PYBIND11_TYPE_CASTER(nvcv::DataType, const_name("cvcuda.Type"));
+    NB_TYPE_CASTER(nvcv::DataType, const_name("cvcuda.Type"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *)
     {
         NVCVDataType p = cvpy::capi().DataType_FromPython(src.ptr());
         cvpy::CheckCAPIError();
@@ -39,7 +39,7 @@ struct type_caster<nvcv::DataType>
         return true;
     }
 
-    static handle cast(nvcv::DataType type, return_value_policy /* policy */, handle /*parent */)
+    static handle from_cpp(nvcv::DataType type, rv_policy, cleanup_list *)
     {
         handle out = cvpy::capi().DataType_ToPython(static_cast<NVCVDataType>(type));
         cvpy::CheckCAPIError();
@@ -47,6 +47,6 @@ struct type_caster<nvcv::DataType>
     }
 };
 
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_DATATYPE_HPP

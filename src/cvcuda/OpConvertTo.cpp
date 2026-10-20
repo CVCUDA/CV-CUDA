@@ -17,6 +17,7 @@
 
 #include "priv/OpConvertTo.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -49,6 +50,8 @@ CVCUDA_DEFINE_API(0, 17, NVCVStatus, cvcudaConvertToSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &alpha, &beta, &roundMode]
         {
+            priv::CheckEnumArg(roundMode, NVCV_ROUND_TRUNCATE_WRAP, "round mode");
+
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
             priv::ToDynamicRef<priv::ConvertTo>(handle)(stream, input.resource(), output.resource(), alpha, beta,

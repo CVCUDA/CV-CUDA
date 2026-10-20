@@ -92,9 +92,15 @@ def customcrop(state):
             device_id,
             layout="NCHW",
             fill_mode="checkerboard",
+            native_allocation=True,
         )
         inter_src = create_tensor(
-            (N, H, W, num_channels), dtype, device_id, layout="NHWC", fill_mode=0
+            (N, H, W, num_channels),
+            dtype,
+            device_id,
+            layout="NHWC",
+            fill_mode=0,
+            native_allocation=True,
         )
         inter_dst = create_tensor(
             (N, crop_h, crop_w, num_channels),
@@ -102,6 +108,7 @@ def customcrop(state):
             device_id,
             layout="NHWC",
             fill_mode=0,
+            native_allocation=True,
         )
         dst = create_tensor(
             (N, num_channels, crop_h, crop_w),
@@ -109,6 +116,7 @@ def customcrop(state):
             device_id,
             layout="NCHW",
             fill_mode=0,
+            native_allocation=True,
         )
 
         def run_fake(launch):
@@ -126,9 +134,16 @@ def customcrop(state):
         else (N, crop_h, crop_w, num_channels)
     )
     src = create_tensor(
-        src_shape, dtype, device_id, layout=layout, fill_mode="checkerboard"
+        src_shape,
+        dtype,
+        device_id,
+        layout=layout,
+        fill_mode="checkerboard",
+        native_allocation=True,
     )
-    dst = create_tensor(dst_shape, dtype, device_id, layout=layout, fill_mode=0)
+    dst = create_tensor(
+        dst_shape, dtype, device_id, layout=layout, fill_mode=0, native_allocation=True
+    )
 
     def run(launch):
         cvcuda.customcrop_into(dst, src, crop_rect, stream=get_stream(launch))

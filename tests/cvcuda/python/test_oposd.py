@@ -13,11 +13,68 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import subprocess
+import sys
+import textwrap
+
 import cvcuda
 
 import pytest
 import numpy as np
 import cvcuda_tools as cv_tools
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        cvcuda.Segment(
+            box=(0, 0, 2, 2),
+            thickness=1,
+            segArray=cupy.ones((2, 2), dtype=cupy.float32),
+            segThreshold=0.5,
+            borderColor=(0, 0, 0),
+            segColor=(0, 0, 0),
+        )
+        """,
+        """
+        cvcuda.PolyLine(
+            points=cupy.array([[0, 0], [1, 1]], dtype=cupy.int32),
+            thickness=1,
+            isClosed=True,
+            borderColor=(0, 0, 0),
+            fillColor=(0, 0, 0),
+        )
+        """,
+    ],
+    ids=["segment", "polyline"],
+)
+def test_osd_elements_reject_cuda_array_storage(source):
+    body = textwrap.indent(textwrap.dedent(source).strip(), "    ")
+    script = "\n".join(
+        [
+            "import cupy",
+            "import cvcuda",
+            "",
+            "try:",
+            body,
+            "except TypeError:",
+            '    print("PASS", flush=True)',
+            "else:",
+            '    raise AssertionError("CUDA-backed array unexpectedly accepted")',
+        ]
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0 and "PASS" in result.stdout, (
+        f"OSD CUDA-array subprocess failed (returncode={result.returncode})\n"
+        f"stdout: {result.stdout[:1000]}\n"
+        f"stderr: {result.stderr[:2000]}"
+    )
 
 
 @pytest.mark.parametrize(

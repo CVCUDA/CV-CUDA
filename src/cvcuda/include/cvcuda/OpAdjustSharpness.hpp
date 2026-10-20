@@ -42,10 +42,10 @@ class AdjustSharpness final : public IOperator
 public:
     explicit AdjustSharpness();
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, float sharpnessFactor) const;
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double sharpnessFactor) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                    float sharpnessFactor) const;
+                    double sharpnessFactor) const;
 
     NVCVOperatorHandle handle() const noexcept override;
 
@@ -62,14 +62,14 @@ inline AdjustSharpness::AdjustSharpness()
 }
 
 inline void AdjustSharpness::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                        float sharpnessFactor) const
+                                        double sharpnessFactor) const
 {
     nvcv::detail::CheckThrow(
         cvcudaAdjustSharpnessSubmit(m_handle.get(), stream, in.handle(), out.handle(), sharpnessFactor));
 }
 
 inline void AdjustSharpness::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                                        float sharpnessFactor) const
+                                        double sharpnessFactor) const
 {
     nvcv::detail::CheckThrow(
         cvcudaAdjustSharpnessVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(), sharpnessFactor));

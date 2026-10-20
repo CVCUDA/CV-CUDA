@@ -21,9 +21,10 @@
 
 namespace cvcudapy {
 
-void ExportPairwiseMatcherType(py::module &m)
+void ExportPairwiseMatcherType(py::module_ &m)
 {
-    py::enum_<NVCVPairwiseMatcherType>(m, "Matcher", "Pairwise feature matcher algorithm types.", py::arithmetic())
+    py::enum_compat<NVCVPairwiseMatcherType>(m, "Matcher", "Pairwise feature matcher algorithm types.",
+                                             py::is_arithmetic())
         .value("BRUTE_FORCE", NVCV_BRUTE_FORCE, "Exhaustively compares all descriptor pairs to find the best match.");
 }
 

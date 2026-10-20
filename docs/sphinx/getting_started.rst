@@ -93,6 +93,8 @@ The samples are the best way to learn CV-CUDA. They demonstrate everything from 
 * **Hello World** - Your introduction to CV-CUDA (load, resize, blur, save)
 * **Operators** - Learn individual CV-CUDA operations (resize, blur, reformat, etc.)
 * **Applications** - Complete pipelines (classification, detection, segmentation)
+* **cvcuda.tv** - Use a TorchVision-style functional API; see the
+  :doc:`guide <cvcuda_tv>` and :ref:`samples <sample_cvcuda_tv>`.
 
 **View the Samples Documentation:**
 

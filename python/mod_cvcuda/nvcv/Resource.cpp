@@ -23,84 +23,210 @@
 #include <common/CheckError.hpp>
 #include <cuda_runtime.h>
 
+#include <atomic>
+
 namespace nvcvpy::priv {
 
-Resource::Resource()
+namespace {
+
+constexpr uint64_t kPendingReleaseOwnerMask = (uint64_t{1} << 32) - 1;
+constexpr uint64_t kBlockedReleaseOwnerUnit = uint64_t{1} << 32;
+
+} // namespace
+
+Resource::Resource([[maybe_unused]] bool createSubmissionState)
 {
+#ifdef NB_FREE_THREADED
+    // Wrappers that share allocation state install it before publication.
+    if (createSubmissionState)
+        m_submissionStates.push_back(std::make_shared<SubmissionState>());
+    static std::atomic<uint64_t> idnext{0};
+    m_id = idnext.fetch_add(1, std::memory_order_relaxed);
+#else
     static uint64_t idnext = 0;
-
-    m_id = idnext++;
+    m_id                   = idnext++;
+#endif
 }
 
-Resource::~Resource()
+std::mutex *Resource::submissionMutex() const
 {
-    int savedDev = -1;
-    util::CheckLog(cudaGetDevice(&savedDev));
-
-    for (const auto &[dev, evt] : m_events)
-    {
-        util::CheckLog(cudaSetDevice(dev));
-        util::CheckLog(cudaEventDestroy(evt));
-    }
-
-    if (savedDev >= 0)
-    {
-        util::CheckLog(cudaSetDevice(savedDev));
-    }
+    return nullptr;
 }
+
+void Resource::acquirePendingReleaseOwner() noexcept
+{
+    const uint64_t previous = m_pendingReleaseOwnership.fetch_add(1, std::memory_order_release);
+    NVCV_ASSERT((previous & kPendingReleaseOwnerMask) != kPendingReleaseOwnerMask);
+}
+
+void Resource::blockPendingReleaseOwner() noexcept
+{
+    const uint64_t previous
+        = m_pendingReleaseOwnership.fetch_add(kBlockedReleaseOwnerUnit - 1, std::memory_order_acq_rel);
+    NVCV_ASSERT((previous & kPendingReleaseOwnerMask) != 0);
+}
+
+void Resource::unblockPendingReleaseOwner() noexcept
+{
+    const uint64_t previous
+        = m_pendingReleaseOwnership.fetch_sub(kBlockedReleaseOwnerUnit - 1, std::memory_order_acq_rel);
+    NVCV_ASSERT(previous >= kBlockedReleaseOwnerUnit);
+}
+
+void Resource::indexPendingResources() noexcept
+{
+    Cache::IndexPending(*this);
+}
+
+void Resource::releasePendingReleaseOwner(bool blocked) noexcept
+{
+    const uint64_t unit     = blocked ? kBlockedReleaseOwnerUnit : 1;
+    const uint64_t previous = m_pendingReleaseOwnership.fetch_sub(unit, std::memory_order_acq_rel);
+    NVCV_ASSERT(blocked ? previous >= kBlockedReleaseOwnerUnit : (previous & kPendingReleaseOwnerMask) != 0);
+}
+
+std::optional<uint64_t> Resource::reusablePendingReleaseOwners() const
+{
+    const uint64_t ownership = m_pendingReleaseOwnership.load(std::memory_order_acquire);
+    if (ownership == 0 || ownership > kPendingReleaseOwnerMask)
+    {
+        return std::nullopt;
+    }
+    return ownership;
+}
+
+bool Resource::pendingReleaseOwnershipMatches(uint64_t snapshot) const
+{
+    return m_pendingReleaseOwnership.load(std::memory_order_acquire) == snapshot;
+}
+
+bool Resource::hasPendingReleaseOwners() const
+{
+    return m_pendingReleaseOwnership.load(std::memory_order_acquire) != 0;
+}
+
+Resource::~Resource() = default;
 
 uint64_t Resource::id() const
 {
     return m_id;
 }
 
-cudaEvent_t Resource::event()
-{
-    int dev;
-    util::CheckThrow(cudaGetDevice(&dev));
-
-    auto it = m_events.find(dev);
-    if (it == m_events.end())
-    {
-        cudaEvent_t evt = nullptr;
-        util::CheckThrow(cudaEventCreateWithFlags(&evt, cudaEventDisableTiming));
-        m_events.emplace(dev, evt);
-        return evt;
-    }
-    return it->second;
-}
-
 void Resource::submitSync(Stream &stream)
 {
-    std::unique_lock lk(m_mtx);
+    submitSync(stream, stream.submissionDeviceId());
+}
 
-    // Compute the "previous" stream handle.  Either a cvcuda-owned Stream
-    // (m_lastStream) or a raw handle seeded from an external producer via
+bool Resource::isOrderedOn(Stream &stream)
+{
+    const int device = stream.submissionDeviceId();
+#ifdef NB_FREE_THREADED
+    SubmissionLocks locks;
+    locks.add(m_submissionStates, LOCK_MODE_READWRITE);
+    if (!locks.try_lock())
+        return false;
+    return std::all_of(m_submissionStates.begin(), m_submissionStates.end(),
+                       [&](const auto &state) { return state->isOrderedOn(stream, device); });
+#else
+    if (isSynchronizedWith(stream, device))
+        return true;
+    std::lock_guard lock(m_mtx);
+    if (!m_lastStreamOwner && m_lastStreamHandle == nullptr)
+        return true;
+    const auto previous       = m_lastStreamOwner ? m_lastStreamOwner->handle() : m_lastStreamHandle;
+    const auto next           = stream.handle();
+    const bool explicitStream = next != nullptr && next != cudaStreamLegacy && next != cudaStreamPerThread;
+    return previous == next
+        && (explicitStream
+            || (m_lastStreamOwner && m_lastDevice == device
+                && m_lastStreamOwner->sharesQueueWith(*stream.handleOwner())));
+#endif
+}
+
+bool Resource::isSynchronizedWith(Stream &stream, int submissionDevice) const
+{
+    return m_synchronizedWith.load() == stream.handleOwner().get() && submissionDevice == stream.deviceId();
+}
+
+void Resource::cacheSynchronization(Stream &stream)
+{
+    // Publish only completed transitions. The owner identifies the device for
+    // default streams; per-thread handles additionally need their thread context.
+    if (stream.handle() != cudaStreamPerThread && m_lastDevice == stream.deviceId())
+        m_synchronizedWith.store(m_lastStreamOwner.get());
+}
+
+std::shared_ptr<const StreamHandleOwner> Resource::replaceLastStreamOwner(Stream &stream, StreamOwnerBag *retiredOwners)
+{
+    if (retiredOwners && m_lastStreamOwner)
+        retiredOwners->push_back(m_lastStreamOwner);
+    auto previous      = std::move(m_lastStreamOwner);
+    m_lastStreamHandle = nullptr;
+    m_lastStreamOwner  = stream.handleOwner();
+    return previous;
+}
+
+void Resource::submitSync(Stream &stream, int submissionDevice, StreamOwnerBag *retiredOwners)
+{
+#ifdef NB_FREE_THREADED
+    ResourceBag     retained;
+    SubmissionLocks locks;
+    visitSubmissionResources(LOCK_MODE_READWRITE,
+                             [&](Resource &resource, auto mode, bool retain)
+                             {
+                                 if (retain)
+                                     retained.push_back(resource.shared_from_this());
+                                 locks.add(resource.submissionStates(), mode);
+                             });
+    locks.lock();
+    locks.prepare(stream, submissionDevice);
+    util::CheckThrow(stream.handleOwner()->capturePerThreadCompletion());
+    return;
+#endif
+    if (isSynchronizedWith(stream, submissionDevice))
+        return;
+    // Declared before the lock so it is destroyed after it: dropping the
+    // last reference to a handle owner runs cudaStreamDestroy, and this
+    // mutex is taken on the operator hot path. Reads as a dead store, is
+    // not one.
+    std::shared_ptr<const StreamHandleOwner> previous;
+    std::unique_lock                         lk(m_mtx);
+    // A cache hit can precede this transition or follow its publication, but
+    // must not observe partially updated history or an owner being released.
+    m_synchronizedWith.store(nullptr);
+
+    // Compute the "previous" stream handle. Either a cvcuda handle owner or
+    // a raw handle seeded from an external producer via
     // seedLastStream() (m_lastStreamHandle).  Both being unset means this is
     // the first submission for this resource.
-    cudaStream_t prevHandle = nullptr;
-    if (m_lastStream.has_value())
+    bool         hasPrevious = m_lastStreamOwner != nullptr || m_lastStreamHandle != nullptr;
+    cudaStream_t prevHandle  = m_lastStreamOwner != nullptr ? m_lastStreamOwner->handle() : m_lastStreamHandle;
+    // Fast path: previously bound to the same stream means no sync work.
+    // Explicit streams need only a pointer comparison. A null/default handle
+    // also needs the current device, which a batch resolves once and shares
+    // with all of its children.
+    // cudaStream_t is an opaque handle compared by value, never dereferenced;
+    // pointer-to-const would only spell CUDA's private struct name here.
+    if (cudaStream_t nextHandle = stream.handle(); // NOSONAR: opaque handle, compared by value only.
+        hasPrevious && prevHandle == nextHandle)
     {
-        prevHandle = m_lastStream.value()->handle();
-    }
-    else if (m_lastStreamHandle != nullptr)
-    {
-        prevHandle = m_lastStreamHandle;
-    }
-
-    // Fast path: previously bound to the same stream → no sync work, and
-    // no need to query the current device. Streams are sequential, so the
-    // last operation on this stream is already ordered before whatever the
-    // caller is about to enqueue. This path runs once per resource per Python
-    // op call after the first, so keeping it cheap (mutex + pointer compare,
-    // no CUDA driver round-trip) is the difference between an op wrapper
-    // adding ~5µs vs ~30µs of constant overhead per call. cudaGetDevice
-    // costs a few µs each invocation; with 5-7 resources locked per op,
-    // skipping it on the fast path saves 25-35µs per gamma_contrast_into /
-    // erase / brightness_contrast / etc.
-    if (prevHandle != nullptr && prevHandle == stream.handle())
-    {
-        return;
+        const bool isExplicitStream
+            = nextHandle != nullptr && nextHandle != cudaStreamLegacy && nextHandle != cudaStreamPerThread;
+        const bool isTrustedDefault = m_lastStreamOwner != nullptr && m_lastDevice == submissionDevice
+                                   && m_lastStreamOwner->sharesQueueWith(*stream.handleOwner());
+        if (isExplicitStream || isTrustedDefault)
+        {
+            // A trustworthy raw explicit handle adopts this wrapper. Raw
+            // default sentinels do not return here because CAI producers may
+            // advertise one while their writes run on another stream.
+            if (m_lastStreamOwner == nullptr
+                || (!m_lastStreamOwner->retainsHandleLifetime() && stream.handleOwner()->retainsHandleLifetime()))
+            {
+                previous = replaceLastStreamOwner(stream, retiredOwners);
+            }
+            cacheSynchronization(stream);
+            return;
+        }
     }
 
     // Slow path: need the current device for either first-binding state or
@@ -110,10 +236,11 @@ void Resource::submitSync(Stream &stream)
 
     // First submission for this resource — take ownership on the current
     // stream and return with no sync work.
-    if (prevHandle == nullptr)
+    if (!hasPrevious)
     {
-        m_lastStream.emplace(stream.sharedStream());
-        m_lastDevice = curDev;
+        m_lastStreamOwner = stream.handleOwner();
+        m_lastDevice      = curDev;
+        cacheSynchronization(stream);
         return;
     }
 
@@ -133,7 +260,7 @@ void Resource::submitSync(Stream &stream)
     // (which advertise their actual writer stream as a real pointer) stay
     // on the event-based fast path below.  This branch only fires once per
     // wrapped buffer's first cvcuda use; subsequent ops on the same buffer
-    // take the event-based path because m_lastStream is set after this.
+    // take the event-based path because m_lastStreamOwner is set after this.
     if (prevHandle == cudaStreamLegacy || prevHandle == cudaStreamPerThread)
     {
         if (m_lastDevice != curDev)
@@ -160,118 +287,166 @@ void Resource::submitSync(Stream &stream)
     }
     else
     {
-        // Same device — use the efficient event-based synchronization.
-        // Write event on the old stream, the new stream will wait for it.
-        util::CheckThrow(cudaEventRecord(event(), prevHandle));
-        util::CheckThrow(cudaStreamWaitEvent(stream.handle(), event()));
+        stream.waitFor(prevHandle);
     }
 
     // update the last stream since we changed streams
-    m_lastStream.reset();
-    m_lastStreamHandle = nullptr;
-    m_lastStream.emplace(stream.sharedStream());
+    previous     = replaceLastStreamOwner(stream, retiredOwners);
     m_lastDevice = curDev;
+    cacheSynchronization(stream);
 }
 
 Resource::SyncState Resource::syncState() const
 {
+    SyncState        state;
     std::unique_lock lk(m_mtx);
 
-    if (m_lastStream.has_value())
+    state.device = m_lastDevice;
+    state.owner  = m_lastStreamOwner;
+    if (state.owner != nullptr)
     {
-        return {m_lastStream.value()->handle(), m_lastDevice};
+        state.stream = state.owner->handle();
+        state.bound  = true;
     }
-    return {m_lastStreamHandle, m_lastDevice};
+    else
+    {
+        state.stream = m_lastStreamHandle;
+        state.bound  = m_lastStreamHandle != nullptr;
+    }
+    return state;
 }
 
-bool Resource::submitSyncThrough(Stream &stream, SyncState synchronizedState)
+bool Resource::submitSyncThrough(Stream &stream, const SyncState &synchronizedState, int submissionDevice,
+                                 StreamOwnerBag *retiredOwners)
 {
-    std::unique_lock lk(m_mtx);
+    if (isSynchronizedWith(stream, submissionDevice))
+        return true;
+    // Declared before the lock so it is destroyed after it: dropping the
+    // last reference to a handle owner runs cudaStreamDestroy, and this
+    // mutex is taken on the operator hot path. Reads as a dead store, is
+    // not one.
+    std::shared_ptr<const StreamHandleOwner> currentOwner;
+    std::unique_lock                         lk(m_mtx);
 
-    SyncState currentState{m_lastStreamHandle, m_lastDevice};
-    if (m_lastStream.has_value())
-    {
-        currentState.stream = m_lastStream.value()->handle();
-    }
-    if (currentState.stream != synchronizedState.stream || currentState.device != synchronizedState.device)
+    bool         currentBound = m_lastStreamOwner != nullptr || m_lastStreamHandle != nullptr;
+    // Opaque handle, compared by value only -- see submitSync().
+    cudaStream_t currentStream // NOSONAR: opaque handle, compared by value only.
+        = m_lastStreamOwner != nullptr ? m_lastStreamOwner->handle() : m_lastStreamHandle;
+    if (currentBound != synchronizedState.bound || currentStream != synchronizedState.stream
+        || m_lastDevice != synchronizedState.device
+        || (currentStream == cudaStreamPerThread
+            && (!m_lastStreamOwner || !synchronizedState.owner
+                || !m_lastStreamOwner->sharesQueueWith(*synchronizedState.owner))))
     {
         return false;
     }
-    if (currentState.stream == stream.handle())
+    m_synchronizedWith.store(nullptr);
+
+    if (cudaStream_t nextHandle = stream.handle(); // NOSONAR: opaque handle, compared by value only.
+        currentBound && currentStream == nextHandle && m_lastDevice == submissionDevice
+        && (nextHandle != cudaStreamPerThread
+            || (m_lastStreamOwner && m_lastStreamOwner->sharesQueueWith(*stream.handleOwner()))))
     {
+        if (m_lastStreamOwner == nullptr
+            || (!m_lastStreamOwner->retainsHandleLifetime() && stream.handleOwner()->retainsHandleLifetime()))
+        {
+            currentOwner = replaceLastStreamOwner(stream, retiredOwners);
+        }
+        cacheSynchronization(stream);
         return true;
     }
 
     // The parent already established this stream dependency, so only transfer
     // ownership; recording another event per child would duplicate that wait.
-    m_lastStream.reset();
-    m_lastStreamHandle = nullptr;
-    m_lastStream.emplace(stream.sharedStream());
-    m_lastDevice = stream.deviceId();
+    currentOwner = replaceLastStreamOwner(stream, retiredOwners);
+    m_lastDevice = submissionDevice;
+    cacheSynchronization(stream);
     return true;
 }
 
 void Resource::seedLastStream(cudaStream_t handle, int device)
 {
+#ifdef NB_FREE_THREADED
+    for (const auto &state : m_submissionStates) state->seed(handle, device);
+    return;
+#endif
     std::unique_lock lk(m_mtx);
 
     // If some stream ownership is already recorded, respect it — either we've
     // been seeded before, or a cvcuda op has already claimed this resource.
-    if (m_lastStream.has_value() || m_lastStreamHandle != nullptr)
+    if (m_lastStreamOwner != nullptr || m_lastStreamHandle != nullptr)
     {
         return;
     }
 
+    m_synchronizedWith.store(nullptr);
     m_lastStreamHandle = handle;
     m_lastDevice       = device;
 }
 
 void Resource::resetLastStreamForRebind()
 {
-    std::unique_lock lk(m_mtx);
+#ifdef NB_FREE_THREADED
+    m_submissionStates = {std::make_shared<SubmissionState>()};
+#endif
+    // Declared before the lock so it is destroyed after it: dropping the
+    // last reference to a handle owner runs cudaStreamDestroy, and this
+    // mutex is taken on the operator hot path. Reads as a dead store, is
+    // not one.
+    std::shared_ptr<const StreamHandleOwner> previous;
+    std::unique_lock                         lk(m_mtx);
 
-    m_lastStream.reset();
+    m_synchronizedWith.store(nullptr);
+    previous           = std::move(m_lastStreamOwner);
     m_lastStreamHandle = nullptr;
     m_lastDevice       = -1;
 }
 
-cudaStream_t Resource::getLastStreamHandle() const
+Resource::ExportStreamState Resource::exportStreamState() const
 {
-    std::unique_lock lk(m_mtx);
+#ifdef NB_FREE_THREADED
+    SubmissionLocks locks;
+    locks.add(m_submissionStates, LOCK_MODE_READWRITE);
+    locks.lock();
+    auto access = ExportSubmissionAccess(m_submissionStates);
+    return {access.stream, std::move(access.owner), m_submissionStates};
+#endif
+    ExportStreamState state;
+    std::unique_lock  lk(m_mtx);
 
-    if (m_lastStream.has_value())
+    state.owner = m_lastStreamOwner;
+    if (state.owner != nullptr)
     {
-        return m_lastStream.value()->handle();
+        state.handle = state.owner->handle();
     }
-    return m_lastStreamHandle;
+    else if (m_lastStreamHandle != nullptr)
+    {
+        state.handle = m_lastStreamHandle;
+    }
+    return state;
+}
+
+RetainedMemory Resource::retainedMemory() const
+{
+    return {0, 1};
 }
 
 std::shared_ptr<Resource> Resource::shared_from_this()
 {
-    return std::dynamic_pointer_cast<Resource>(Object::shared_from_this());
+    return std::static_pointer_cast<Resource>(Object::shared_from_this());
 }
 
 std::shared_ptr<const Resource> Resource::shared_from_this() const
 {
-    return std::dynamic_pointer_cast<const Resource>(Object::shared_from_this());
+    return std::static_pointer_cast<const Resource>(Object::shared_from_this());
 }
 
-void Resource::Export(py::module &m)
+void Resource::Export(py::module_ &m)
 {
-    py::class_<Resource, std::shared_ptr<Resource>>(m, "Resource", "Resource")
-        .def_property_readonly("id", &Resource::id, "Unique resource instance identifier");
-}
-
-void Resource::ExportStreamMethods(py::module &m)
-{
-    // Re-open the already-registered Resource class and add the stream-using
-    // method now that Stream is a known pybind11 type.  Without this
-    // deferral, pybind11 would emit the raw C++ typename
-    // `nvcvpy::priv::Stream` in the signature.
-    py::object cls = m.attr("Resource");
-    cls.attr("submitStreamSync")
-        = py::cpp_function(&Resource::submitSync, py::name("submitStreamSync"), py::is_method(cls), py::arg("stream"),
-                           "Syncs object on new Stream");
+    py::class_<Resource>(m, "Resource", "Resource")
+        .def_prop_ro("id", &Resource::id, "Unique resource instance identifier")
+        .def("submitStreamSync", static_cast<void (Resource::*)(Stream &)>(&Resource::submitSync), py::arg("stream"),
+             "Syncs object on new Stream");
 }
 
 } // namespace nvcvpy::priv

@@ -17,6 +17,7 @@
 
 #include "ElementwiseOpHarness.hpp" // for elementwise::Bound / ExpectRejected
 #include "PlanarParityUtils.hpp"
+#include "TestCAPIEnum.h"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
@@ -27,13 +28,24 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <random>
 #include <thread>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace test = nvcv::test;
 namespace ew   = nvcv::test::elementwise;
+
+using AdjustContrastTensorCall
+    = void (cvcuda::AdjustContrast::*)(cudaStream_t, const nvcv::Tensor &, const nvcv::Tensor &, double) const;
+using AdjustContrastVarShapeCall
+    = void (cvcuda::AdjustContrast::*)(cudaStream_t, const nvcv::ImageBatch &, const nvcv::ImageBatch &, double) const;
+static_assert(std::is_same_v<decltype(static_cast<AdjustContrastTensorCall>(&cvcuda::AdjustContrast::operator())),
+                             AdjustContrastTensorCall>);
+static_assert(std::is_same_v<decltype(static_cast<AdjustContrastVarShapeCall>(&cvcuda::AdjustContrast::operator())),
+                             AdjustContrastVarShapeCall>);
 
 namespace {
 
@@ -80,7 +92,8 @@ T RoundSaturateGold(float value)
 // Independent CPU gold for one interleaved HWC image. The host reduction mirrors the documented
 // fixed 256-lane tree so both integer and deliberately exact float cases can be compared bit-for-bit.
 template<typename T>
-std::vector<T> AdjustContrastGoldImage(const std::vector<T> &in, int width, int height, int channels, double factor)
+std::vector<T> AdjustContrastGoldImage(const std::vector<T> &in, int width, int height, int channels, double factor,
+                                       bool truncate = false)
 {
     const int  numPixels = width * height;
     const auto bound     = static_cast<float>(ew::Bound<T>());
@@ -121,7 +134,12 @@ std::vector<T> AdjustContrastGoldImage(const std::vector<T> &in, int width, int 
     {
         float pixel = ratio * static_cast<float>(in[i]) + (1.0f - ratio) * mean;
         pixel       = std::clamp(pixel, 0.0f, bound);
-        out[i]      = RoundSaturateGold<T>(pixel);
+        if (truncate && std::is_integral_v<T>)
+        {
+            // torchvision's ``.to(dtype)`` drops the fractional part instead of rounding.
+            pixel = std::trunc(pixel);
+        }
+        out[i] = RoundSaturateGold<T>(pixel);
     }
     return out;
 }
@@ -133,6 +151,15 @@ auto invokeFactor(double factor)
     {
         cvcuda::AdjustContrast op;
         op(s, in, out, factor);
+    };
+}
+
+auto invokeFactorRound(double factor, NVCVRoundMode roundMode)
+{
+    return [factor, roundMode](cudaStream_t s, const auto &in, auto &out)
+    {
+        cvcuda::AdjustContrast op;
+        op(s, in, out, factor, roundMode);
     };
 }
 
@@ -298,6 +325,11 @@ NVCV_TEST_SUITE_P(OpAdjustContrast, test::ValueList<int, int, int, nvcv::ImageFo
     {      123,     67,     3,   nvcv::FMT_RGB8   }, // u8  / 3ch
     {      257,     33,     1,   nvcv::FMT_F32    }, // f32 / 1ch; parallel reduction + tail
     {      257,     33,     2,   nvcv::FMT_RGBf32 }, // f32 / 3ch; parallel reduction + tail
+    // Width 64 avoids allocator row padding, exercising whole-sample rather than per-row addressing.
+    {       64,     17,     2,   nvcv::FMT_U8     },
+    {       64,     17,     2,   nvcv::FMT_RGB8   },
+    {       64,     17,     2,   nvcv::FMT_F32    },
+    {       64,     17,     2,   nvcv::FMT_RGBf32 },
 });
 
 // clang-format on
@@ -387,6 +419,9 @@ NVCV_TEST_SUITE_P(OpAdjustContrastPlanar,
     {176, 113, 2,   nvcv::FMT_RGB8p,   nvcv::FMT_RGB8},
     {100,  80, 2, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16},
     {257,  33, 2, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32},
+    // These widths avoid planar row padding to exercise whole-sample addressing.
+    { 96,  17, 2,   nvcv::FMT_RGB8p,   nvcv::FMT_RGB8},
+    { 64,  17, 2, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32},
 });
 
 // clang-format on
@@ -407,6 +442,28 @@ TEST_P(OpAdjustContrastPlanar, varshape_matches_interleaved)
         { EXPECT_NO_THROW(invokeFactor(kFactor)(s, src, dst)); });
 }
 
+TEST(OpAdjustContrastPlanar, single_sample_rgb8_chw_matches_interleaved)
+{
+    test::planar::RunTensorParity(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 257, 33, 257, 33, 1,
+                                  [](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst,
+                                     nvcv::ImageFormat) { EXPECT_NO_THROW(invokeFactor(kFactor)(stream, src, dst)); });
+}
+
+TEST(OpAdjustContrastPlanar, small_rgb8_chw_uses_three_plane_mean)
+{
+    test::planar::RunTensorParity(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 37, 29, 37, 29, 1,
+                                  [](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst,
+                                     nvcv::ImageFormat) { EXPECT_NO_THROW(invokeFactor(kFactor)(stream, src, dst)); });
+}
+
+TEST(OpAdjustContrastPlanar, single_channel_tensor_matches_interleaved)
+{
+    test::planar::RunTensorSingleChannelLayoutParity(
+        37, 29, 37, 29, 2, nvcv::TYPE_U8,
+        [](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst)
+        { EXPECT_NO_THROW(invokeFactor(kFactor)(stream, src, dst)); });
+}
+
 // Negative tests: the complement of the support matrix must be rejected with
 // NVCV_ERROR_INVALID_ARGUMENT (ew::ExpectRejected asserts this via nvcv::ProtectCall).
 // clang-format off
@@ -424,6 +481,11 @@ NVCV_TEST_SUITE_P(OpAdjustContrast_Negative, test::ValueList<nvcv::ImageFormat, 
 TEST_P(OpAdjustContrast_Negative, rejects_unsupported)
 {
     ew::ExpectRejected(GetParamValue<0>(), GetParamValue<1>(), invokeFactor(kFactor));
+}
+
+TEST(OpAdjustContrast_Negative, create_null_handle)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaAdjustContrastCreate(nullptr));
 }
 
 TEST(OpAdjustContrast_Negative, rejects_two_channel)
@@ -466,6 +528,152 @@ TEST(OpAdjustContrast_Negative, rejects_packed_tensor_dtype)
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { invokeFactor(kFactor)(stream, src, dst); }));
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdjustContrast_Negative, rejects_tensor_shape_and_pixel_stride_mismatches)
+{
+    cvcuda::AdjustContrast op;
+    cudaStream_t           stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    {
+        nvcv::Tensor src(
+            {
+                {2, 16, 16, 1},
+                "NHWC"
+        },
+            nvcv::TYPE_U8);
+        nvcv::Tensor dst(
+            {
+                {1, 16, 16, 1},
+                "NHWC"
+        },
+            nvcv::TYPE_U8);
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, src, dst, kFactor); }));
+    }
+
+    {
+        nvcv::Tensor src(
+            {
+                {1, 16, 16, 1},
+                "NHWC"
+        },
+            nvcv::TYPE_U8);
+        nvcv::Tensor dst(
+            {
+                {1, 16, 17, 1},
+                "NHWC"
+        },
+            nvcv::TYPE_U8);
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, src, dst, kFactor); }));
+    }
+
+    {
+        constexpr int64_t kWidth        = 16;
+        constexpr int64_t kHeight       = 16;
+        constexpr int64_t kRowStride    = 32;
+        constexpr int64_t kSampleStride = kRowStride * kHeight;
+
+        NVCVByte *srcPtr = nullptr;
+        NVCVByte *dstPtr = nullptr;
+        ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcPtr), kSampleStride));
+        ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstPtr), kSampleStride));
+
+        auto wrap = [=](NVCVByte *base, int64_t colStride)
+        {
+            nvcv::TensorDataStridedCuda::Buffer buffer{};
+            buffer.basePtr    = base;
+            buffer.strides[0] = kSampleStride;
+            buffer.strides[1] = kRowStride;
+            buffer.strides[2] = colStride;
+            buffer.strides[3] = colStride;
+            return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{1, kHeight, kWidth, 1}, "NHWC"},
+                nvcv::TYPE_U8, buffer
+            });
+        };
+
+        {
+            nvcv::Tensor src = wrap(srcPtr, 2);
+            nvcv::Tensor dst = wrap(dstPtr, 1);
+            EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, src, dst, kFactor); }));
+        }
+
+        ASSERT_EQ(cudaSuccess, cudaFree(srcPtr));
+        ASSERT_EQ(cudaSuccess, cudaFree(dstPtr));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Both tensor launch guards run before a kernel launch, so these cases use only token allocations.
+TEST(OpAdjustContrast_Negative, tensor_launch_guards_reject_oversized_batch_and_span)
+{
+    cvcuda::AdjustContrast op;
+
+    {
+        constexpr int64_t kSamples = 65536;
+        constexpr auto    kBytes   = static_cast<size_t>(kSamples);
+
+        NVCVByte *srcPtr = nullptr;
+        NVCVByte *dstPtr = nullptr;
+        ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcPtr), kBytes));
+        ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstPtr), kBytes));
+
+        auto wrap = [](NVCVByte *ptr)
+        {
+            nvcv::TensorDataStridedCuda::Buffer buffer{};
+            buffer.basePtr    = ptr;
+            buffer.strides[0] = 1;
+            buffer.strides[1] = 1;
+            buffer.strides[2] = 1;
+            buffer.strides[3] = 1;
+            return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{kSamples, 1, 1, 1}, "NHWC"},
+                nvcv::TYPE_U8, buffer
+            });
+        };
+
+        nvcv::Tensor src = wrap(srcPtr);
+        nvcv::Tensor dst = wrap(dstPtr);
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, src, dst, kFactor); }));
+
+        ASSERT_EQ(cudaSuccess, cudaFree(srcPtr));
+        ASSERT_EQ(cudaSuccess, cudaFree(dstPtr));
+    }
+
+    {
+        constexpr int64_t kSamples      = 2;
+        constexpr int64_t kRows         = 50000;
+        constexpr int64_t kRowStride    = kRows;
+        constexpr int64_t kSampleStride = kRows * kRowStride;
+
+        NVCVByte *srcPtr = nullptr;
+        NVCVByte *dstPtr = nullptr;
+        ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcPtr), 1024));
+        ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstPtr), 1024));
+
+        auto wrap = [](NVCVByte *ptr)
+        {
+            nvcv::TensorDataStridedCuda::Buffer buffer{};
+            buffer.basePtr    = ptr;
+            buffer.strides[0] = kSampleStride;
+            buffer.strides[1] = kRowStride;
+            buffer.strides[2] = 1;
+            buffer.strides[3] = 1;
+            return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{kSamples, kRows, kRows, 1}, "NHWC"},
+                nvcv::TYPE_U8, buffer
+            });
+        };
+
+        nvcv::Tensor src = wrap(srcPtr);
+        nvcv::Tensor dst = wrap(dstPtr);
+        EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcv::ProtectCall([&] { op(nullptr, src, dst, kFactor); }));
+
+        ASSERT_EQ(cudaSuccess, cudaFree(srcPtr));
+        ASSERT_EQ(cudaSuccess, cudaFree(dstPtr));
+    }
 }
 
 TEST(OpAdjustContrast, empty_inputs_are_noops)
@@ -597,23 +805,84 @@ TEST(OpAdjustContrast, cuda_graph_capture_replays)
     ASSERT_EQ(cudaSuccess, cudaStreamEndCapture(stream, &graph));
     cudaGraphExec_t graphExec{};
     ASSERT_EQ(cudaSuccess, cudaGraphInstantiate(&graphExec, graph, nullptr, nullptr, 0));
-    ASSERT_EQ(cudaSuccess, cudaGraphLaunch(graphExec, stream));
-    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 
+    // Each replay must see the input the host staged for it. `stream` is non-blocking, so it is not
+    // ordered against the default stream that SetImageTensorFromVector copies on; a replay that
+    // outruns that copy reduces the previous replay's fill value and, at contrast factor zero,
+    // writes it straight to the output. Several replays keep that window from closing by luck.
     std::vector<uint8_t> got;
-    nvcv::util::GetImageVectorFromTensor<uint8_t>(*dstData, 0, got);
-    EXPECT_EQ(input, got);
-
-    std::ranges::fill(input, 91);
-    nvcv::util::SetImageTensorFromVector<uint8_t>(*srcData, input, 0);
-    ASSERT_EQ(cudaSuccess, cudaGraphLaunch(graphExec, stream));
-    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
-    nvcv::util::GetImageVectorFromTensor<uint8_t>(*dstData, 0, got);
-    EXPECT_EQ(input, got);
+    for (int replay = 0; replay < 16; ++replay)
+    {
+        std::ranges::fill(input, static_cast<uint8_t>(73 + replay));
+        nvcv::util::SetImageTensorFromVector<uint8_t>(*srcData, input, 0);
+        ASSERT_EQ(cudaSuccess, cudaGraphLaunch(graphExec, stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        nvcv::util::GetImageVectorFromTensor<uint8_t>(*dstData, 0, got);
+        EXPECT_EQ(input, got) << "replay " << replay;
+    }
 
     ASSERT_EQ(cudaSuccess, cudaGraphExecDestroy(graphExec));
     ASSERT_EQ(cudaSuccess, cudaGraphDestroy(graph));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// The apply-grid guard runs after workspace acquisition. This forces cleanup through releaseNoThrow
+// on both ordinary submissions and CUDA graph capture without requiring a large allocation.
+TEST(OpAdjustContrast_Negative, late_validation_failure_releases_workspace)
+{
+    constexpr int64_t kHeight = 4 * 65535 + 1;
+
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), kHeight));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstAllocation), kHeight));
+
+    auto wrap = [](NVCVByte *base)
+    {
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = base;
+        buffer.strides[0] = kHeight;
+        buffer.strides[1] = 1;
+        buffer.strides[2] = 1;
+        buffer.strides[3] = 1;
+        return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{1, kHeight, 1, 1}, "NHWC"},
+            nvcv::TYPE_U8, buffer
+        });
+    };
+
+    {
+        nvcv::Tensor src = wrap(srcAllocation);
+        nvcv::Tensor dst = wrap(dstAllocation);
+
+        cudaStream_t stream{};
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+        cvcuda::AdjustContrast op;
+
+        EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcv::ProtectCall([&] { op(stream, src, dst, kFactor); }));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+
+    {
+        nvcv::Tensor src = wrap(srcAllocation);
+        nvcv::Tensor dst = wrap(dstAllocation);
+
+        cudaStream_t stream{};
+        ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+        cvcuda::AdjustContrast op;
+
+        ASSERT_EQ(cudaSuccess, cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal));
+        EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcv::ProtectCall([&] { op(stream, src, dst, kFactor); }));
+
+        cudaGraph_t graph{};
+        ASSERT_EQ(cudaSuccess, cudaStreamEndCapture(stream, &graph));
+        ASSERT_EQ(cudaSuccess, cudaGraphDestroy(graph));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaFree(srcAllocation));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstAllocation));
 }
 
 TEST(OpAdjustContrast_Negative, rejects_zero_extent_varshape_image)
@@ -638,6 +907,22 @@ TEST(OpAdjustContrast_Negative, rejects_subsampled_varshape)
     ASSERT_EQ(3, fmt.numPlanes());
     ASSERT_EQ(nvcv::ChromaSubsampling::CSS_420, fmt.chromaSubsampling());
     test::planar::ExpectVarShapeRejected({fmt}, {fmt}, invokeFactor(kFactor));
+}
+
+TEST(OpAdjustContrast_Negative, rejects_non_rgb_channel_permutations)
+{
+    const std::array<nvcv::ImageFormat, 2> invalidFormats{
+        nvcv::ImageFormat{nvcv::ColorModel::RGB, nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                          nvcv::DataKind::UNSIGNED, nvcv::Swizzle::S_ZYW1, nvcv::Packing::X8_Y8_Z8},
+        nvcv::ImageFormat{nvcv::ColorModel::RGB, nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                          nvcv::DataKind::UNSIGNED, nvcv::Swizzle::S_XYXZ, nvcv::Packing::X8_Y8_Z8}
+    };
+
+    for (size_t i = 0; i < invalidFormats.size(); ++i)
+    {
+        SCOPED_TRACE(i);
+        test::planar::ExpectVarShapeRejected({invalidFormats[i]}, {invalidFormats[i]}, invokeFactor(kFactor));
+    }
 }
 
 TEST(OpAdjustContrast, varshape_bgr_uses_logical_rgb_order)
@@ -667,4 +952,214 @@ TEST(OpAdjustContrast, varshape_bgr_uses_logical_rgb_order)
     EXPECT_EQ((std::array<uint8_t, 3>{29, 29, 29}), got);
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdjustContrast, legacy_c_submits_use_nearest_even_at_exact_ties)
+{
+    const std::array<uint8_t, 2> input{1, 3};
+    const std::array<uint8_t, 2> nearestExpected{2, 2};
+    const std::array<uint8_t, 2> truncatedExpected{1, 2};
+    cvcuda::AdjustContrast       op;
+
+    nvcv::Tensor tensorIn      = nvcv::util::CreateTensor(1, 2, 1, nvcv::FMT_U8);
+    nvcv::Tensor tensorOut     = nvcv::util::CreateTensor(1, 2, 1, nvcv::FMT_U8);
+    auto         tensorInData  = tensorIn.exportData<nvcv::TensorDataStridedCuda>();
+    auto         tensorOutData = tensorOut.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(tensorInData && tensorOutData);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(tensorInData->basePtr(), input.data(), input.size(), cudaMemcpyHostToDevice));
+
+    ASSERT_EQ(NVCV_SUCCESS,
+              cvcudaAdjustContrastSubmit(op.handle(), nullptr, tensorIn.handle(), tensorOut.handle(), 0.5));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(nullptr));
+    std::array<uint8_t, 2> actual{};
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), tensorOutData->basePtr(), actual.size(), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(nearestExpected, actual);
+
+    ASSERT_EQ(NVCV_SUCCESS, cvcudaAdjustContrastRoundSubmit(op.handle(), nullptr, tensorIn.handle(), tensorOut.handle(),
+                                                            0.5, NVCV_ROUND_TRUNCATE));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(nullptr));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), tensorOutData->basePtr(), actual.size(), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(truncatedExpected, actual);
+
+    nvcv::Image imageIn({2, 1}, nvcv::FMT_U8);
+    nvcv::Image imageOut({2, 1}, nvcv::FMT_U8);
+    auto        imageInData  = imageIn.exportData<nvcv::ImageDataStridedCuda>();
+    auto        imageOutData = imageOut.exportData<nvcv::ImageDataStridedCuda>();
+    ASSERT_TRUE(imageInData && imageOutData);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(imageInData->plane(0).basePtr, input.data(), input.size(), cudaMemcpyHostToDevice));
+    nvcv::ImageBatchVarShape batchIn(1);
+    nvcv::ImageBatchVarShape batchOut(1);
+    batchIn.pushBack(imageIn);
+    batchOut.pushBack(imageOut);
+
+    ASSERT_EQ(NVCV_SUCCESS,
+              cvcudaAdjustContrastVarShapeSubmit(op.handle(), nullptr, batchIn.handle(), batchOut.handle(), 0.5));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(nullptr));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(actual.data(), imageOutData->plane(0).basePtr, actual.size(), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(nearestExpected, actual);
+
+    ASSERT_EQ(NVCV_SUCCESS, cvcudaAdjustContrastVarShapeRoundSubmit(op.handle(), nullptr, batchIn.handle(),
+                                                                    batchOut.handle(), 0.5, NVCV_ROUND_TRUNCATE));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(nullptr));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(actual.data(), imageOutData->plane(0).basePtr, actual.size(), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(truncatedExpected, actual);
+}
+
+TEST(OpAdjustContrast, round_mode_selects_integer_conversion)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int width    = 17;
+    constexpr int height   = 11;
+    constexpr int channels = 3;
+    const size_t  count    = static_cast<size_t>(width) * height * channels;
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGB8);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGB8);
+    auto         inData    = inTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto         outData   = outTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(inData, nullptr);
+    ASSERT_NE(outData, nullptr);
+
+    std::vector<uint8_t> input(count);
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+        input[i] = static_cast<uint8_t>((i * 73 + 19) & 0xff);
+    }
+    ASSERT_NO_THROW(nvcv::util::SetImageTensorFromVector<uint8_t>(*inData, input, 0));
+
+    const auto nearestGold  = AdjustContrastGoldImage<uint8_t>(input, width, height, channels, kFactor, false);
+    const auto truncateGold = AdjustContrastGoldImage<uint8_t>(input, width, height, channels, kFactor, true);
+    // The factor has to actually separate the two conversions, or the test proves nothing.
+    ASSERT_NE(nearestGold, truncateGold);
+
+    const std::array cases{
+        std::pair{ NVCV_ROUND_NEAREST,  std::cref(nearestGold)},
+        std::pair{NVCV_ROUND_TRUNCATE, std::cref(truncateGold)}
+    };
+    for (const auto &[mode, gold] : cases)
+    {
+        SCOPED_TRACE(static_cast<int>(mode));
+        ASSERT_NO_THROW(invokeFactorRound(kFactor, mode)(stream, inTensor, outTensor));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        std::vector<uint8_t> got;
+        nvcv::util::GetImageVectorFromTensor<uint8_t>(*outData, 0, got);
+        EXPECT_EQ(gold.get(), got);
+    }
+
+    ASSERT_NO_THROW(invokeFactor(kFactor)(stream, inTensor, outTensor));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    std::vector<uint8_t> gotDefault;
+    nvcv::util::GetImageVectorFromTensor<uint8_t>(*outData, 0, gotDefault);
+    EXPECT_EQ(nearestGold, gotDefault);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdjustContrast, round_mode_does_not_change_float_output)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int width  = 2;
+    constexpr int height = 2;
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBf32);
+    nvcv::Tensor nearestT  = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBf32);
+    nvcv::Tensor truncateT = nvcv::util::CreateTensor(1, width, height, nvcv::FMT_RGBf32);
+    auto         inData    = inTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto         nearData  = nearestT.exportData<nvcv::TensorDataStridedCuda>();
+    auto         truncData = truncateT.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(inData, nullptr);
+    ASSERT_NE(nearData, nullptr);
+    ASSERT_NE(truncData, nullptr);
+
+    std::vector<float> input{0.f, 0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1.f, 0.3f, 0.6f, 0.2f, 0.4f, 0.8f};
+    ASSERT_NO_THROW(nvcv::util::SetImageTensorFromVector<float>(*inData, input, 0));
+
+    ASSERT_NO_THROW(invokeFactorRound(kFactor, NVCV_ROUND_NEAREST)(stream, inTensor, nearestT));
+    ASSERT_NO_THROW(invokeFactorRound(kFactor, NVCV_ROUND_TRUNCATE)(stream, inTensor, truncateT));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<float> nearestGot;
+    std::vector<float> truncateGot;
+    nvcv::util::GetImageVectorFromTensor<float>(*nearData, 0, nearestGot);
+    nvcv::util::GetImageVectorFromTensor<float>(*truncData, 0, truncateGot);
+    EXPECT_EQ(nearestGot, truncateGot);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdjustContrast, explicit_round_modes_planar_and_varshape)
+{
+    for (auto mode : {NVCV_ROUND_NEAREST, NVCV_ROUND_TRUNCATE})
+    {
+        const auto invoke = [mode](cudaStream_t stream, const auto &src, const auto &dst, nvcv::ImageFormat)
+        {
+            cvcuda::AdjustContrast op;
+            op(stream, src, dst, 0.5, mode);
+        };
+        // Equal RGB channels 1 and 4 floor to BT.601 grayscale values 0 and 3.
+        const auto input = [](int, int width, int height, int channels)
+        {
+            std::vector<uint8_t> values(width * height * channels);
+            for (size_t i = 0; i < values.size(); ++i) values[i] = (i / channels) % 2 ? 4 : 1;
+            return values;
+        };
+        // Gray values are 0 and 3, mean 1.5; blended outputs are 1.25 and 2.75.
+        const auto compare = [mode](const auto &interleaved, const auto &planar)
+        {
+            constexpr int channels = 3;
+            EXPECT_EQ(interleaved, planar);
+            for (size_t i = 0; i < interleaved.size(); ++i)
+            {
+                EXPECT_EQ(interleaved[i], (i / channels) % 2 ? (mode == NVCV_ROUND_NEAREST ? 3 : 2) : 1);
+            }
+        };
+        test::planar::RunTensorParity(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 4, 2, 4, 2, 2, invoke, input, compare);
+        test::planar::RunVarShapeParity(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 4, 2, 4, 2, 2, invoke, input, compare);
+    }
+}
+
+TEST(OpAdjustContrast_Negative, rejects_non_finite_or_unrepresentable_factor)
+{
+    for (double factor : {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity(),
+                          std::numeric_limits<double>::max()})
+    {
+        SCOPED_TRACE(factor);
+        ew::ExpectRejected(nvcv::FMT_RGB8, nvcv::FMT_RGB8, invokeFactor(factor));
+        test::planar::ExpectVarShapeRejected({nvcv::FMT_RGB8}, {nvcv::FMT_RGB8}, invokeFactor(factor));
+    }
+}
+
+TEST(OpAdjustContrast_Negative, rejects_invalid_round_mode)
+{
+    cvcuda::AdjustContrast   op;
+    nvcv::Tensor             src = nvcv::util::CreateTensor(1, 4, 1, nvcv::FMT_RGB8);
+    nvcv::Tensor             dst = nvcv::util::CreateTensor(1, 4, 1, nvcv::FMT_RGB8);
+    nvcv::ImageBatchVarShape srcBatch(1);
+    nvcv::ImageBatchVarShape dstBatch(1);
+    srcBatch.pushBack(nvcv::Image({4, 1}, nvcv::FMT_RGB8));
+    dstBatch.pushBack(nvcv::Image({4, 1}, nvcv::FMT_RGB8));
+
+#ifndef ENABLE_SANITIZER
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              TestCAPIEnumAdjustContrastRoundSubmit(op.handle(), nullptr, src.handle(), dst.handle(), kFactor));
+#endif
+
+    for (auto mode : {NVCV_ROUND_NEAREST_WRAP, NVCV_ROUND_TRUNCATE_WRAP})
+    {
+        ew::ExpectRejected(nvcv::FMT_RGB8, nvcv::FMT_RGB8, invokeFactorRound(kFactor, mode));
+        test::planar::ExpectVarShapeRejected({nvcv::FMT_RGB8}, {nvcv::FMT_RGB8}, invokeFactorRound(kFactor, mode));
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  cvcudaAdjustContrastRoundSubmit(op.handle(), nullptr, src.handle(), dst.handle(), kFactor, mode));
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  cvcudaAdjustContrastVarShapeRoundSubmit(op.handle(), nullptr, srcBatch.handle(), dstBatch.handle(),
+                                                          kFactor, mode));
+    }
 }

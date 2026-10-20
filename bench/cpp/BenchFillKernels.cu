@@ -69,7 +69,17 @@ __global__ void randomFillTypedKernel(T *data, size_t n_elements, std::uint64_t 
     {
         return;
     }
-    data[idx] = sample_typed<T>(hash32(seed, idx));
+    const auto word = hash32(seed, idx);
+    if constexpr (std::is_integral_v<T> && sizeof(T) == 8)
+    {
+        // A second word exercises all 64 bits, including negative signed inputs.
+        const auto bits = (static_cast<unsigned long long>(word) << 32) | hash32(seed ^ 0xd1b54a32d192ed03ULL, idx);
+        data[idx]       = static_cast<T>(bits);
+    }
+    else
+    {
+        data[idx] = sample_typed<T>(word);
+    }
 }
 
 // Tensor-rank checkerboard: parity from (coord0 + coord1 + coord2 + coord3),
@@ -177,6 +187,8 @@ CVCUDA_BENCH_INSTANTIATE_FILL(std::uint32_t)
 CVCUDA_BENCH_INSTANTIATE_FILL(std::int8_t)
 CVCUDA_BENCH_INSTANTIATE_FILL(std::int16_t)
 CVCUDA_BENCH_INSTANTIATE_FILL(std::int32_t)
+CVCUDA_BENCH_INSTANTIATE_FILL(long long)
+CVCUDA_BENCH_INSTANTIATE_FILL(unsigned long long)
 CVCUDA_BENCH_INSTANTIATE_FILL(float)
 CVCUDA_BENCH_INSTANTIATE_FILL(double)
 CVCUDA_BENCH_INSTANTIATE_FILL(__half)

@@ -94,11 +94,32 @@ DTYPE_TEST_RE = {
 }
 
 
-def bench_dtype_canon(name):
-    """Map a bench dtype name (uchar3 / float32 / ushort …) to a canonical token."""
+def bench_dtype_canon(name, exact=False):
+    """Map a dtype spelling (uchar3 / float32 / rgb8 …) to a canonical token.
+
+    ``exact`` accepts only a whole stem plus an optional channel digit, so free-form
+    name tokens such as ``interp`` do not match the ``int`` stem.
+    """
     n = name.lower()
     # Longest / most specific stems first so uint8 != uint, float16 != float, etc.
     table = [
+        ("rgba8", "u8"),
+        ("bgra8", "u8"),
+        ("rgb8", "u8"),
+        ("bgr8", "u8"),
+        ("rgbaf32", "f32"),
+        ("rgbf32", "f32"),
+        ("rgbaf16", "f16"),
+        ("rgbf16", "f16"),
+        ("u8", "u8"),
+        ("s8", "s8"),
+        ("u16", "u16"),
+        ("s16", "s16"),
+        ("u32", "u32"),
+        ("s32", "s32"),
+        ("f16", "f16"),
+        ("f32", "f32"),
+        ("f64", "f64"),
         ("uchar", "u8"),
         ("uint8", "u8"),
         ("schar", "s8"),
@@ -118,7 +139,9 @@ def bench_dtype_canon(name):
         ("float", "f32"),
     ]
     for stem, canon in table:
-        if n.startswith(stem):
+        if n.startswith(stem) and (
+            not exact or n.removeprefix(stem) in ("", "1", "2", "3", "4")
+        ):
             return canon
     return None
 
@@ -127,7 +150,10 @@ def fmt_channels(text):
     """Channel counts exercised in a C++ test, inferred from FMT_*/TYPE_* tokens."""
     chans = set()
     for tok in re.findall(r"FMT_[A-Za-z0-9]+", text or ""):
-        if "RGBA" in tok or "BGRA" in tok:
+        numbered = re.fullmatch(r"FMT_([2-4])[USF]\d+", tok)
+        if numbered:
+            chans.add(int(numbered.group(1)))
+        elif "RGBA" in tok or "BGRA" in tok:
             chans.add(4)
         elif "RGB" in tok or "BGR" in tok:
             chans.add(3)
@@ -299,9 +325,11 @@ def check_scaffold(P, X):
             "SCF-4",
             "scaffold",
             PASS if priv_ok else GAP,
-            "Private implementation present (.cpp or .cu)"
-            if priv_ok
-            else "Private implementation MISSING",
+            (
+                "Private implementation present (.cpp or .cu)"
+                if priv_ok
+                else "Private implementation MISSING"
+            ),
             rel(X["priv_cu"]) if X["priv_cu"].exists() else rel(X["priv_cpp"]),
             g,
             "" if priv_ok else "Run mkop.sh.",
@@ -326,9 +354,11 @@ def check_scaffold(P, X):
             "SCF-9",
             "scaffold",
             PASS if bench_ok else GAP,
-            "Bench C++/Python/config present"
-            if bench_ok
-            else "Bench files MISSING: " + ", ".join(miss),
+            (
+                "Bench C++/Python/config present"
+                if bench_ok
+                else "Bench files MISSING: " + ", ".join(miss)
+            ),
             "bench cpp/py/json present" if bench_ok else ", ".join(miss),
             g,
             "" if bench_ok else "Run mkop.sh (emits bench stubs).",
@@ -359,9 +389,11 @@ def check_scaffold(P, X):
             "SCF-10",
             "scaffold",
             PASS if scf10_ok else GAP,
-            "Lib/priv/test CMake wiring present"
-            if scf10_ok
-            else "Lib/priv/test CMake wiring incomplete",
+            (
+                "Lib/priv/test CMake wiring present"
+                if scf10_ok
+                else "Lib/priv/test CMake wiring incomplete"
+            ),
             f"lib={lib} priv={privc} test={testc}",
             g,
             "" if scf10_ok else "Ensure Op/TestOp entries are in the three CMakeLists.",
@@ -377,14 +409,18 @@ def check_scaffold(P, X):
             "SCF-11",
             "scaffold",
             PASS if scf11_ok else GAP,
-            "Python module wiring present"
-            if scf11_ok
-            else "Python module wiring incomplete",
+            (
+                "Python module wiring present"
+                if scf11_ok
+                else "Python module wiring incomplete"
+            ),
             f"Main={pm} Operators.hpp={ph} CMake(operators/)={pc}",
             g,
-            ""
-            if scf11_ok
-            else "Wire ExportOp into Main.cpp + Operators.hpp + operators/ in CMakeLists.",
+            (
+                ""
+                if scf11_ok
+                else "Wire ExportOp into Main.cpp + Operators.hpp + operators/ in CMakeLists."
+            ),
         )
     )
     # SCF-12 bench wiring
@@ -401,9 +437,11 @@ def check_scaffold(P, X):
             "Bench wiring present" if scf12_ok else "Bench wiring incomplete",
             f"cpp_cmake={bc} py_cmake={bp} manifest={bm}",
             g,
-            ""
-            if scf12_ok
-            else "Register bench cpp/py + add the bench_params.json manifest entry.",
+            (
+                ""
+                if scf12_ok
+                else "Register bench cpp/py + add the bench_params.json manifest entry."
+            ),
         )
     )
     # SCF-13 docs rows
@@ -430,9 +468,11 @@ def check_scaffold(P, X):
             "Docs rows present" if scf13_ok else "Docs rows incomplete",
             f"operator_list={rel_row} autofunction={af} autofunction_into={af_into} relnote={rn}",
             g,
-            ""
-            if scf13_ok
-            else "Add operator_list row + autofunction directives + latest-relnote bullet.",
+            (
+                ""
+                if scf13_ok
+                else "Add operator_list row + autofunction directives + latest-relnote bullet."
+            ),
         )
     )
     # SCF-14 SPDX
@@ -458,12 +498,16 @@ def check_scaffold(P, X):
             "SCF-14",
             "scaffold",
             PASS if not spdx_missing else GAP,
-            "SPDX headers present"
-            if not spdx_missing
-            else "SPDX missing: " + ", ".join(spdx_missing[:4]),
-            "all checked files carry SPDX"
-            if not spdx_missing
-            else ", ".join(spdx_missing),
+            (
+                "SPDX headers present"
+                if not spdx_missing
+                else "SPDX missing: " + ", ".join(spdx_missing[:4])
+            ),
+            (
+                "all checked files carry SPDX"
+                if not spdx_missing
+                else ", ".join(spdx_missing)
+            ),
             "AGENTS.md",
             "" if not spdx_missing else "Add the SPDX 2026 header.",
         )
@@ -497,16 +541,22 @@ def check_impl(P, X):
             "IMP-1",
             "implementation",
             PASS if not stub_hits else GAP,
-            "No stub markers remain"
-            if not stub_hits
-            else f"{len(stub_hits)} stub marker(s) remain",
-            ", ".join(stub_hits[:6])
-            if stub_hits
-            else "no TODO/t.fail/noop/placeholder markers",
+            (
+                "No stub markers remain"
+                if not stub_hits
+                else f"{len(stub_hits)} stub marker(s) remain"
+            ),
+            (
+                ", ".join(stub_hits[:6])
+                if stub_hits
+                else "no TODO/t.fail/noop/placeholder markers"
+            ),
             g,
-            ""
-            if not stub_hits
-            else "Implement the operator + replace the stub test (remove TODO/t.fail/placeholder gold).",
+            (
+                ""
+                if not stub_hits
+                else "Implement the operator + replace the stub test (remove TODO/t.fail/placeholder gold)."
+            ),
         )
     )
 
@@ -519,14 +569,18 @@ def check_impl(P, X):
             "IMP-2",
             "implementation",
             GAP if (has_todo or not m) else PASS,
-            "Limitations table filled"
-            if (m and not has_todo)
-            else "Limitations table missing/has TODO rows",
+            (
+                "Limitations table filled"
+                if (m and not has_todo)
+                else "Limitations table missing/has TODO rows"
+            ),
             rel(P.header),
             g,
-            ""
-            if (m and not has_todo)
-            else "Fill the Limitations table (no TODO rows).",
+            (
+                ""
+                if (m and not has_todo)
+                else "Fill the Limitations table (no TODO rows)."
+            ),
         )
     )
 
@@ -539,14 +593,18 @@ def check_impl(P, X):
                 "IMP-3",
                 "implementation",
                 PASS if pdr else GAP,
-                "Device allocation wrapped in PerDeviceResource"
-                if pdr
-                else "cudaMalloc without PerDeviceResource (multi-GPU unsafe)",
+                (
+                    "Device allocation wrapped in PerDeviceResource"
+                    if pdr
+                    else "cudaMalloc without PerDeviceResource (multi-GPU unsafe)"
+                ),
                 rel(priv),
                 "make_operator.rst#multi_gpu",
-                ""
-                if pdr
-                else "Wrap device allocations in PerDeviceResource<> (see make_operator.rst / OpCLAHE).",
+                (
+                    ""
+                    if pdr
+                    else "Wrap device allocations in PerDeviceResource<> (see make_operator.rst / OpCLAHE)."
+                ),
             )
         )
     else:
@@ -621,12 +679,14 @@ def check_impl(P, X):
             nvtx_msg,
             nvtx_ev,
             g,
-            ""
-            if nvtx_ok
-            else (
-                f'Open every cvcuda{P.Op}*Submit definition body with CVCUDA_NVTX_RANGE("<exact '
-                'submit name>") (the scaffold template emits it); '
-                "tests/cvcuda/python/test_nvtx_markers.py enforces the same by scanning sources."
+            (
+                ""
+                if nvtx_ok
+                else (
+                    f'Open every cvcuda{P.Op}*Submit definition body with CVCUDA_NVTX_RANGE("<exact '
+                    'submit name>") (the scaffold template emits it); '
+                    "tests/cvcuda/python/test_nvtx_markers.py enforces the same by scanning sources."
+                )
             ),
         )
     )
@@ -653,14 +713,18 @@ def check_coverage(P, support_info):
             "COV-GOLD",
             "coverage",
             PASS if gold else GAP,
-            "Independent CPU gold reference present"
-            if gold
-            else "No CPU gold reference found",
+            (
+                "Independent CPU gold reference present"
+                if gold
+                else "No CPU gold reference found"
+            ),
             first_evidence(P.test_cpp, gold) or "no Gold/Reference/naive symbol",
             g,
-            ""
-            if gold
-            else "Add an independent CPU gold reference implementing the cited oracle.",
+            (
+                ""
+                if gold
+                else "Add an independent CPU gold reference implementing the cited oracle."
+            ),
         )
     )
 
@@ -685,9 +749,11 @@ def check_coverage(P, support_info):
                 "COV-BITEXACT",
                 "coverage",
                 PASS if eq else GAP,
-                "Bit-exact comparison (EXPECT_EQ, no NEAR)"
-                if eq
-                else "No bit-exact comparison found",
+                (
+                    "Bit-exact comparison (EXPECT_EQ, no NEAR)"
+                    if eq
+                    else "No bit-exact comparison found"
+                ),
                 first_evidence(P.test_cpp, eq) or "no EXPECT_EQ/ASSERT_EQ",
                 g,
                 "" if eq else "Compare gold vs result with EXPECT_EQ/ASSERT_EQ.",
@@ -717,14 +783,18 @@ def check_coverage(P, support_info):
                 "COV-1",
                 "coverage",
                 PASS if not missing else GAP,
-                "Every declared dtype tested"
-                if not missing
-                else "Declared dtype(s) not tested: " + ", ".join(missing),
+                (
+                    "Every declared dtype tested"
+                    if not missing
+                    else "Declared dtype(s) not tested: " + ", ".join(missing)
+                ),
                 f"declared={sorted(declared_dtypes)}",
                 g,
-                ""
-                if not missing
-                else "Add a positive interleaved test case for each missing dtype.",
+                (
+                    ""
+                    if not missing
+                    else "Add a positive interleaved test case for each missing dtype."
+                ),
             )
         )
 
@@ -748,15 +818,19 @@ def check_coverage(P, support_info):
                 "COV-CHAN",
                 "coverage",
                 PASS if not missing_ch else GAP,
-                "Every declared channel-count tested"
-                if not missing_ch
-                else "Declared channel(s) not tested: "
-                + ", ".join(map(str, missing_ch)),
+                (
+                    "Every declared channel-count tested"
+                    if not missing_ch
+                    else "Declared channel(s) not tested: "
+                    + ", ".join(map(str, missing_ch))
+                ),
                 f"declared={sorted(declared_channels)} tested={sorted(tested_ch)}",
                 g,
-                ""
-                if not missing_ch
-                else "Add a positive test case covering each missing channel count.",
+                (
+                    ""
+                    if not missing_ch
+                    else "Add a positive test case covering each missing channel count."
+                ),
             )
         )
 
@@ -786,14 +860,18 @@ def check_coverage(P, support_info):
                 "COV-2",
                 "coverage",
                 PASS if not missing_b else GAP,
-                "Every declared dtype benched"
-                if not missing_b
-                else "Declared dtype(s) not benched: " + ", ".join(missing_b),
+                (
+                    "Every declared dtype benched"
+                    if not missing_b
+                    else "Declared dtype(s) not benched: " + ", ".join(missing_b)
+                ),
                 f"benched={sorted(benched)}",
                 g,
-                ""
-                if not missing_b
-                else "Add bench config dtypes covering each missing dtype.",
+                (
+                    ""
+                    if not missing_b
+                    else "Add bench config dtypes covering each missing dtype."
+                ),
             )
         )
 
@@ -813,17 +891,23 @@ def check_coverage(P, support_info):
             "BEN-DRV",
             "coverage",
             PASS if not stub_drivers else GAP,
-            "Bench drivers implemented (not the NHWC-only stub)"
-            if not stub_drivers
-            else "Bench driver is still a stub: " + ", ".join(stub_drivers),
-            "no TODO(make-op) markers in bench drivers"
-            if not stub_drivers
-            else f"TODO(make-op) stub in {', '.join(stub_drivers)} driver",
+            (
+                "Bench drivers implemented (not the NHWC-only stub)"
+                if not stub_drivers
+                else "Bench driver is still a stub: " + ", ".join(stub_drivers)
+            ),
+            (
+                "no TODO(make-op) markers in bench drivers"
+                if not stub_drivers
+                else f"TODO(make-op) stub in {', '.join(stub_drivers)} driver"
+            ),
             g,
-            ""
-            if not stub_drivers
-            else "Implement the bench driver(s) to exercise the declared layouts (NHWC/NCHW/"
-            "NCHW_FAKE) and containers (Tensor/VarShape); see BenchFlip.cpp / bench_flip.py.",
+            (
+                ""
+                if not stub_drivers
+                else "Implement the bench driver(s) to exercise the declared layouts (NHWC/NCHW/"
+                "NCHW_FAKE) and containers (Tensor/VarShape); see BenchFlip.cpp / bench_flip.py."
+            ),
         )
     )
 
@@ -847,9 +931,11 @@ def check_coverage(P, support_info):
             "COV-3",
             "coverage",
             PASS if not missing_c else GAP,
-            "Declared containers tested + benched"
-            if not missing_c
-            else "Container coverage gaps: " + ", ".join(missing_c),
+            (
+                "Declared containers tested + benched"
+                if not missing_c
+                else "Container coverage gaps: " + ", ".join(missing_c)
+            ),
             f"tensor_test={tensor_test} has_vs={has_vs} benched_kinds={sorted(benched_kinds)}",
             g,
             "" if not missing_c else "Add the missing container test/bench coverage.",
@@ -892,17 +978,21 @@ def check_coverage(P, support_info):
                 "COV-PARITY",
                 "coverage",
                 PASS if parity else GAP,
-                "Equivalent image-layout parity test present"
-                if parity
-                else "Equivalent image-layout parity test MISSING",
+                (
+                    "Equivalent image-layout parity test present"
+                    if parity
+                    else "Equivalent image-layout parity test MISSING"
+                ),
                 first_evidence(
                     P.test_cpp, grep(r"PlanarParityUtils|matches_interleaved", t)
                 )
                 or "no parity helper / reformat+EQ",
                 MAKE_OP_GUIDE,
-                ""
-                if parity
-                else "Add bit-exact planar == reformat->interleaved-op->reformat parity.",
+                (
+                    ""
+                    if parity
+                    else "Add bit-exact planar == reformat->interleaved-op->reformat parity."
+                ),
             )
         )
         miss5 = []
@@ -919,16 +1009,20 @@ def check_coverage(P, support_info):
                 "COV-5",
                 "coverage",
                 PASS if not miss5 else GAP,
-                "Image-layout coverage complete (declared+parity+bench)"
-                if not miss5
-                else "Image-layout coverage incomplete: " + "; ".join(miss5),
+                (
+                    "Image-layout coverage complete (declared+parity+bench)"
+                    if not miss5
+                    else "Image-layout coverage incomplete: " + "; ".join(miss5)
+                ),
                 f"declared={planar_declared} parity={parity} layouts={sorted(bench_layouts)}",
                 MAKE_OP_GUIDE,
-                ""
-                if not miss5
-                else (
-                    "Add complete planar layout coverage or declare in the C-API header why "
-                    "planar image layouts are not applicable."
+                (
+                    ""
+                    if not miss5
+                    else (
+                        "Add complete planar layout coverage or declare in the C-API header why "
+                        "planar image layouts are not applicable."
+                    )
                 ),
             )
         )
@@ -942,15 +1036,19 @@ def check_coverage(P, support_info):
             "COV-NEG",
             "coverage",
             PASS if neg_ok else GAP,
-            "Complement negative suite present (rejects unsupported inputs)"
-            if neg_ok
-            else "Negative/complement coverage MISSING",
+            (
+                "Complement negative suite present (rejects unsupported inputs)"
+                if neg_ok
+                else "Negative/complement coverage MISSING"
+            ),
             f"negative_suite={neg_suite} error_invalid_argument={neg_err}",
             g,
-            ""
-            if neg_ok
-            else "Add a _Negative suite asserting NVCV_ERROR_INVALID_ARGUMENT for "
-            "unsupported dtype/layout/channel + in/out mismatch.",
+            (
+                ""
+                if neg_ok
+                else "Add a _Negative suite asserting NVCV_ERROR_INVALID_ARGUMENT for "
+                "unsupported dtype/layout/channel + in/out mismatch."
+            ),
         )
     )
     out.append(
@@ -987,9 +1085,11 @@ def check_doc_rel(P):
         "DOC-REL",
         "docs",
         PASS if hit else GAP,
-        f"Operator in the latest relnote ({rel(relnote)})"
-        if hit
-        else f"Operator MISSING from the latest relnote ({rel(relnote)})",
+        (
+            f"Operator in the latest relnote ({rel(relnote)})"
+            if hit
+            else f"Operator MISSING from the latest relnote ({rel(relnote)})"
+        ),
         rel(relnote),
         g,
         "" if hit else f"Add a New-Features bullet for {P.Op} to {rel(relnote)}.",
@@ -1118,9 +1218,11 @@ def check_exec(P, do_run):
                 "Python tests pass" if ok else "Python tests failed",
                 (r.stdout or "")[-300:],
                 g,
-                ""
-                if ok
-                else "Fix failing Python tests (needs the built module on PYTHONPATH).",
+                (
+                    ""
+                    if ok
+                    else "Fix failing Python tests (needs the built module on PYTHONPATH)."
+                ),
             )
         )
     except (OSError, subprocess.SubprocessError) as e:
@@ -1201,9 +1303,11 @@ def check_readiness(P, do_run):
             summary,
             evidence,
             g,
-            ""
-            if ok
-            else "Resolve preflight GAPs (bench coverage, captured baseline [requires CI], profiling).",
+            (
+                ""
+                if ok
+                else "Resolve preflight GAPs (bench coverage, captured baseline [requires CI], profiling)."
+            ),
         )
     ]
 
@@ -1266,16 +1370,20 @@ def check_bench_guidelines(P):
             "BEN-GUIDE",
             "coverage",
             PASS if ok else GAP,
-            "Bench RGB-guideline tests pass"
-            if ok
-            else "Bench RGB-guideline tests fail (would fail the CI baseline burn-in)",
+            (
+                "Bench RGB-guideline tests pass"
+                if ok
+                else "Bench RGB-guideline tests fail (would fail the CI baseline burn-in)"
+            ),
             "" if ok else (failed or "see `pytest bench/tests/` output"),
             g,
-            ""
-            if ok
-            else "Classify the op in bench/config/operator_categories.json (A/B/C), make a Cat-A "
-            "config RGB-only in basic with single-channel/RGBA in advanced (R2/R3/R4), and bump the "
-            "tripwire key/row counts in bench/tests/test_run_bench_config_key.py.",
+            (
+                ""
+                if ok
+                else "Classify the op in bench/config/operator_categories.json (A/B/C), make a Cat-A "
+                "config RGB-only in basic with single-channel/RGBA in advanced (R2/R3/R4), and bump the "
+                "tripwire key/row counts in bench/tests/test_run_bench_config_key.py."
+            ),
         )
     ]
 

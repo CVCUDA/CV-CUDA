@@ -17,6 +17,7 @@
 
 #include "priv/OpLabel.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -50,6 +51,9 @@ CVCUDA_DEFINE_API(0, 7, NVCVStatus, cvcudaLabelSubmit,
         [&handle, &stream, &in, &out, &bgLabel, &minThresh, &maxThresh, &minSize, &count, &stats, &mask, &connectivity,
          &assignLabels, &maskType]
         {
+            cvcuda::priv::CheckEnumArg(connectivity, NVCV_CONNECTIVITY_26_3D, "connectivity type");
+            cvcuda::priv::CheckEnumArg(assignLabels, NVCV_LABEL_SEQUENTIAL, "label type");
+            cvcuda::priv::CheckEnumArg(maskType, NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY, "label mask type");
             cvcuda::priv::ToDynamicRef<cvcuda::priv::Label>(handle)(
                 stream, nvcv::TensorWrapHandle{in}.resource(), nvcv::TensorWrapHandle{out}.resource(),
                 nvcv::TensorWrapHandle{bgLabel}.resource(), nvcv::TensorWrapHandle{minThresh}.resource(),

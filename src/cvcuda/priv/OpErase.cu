@@ -17,9 +17,12 @@
  * limitations under the License.
  */
 
+#include "CudaDeviceUtils.hpp"
 #include "EraseCopyPolicy.hpp"
+#include "LegacyFormatClassify.hpp"
 #include "Nvtx.hpp"
 #include "OpErase.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
@@ -54,194 +57,42 @@ namespace cvcuda::priv {
 namespace cuda = nvcv::cuda;
 namespace util = nvcv::util;
 
+using legacy_format::ClassifyDataFormat;
+using legacy_format::ClassifyDataType;
+using legacy_format::DataFormatCode;
+using legacy_format::DataTypeCode;
+
 namespace {
 
 inline bool UseBulkEraseCopyOnDevice(int deviceId)
 {
-    cudaDeviceProp properties{};
-    NVCV_CHECK_THROW(cudaGetDeviceProperties(&properties, deviceId));
-
-    const int sm = properties.major * 10 + properties.minor;
-    return UseBulkEraseCopyForDevice(sm, properties.name);
+    int sm = 0;
+    NVCV_CHECK_THROW(GetDeviceSM(deviceId, sm));
+    return UseBulkEraseCopyForDevice(sm);
 }
 
-// Element classification by data kind plus bits-per-channel.  Packed types therefore land on the
-// same entry as their scalar sibling (TYPE_3U8 classifies as kU8, which is what lets the anchor
-// tensor be read as int2 while still classifying as kS32), and any (kind, width) pair without an
-// entry here is rejected before the operator's own supported-type list is consulted.
-enum class EraseDataType
+inline bool IsSupportedEraseDataType(DataTypeCode dataType)
 {
-    kU8,
-    kS8,
-    kU16,
-    kS16,
-    kS32,
-    kF16,
-    kF32,
-    kF64,
-};
-
-// Image layouts the operator accepts.  Anything else is rejected while classifying.
-enum class EraseFormat
-{
-    kNHWC,
-    kHWC,
-    kNCHW,
-    kCHW,
-};
-
-inline bool IsPlanarFormat(EraseFormat format)
-{
-    return format == EraseFormat::kNCHW || format == EraseFormat::kCHW;
+    return dataType == DataTypeCode::kU8 || dataType == DataTypeCode::kU16 || dataType == DataTypeCode::kS16
+        || dataType == DataTypeCode::kS32 || dataType == DataTypeCode::kF32 || dataType == DataTypeCode::kF16;
 }
 
-inline EraseDataType ClassifyDataType(nvcv::DataType dtype)
-{
-    auto bpc = dtype.bitsPerChannel();
-    for (int i = 1; i < dtype.numChannels(); ++i)
-    {
-        if (bpc[i] != bpc[0])
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All channels must have same bit-depth");
-        }
-    }
-
-    switch (dtype.dataKind())
-    {
-    case nvcv::DataKind::UNSIGNED:
-        if (bpc[0] == 8)
-        {
-            return EraseDataType::kU8;
-        }
-        if (bpc[0] == 16)
-        {
-            return EraseDataType::kU16;
-        }
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for unsigned cuda op type ",
-                              bpc[0]);
-
-    case nvcv::DataKind::SIGNED:
-        if (bpc[0] == 8)
-        {
-            return EraseDataType::kS8;
-        }
-        if (bpc[0] == 16)
-        {
-            return EraseDataType::kS16;
-        }
-        if (bpc[0] == 32)
-        {
-            return EraseDataType::kS32;
-        }
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for signed cuda op type ", bpc[0]);
-
-    case nvcv::DataKind::FLOAT:
-        if (bpc[0] == 64)
-        {
-            return EraseDataType::kF64;
-        }
-        if (bpc[0] == 32)
-        {
-            return EraseDataType::kF32;
-        }
-        if (bpc[0] == 16)
-        {
-            return EraseDataType::kF16;
-        }
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for float cuda op type ", bpc[0]);
-
-    default:
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Only floating-point, signed integer and unsigned integer data kinds are supported ");
-    }
-}
-
-inline EraseDataType ClassifyDataType(nvcv::ImageFormat fmt)
-{
-    for (int i = 1; i < fmt.numPlanes(); ++i)
-    {
-        if (fmt.planeDataType(i) != fmt.planeDataType(0))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All planes must have the same data type");
-        }
-    }
-
-    return ClassifyDataType(fmt.planeDataType(0));
-}
-
-inline bool IsSupportedEraseDataType(EraseDataType dataType)
-{
-    return dataType == EraseDataType::kU8 || dataType == EraseDataType::kU16 || dataType == EraseDataType::kS16
-        || dataType == EraseDataType::kS32 || dataType == EraseDataType::kF32 || dataType == EraseDataType::kF16;
-}
-
-inline int ElementSizeBytes(EraseDataType dataType)
+inline int ElementSizeBytes(DataTypeCode dataType)
 {
     switch (dataType)
     {
-    case EraseDataType::kU8:
+    case DataTypeCode::kU8:
         return 1;
-    case EraseDataType::kU16:
-    case EraseDataType::kS16:
-    case EraseDataType::kF16:
+    case DataTypeCode::kU16:
+    case DataTypeCode::kS16:
+    case DataTypeCode::kF16:
         return 2;
-    case EraseDataType::kS32:
-    case EraseDataType::kF32:
+    case DataTypeCode::kS32:
+    case DataTypeCode::kF32:
         return 4;
     default:
         return 0;
     }
-}
-
-inline EraseFormat ClassifyLayout(const nvcv::TensorLayout &layout)
-{
-    if (layout == nvcv::TENSOR_NCHW)
-    {
-        return EraseFormat::kNCHW;
-    }
-    if (layout == nvcv::TENSOR_CHW)
-    {
-        return EraseFormat::kCHW;
-    }
-    if (layout == nvcv::TENSOR_NHWC)
-    {
-        return EraseFormat::kNHWC;
-    }
-    if (layout == nvcv::TENSOR_HWC)
-    {
-        return EraseFormat::kHWC;
-    }
-    throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Tensor layout not supported");
-}
-
-inline EraseFormat ClassifyBatchFormat(const nvcv::ImageBatchVarShapeDataStridedCuda &imgBatch)
-{
-    nvcv::ImageFormat fmt = imgBatch.uniqueFormat();
-    if (!fmt)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All images must have the same format");
-    }
-
-    for (int i = 1; i < fmt.numPlanes(); ++i)
-    {
-        if (fmt.planeDataType(i) != fmt.planeDataType(0))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All planes must have the same data type");
-        }
-    }
-
-    if (fmt.numPlanes() >= 2)
-    {
-        if (fmt.numPlanes() != fmt.numChannels())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Planar images must have one channel per plane");
-        }
-
-        return imgBatch.numImages() >= 2 ? EraseFormat::kNCHW : EraseFormat::kCHW;
-    }
-
-    return imgBatch.numImages() >= 2 ? EraseFormat::kNHWC : EraseFormat::kHWC;
 }
 
 // The erase-area descriptors, wrapped once on the host and handed to whichever kernel runs.
@@ -372,21 +223,21 @@ inline dim3 EraseGrid(const EraseAreaParams &params, int channels)
 // 16-bit integer alias because the fill value is converted to the image type -- a single
 // round-to-nearest step from the float values tensor, or from the integer hash in random mode.
 template<class Cb>
-inline void DispatchEraseType(EraseDataType dataType, const Cb &cb)
+inline void DispatchEraseType(DataTypeCode dataType, const Cb &cb)
 {
     switch (dataType)
     {
-    case EraseDataType::kU8:
+    case DataTypeCode::kU8:
         return cb(static_cast<unsigned char>(0));
-    case EraseDataType::kU16:
+    case DataTypeCode::kU16:
         return cb(static_cast<unsigned short>(0));
-    case EraseDataType::kS16:
+    case DataTypeCode::kS16:
         return cb(static_cast<short>(0));
-    case EraseDataType::kS32:
+    case DataTypeCode::kS32:
         return cb(0);
-    case EraseDataType::kF32:
+    case DataTypeCode::kF32:
         return cb(0.0f);
-    case EraseDataType::kF16:
+    case DataTypeCode::kF16:
         return cb(__half{});
     default:
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid DataType");
@@ -394,7 +245,7 @@ inline void DispatchEraseType(EraseDataType dataType, const Cb &cb)
 }
 
 template<bool IsPlanar>
-inline void DispatchEraseTensor(EraseDataType dataType, const nvcv::TensorDataStridedCuda &imgs,
+inline void DispatchEraseTensor(DataTypeCode dataType, const nvcv::TensorDataStridedCuda &imgs,
                                 const EraseAreaParams &params, int rows, int cols, int channels, cudaStream_t stream)
 {
     const dim3 block = EraseBlock(params);
@@ -422,7 +273,7 @@ inline void DispatchEraseTensor(EraseDataType dataType, const nvcv::TensorDataSt
 }
 
 template<bool IsPlanar>
-inline void DispatchEraseVarShape(EraseDataType dataType, const nvcv::ImageBatchVarShapeDataStridedCuda &imgs,
+inline void DispatchEraseVarShape(DataTypeCode dataType, const nvcv::ImageBatchVarShapeDataStridedCuda &imgs,
                                   const EraseAreaParams &params, cudaStream_t stream)
 {
     const int  channels = imgs.uniqueFormat().numChannels();
@@ -457,14 +308,24 @@ inline void ValidateParameterLength(const nvcv::TensorDataStridedCuda &tensor, i
     }
 }
 
+struct MaxWH
+{
+    __device__ __forceinline__ int3 operator()(const int3 &a, const int3 &b) const
+    {
+        return int3{max(a.x, b.x), max(a.y, b.y), 0};
+    }
+};
+
 // Per-element host-side validation of anchor / imgIdx. The kernel indexes
 // img.ptr(imgIdx[i], ...) without a bound check on the batch axis, so an
 // out-of-range imgIdx is an unchecked OOB write -- this validation closes
 // that hole. It necessarily issues a D->H copy and synchronizes the user's
 // stream before launching the erase kernel; the sync is intentional and
 // is the cost of throwing a clean invalid-argument exception instead of
-// silently corrupting memory.
-inline void ValidateEraseAreaData(const nvcv::TensorDataStridedCuda &anchor, const nvcv::TensorDataStridedCuda &imgIdx,
+// silently corrupting memory. Read the launch extent in the same metadata phase,
+// before the image copy, so submitting the copy and erase remains asynchronous.
+inline int2 ValidateEraseAreaData(const EraseDeviceScratch &scratch, const nvcv::TensorDataStridedCuda &anchor,
+                                  const nvcv::TensorDataStridedCuda &erasing, const nvcv::TensorDataStridedCuda &imgIdx,
                                   int numErasingArea, int numSamples, cudaStream_t stream)
 {
     std::vector<int2> hostAnchor(numErasingArea);
@@ -476,6 +337,16 @@ inline void ValidateEraseAreaData(const nvcv::TensorDataStridedCuda &anchor, con
                                        sizeof(int2), numErasingArea, cudaMemcpyDeviceToHost, stream));
     NVCV_CHECK_THROW(cudaMemcpy2DAsync(hostImgIdx.data(), sizeof(int), imgIdx.basePtr(), imgIdx.stride(0), sizeof(int),
                                        numErasingArea, cudaMemcpyDeviceToHost, stream));
+
+    int3 *d_erasing = reinterpret_cast<int3 *>(erasing.basePtr());
+    int3  h_max_values;
+    MaxWH maxwh;
+    int3  init = {0, 0, 0};
+
+    size_t storageBytes = scratch.storageBytes;
+    cub::DeviceReduce::Reduce(scratch.tempStorage, storageBytes, d_erasing, scratch.maxValues, numErasingArea, maxwh,
+                              init, stream);
+    NVCV_CHECK_THROW(cudaMemcpyAsync(&h_max_values, scratch.maxValues, sizeof(int3), cudaMemcpyDeviceToHost, stream));
     NVCV_CHECK_THROW(cudaStreamSynchronize(stream));
 
     for (int i = 0; i < numErasingArea; ++i)
@@ -492,31 +363,6 @@ inline void ValidateEraseAreaData(const nvcv::TensorDataStridedCuda &anchor, con
                                   numSamples);
         }
     }
-}
-
-struct MaxWH
-{
-    __device__ __forceinline__ int3 operator()(const int3 &a, const int3 &b) const
-    {
-        return int3{max(a.x, b.x), max(a.y, b.y), 0};
-    }
-};
-
-// Finds the largest erase extent so the kernel launch can be sized once for the whole batch.
-inline int2 ReduceMaxEraseExtent(const EraseDeviceScratch &scratch, const nvcv::TensorDataStridedCuda &erasing,
-                                 int numErasingArea, cudaStream_t stream)
-{
-    int3 *d_erasing = reinterpret_cast<int3 *>(erasing.basePtr());
-    int3  h_max_values;
-    MaxWH maxwh;
-    int3  init = {0, 0, 0};
-
-    size_t storageBytes = scratch.storageBytes;
-    cub::DeviceReduce::Reduce(scratch.tempStorage, storageBytes, d_erasing, scratch.maxValues, numErasingArea, maxwh,
-                              init, stream);
-    NVCV_CHECK_THROW(cudaMemcpyAsync(&h_max_values, scratch.maxValues, sizeof(int3), cudaMemcpyDeviceToHost, stream));
-
-    NVCV_CHECK_THROW(cudaStreamSynchronize(stream));
 
     return int2{h_max_values.x, h_max_values.y};
 }
@@ -651,13 +497,19 @@ inline bool CanUseVarShapeRowCopy(const nvcv::ImageBatchVarShape &inbatch, const
         return false;
     }
 
-    for (auto init = inbatch.begin(), outit = outbatch.begin(); init != inbatch.end() && outit != outbatch.end();
-         ++init, ++outit)
+    const int numImages = inbatch.numImages();
+    if (numImages <= 0 || numImages > 65535)
     {
-        const nvcv::Image &inimg      = *init;
-        const nvcv::Image &outimg     = *outit;
-        auto               inimgdata  = inimg.exportData<nvcv::ImageDataStridedCuda>();
-        auto               outimgdata = outimg.exportData<nvcv::ImageDataStridedCuda>();
+        return false;
+    }
+
+    ImageHandleBatch inImages(inbatch.handle(), numImages);
+    ImageHandleBatch outImages(outbatch.handle(), numImages);
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        auto inimgdata  = inImages.exportData(i).cast<nvcv::ImageDataStridedCuda>();
+        auto outimgdata = outImages.exportData(i).cast<nvcv::ImageDataStridedCuda>();
         if (inimgdata->numPlanes() != expectedPlanes || outimgdata->numPlanes() != expectedPlanes)
         {
             return false;
@@ -691,11 +543,6 @@ inline bool CopyVarShapeBatch(const nvcv::ImageBatchVarShapeDataStridedCuda &inD
                               const nvcv::ImageBatchVarShapeDataStridedCuda &outData, bool isPlanar, int channels,
                               int elementBytes, cudaStream_t stream)
 {
-    if (outData.numImages() <= 0 || outData.numImages() > 65535)
-    {
-        return false;
-    }
-
     const nvcv::Size2D maxSize = outData.maxSize();
     if (maxSize.w <= 0 || maxSize.h <= 0)
     {
@@ -751,8 +598,7 @@ inline void CopyVarShape(const nvcv::ImageBatchVarShape &inbatch, const nvcv::Im
 
 // Descriptor tensors are validated identically on both paths: 32-bit signed coordinates, 32-bit
 // float fill values, all rank 1.
-inline void ValidateDescriptorTensor(const nvcv::TensorDataStridedCuda &tensor, EraseDataType expected,
-                                     const char *name)
+inline void ValidateDescriptorTensor(const nvcv::TensorDataStridedCuda &tensor, DataTypeCode expected, const char *name)
 {
     if (ClassifyDataType(tensor.dtype()) != expected)
     {
@@ -771,7 +617,7 @@ inline int ValidateEraseDescriptors(const nvcv::TensorDataStridedCuda &anchor,
                                     const nvcv::TensorDataStridedCuda &values,
                                     const nvcv::TensorDataStridedCuda &imgIdx, int maxNumErasingArea)
 {
-    ValidateDescriptorTensor(anchor, EraseDataType::kS32, "anchor");
+    ValidateDescriptorTensor(anchor, DataTypeCode::kS32, "anchor");
 
     const int numErasingArea = anchor.shape()[0];
     if (numErasingArea < 0 || numErasingArea > maxNumErasingArea)
@@ -779,25 +625,21 @@ inline int ValidateEraseDescriptors(const nvcv::TensorDataStridedCuda &anchor,
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid num of erasing area %d", numErasingArea);
     }
 
-    ValidateDescriptorTensor(erasing, EraseDataType::kS32, "erasing");
+    ValidateDescriptorTensor(erasing, DataTypeCode::kS32, "erasing");
     ValidateParameterLength(erasing, numErasingArea, "erasing");
-    ValidateDescriptorTensor(imgIdx, EraseDataType::kS32, "imgIdx");
+    ValidateDescriptorTensor(imgIdx, DataTypeCode::kS32, "imgIdx");
     ValidateParameterLength(imgIdx, numErasingArea, "imgIdx");
-    ValidateDescriptorTensor(values, EraseDataType::kF32, "values");
+    ValidateDescriptorTensor(values, DataTypeCode::kF32, "values");
 
     return numErasingArea;
 }
 
-// Wraps the descriptors and resolves the launch extent in one step, so the returned params are
-// complete.  The extent comes from a device reduction, hence the stream.
-inline EraseAreaParams MakeEraseAreaParams(const EraseDeviceScratch &scratch, const nvcv::TensorDataStridedCuda &anchor,
+inline EraseAreaParams MakeEraseAreaParams(const nvcv::TensorDataStridedCuda &anchor,
                                            const nvcv::TensorDataStridedCuda &erasing,
                                            const nvcv::TensorDataStridedCuda &values,
                                            const nvcv::TensorDataStridedCuda &imgIdx, int numErasingArea, bool random,
-                                           unsigned int seed, cudaStream_t stream)
+                                           unsigned int seed, int2 maxExtent)
 {
-    const int2 maxExtent = ReduceMaxEraseExtent(scratch, erasing, numErasingArea, stream);
-
     EraseAreaParams params{};
     params.anchor         = cuda::Tensor1DWrap<int2>(anchor);
     params.erasing        = cuda::Tensor1DWrap<int3>(erasing);
@@ -821,16 +663,16 @@ inline void RunEraseTensor(const EraseDeviceScratch &scratch, const nvcv::Tensor
                            const nvcv::TensorDataStridedCuda &imgIdx, bool random, unsigned int seed, bool inplace,
                            cudaStream_t stream)
 {
-    const EraseFormat   format      = ClassifyLayout(inData.layout());
-    const EraseFormat   outFormat   = ClassifyLayout(outData.layout());
-    const EraseDataType dataType    = ClassifyDataType(inData.dtype());
-    const EraseDataType outDataType = ClassifyDataType(outData.dtype());
+    const DataFormatCode format      = ClassifyDataFormat(inData.layout());
+    const DataFormatCode outFormat   = ClassifyDataFormat(outData.layout());
+    const DataTypeCode   dataType    = ClassifyDataType(inData.dtype());
+    const DataTypeCode   outDataType = ClassifyDataType(outData.dtype());
 
     if (format != outFormat)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid DataFormat between input and output");
     }
-    const bool isPlanar = IsPlanarFormat(format);
+    const bool isPlanar = legacy_format::IsPlanar(format);
 
     if (!IsSupportedEraseDataType(dataType))
     {
@@ -855,9 +697,11 @@ inline void RunEraseTensor(const EraseDeviceScratch &scratch, const nvcv::Tensor
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid channel number %d", channels);
     }
     ValidateParameterLength(values, numErasingArea * channels, "values");
+    int2 maxExtent{};
     if (numErasingArea > 0)
     {
-        ValidateEraseAreaData(anchor, imgIdx, numErasingArea, inAccess->numSamples(), stream);
+        maxExtent
+            = ValidateEraseAreaData(scratch, anchor, erasing, imgIdx, numErasingArea, inAccess->numSamples(), stream);
     }
 
     if (!inplace)
@@ -871,7 +715,7 @@ inline void RunEraseTensor(const EraseDeviceScratch &scratch, const nvcv::Tensor
     }
 
     const EraseAreaParams params
-        = MakeEraseAreaParams(scratch, anchor, erasing, values, imgIdx, numErasingArea, random, seed, stream);
+        = MakeEraseAreaParams(anchor, erasing, values, imgIdx, numErasingArea, random, seed, maxExtent);
 
     // All areas as empty? Weird, but valid nonetheless.
     if (params.maxEraseW == 0 || params.maxEraseH == 0)
@@ -913,33 +757,21 @@ inline void RunEraseVarShape(const EraseDeviceScratch &scratch, const nvcv::Imag
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output must be varshape image batch");
     }
 
-    if (inData->numImages() != outData->numImages())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input and output batches must have the same number of images");
-    }
+    RequireSameNumImages(*inData, *outData);
 
-    if (!inData->uniqueFormat())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Images in input batch must all have the same format ");
-    }
-    if (!outData->uniqueFormat())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Images in output batch must all have the same format ");
-    }
+    RequireUniqueFormat(*inData, "input");
+    RequireUniqueFormat(*outData, "output");
 
-    const EraseFormat format    = ClassifyBatchFormat(*inData);
-    const EraseFormat outFormat = ClassifyBatchFormat(*outData);
+    const DataFormatCode format    = ClassifyDataFormat(*inData);
+    const DataFormatCode outFormat = ClassifyDataFormat(*outData);
     if (format != outFormat)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid DataFormat between input and output");
     }
-    const bool isPlanar = IsPlanarFormat(format);
+    const bool isPlanar = legacy_format::IsPlanar(format);
 
-    const EraseDataType dataType    = ClassifyDataType(inData->uniqueFormat());
-    const EraseDataType outDataType = ClassifyDataType(outData->uniqueFormat());
+    const DataTypeCode dataType    = ClassifyDataType(inData->uniqueFormat());
+    const DataTypeCode outDataType = ClassifyDataType(outData->uniqueFormat());
     if (!IsSupportedEraseDataType(dataType))
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid DataType");
@@ -958,9 +790,11 @@ inline void RunEraseVarShape(const EraseDeviceScratch &scratch, const nvcv::Imag
 
     const int numErasingArea = ValidateEraseDescriptors(anchor, erasing, values, imgIdx, scratch.maxNumErasingArea);
     ValidateParameterLength(values, numErasingArea * channels, "values");
+    int2 maxExtent{};
     if (numErasingArea > 0)
     {
-        ValidateEraseAreaData(anchor, imgIdx, numErasingArea, inbatch.numImages(), stream);
+        maxExtent
+            = ValidateEraseAreaData(scratch, anchor, erasing, imgIdx, numErasingArea, inbatch.numImages(), stream);
     }
 
     if (!inplace)
@@ -975,7 +809,7 @@ inline void RunEraseVarShape(const EraseDeviceScratch &scratch, const nvcv::Imag
     }
 
     const EraseAreaParams params
-        = MakeEraseAreaParams(scratch, anchor, erasing, values, imgIdx, numErasingArea, random, seed, stream);
+        = MakeEraseAreaParams(anchor, erasing, values, imgIdx, numErasingArea, random, seed, maxExtent);
 
     // All areas as empty? Weird, but valid nonetheless.
     if (params.maxEraseW == 0 || params.maxEraseH == 0)
@@ -1053,47 +887,12 @@ void Erase::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
                        unsigned int seed) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::Erase::operator()[Tensor]");
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto anchorData = anchor.exportData<nvcv::TensorDataStridedCuda>();
-    if (anchorData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "anchor must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto erasingData = erasing.exportData<nvcv::TensorDataStridedCuda>();
-    if (erasingData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "erasing must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto valuesData = values.exportData<nvcv::TensorDataStridedCuda>();
-    if (valuesData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "values must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto imgIdxData = imgIdx.exportData<nvcv::TensorDataStridedCuda>();
-    if (imgIdxData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "imgIdx must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData      = RequireCudaTensor(in, "Input");
+    auto outData     = RequireCudaTensor(out, "Output");
+    auto anchorData  = RequireCudaTensor(anchor, "anchor");
+    auto erasingData = RequireCudaTensor(erasing, "erasing");
+    auto valuesData  = RequireCudaTensor(values, "values");
+    auto imgIdxData  = RequireCudaTensor(imgIdx, "imgIdx");
 
     bool inplace = (in.handle() == out.handle());
     RunEraseTensor(m_tensorScratch.get(), *inData, *outData, *anchorData, *erasingData, *valuesData, *imgIdxData,
@@ -1105,33 +904,10 @@ void Erase::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, 
                        const nvcv::Tensor &imgIdx, bool random, unsigned int seed) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::Erase::operator()[ImageBatchVarShape]");
-    auto anchorData = anchor.exportData<nvcv::TensorDataStridedCuda>();
-    if (anchorData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "anchor must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto erasingData = erasing.exportData<nvcv::TensorDataStridedCuda>();
-    if (erasingData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "erasing must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto valuesData = values.exportData<nvcv::TensorDataStridedCuda>();
-    if (valuesData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "values must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto imgIdxData = imgIdx.exportData<nvcv::TensorDataStridedCuda>();
-    if (imgIdxData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "imgIdx must be cuda-accessible, pitch-linear tensor");
-    }
+    auto anchorData  = RequireCudaTensor(anchor, "anchor");
+    auto erasingData = RequireCudaTensor(erasing, "erasing");
+    auto valuesData  = RequireCudaTensor(values, "values");
+    auto imgIdxData  = RequireCudaTensor(imgIdx, "imgIdx");
 
     bool inplace = (in.handle() == out.handle());
     RunEraseVarShape(m_varShapeScratch.get(), in, out, *anchorData, *erasingData, *valuesData, *imgIdxData, random,

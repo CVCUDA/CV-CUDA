@@ -21,23 +21,28 @@
 #include "Object.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <common/Hash.hpp>
 #include <nvcv/python/Cache.hpp>
-#include <pybind11/pybind11.h>
 
+#include <atomic>
+#include <functional>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace nvcvpy::priv {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
-class PYBIND11_EXPORT CacheItem : public virtual Object // NOSONAR: cache resources share one Object base.
+class Container;
+class Image;
+class Resource;
+class Stream;
+
+class NB_EXPORT CacheItem : public Object
 {
 public:
-    uint64_t id() const;
-
     virtual const IKey &key() const = 0;
 
     std::shared_ptr<CacheItem>       shared_from_this();
@@ -45,13 +50,29 @@ public:
 
     virtual int64_t GetSizeInBytes() const = 0;
 
-    bool isInUse() const;
+    virtual bool isInUse() const;
 
-protected:
-    CacheItem();
+    /** Return the object whose availability this metadata tracks. */
+    virtual std::shared_ptr<Object> cachedObject();
+
+    /** Borrow the resource while this item is alive; null for non-resource entries. */
+    virtual Resource *cachedResource() const noexcept
+    {
+        return nullptr;
+    }
+
+    /** Acquire the cached object and close the reuse claim held by fetchOne(). */
+    std::shared_ptr<Object> acquireClaimedObject();
+
+    /** Reserve a pressure-reuse candidate while its ownership is validated. */
+    bool tryAcquireReuseClaim();
+    void releaseReuseClaim();
 
 private:
-    uint64_t m_id;
+    friend class Cache;
+    // Protected by the cache mutex; transferring an index node keeps its charge.
+    bool             m_indexed = false;
+    std::atomic_bool m_reuseClaimed{false};
 };
 
 class ExternalCacheItem : public CacheItem
@@ -93,21 +114,59 @@ private:
     int64_t                             m_size_inbytes = -1;
 };
 
-class PYBIND11_EXPORT Cache
+class NB_EXPORT Cache
 {
 public:
-    static void Export(py::module &m);
-    static void ExportTestHooks(py::module &m);
+    using ItemPreference  = bool (*)(const CacheItem &candidate, const CacheItem &selected);
+    using CandidateFilter = bool (*)(const CacheItem &candidate, const IKey &requested);
+    using ReusePredicate  = std::function<bool(Resource &candidate, bool pending)>;
+    using RequestedBytes  = std::function<int64_t()>;
 
-    static Cache &Instance();
-    static void   ClearAll();
-    static size_t TotalSize();
+    static void Export(py::module_ &m);
+    static void ExportTestHooks(py::module_ &m);
 
-    void add(CacheItem &container);
+    static Cache                     &Instance();
+    static void                       ClearAll();
+    static void                       PruneToLimits();
+    static void                       IndexPending(Resource &resource) noexcept;
+    static void                       IndexPending(const std::vector<std::shared_ptr<Image>> &images) noexcept;
+    static std::shared_ptr<CacheItem> PinItem(const Resource &resource);
+    static size_t                     TotalSize();
+
+    void add(CacheItem &item);
+    void add(Container &container);
+    void add(Stream &stream);
     void removeAllNotInUseMatching(const IKey &key);
 
+    // Every reusable item under `key`. Only for callers that genuinely choose
+    // among the candidates -- the wrapper-vector path in Image, and the
+    // operators that specialize their static fetch() to pick a compatible
+    // payload. It walks the whole key range, calling isInUse()
+    // on every item and collecting the free ones, so its cost grows with
+    // the number of same-key items cached.
     std::vector<std::shared_ptr<CacheItem>> fetch(const IKey &key) const;
-    std::shared_ptr<CacheItem>              fetchOne(const IKey &key) const;
+
+    // The first reusable item under `key`, or null. Prefer this whenever the
+    // caller just wants one -- it stops at the first free item instead of
+    // collecting all of them to use only the first.
+    // A metadata-only filter narrows broad cache keys. Idle thread-local items
+    // apply it under the cache mutex; pending candidates apply it after an
+    // exclusive claim and ownership proof. It must never inspect a live
+    // descriptor being rebound outside the mutex, or reenter the cache. A known
+    // consumer allows pending Tensor reuse on that CUDA queue without
+    // introducing a dependency between otherwise independent streams.
+    // A predicate validates unchanged composite storage after its exclusive
+    // claim, outside the cache mutex. It replaces the default resource policy.
+    // Dimension-independent keys supply the requested bytes lazily for pressure
+    // checks; an optional preference orders candidates before claiming a match.
+    std::shared_ptr<CacheItem> fetchOne(const IKey &key, const CandidateFilter &filter = {}, Stream *consumer = nullptr,
+                                        const ReusePredicate &predicate = {}, const RequestedBytes &requestedBytes = {},
+                                        ItemPreference prefer = nullptr) const;
+
+    // Metadata-only lookup for operator state pools. It deliberately skips
+    // isInUse(): asynchronous state ownership is tracked by native shared_ptrs
+    // retained in the global pending-release queue.
+    std::shared_ptr<CacheItem> fetchReusableNoPoll(const IKey &key, ItemPreference prefer = nullptr) const;
 
 #ifndef NDEBUG
     // Make this function available only in Debug builds
@@ -121,7 +180,7 @@ public:
 
         for (const std::shared_ptr<CacheItem> &item : doSnapshotItems())
         {
-            if (auto titem = std::dynamic_pointer_cast<T>(item))
+            if (auto titem = std::dynamic_pointer_cast<T>(item->cachedObject()))
             {
                 out.emplace_back(std::move(titem));
             }
@@ -132,16 +191,11 @@ public:
     void   clear();
     size_t size() const;
 
-    void    setCacheLimit(int64_t new_cache_limit);
+    void    setCacheLimit(int64_t new_cache_limit) const;
     int64_t getCacheLimit() const;
     int64_t getCurrentSizeInBytes() const;
 
 private:
-    // Lives in the never-destroyed block described in Cache.cpp: ~Cache() runs
-    // from a worker thread's teardown, which can still be erasing from this
-    // registry while the main thread is destroying statics on its way out.
-    static std::unordered_set<Cache *> &instances();
-
     struct Impl;
     std::unique_ptr<Impl> pimpl;
 
@@ -157,13 +211,18 @@ private:
     // Registers this cache with the calling thread's Python state, so its items
     // are released while the GIL is held and the interpreter is alive. No-op on
     // a thread without one, which then falls back to leaking at thread exit.
-    bool        anchorToPythonThreadState();
-    void        releaseItemsUnderGil();
-    static void destroyAnchorCapsule(PyObject *capsule);
+    bool anchorToPythonThreadState();
+    void releaseItemsUnderGil();
+    void detachItemsForDestruction();
 
     std::vector<std::shared_ptr<CacheItem>> doSnapshotItems() const;
     int64_t                                 doGetDeviceSize(int dev) const;
     int64_t                                 doGetDeviceLimit(int dev) const;
+    static size_t                           instanceItemCount();
+    static void evictReadyItems(int device, int64_t targetSize, std::vector<std::shared_ptr<CacheItem>> &savedItems);
+    static void registerItem(const std::shared_ptr<CacheItem> &item);
+    static void indexPendingLocked(Container &container);
+    static void unregisterItem(CacheItem &item);
 };
 
 } // namespace nvcvpy::priv

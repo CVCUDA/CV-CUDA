@@ -95,7 +95,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeCreate(NVCVOperatorHandle *handle);
  *      32bit Signed   | Yes
  *      16bit Float    | Yes
  *      32bit Float    | Yes
- *      64bit Float    | No
+ *      64bit Float    | Yes
  *
  * Output:
  *      Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
@@ -111,7 +111,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeCreate(NVCVOperatorHandle *handle);
  *      32bit Signed   | Yes
  *      16bit Float    | Yes
  *      32bit Float    | Yes
- *      64bit Float    | No
+ *      64bit Float    | Yes
  *
  * Input/Output dependency
  *
@@ -226,7 +226,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeVarShapeSubmit(NVCVOperatorHandle handle
  *      32bit Signed   | Yes
  *      16bit Float    | Yes
  *      32bit Float    | Yes
- *      64bit Float    | No
+ *      64bit Float    | Yes
  *
  * Output:
  *      Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
@@ -242,7 +242,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeVarShapeSubmit(NVCVOperatorHandle handle
  *      32bit Signed   | Yes
  *      16bit Float    | Yes
  *      32bit Float    | Yes
- *      64bit Float    | No
+ *      64bit Float    | Yes
  *
  * Input/Output dependency
  *

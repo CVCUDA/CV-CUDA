@@ -204,6 +204,7 @@ NVCV_TEST_SUITE_P(OpCustomCropGold,
     {nvcv::TYPE_F16, 3, 47, 14, 31,  5,  7, 6, 2},
     {nvcv::TYPE_U16, 4, 69, 16, 35,  8,  9, 3, 3},
 
+    {nvcv::TYPE_U32, 1,  5,  5,  2,  2,  0, 0, 1},
     {nvcv::TYPE_S32, 1, 29,  9,  3,  3,  4, 2, 2},
     {nvcv::TYPE_F32, 2, 43, 11, 15,  5,  2, 3, 1},
     {nvcv::TYPE_S32, 3, 61, 13, 32,  7, 11, 2, 3},
@@ -310,6 +311,373 @@ TEST_P(OpCustomCropGold, tensor_correct_output)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+// Byte-copy coverage: source phases 0..15, body/tail lengths, dtype widths and ROI boundaries.
+// Tensor allocation may pad rows: these cases do not assert rotating destination alignment or
+// exact allocation ends. Caller-owned tightly bounded views are checked separately.
+
+// Parameters: dtype, channels, inWidth, inHeight, cropWidth, cropHeight, cropX, cropY, batch
+// clang-format off
+NVCV_TEST_SUITE_P(OpCustomCropAlign,
+                  test::ValueList<nvcv::DataType, int, int, int, int, int, int, int, int>{
+    // Every source byte phase 0..15 for a 1-byte pixel, on a crop wide enough to hold several
+    // whole 16-byte units plus a remainder.
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4,  0, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4,  1, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4,  2, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4,  3, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4,  4, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4,  5, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4,  6, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4,  7, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4,  8, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4,  9, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4, 10, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4, 11, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4, 12, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4, 13, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4, 14, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 5, 61, 4, 15, 0, 2},
+
+    // Destination row lengths on both sides of the 16-byte unit boundary.
+    { nvcv::TYPE_U8, 1, 96, 5, 15, 3,  7, 1, 1},
+    { nvcv::TYPE_U8, 1, 96, 5, 16, 3,  7, 1, 1},
+    { nvcv::TYPE_U8, 1, 96, 5, 17, 3,  7, 1, 1},
+    { nvcv::TYPE_U8, 1, 96, 5, 31, 3,  5, 1, 1},
+    { nvcv::TYPE_U8, 1, 96, 5, 32, 3,  5, 1, 1},
+    { nvcv::TYPE_U8, 1, 96, 5, 33, 3,  5, 1, 1},
+    { nvcv::TYPE_U8, 1, 96, 5,  1, 3,  9, 1, 1},
+
+    // Multi-byte pixels verify byte-width dispatch and packed-channel copies.
+    { nvcv::TYPE_U8, 3, 71, 8, 37, 5,  3, 2, 2},
+    { nvcv::TYPE_U8, 3, 71, 8, 37, 5,  6, 2, 2},
+    { nvcv::TYPE_U8, 3, 71, 8, 32, 5, 11, 2, 2},
+    { nvcv::TYPE_U8, 4, 67, 6, 33, 5,  7, 1, 2},
+    { nvcv::TYPE_U8, 4, 67, 6, 32, 5,  9, 1, 2},
+    {nvcv::TYPE_U16, 3, 59, 6, 29, 5,  5, 1, 2},
+    {nvcv::TYPE_F16, 1, 83, 6, 41, 5,  7, 1, 2},
+    {nvcv::TYPE_F32, 3, 47, 6, 23, 5,  3, 1, 2},
+    {nvcv::TYPE_F32, 4, 43, 6, 21, 5,  5, 1, 2},
+    {nvcv::TYPE_F64, 3, 37, 6, 17, 5,  3, 1, 2},
+
+    // Crops ending on the final logical source pixel; allocator row padding may follow it.
+    { nvcv::TYPE_U8, 1, 96, 4, 81, 4, 15, 0, 2},
+    { nvcv::TYPE_U8, 1, 96, 4, 89, 4,  7, 0, 2},
+    { nvcv::TYPE_U8, 3, 71, 5, 68, 5,  3, 0, 2},
+    {nvcv::TYPE_F32, 1, 51, 4, 44, 4,  7, 0, 2},
+
+    // Full-width crops cover both dense and allocator-padded rows.
+    { nvcv::TYPE_U8, 1, 96, 7, 96, 7,  0, 0, 3},
+    { nvcv::TYPE_U8, 1, 97, 7, 97, 7,  0, 0, 3},
+    { nvcv::TYPE_U8, 3, 71, 7, 71, 7,  0, 0, 3},
+    {nvcv::TYPE_F32, 3, 47, 7, 47, 7,  0, 0, 3},
+    { nvcv::TYPE_U8, 1, 96, 7, 96, 4,  0, 3, 3},
+});
+
+// clang-format on
+
+static void RunCropByteCase(nvcv::DataType dtype, int channels, int inWidth, int inHeight, int cropWidth,
+                            int cropHeight, int cropX, int cropY, int numberOfImages, bool planar = false)
+{
+    const NVCVRectI cropRect{cropX, cropY, cropWidth, cropHeight};
+
+    const auto shape = [=](int width, int height)
+    {
+        return planar ? nvcv::TensorShape{{numberOfImages, channels, height, width}, "NCHW"}
+                      : nvcv::TensorShape{{numberOfImages, height, width, channels}, "NHWC"};
+    };
+    nvcv::Tensor imgIn(shape(inWidth, inHeight), dtype);
+    nvcv::Tensor imgOut(shape(cropWidth, cropHeight), dtype);
+
+    auto inData  = imgIn.exportData<nvcv::TensorDataStridedCuda>();
+    auto outData = imgOut.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, inData);
+    ASSERT_NE(nullptr, outData);
+
+    auto inAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
+    ASSERT_TRUE(inAccess);
+    ASSERT_TRUE(outAccess);
+
+    const size_t bytesPerPixel   = static_cast<size_t>(planar ? 1 : channels) * (dtype.bitsPerChannel()[0] / 8);
+    const auto   inRowStride     = static_cast<size_t>(inAccess->rowStride());
+    const auto   outRowStride    = static_cast<size_t>(outAccess->rowStride());
+    const auto   inSampleStride  = static_cast<size_t>(inAccess->sampleStride());
+    const auto   outSampleStride = static_cast<size_t>(outAccess->sampleStride());
+    const int    planes          = planar ? channels : 1;
+    const auto   inPlaneStride   = static_cast<size_t>(inAccess->planeStride());
+    const auto   outPlaneStride  = static_cast<size_t>(outAccess->planeStride());
+    const size_t inBufSize
+        = inSampleStride * (numberOfImages - 1) + (planes - 1) * inPlaneStride + inRowStride * inHeight;
+    const size_t outBufSize
+        = outSampleStride * (numberOfImages - 1) + (planes - 1) * outPlaneStride + outRowStride * cropHeight;
+
+    std::vector<uint8_t> src(inBufSize);
+    for (size_t i = 0; i < inBufSize; ++i)
+    {
+        src[i] = static_cast<uint8_t>((i * 131u + 17u) % 251u);
+    }
+
+    // Independent host oracle: memcpy the addressed byte rectangle row by row. It shares no
+    // addressing, launch geometry, or dispatch with the device implementation.
+    std::vector<uint8_t> gold(outBufSize, 0x5C);
+    for (int n = 0; n < numberOfImages; ++n)
+    {
+        for (int plane = 0; plane < planes; ++plane)
+            for (int y = 0; y < cropHeight; ++y)
+            {
+                const size_t srcOffset = static_cast<size_t>(n) * inSampleStride + plane * inPlaneStride
+                                       + static_cast<size_t>(y + cropY) * inRowStride
+                                       + static_cast<size_t>(cropX) * bytesPerPixel;
+                const size_t dstOffset = static_cast<size_t>(n) * outSampleStride + plane * outPlaneStride
+                                       + static_cast<size_t>(y) * outRowStride;
+                std::memcpy(gold.data() + dstOffset, src.data() + srcOffset,
+                            static_cast<size_t>(cropWidth) * bytesPerPixel);
+            }
+    }
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(inData->basePtr(), src.data(), inBufSize, cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemsetAsync(outData->basePtr(), 0x5C, outBufSize, stream));
+
+    cvcuda::CustomCrop cropOp;
+    EXPECT_NO_THROW(cropOp(stream, imgIn, imgOut, cropRect));
+
+    std::vector<uint8_t> test(outBufSize);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpyAsync(test.data(), outData->basePtr(), outBufSize, cudaMemcpyDeviceToHost, stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(gold, test);
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// A crop that starts on the very first byte of the source and ends on its very last byte, on a
+// tensor whose allocation the implementation may not read outside of. Kept separate from the value
+// list so it also runs under compute-sanitizer as a single named case.
+TEST_P(OpCustomCropAlign, tensor_correct_output)
+{
+    RunCropByteCase(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(),
+                    GetParamValue<5>(), GetParamValue<6>(), GetParamValue<7>(), GetParamValue<8>());
+}
+
+TEST(OpCustomCropAlign, planar_u16_matches_byte_gold)
+{
+    RunCropByteCase(nvcv::TYPE_U16, 3, 59, 6, 29, 5, 5, 1, 2, true);
+}
+
+static void RunWidePixelCropCase(nvcv::DataType dtype, int width, int x, int padding, int srcOffset, int dstOffset)
+{
+    constexpr int srcW       = 128;
+    constexpr int srcH       = 5;
+    constexpr int dstH       = 3;
+    constexpr int samples    = 2;
+    constexpr int pixelBytes = 24;
+
+    SCOPED_TRACE(testing::Message() << dtype << ":" << width << ":" << x << ":" << padding << ":" << srcOffset << ":"
+                                    << dstOffset);
+    const int64_t srcRow   = srcW * pixelBytes + padding;
+    const int64_t dstRow   = ((width * pixelBytes + 15) / 16) * 16 + padding;
+    const size_t  srcBytes = srcOffset + samples * srcH * srcRow;
+    const size_t  dstBytes = dstOffset + samples * dstH * dstRow;
+    NVCVByte     *srcPtr{};
+    NVCVByte     *dstPtr{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&srcPtr, srcBytes));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&dstPtr, dstBytes));
+    const auto wrap = [dtype](NVCVByte *ptr, int offset, int w, int h, int64_t row)
+    {
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = ptr + offset;
+        buffer.strides[0] = h * row;
+        buffer.strides[1] = row;
+        buffer.strides[2] = pixelBytes;
+        buffer.strides[3] = 8;
+        return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{samples, h, w, 3}, "NHWC"},
+            dtype, buffer
+        });
+    };
+    auto                 src = wrap(srcPtr, srcOffset, srcW, srcH, srcRow);
+    auto                 dst = wrap(dstPtr, dstOffset, width, dstH, dstRow);
+    std::vector<uint8_t> input(srcBytes);
+    std::vector<uint8_t> gold(dstBytes, 0x5C);
+    std::vector<uint8_t> actual(dstBytes);
+    for (size_t i = 0; i < srcBytes; ++i) input[i] = static_cast<uint8_t>((i * 131u + 17u) % 251u);
+    // Copy only the CPU-addressed rectangle; compare the offsets and row padding too.
+    for (int n = 0; n < samples; ++n)
+        for (int y = 0; y < dstH; ++y)
+            std::memcpy(gold.data() + dstOffset + (n * dstH + y) * dstRow,
+                        input.data() + srcOffset + (n * srcH + y + 1) * srcRow + x * pixelBytes, width * pixelBytes);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcPtr, input.data(), srcBytes, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemset(dstPtr, 0x5C, dstBytes));
+    cvcuda::CustomCrop op;
+    ASSERT_NO_THROW(op(nullptr, src, dst, NVCVRectI{x, 1, width, dstH}));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(nullptr));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), dstPtr, dstBytes, cudaMemcpyDeviceToHost));
+    EXPECT_EQ(gold, actual);
+    ASSERT_EQ(cudaSuccess, cudaFree(srcPtr));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstPtr));
+}
+
+TEST(OpCustomCropAlign, wide_pixel_phases_and_tails)
+{
+    const auto cases
+        = test::Combine(test::ValueList<nvcv::DataType>{nvcv::TYPE_U64, nvcv::TYPE_S64, nvcv::TYPE_F64},
+                        test::ValueList<int>{63, 64, 65}, test::ValueList<int>{0, 1}, test::ValueList<int>{0, 8},
+                        test::ValueList<int>{0, 8}, test::ValueList<int>{0, 8});
+    for (const auto &[dtype, width, x, padding, srcOffset, dstOffset] : cases)
+        ASSERT_NO_FATAL_FAILURE(RunWidePixelCropCase(dtype, width, x, padding, srcOffset, dstOffset));
+}
+
+TEST(OpCustomCropAlign, tensor_spans_whole_source)
+{
+    const int       kWidth  = 33;
+    const int       kHeight = 5;
+    const NVCVRectI cropRect{0, 0, kWidth, kHeight};
+
+    nvcv::Tensor imgIn(
+        nvcv::TensorShape{
+            {1, kHeight, kWidth, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor imgOut(
+        nvcv::TensorShape{
+            {1, kHeight, kWidth, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+
+    auto inData  = imgIn.exportData<nvcv::TensorDataStridedCuda>();
+    auto outData = imgOut.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, inData);
+    ASSERT_NE(nullptr, outData);
+
+    auto inAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
+    ASSERT_TRUE(inAccess);
+    ASSERT_TRUE(outAccess);
+    const auto   inRowStride  = static_cast<size_t>(inAccess->rowStride());
+    const auto   outRowStride = static_cast<size_t>(outAccess->rowStride());
+    const size_t inBufSize    = inRowStride * kHeight;
+    const size_t outBufSize   = outRowStride * kHeight;
+    const size_t rowBytes     = static_cast<size_t>(kWidth) * 3;
+
+    std::vector<uint8_t> src(inBufSize);
+    for (size_t i = 0; i < inBufSize; ++i) src[i] = static_cast<uint8_t>(i * 7u + 3u);
+
+    std::vector<uint8_t> gold(outBufSize, 0x5C);
+    for (int y = 0; y < kHeight; ++y)
+        std::memcpy(gold.data() + y * outRowStride, src.data() + y * inRowStride, rowBytes);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(inData->basePtr(), src.data(), inBufSize, cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemsetAsync(outData->basePtr(), 0x5C, outBufSize, stream));
+
+    cvcuda::CustomCrop cropOp;
+    EXPECT_NO_THROW(cropOp(stream, imgIn, imgOut, cropRect));
+
+    std::vector<uint8_t> test(outBufSize);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpyAsync(test.data(), outData->basePtr(), outBufSize, cudaMemcpyDeviceToHost, stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(gold, test);
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpCustomCropCoverage, non_dense_nhwc_single_channel_matches_reference)
+{
+    constexpr int    kSamples            = 2;
+    constexpr int    kInputWidth         = 9;
+    constexpr int    kInputHeight        = 5;
+    constexpr int    kCropWidth          = 5;
+    constexpr int    kCropHeight         = 3;
+    constexpr int    kCropX              = 2;
+    constexpr int    kCropY              = 1;
+    constexpr size_t kInputRowStride     = kInputWidth + 3;
+    constexpr size_t kOutputRowStride    = kCropWidth + 2;
+    constexpr size_t kInputSampleStride  = kInputRowStride * kInputHeight + 5;
+    constexpr size_t kOutputSampleStride = kOutputRowStride * kCropHeight + 7;
+    constexpr size_t kInputBytes         = kInputSampleStride * kSamples;
+    constexpr size_t kOutputBytes        = kOutputSampleStride * kSamples;
+
+    static_assert(kInputSampleStride != kInputRowStride * kInputHeight);
+    static_assert(kOutputSampleStride != kOutputRowStride * kCropHeight);
+
+    NVCVByte *inputAllocation{};
+    NVCVByte *outputAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&inputAllocation), kInputBytes));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&outputAllocation), kOutputBytes));
+
+    auto wrapTensor = [](NVCVByte *allocation, int height, int width, size_t rowStride, size_t sampleStride)
+    {
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = allocation;
+        buffer.strides[0] = sampleStride;
+        buffer.strides[1] = rowStride;
+        buffer.strides[2] = 1;
+        buffer.strides[3] = 1;
+        return nvcv::TensorWrapData(
+            nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{kSamples, height, width, 1}, "NHWC"},
+                nvcv::TYPE_U8, buffer
+        },
+            nvcv::TensorDataCleanupCallback{[allocation](const nvcv::TensorData &)
+                                            {
+                                                EXPECT_EQ(cudaSuccess, cudaFree(allocation));
+                                            }});
+    };
+
+    nvcv::Tensor input  = wrapTensor(inputAllocation, kInputHeight, kInputWidth, kInputRowStride, kInputSampleStride);
+    nvcv::Tensor output = wrapTensor(outputAllocation, kCropHeight, kCropWidth, kOutputRowStride, kOutputSampleStride);
+
+    std::vector<uint8_t> inputHost(kInputBytes, 0xC3);
+    for (int sample = 0; sample < kSamples; ++sample)
+    {
+        for (int y = 0; y < kInputHeight; ++y)
+        {
+            for (int x = 0; x < kInputWidth; ++x)
+            {
+                inputHost[static_cast<size_t>(sample) * kInputSampleStride + static_cast<size_t>(y) * kInputRowStride
+                          + static_cast<size_t>(x)]
+                    = static_cast<uint8_t>((37 * sample + 11 * y + 3 * x + 7) % 251);
+            }
+        }
+    }
+
+    std::vector<uint8_t> expected(kOutputBytes, 0xA5);
+    for (int sample = 0; sample < kSamples; ++sample)
+    {
+        for (int y = 0; y < kCropHeight; ++y)
+        {
+            for (int x = 0; x < kCropWidth; ++x)
+            {
+                const size_t srcOffset = static_cast<size_t>(sample) * kInputSampleStride
+                                       + static_cast<size_t>(y + kCropY) * kInputRowStride + kCropX + x;
+                const size_t dstOffset
+                    = static_cast<size_t>(sample) * kOutputSampleStride + static_cast<size_t>(y) * kOutputRowStride + x;
+                expected[dstOffset] = inputHost[srcOffset];
+            }
+        }
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(inputAllocation, inputHost.data(), kInputBytes, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemset(outputAllocation, 0xA5, kOutputBytes));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::CustomCrop cropOp;
+    const NVCVRectI    cropRect{kCropX, kCropY, kCropWidth, kCropHeight};
+    ASSERT_NO_THROW(cropOp(stream, input, output, cropRect));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint8_t> actual(kOutputBytes);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), outputAllocation, kOutputBytes, cudaMemcpyDeviceToHost));
+    EXPECT_EQ(expected, actual);
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 // =============================================================================
 // Planar (NCHW/CHW) layout support
 //
@@ -396,6 +764,7 @@ NVCV_TEST_SUITE_P(OpCustomCrop_Negative, test::ValueList<nvcv::ImageFormat, nvcv
     {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 0},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 5, 5, 2, 2, 0, 0},
     {nvcv::FMT_RGBf32, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 0},
+    {nvcv::FMT_C64, nvcv::FMT_C64, 5, 5, 2, 2, 0, 0}, // unsupported complex data type
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 7, 2, 0, 0}, // invalid width
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 7, 0, 0}, // invalid height
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, -1, 0}, // invalid x
@@ -449,6 +818,33 @@ TEST_P(OpCustomCrop_Negative, op)
 TEST(OpCustomCrop_Negative, create_null_handle)
 {
     EXPECT_EQ(cvcudaCustomCropCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+TEST(OpCustomCrop_Negative, rejects_mixed_width_tensor_dtype)
+{
+    const nvcv::DataType mixedWidth{nvcv::DataKind::UNSIGNED, static_cast<nvcv::Packing>(NVCV_PACKING_X32_Y24b8)};
+    nvcv::Tensor         imgIn(
+                {
+                    {1, 5, 5, 2},
+                    "NHWC"
+    },
+                mixedWidth);
+    nvcv::Tensor imgOut(
+        {
+            {1, 2, 2, 2},
+            "NHWC"
+    },
+        mixedWidth);
+    const NVCVRectI cropRect{0, 0, 2, 2};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::CustomCrop cropOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { cropOp(stream, imgIn, imgOut, cropRect); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 // Parameters: input samples, input channels, output samples, output channels

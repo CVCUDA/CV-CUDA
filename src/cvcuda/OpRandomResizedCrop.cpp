@@ -17,6 +17,7 @@
 
 #include "priv/OpRandomResizedCrop.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -53,6 +54,7 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaRandomResizedCropSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &interpolation]
         {
+            priv::CheckEnumArg(interpolation, NVCV_INTERP_BOX, "interpolation type");
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
             priv::ToDynamicRef<priv::RandomResizedCrop>(handle)(stream, input.resource(), output.resource(),
@@ -68,6 +70,7 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaRandomResizedCropVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &interpolation]
         {
+            priv::CheckEnumArg(interpolation, NVCV_INTERP_BOX, "interpolation type");
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::ImageBatchVarShapeWrapHandle output(out);
             priv::ToDynamicRef<priv::RandomResizedCrop>(handle)(stream, input.resource(), output.resource(),

@@ -17,8 +17,12 @@
 
 #include "Cache.hpp"
 
+#include "Container.hpp"
 #include "Definitions.hpp"
+#include "Image.hpp"
+#include "ImageBatch.hpp"
 #include "Stream.hpp"
+#include "Tensor.hpp"
 #include "ThreadScope.hpp"
 
 #include <common/Assert.hpp>
@@ -28,11 +32,15 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <exception>
 #include <memory>
 #include <mutex>
 #include <numeric>
 #include <thread>
+#include <type_traits>
 #include <unordered_map>
 
 namespace nvcvpy::priv {
@@ -52,6 +60,8 @@ public:
 // enter() is a bool read, so a stray cvcuda._test call cannot stall a thread.
 // Every wait is bounded for the same reason -- a coordination mistake must
 // surface as a failing test, not as a thread that never finishes exiting.
+// The fail-if-destroyed mode makes a regression to destructible storage
+// observable from a subprocess.
 class CacheDestructionTestHook
 {
 public:
@@ -61,6 +71,17 @@ public:
     {
         static const bool enabled = std::getenv("CVCUDA_CACHE_TLS_TEST_HOOK") != nullptr;
         return enabled;
+    }
+
+    ~CacheDestructionTestHook()
+    {
+        const char *mode = std::getenv("CVCUDA_CACHE_TLS_TEST_HOOK");
+        if (mode != nullptr && std::strcmp(mode, "fail-if-destroyed") == 0)
+        {
+            std::fputs("Cache destruction test hook was destroyed at exit\n", stderr);
+            std::fflush(stderr);
+            std::abort();
+        }
     }
 
     void arm()
@@ -176,11 +197,17 @@ bool pythonRuntimeAvailable()
 
 CacheDestructionTestHook &cacheDestructionTestHook()
 {
-    // Safe to destroy at exit: glibc runs thread_local destructors before
-    // static ones, so every ~Cache that consults the hook has already run, and
-    // the hook is inert anyway unless a test opted the process in.
-    static CacheDestructionTestHook hook;
-    return hook;
+    // Immortal, for the same reason as the cache registry and the Impl statics.
+    // The comment this replaces claimed the opposite -- that glibc runs
+    // thread_local destructors before static ones, so every ~Cache consulting
+    // the hook had already finished. That is not true when the destructor runs
+    // on a worker thread: process exit does not wait for it, so ~Cache can be
+    // inside enter() while __cxa_finalize is destroying this object. It is
+    // reachable only with the hook armed, which is why it was never the crash
+    // that motivated leaking the others -- but the reasoning behind leaving it
+    // destructible was wrong, so it goes the same way.
+    static auto *hook = new CacheDestructionTestHook(); // NOSONAR: immortal by design
+    return *hook;
 }
 
 } // namespace
@@ -204,39 +231,173 @@ struct KeyEqual
     }
 };
 
-CacheItem::CacheItem()
+template<class T>
+class CachedObjectItem final : public CacheItem
 {
-    static std::atomic_uint16_t idnext = 0;
+public:
+    explicit CachedObjectItem(std::shared_ptr<T> object)
+        : m_object(std::move(object))
+    {
+    }
 
-    m_id = idnext++;
-}
+    const IKey &key() const override
+    {
+        return m_object->key();
+    }
 
-uint64_t CacheItem::id() const
-{
-    return m_id;
-}
+    int64_t GetSizeInBytes() const override
+    {
+        return m_object->GetSizeInBytes();
+    }
+
+    bool isInUse() const override
+    {
+        return m_object.use_count() > 1 || CacheItem::isInUse();
+    }
+
+    std::shared_ptr<Object> cachedObject() override
+    {
+        return m_object;
+    }
+
+    Resource *cachedResource() const noexcept override
+    {
+        if constexpr (std::is_base_of_v<Resource, T>)
+            return m_object.get();
+        else
+            return nullptr;
+    }
+
+private:
+    std::shared_ptr<T> m_object;
+};
 
 std::shared_ptr<CacheItem> CacheItem::shared_from_this()
 {
-    return std::dynamic_pointer_cast<CacheItem>(Object::shared_from_this());
+    return std::static_pointer_cast<CacheItem>(Object::shared_from_this());
 }
 
 std::shared_ptr<const CacheItem> CacheItem::shared_from_this() const
 {
-    return std::dynamic_pointer_cast<const CacheItem>(Object::shared_from_this());
+    return std::static_pointer_cast<const CacheItem>(Object::shared_from_this());
 }
 
 bool CacheItem::isInUse() const
 {
-    std::shared_ptr<const CacheItem> sthis = this->shared_from_this();
+    // Inspect ownership without acquiring and releasing another strong reference.
+    return m_reuseClaimed.load(std::memory_order_acquire) || weak_from_this().use_count() > 1;
+}
 
-    // Return true if it is being used anywhere apart from cache and sthis
-    return sthis.use_count() > 2;
+std::shared_ptr<Object> CacheItem::cachedObject()
+{
+    return Object::shared_from_this();
+}
+
+std::shared_ptr<Object> CacheItem::acquireClaimedObject()
+{
+    try
+    {
+        std::shared_ptr<Object> object = cachedObject();
+        releaseReuseClaim();
+        return object;
+    }
+    catch (...)
+    {
+        releaseReuseClaim();
+        throw;
+    }
+}
+
+bool CacheItem::tryAcquireReuseClaim()
+{
+    bool expected = false;
+    return m_reuseClaimed.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
+}
+
+void CacheItem::releaseReuseClaim()
+{
+    m_reuseClaimed.store(false, std::memory_order_release);
 }
 
 using Items = std::unordered_multimap<const IKey *, std::shared_ptr<CacheItem>, HashKey, KeyEqual>;
 
 namespace {
+
+bool HasPendingReleaseOwners(const std::shared_ptr<CacheItem> &item)
+{
+    const auto *resource = item->cachedResource();
+    return resource != nullptr && resource->hasPendingReleaseOwners();
+}
+
+bool AllowsReadyReuse(const std::shared_ptr<CacheItem> &item)
+{
+    const auto *resource = item->cachedResource();
+    return resource == nullptr || resource->allowsCacheReuse(false);
+}
+
+std::shared_ptr<CacheItem> FindReadyOrCollect(const Items &items, const IKey &key, const Cache::CandidateFilter &filter,
+                                              bool claimReady, std::vector<std::shared_ptr<CacheItem>> &candidates)
+{
+    const auto [firstItem, lastItem] = items.equal_range(&key);
+    for (auto it = firstItem; it != lastItem; ++it)
+    {
+        if (!it->second->isInUse())
+        {
+            if (filter && !filter(*it->second, key))
+                continue;
+            if (claimReady && AllowsReadyReuse(it->second) && it->second->tryAcquireReuseClaim())
+                return it->second;
+        }
+        candidates.emplace_back(it->second);
+    }
+    return {};
+}
+
+// Composite predicates may pin child cache entries, so callers must release
+// the cache mutex before validation while the candidate claim preserves exclusivity.
+bool TryAcceptCandidate(const std::shared_ptr<CacheItem> &candidate, const IKey &requested, Stream *consumer,
+                        const Cache::CandidateFilter &filter, const Cache::ReusePredicate &predicate,
+                        bool wouldExceedLimit)
+{
+    if (!candidate->tryAcquireReuseClaim())
+        return false;
+    try
+    {
+        std::shared_ptr<Object> object   = candidate->cachedObject();
+        auto                   *resource = candidate->cachedResource();
+        const bool              ready    = predicate && object.use_count() == 2;
+        if (resource != nullptr && (ready || Stream::IsPendingOnly(object))
+            && (!filter || filter(*candidate, requested))
+            && (predicate ? predicate(*resource, !ready) : resource->allowsCacheReuse(true))
+            && (ready || wouldExceedLimit || (consumer && resource->isOrderedOn(*consumer))))
+            return true;
+    }
+    catch (...)
+    {
+        candidate->releaseReuseClaim();
+        throw;
+    }
+    candidate->releaseReuseClaim();
+    return false;
+}
+
+template<class Predicate>
+bool TryAcceptClaimedReadyCandidate(const std::shared_ptr<CacheItem> &candidate, const Predicate &predicate)
+{
+    try
+    {
+        Resource *resource = candidate->cachedResource();
+        if (resource != nullptr && predicate(*resource, false))
+            return true;
+    }
+    catch (...)
+    {
+        candidate->releaseReuseClaim();
+        throw;
+    }
+    candidate->releaseReuseClaim();
+    return false;
+}
 
 // Every piece of shared cache state a Cache destructor touches, in one block
 // that is never destroyed. ~Cache() runs from a worker thread's thread_local
@@ -251,6 +412,9 @@ struct SharedState
     std::unordered_map<int, int64_t> cacheLimitInBytes;
     std::unordered_map<int, int64_t> currentSizeInBytes;
     std::unordered_set<Cache *>      instances;
+    Items                            pendingItems;
+    std::atomic_bool                 deferredPrune{false};
+    std::atomic_bool                 failNextPruneAllocation{false};
 };
 
 SharedState &sharedState()
@@ -274,20 +438,82 @@ struct Cache::Impl
 
 struct Cache::Anchor
 {
+    static void DestroyCapsule(PyObject *capsule);
+
     std::mutex mtx;
     Cache     *cache = nullptr;
 };
-
-std::unordered_set<Cache *> &Cache::instances()
-{
-    return sharedState().instances;
-}
 
 Cache::Cache()
 {
     pimpl = std::make_unique<Impl>();
     std::lock_guard lk(Impl::mtx);
-    instances().insert(this);
+    sharedState().instances.insert(this);
+}
+
+void Cache::registerItem(const std::shared_ptr<CacheItem> &item)
+{
+    NVCV_ASSERT(!item->m_indexed);
+    // The caller creates the accounting node before inserting the cache node.
+    const int64_t bytes = item->GetSizeInBytes();
+    Impl::current_size_inbytes.at(item->key().deviceId()) += bytes;
+    item->m_indexed = true;
+    // Zero-byte wrappers never enter the pending allocation index.
+    if (bytes != 0)
+        if (auto *resource = item->cachedResource())
+            resource->m_cacheItem = item.get();
+}
+
+void Cache::unregisterItem(CacheItem &item)
+{
+    NVCV_ASSERT(item.m_indexed);
+    Impl::current_size_inbytes.at(item.key().deviceId()) -= item.GetSizeInBytes();
+    item.m_indexed = false;
+    if (auto *resource = item.cachedResource(); resource && resource->m_cacheItem == &item)
+        resource->m_cacheItem = nullptr;
+}
+
+size_t Cache::instanceItemCount()
+{
+    return std::accumulate(sharedState().instances.cbegin(), sharedState().instances.cend(), static_cast<size_t>(0),
+                           [](size_t count, const Cache *instance) { return count + instance->pimpl->items.size(); });
+}
+
+void Cache::evictReadyItems(int device, int64_t targetSize, std::vector<std::shared_ptr<CacheItem>> &savedItems)
+{
+    for (const Cache *instance : sharedState().instances)
+    {
+        auto &items = instance->pimpl->items;
+        for (auto it = items.begin(); it != items.end() && instance->doGetDeviceSize(device) > targetSize;)
+        {
+            if (it->first->deviceId() == device && !HasPendingReleaseOwners(it->second))
+            {
+                savedItems.emplace_back(std::move(it->second));
+                unregisterItem(*savedItems.back());
+                it = items.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+        if (instance->doGetDeviceSize(device) <= targetSize)
+            return;
+    }
+}
+
+void Cache::detachItemsForDestruction()
+{
+    std::lock_guard lk(Impl::mtx);
+    sharedState().instances.erase(this);
+    sharedState().pendingItems.reserve(sharedState().pendingItems.size() + pimpl->items.size());
+    for (auto it = pimpl->items.begin(); it != pimpl->items.end();)
+    {
+        if (HasPendingReleaseOwners(it->second))
+            sharedState().pendingItems.insert(pimpl->items.extract(it++));
+        else
+            ++it;
+    }
 }
 
 Cache::~Cache() noexcept
@@ -296,7 +522,7 @@ Cache::~Cache() noexcept
 
     // Before anything else: a capsule destroyed after this point must not reach
     // a Cache that no longer exists. The interpreter can clear another thread's
-    // state from the finalizing thread, so this races with destroyAnchorCapsule
+    // state from the finalizing thread, so this races with Anchor::DestroyCapsule
     // and the lock is what orders them.
     if (m_anchor)
     {
@@ -306,16 +532,7 @@ Cache::~Cache() noexcept
 
     try
     {
-        {
-            std::lock_guard lk(Impl::mtx);
-            instances().erase(this);
-            // It might not be safe to call destructors here, decrease the size manually
-            for (const auto &[nodeKey, node] : pimpl->items)
-            {
-                int dev = nodeKey->deviceId();
-                Impl::current_size_inbytes[dev] -= node->GetSizeInBytes();
-            }
-        }
+        detachItemsForDestruction();
 
         localPimpl          = std::move(this->pimpl);
         bool testHookActive = cacheDestructionTestHook().enter();
@@ -325,8 +542,12 @@ Cache::~Cache() noexcept
         // that needs either. A thread that could not be anchored still reaches
         // this with items; destroying them would need the GIL, which this
         // context cannot get, so leaking is the only safe answer.
-        if (localPimpl->items.empty() || (pythonRuntimeAvailable() && PyGILState_Check()))
+        if (localPimpl->items.empty() || (pythonRuntimeAvailable() && util::HasPythonThreadState()))
         {
+            {
+                std::lock_guard lk(Impl::mtx);
+                for (const auto &[key, item] : localPimpl->items) unregisterItem(*item);
+            }
             localPimpl.reset();
         }
         else
@@ -341,8 +562,8 @@ Cache::~Cache() noexcept
     }
     catch (...)
     {
-        // Leak intentionally if the Python runtime is not available anymore.
-        // See https://pybind11.readthedocs.io/en/stable/advanced/misc.html#common-sources-of-global-interpreter-lock-errors
+        // Teardown can run without a usable Python runtime or GIL. Leaking is
+        // safer than releasing Python-owned cache items in that state.
         if (localPimpl)
         {
             localPimpl.release();
@@ -356,39 +577,112 @@ Cache::~Cache() noexcept
 
 void Cache::add(CacheItem &item)
 {
-    Items savedItems;
+    std::vector<std::shared_ptr<CacheItem>> savedItems;
     {
         std::unique_lock lk(Impl::mtx);
-        int              dev = item.key().deviceId();
+        const int        dev       = item.key().deviceId();
+        const int64_t    itemBytes = item.GetSizeInBytes();
+        const int64_t    limit     = doGetDeviceLimit(dev);
 
-        if (item.GetSizeInBytes() > doGetDeviceLimit(dev))
+        if (itemBytes > limit)
         {
             return;
         }
 
-        if (item.GetSizeInBytes() + doGetDeviceSize(dev) > doGetDeviceLimit(dev))
+        // Publish the accounting node before the cache entry. If allocation
+        // fails here, no retained item can become invisible to the byte limit.
+        Impl::current_size_inbytes.try_emplace(dev, 0);
+
+        const int64_t targetSize = limit - itemBytes;
+        if (doGetDeviceSize(dev) > targetSize)
         {
-            // Evict only items belonging to this device. The size is shared
-            // with every other thread's cache, so credit back what this one
-            // actually drops -- zeroing it would discard their bytes too and
-            // let the device's total grow past the limit unnoticed.
-            for (auto it = pimpl->items.begin(); it != pimpl->items.end();)
-            {
-                if (it->first->deviceId() == dev)
-                {
-                    Impl::current_size_inbytes[dev] -= it->second->GetSizeInBytes();
-                    savedItems.insert(pimpl->items.extract(it++));
-                }
-                else
-                {
-                    ++it;
-                }
-            }
+            // Other threads' ready entries can own Python objects. A native
+            // caller cannot evict them; leave this new item uncached instead.
+            if (!util::HasPythonThreadState())
+                return;
+            savedItems.reserve(instanceItemCount());
+
+            // Pending entries are the only index pressure reuse can query.
+            // Keep them registered: detaching one merely hides memory that the
+            // release queue must still retain and can cause repeated allocation
+            // of the same key. Ready entries are safe eviction candidates.
+            evictReadyItems(dev, targetSize, savedItems);
         }
 
-        pimpl->items.emplace(&item.key(), item.shared_from_this());
-        Impl::current_size_inbytes[dev] += item.GetSizeInBytes();
+        // All remaining room may be occupied by in-flight entries. Do not
+        // displace their reuse index or exceed the configured retained-cache
+        // budget; the new object remains caller-owned and uncached.
+        if (doGetDeviceSize(dev) > targetSize)
+        {
+            return;
+        }
+        auto inserted = pimpl->items.emplace(&item.key(), item.shared_from_this());
+        registerItem(inserted->second);
     }
+}
+
+void Cache::add(Container &container)
+{
+    auto item = std::make_shared<CachedObjectItem<Container>>(SharedContainerFrom(container));
+    add(*item);
+}
+
+void Cache::add(Stream &stream)
+{
+    auto item = std::make_shared<CachedObjectItem<Stream>>(stream.sharedStream());
+    add(*item);
+}
+
+void Cache::indexPendingLocked(Container &container)
+{
+    if (container.m_cacheItem)
+        return;
+    auto item = std::make_shared<CachedObjectItem<Container>>(SharedContainerFrom(container));
+    Impl::current_size_inbytes.try_emplace(item->key().deviceId(), 0);
+    sharedState().pendingItems.emplace(&item->key(), item);
+    registerItem(item);
+}
+
+void Cache::IndexPending(const std::vector<std::shared_ptr<Image>> &images) noexcept
+{
+    try
+    {
+        std::lock_guard lock(Impl::mtx);
+        for (const auto &image : images)
+            if (image->GetSizeInBytes() != 0)
+                indexPendingLocked(*image);
+    }
+    catch (...)
+    {
+        std::fputs("[cvcuda] Failed to index pending image allocations; continuing without reuse\n", stderr);
+    }
+}
+
+void Cache::IndexPending(Resource &resource) noexcept
+{
+    try
+    {
+        auto *container = dynamic_cast<Container *>(&resource);
+        if (container == nullptr || container->GetSizeInBytes() == 0
+            || (dynamic_cast<Tensor *>(container) == nullptr && dynamic_cast<Image *>(container) == nullptr
+                && dynamic_cast<ImageBatchVarShape *>(container) == nullptr))
+            return;
+
+        std::lock_guard lk(Impl::mtx);
+        indexPendingLocked(*container);
+    }
+    catch (...)
+    {
+        // The release ledger already guarantees lifetime. Losing this
+        // best-effort reuse index under host allocation pressure is safe.
+        std::fputs("[cvcuda] Failed to index a pending cache resource; continuing without reuse\n", stderr);
+    }
+}
+
+std::shared_ptr<CacheItem> Cache::PinItem(const Resource &resource)
+{
+    std::lock_guard lock(Impl::mtx);
+    return resource.m_cacheItem ? resource.m_cacheItem->shared_from_this() : nullptr;
 }
 
 void Cache::removeAllNotInUseMatching(const IKey &key)
@@ -418,8 +712,7 @@ void Cache::removeAllNotInUseMatching(const IKey &key)
             if (!it->second->isInUse())
             {
                 holdItemsUntilMtxUnlocked.push_back(it->second);
-                int dev = it->first->deviceId();
-                Impl::current_size_inbytes[dev] -= it->second->GetSizeInBytes();
+                unregisterItem(*it->second);
                 pimpl->items.erase(it++);
             }
             else
@@ -465,21 +758,87 @@ void Cache::dbgPrintCacheForKey(const IKey &key, const std::string &prefix)
 }
 #endif
 
-std::shared_ptr<CacheItem> Cache::fetchOne(const IKey &key) const
+std::shared_ptr<CacheItem> Cache::fetchOne(const IKey &key, const CandidateFilter &filter, Stream *consumer,
+                                           const ReusePredicate &predicate, const RequestedBytes &requestedBytes,
+                                           ItemPreference prefer) const
 {
-    std::unique_lock lk(Impl::mtx);
-
-    auto [firstItem, lastItem] = pimpl->items.equal_range(&key);
-
-    for (auto it = firstItem; it != lastItem; ++it)
+    std::vector<std::shared_ptr<CacheItem>> pendingCandidates;
+    bool                                    wouldExceedLimit = false;
     {
-        if (!it->second->isInUse())
+        std::unique_lock lk(Impl::mtx);
+
+        // Avoid discovering the end of the full equal-key group on the common
+        // ready hit. find() may return any member, which is sufficient here.
+        auto       local = pimpl->items.find(&key);
+        const bool localMatches
+            = local != pimpl->items.end() && !local->second->isInUse() && (!filter || filter(*local->second, key));
+        if (!prefer && !predicate && localMatches && AllowsReadyReuse(local->second)
+            && local->second->tryAcquireReuseClaim())
+            return local->second;
+        if (!prefer && predicate && localMatches && local->second->tryAcquireReuseClaim())
         {
-            return it->second;
+            auto candidate = local->second;
+            lk.unlock();
+            if (TryAcceptClaimedReadyCandidate(candidate, predicate))
+                return candidate;
+            candidate.reset();
+            lk.lock();
+        }
+        else if (!prefer && !predicate && local != pimpl->items.end() && consumer != nullptr)
+        {
+            auto candidate = local->second;
+            lk.unlock();
+            if (TryAcceptCandidate(candidate, key, consumer, filter, predicate, wouldExceedLimit))
+                return candidate;
+            candidate.reset();
+            lk.lock();
+        }
+
+        if (auto item = FindReadyOrCollect(pimpl->items, key, filter, !prefer && !predicate, pendingCandidates))
+            return item;
+        // A completed item in the global pending index can be rebound by
+        // another thread. Validate its descriptor only after the claim and
+        // ownership checks below exclude that in-progress mutation.
+        FindReadyOrCollect(sharedState().pendingItems, key, {}, false, pendingCandidates);
+        if (pendingCandidates.empty())
+            return {};
+
+        const int     dev       = key.deviceId();
+        const int64_t itemBytes = requestedBytes ? requestedBytes() : pendingCandidates.front()->GetSizeInBytes();
+        const int64_t limit     = doGetDeviceLimit(dev);
+        const int64_t current   = doGetDeviceSize(dev);
+        wouldExceedLimit        = itemBytes > 0 && (itemBytes > limit || current > limit - itemBytes);
+        if (!wouldExceedLimit && consumer == nullptr && !predicate)
+        {
+            return {};
         }
     }
 
+    if (prefer)
+        std::sort(pendingCandidates.begin(), pendingCandidates.end(),
+                  [prefer](const auto &a, const auto &b) { return prefer(*a, *b); });
+    for (const std::shared_ptr<CacheItem> &candidate : pendingCandidates)
+    {
+        if (TryAcceptCandidate(candidate, key, consumer, filter, predicate, wouldExceedLimit))
+            return candidate;
+    }
     return {};
+}
+
+std::shared_ptr<CacheItem> Cache::fetchReusableNoPoll(const IKey &key, ItemPreference prefer) const
+{
+    std::shared_ptr<CacheItem> selected;
+    std::unique_lock           lk(Impl::mtx);
+
+    auto [firstItem, lastItem] = pimpl->items.equal_range(&key);
+    for (auto it = firstItem; it != lastItem; ++it)
+    {
+        if (selected == nullptr || (prefer != nullptr && prefer(*it->second, *selected)))
+        {
+            selected = it->second;
+        }
+    }
+    return selected;
 }
 
 void Cache::clear()
@@ -492,7 +851,7 @@ void Cache::clear()
         std::lock_guard lk(Impl::mtx);
         for (const auto &[nodeKey, node] : pimpl->items)
         {
-            Impl::current_size_inbytes[nodeKey->deviceId()] -= node->GetSizeInBytes();
+            unregisterItem(*node);
         }
         savedItems.swap(pimpl->items);
     }
@@ -502,10 +861,11 @@ void Cache::clear()
 
 size_t Cache::size() const
 {
+    std::lock_guard lk(Impl::mtx);
     return pimpl->items.size();
 }
 
-void Cache::setCacheLimit(int64_t new_cache_limit_inbytes)
+void Cache::setCacheLimit(int64_t new_cache_limit_inbytes) const
 {
     if (new_cache_limit_inbytes < 0)
     {
@@ -525,28 +885,19 @@ void Cache::setCacheLimit(int64_t new_cache_limit_inbytes)
                   << " is more than total available memory on device " << dev << ": " << total_mem << std::endl;
     }
 
-    Items savedItems;
+    std::vector<std::shared_ptr<CacheItem>> savedItems;
     {
         std::unique_lock lk(Impl::mtx);
         if (doGetDeviceSize(dev) > new_cache_limit_inbytes)
         {
-            // Evict only items belonging to this device, crediting back what
-            // this cache actually drops: the size is shared with every other
-            // thread's cache and theirs survive this call.
-            for (auto it = pimpl->items.begin(); it != pimpl->items.end();)
-            {
-                if (it->first->deviceId() == dev)
-                {
-                    Impl::current_size_inbytes[dev] -= it->second->GetSizeInBytes();
-                    savedItems.insert(pimpl->items.extract(it++));
-                }
-                else
-                {
-                    ++it;
-                }
-            }
+            savedItems.reserve(instanceItemCount());
         }
+
         Impl::cache_limit_inbytes[dev] = new_cache_limit_inbytes;
+        if (doGetDeviceSize(dev) > new_cache_limit_inbytes)
+        {
+            evictReadyItems(dev, new_cache_limit_inbytes, savedItems);
+        }
     }
 }
 
@@ -597,7 +948,7 @@ std::vector<std::shared_ptr<CacheItem>> Cache::doSnapshotItems() const
     return v;
 }
 
-void Cache::destroyAnchorCapsule(PyObject *capsule)
+void Cache::Anchor::DestroyCapsule(PyObject *capsule)
 {
     // Runs from PyThreadState_Clear: the GIL is held and the interpreter is
     // alive, which is exactly what the destructor path cannot assume.
@@ -632,21 +983,31 @@ void Cache::destroyAnchorCapsule(PyObject *capsule)
 
 void Cache::releaseItemsUnderGil()
 {
-    Items items;
+    std::vector<std::shared_ptr<CacheItem>> readyItems;
     {
         std::lock_guard lk(Impl::mtx);
-        for (const auto &[nodeKey, node] : pimpl->items)
+        readyItems.reserve(pimpl->items.size());
+        sharedState().pendingItems.reserve(sharedState().pendingItems.size() + pimpl->items.size());
+        for (auto it = pimpl->items.begin(); it != pimpl->items.end();)
         {
-            Impl::current_size_inbytes[nodeKey->deviceId()] -= node->GetSizeInBytes();
+            if (HasPendingReleaseOwners(it->second))
+            {
+                sharedState().pendingItems.insert(pimpl->items.extract(it++));
+            }
+            else
+            {
+                unregisterItem(*it->second);
+                readyItems.emplace_back(std::move(it->second));
+                it = pimpl->items.erase(it);
+            }
         }
-        items.swap(pimpl->items);
     }
     // Destroyed outside the lock, like every other bulk release here.
 }
 
 bool Cache::anchorToPythonThreadState()
 {
-    if (!pythonRuntimeAvailable() || !PyGILState_Check())
+    if (!pythonRuntimeAvailable() || !util::HasPythonThreadState())
     {
         return false;
     }
@@ -663,7 +1024,7 @@ bool Cache::anchorToPythonThreadState()
     // The capsule owns a shared_ptr copy, so it stays valid even when it is
     // destroyed after this Cache is already gone.
     auto     *owned   = new std::shared_ptr<Anchor>(m_anchor); // NOSONAR: ownership passes to the capsule
-    PyObject *capsule = PyCapsule_New(owned, kAnchorCapsuleName, &Cache::destroyAnchorCapsule);
+    PyObject *capsule = PyCapsule_New(owned, kAnchorCapsuleName, &Anchor::DestroyCapsule);
     if (capsule == nullptr)
     {
         PyErr_Clear();
@@ -707,6 +1068,9 @@ Cache &Cache::Instance()
         // later attempt is worth the two cheap C-API calls this costs.
         anchored = cache.anchorToPythonThreadState();
     }
+    if (sharedState().deferredPrune.load(std::memory_order_relaxed)
+        && sharedState().deferredPrune.exchange(false, std::memory_order_acq_rel))
+        PruneToLimits();
     return cache;
 }
 
@@ -715,30 +1079,104 @@ void Cache::ClearAll()
     Items savedItems;
     {
         std::lock_guard lk(Cache::Impl::mtx);
-        std::for_each(instances().begin(), instances().end(),
-                      [&savedItems](Cache *instance) { savedItems.merge(instance->pimpl->items); });
-        Cache::Impl::current_size_inbytes.clear();
+        const size_t    totalItems = sharedState().pendingItems.size() + instanceItemCount();
+        savedItems.reserve(totalItems);
+        std::for_each(sharedState().instances.begin(), sharedState().instances.end(),
+                      [&savedItems](const Cache *instance) { savedItems.merge(instance->pimpl->items); });
+        savedItems.merge(sharedState().pendingItems);
+        for (const auto &[key, item] : savedItems) unregisterItem(*item);
     }
     // savedItems is destroyed by leaving scope, outside the lock.
+}
+
+void Cache::PruneToLimits()
+{
+    if (!util::HasPythonThreadState())
+    {
+        sharedState().deferredPrune.store(true, std::memory_order_release);
+        return;
+    }
+
+    std::vector<std::shared_ptr<CacheItem>> savedItems;
+    {
+        std::lock_guard lk(Cache::Impl::mtx);
+        const bool      overLimit = std::any_of(
+                 Cache::Impl::current_size_inbytes.begin(), Cache::Impl::current_size_inbytes.end(),
+                 [](const auto &entry)
+                 {
+                auto limit = Cache::Impl::cache_limit_inbytes.find(entry.first);
+                return entry.second > (limit != Cache::Impl::cache_limit_inbytes.end() ? limit->second : 0);
+            });
+        if (const bool hasCompletedPending
+            = std::any_of(sharedState().pendingItems.begin(), sharedState().pendingItems.end(),
+                          [](const auto &entry) { return !HasPendingReleaseOwners(entry.second); });
+            !overLimit && !hasCompletedPending)
+            return;
+
+        size_t itemCount = sharedState().pendingItems.size();
+        if (overLimit)
+            itemCount += instanceItemCount();
+        try
+        {
+            if (sharedState().failNextPruneAllocation.exchange(false, std::memory_order_relaxed))
+                throw std::bad_alloc{};
+            savedItems.reserve(itemCount);
+        }
+        catch (...)
+        {
+            sharedState().deferredPrune.store(true, std::memory_order_release);
+            throw;
+        }
+
+        for (auto it = sharedState().pendingItems.begin(); it != sharedState().pendingItems.end();)
+        {
+            if (!HasPendingReleaseOwners(it->second))
+            {
+                unregisterItem(*it->second);
+                savedItems.emplace_back(std::move(it->second));
+                it = sharedState().pendingItems.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+
+        if (!overLimit)
+            return;
+
+        for (const Cache *instance : sharedState().instances)
+        {
+            for (auto it = instance->pimpl->items.begin(); it != instance->pimpl->items.end();)
+            {
+                const int dev = it->first->deviceId();
+                if (instance->doGetDeviceSize(dev) > instance->doGetDeviceLimit(dev)
+                    && !HasPendingReleaseOwners(it->second))
+                {
+                    savedItems.emplace_back(std::move(it->second));
+                    unregisterItem(*savedItems.back());
+                    it = instance->pimpl->items.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+        }
+    }
 }
 
 size_t Cache::TotalSize()
 {
     std::lock_guard lk(Cache::Impl::mtx);
-    return std::accumulate(instances().cbegin(), instances().cend(), static_cast<size_t>(0),
-                           [](size_t sum, const Cache *instance) { return sum + instance->size(); });
+    return sharedState().pendingItems.size()
+         + std::accumulate(sharedState().instances.cbegin(), sharedState().instances.cend(), static_cast<size_t>(0),
+                           [](size_t sum, const Cache *instance) { return sum + instance->pimpl->items.size(); });
 }
 
-void Cache::Export(py::module &m)
+void Cache::Export(py::module_ &m)
 {
-    using namespace pybind11::literals;
-
-    py::class_<CacheItem, std::shared_ptr<CacheItem>> cacheItem(nullptr, "CacheItem", py::module_local());
-
-    py::class_<ExternalCacheItem, CacheItem, std::shared_ptr<ExternalCacheItem>> externalCacheItem(
-        nullptr, "ExternalCacheItem", py::module_local());
-    (void)cacheItem;
-    (void)externalCacheItem;
+    using namespace nanobind::literals;
 
     // Initialize per-device cache limits to half each GPU's total memory.
     // Tolerate hosts with no CUDA device or only a stub libcuda available
@@ -782,9 +1220,11 @@ void Cache::Export(py::module &m)
         "clear_cache",
         [](ThreadScope scope)
         {
-            // ResourceGuard releases completed holds through auxiliary-stream callbacks.
-            // Drain them so clearing the cache also releases their resources.
-            Stream::SynchronizeAndClearGCBag();
+            // A stream holds each op's resources until the GPU retires the
+            // work that used them. Drain those holds first, so clearing the
+            // cache also releases their resources -- and, more importantly, so
+            // no buffer is freed here while a kernel can still be reading it.
+            Stream::DrainAllPendingReleases();
             switch (scope)
             {
             case ThreadScope::GLOBAL:
@@ -830,21 +1270,64 @@ void Cache::Export(py::module &m)
     m.def(
         "set_cache_limit_inbytes",
         [](int64_t new_cache_limit_inbytes) { Cache::Instance().setCacheLimit(new_cache_limit_inbytes); },
-        "Sets the cache limit [in bytes] for the current CUDA device.");
+        "Sets the retained-cache budget [in bytes] for the current CUDA device, shared across threads. "
+        "Pending GPU resources remain charged until retirement and may temporarily exceed this budget. "
+        "Zero disables retention of completed allocations, not safe reuse of pending tensors.");
 
     m.def(
         "current_cache_size_inbytes", [] { return Cache::Instance().getCurrentSizeInBytes(); },
-        "Returns the current cache size [in bytes] for the current CUDA device.");
-
-    py::module_ internal = m.attr(INTERNAL_SUBMODULE_NAME);
-    internal.def("nbytes_in_cache", [](const CacheItem &item) { return item.GetSizeInBytes(); });
+        "Returns indexed cache storage [in bytes] for the current CUDA device, including pending entries. "
+        "This is not total device memory usage; user-owned uncached and wrapped external storage is excluded.");
 
     // Just to check if fetchAll compiles, it's harmless
     Cache::Instance().fetchAll<Cache>();
 }
 
-void Cache::ExportTestHooks(py::module &m)
+void Cache::ExportTestHooks(py::module_ &m)
 {
+    m.def("cache_filter_on_live_item",
+          [](Container &container, bool scan)
+          {
+              // An owned descriptor may be mid-rebind on another thread. Reject
+              // any filter call here without relying on a racy stress test.
+              auto reject = [](const CacheItem &, const IKey &) -> bool
+              {
+                  throw CacheTestHookError("Cache filter inspected a live descriptor");
+              };
+              auto prefer = [](const CacheItem &a, const CacheItem &b)
+              {
+                  return a.GetSizeInBytes() < b.GetSizeInBytes();
+              };
+              if (auto item
+                  = Cache::Instance().fetchOne(container.key(), reject, nullptr, {}, {}, scan ? +prefer : nullptr))
+              {
+                  item->releaseReuseClaim();
+                  throw CacheTestHookError("Cache returned a live descriptor");
+              }
+          });
+    m.def("fail_next_cache_prune",
+          [](bool armed) { return sharedState().failNextPruneAllocation.exchange(armed, std::memory_order_relaxed); });
+    m.def("add_to_unanchored_worker_cache",
+          [](Container &container)
+          {
+              auto               item = std::make_shared<CachedObjectItem<Container>>(SharedContainerFrom(container));
+              std::exception_ptr error;
+              std::thread        worker(
+                  [&item, &error]
+                  {
+                      try
+                      {
+                          Cache::Instance().add(*item);
+                      }
+                      catch (...) // NOSONAR: rethrow on the calling Python thread
+                      {
+                          error = std::current_exception();
+                      }
+                  });
+              worker.join();
+              if (error)
+                  std::rethrow_exception(error);
+          });
     m.def("arm_cache_tls_destructor", [] { cacheDestructionTestHook().arm(); });
     m.def(
         "wait_cache_tls_destructor", [] { cacheDestructionTestHook().waitUntilEntered(); },

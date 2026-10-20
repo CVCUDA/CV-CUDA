@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,20 +25,17 @@
 #define CVCUDA_PRIV_COMPOSITE_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
 #include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
 class Composite final : public IOperator
 {
 public:
-    explicit Composite();
+    explicit Composite() = default;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &foreground, const nvcv::Tensor &background,
                     const nvcv::Tensor &fgMask, const nvcv::Tensor &output) const;
@@ -46,10 +43,6 @@ public:
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &foreground,
                     const nvcv::ImageBatchVarShape &background, const nvcv::ImageBatchVarShape &fgMask,
                     const nvcv::ImageBatchVarShape &output) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::Composite>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::CompositeVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

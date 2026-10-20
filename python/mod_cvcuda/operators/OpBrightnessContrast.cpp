@@ -20,151 +20,150 @@
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpBrightnessContrast.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
+#include <nvcv/RoundMode.h>
 
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
-inline Tensor tensorLike(Tensor &src)
+inline std::shared_ptr<Tensor> tensorLike(Tensor &src)
 {
-    const auto &srcShape = src.shape();
-    Shape       dstShape = nvcvpy::CreateShape(srcShape);
-
-    return Tensor::Create(dstShape, src.dtype(), src.layout());
+    return Tensor::CreateFromReqs(nvcv::Tensor::CalcRequirements(src.impl().shape(), src.dtype()));
 }
 
-inline ImageBatchVarShape batchLike(ImageBatchVarShape &src)
+inline std::shared_ptr<ImageBatchVarShape> batchLike(ImageBatchVarShape &src)
 {
-    ImageBatchVarShape dst = ImageBatchVarShape::Create(src.capacity());
-    for (int i = 0; i < src.numImages(); ++i)
-    {
-        dst.pushBackImage(Image::Create(src[i].size(), src[i].format()));
-    }
-    return dst;
+    return CreateSameShapeImageBatch(src);
 }
 
 template<typename Op, typename Src, typename Dst, typename Call>
-auto runGuard(Op &op, Src &src, Dst &dst, const std::optional<Tensor> &brightness,
-              const std::optional<Tensor> &contrast, const std::optional<Tensor> &brightnessShift,
-              const std::optional<Tensor> &contrastCenter, std::optional<Stream> &pstream, Call &&call)
+auto runGuard(Op &op, Src &src, Dst &dst, const std::optional<Tensor *> &brightness,
+              const std::optional<Tensor *> &contrast, const std::optional<Tensor *> &brightnessShift,
+              const std::optional<Tensor *> &contrastCenter, const std::optional<Stream *> &pstream, Call &&call)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {src});
     for (const auto &arg : {brightness, contrast, brightnessShift, contrastCenter})
     {
-        if (arg)
+        if (arg && *arg)
         {
-            guard.add(LockMode::LOCK_MODE_READ, {*arg});
+            guard.add(LockMode::LOCK_MODE_READ, {**arg});
         }
     }
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     guard.run(
-        [&brightness, &contrast, &brightnessShift, &contrastCenter, &call, &pstream]()
+        [&brightness, &contrast, &brightnessShift, &contrastCenter, &call, &stream]()
         {
             const nvcv::Tensor nullTensor{nullptr};
-            call(*pstream, AsNvcvTensor(brightness, nullTensor), AsNvcvTensor(contrast, nullTensor),
-                 AsNvcvTensor(brightnessShift, nullTensor), AsNvcvTensor(contrastCenter, nullTensor));
+            auto               asTensor = [&nullTensor](const std::optional<Tensor *> &arg) -> const nvcv::Tensor &
+            {
+                return arg && *arg ? (*arg)->impl() : nullTensor;
+            };
+            call(stream, asTensor(brightness), asTensor(contrast), asTensor(brightnessShift), asTensor(contrastCenter));
         });
 }
 
-Tensor BrightnessContrastInto(Tensor &dst, Tensor &src, std::optional<Tensor> &brightness,
-                              std::optional<Tensor> &contrast, std::optional<Tensor> &brightnessShift,
-                              std::optional<Tensor> &contrastCenter, std::optional<Stream> pstream)
+Tensor &BrightnessContrastInto(Tensor &dst, Tensor &src, std::optional<Tensor *> brightness,
+                               std::optional<Tensor *> contrast, std::optional<Tensor *> brightnessShift,
+                               std::optional<Tensor *> contrastCenter, std::optional<Stream *> pstream)
 {
     auto op = CreateOperator<cvcuda::BrightnessContrast>();
     runGuard(op, src, dst, brightness, contrast, brightnessShift, contrastCenter, pstream,
              [&op, &src, &dst](Stream &stream, const nvcv::Tensor &brightnessArg, const nvcv::Tensor &contrastArg,
-                               const nvcv::Tensor &brightnessShiftArg, const nvcv::Tensor &contrastCenterArg) {
-                 op->submit(stream.cudaHandle(), src, dst, brightnessArg, contrastArg, brightnessShiftArg,
+                               const nvcv::Tensor &brightnessShiftArg, const nvcv::Tensor &contrastCenterArg)
+             {
+                 op->submit(stream.handle(), src.impl(), dst.impl(), brightnessArg, contrastArg, brightnessShiftArg,
                             contrastCenterArg);
              });
     return dst;
 }
 
-Tensor BrightnessContrast(Tensor &src, std::optional<Tensor> &brightness, std::optional<Tensor> &contrast,
-                          std::optional<Tensor> &brightnessShift, std::optional<Tensor> &contrastCenter,
-                          std::optional<Stream> pstream)
+std::shared_ptr<Tensor> BrightnessContrast(Tensor &src, std::optional<Tensor *> brightness,
+                                           std::optional<Tensor *> contrast, std::optional<Tensor *> brightnessShift,
+                                           std::optional<Tensor *> contrastCenter, std::optional<Stream *> pstream)
 {
     auto dst = tensorLike(src);
-    return BrightnessContrastInto(dst, src, brightness, contrast, brightnessShift, contrastCenter, pstream);
+    BrightnessContrastInto(*dst, src, brightness, contrast, brightnessShift, contrastCenter, pstream);
+    return dst;
 }
 
-ImageBatchVarShape VarShapeBrightnessContrastInto(ImageBatchVarShape &dst, ImageBatchVarShape &src,
-                                                  std::optional<Tensor> &brightness, std::optional<Tensor> &contrast,
-                                                  std::optional<Tensor> &brightnessShift,
-                                                  std::optional<Tensor> &contrastCenter, std::optional<Stream> pstream)
+ImageBatchVarShape &VarShapeBrightnessContrastInto(ImageBatchVarShape &dst, ImageBatchVarShape &src,
+                                                   std::optional<Tensor *> brightness, std::optional<Tensor *> contrast,
+                                                   std::optional<Tensor *> brightnessShift,
+                                                   std::optional<Tensor *> contrastCenter,
+                                                   std::optional<Stream *> pstream)
 {
     auto op = CreateOperator<cvcuda::BrightnessContrast>();
     runGuard(op, src, dst, brightness, contrast, brightnessShift, contrastCenter, pstream,
              [&op, &src, &dst](Stream &stream, const nvcv::Tensor &brightnessArg, const nvcv::Tensor &contrastArg,
-                               const nvcv::Tensor &brightnessShiftArg, const nvcv::Tensor &contrastCenterArg) {
-                 op->submit(stream.cudaHandle(), src, dst, brightnessArg, contrastArg, brightnessShiftArg,
+                               const nvcv::Tensor &brightnessShiftArg, const nvcv::Tensor &contrastCenterArg)
+             {
+                 op->submit(stream.handle(), src.impl(), dst.impl(), brightnessArg, contrastArg, brightnessShiftArg,
                             contrastCenterArg);
              });
     return dst;
 }
 
-ImageBatchVarShape VarShapeBrightnessContrast(ImageBatchVarShape &src, std::optional<Tensor> &brightness,
-                                              std::optional<Tensor> &contrast, std::optional<Tensor> &brightnessShift,
-                                              std::optional<Tensor> &contrastCenter, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> VarShapeBrightnessContrast(
+    ImageBatchVarShape &src, std::optional<Tensor *> brightness, std::optional<Tensor *> contrast,
+    std::optional<Tensor *> brightnessShift, std::optional<Tensor *> contrastCenter, std::optional<Stream *> pstream)
 {
     auto dst = batchLike(src);
-    return VarShapeBrightnessContrastInto(dst, src, brightness, contrast, brightnessShift, contrastCenter, pstream);
+    VarShapeBrightnessContrastInto(*dst, src, brightness, contrast, brightnessShift, contrastCenter, pstream);
+    return dst;
 }
 
-Tensor BrightnessContrastScalarInto(Tensor &dst, Tensor &src, double brightness, double contrast,
-                                    double brightnessShift, double contrastCenter, bool clamp,
-                                    std::optional<Stream> pstream)
+Tensor &BrightnessContrastScalarInto(Tensor &dst, Tensor &src, double brightness, double contrast,
+                                     double brightnessShift, double contrastCenter, bool clamp, NVCVRoundMode round,
+                                     std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::BrightnessContrast>(dst, src, pstream, brightness, contrast, brightnessShift,
-                                                            contrastCenter, clamp);
+                                                            contrastCenter, clamp, round);
 }
 
-Tensor BrightnessContrastScalar(Tensor &src, double brightness, double contrast, double brightnessShift,
-                                double contrastCenter, bool clamp, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> BrightnessContrastScalar(Tensor &src, double brightness, double contrast,
+                                                 double brightnessShift, double contrastCenter, bool clamp,
+                                                 NVCVRoundMode round, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseTensor<cvcuda::BrightnessContrast>(src, pstream, brightness, contrast, brightnessShift,
-                                                              contrastCenter, clamp);
+                                                              contrastCenter, clamp, round);
 }
 
-ImageBatchVarShape VarShapeBrightnessContrastScalarInto(ImageBatchVarShape &dst, ImageBatchVarShape &src,
-                                                        double brightness, double contrast, double brightnessShift,
-                                                        double contrastCenter, bool clamp,
-                                                        std::optional<Stream> pstream)
+ImageBatchVarShape &VarShapeBrightnessContrastScalarInto(ImageBatchVarShape &dst, ImageBatchVarShape &src,
+                                                         double brightness, double contrast, double brightnessShift,
+                                                         double contrastCenter, bool clamp, NVCVRoundMode round,
+                                                         std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::BrightnessContrast>(dst, src, pstream, brightness, contrast, brightnessShift,
-                                                            contrastCenter, clamp);
+                                                            contrastCenter, clamp, round);
 }
 
-ImageBatchVarShape VarShapeBrightnessContrastScalar(ImageBatchVarShape &src, double brightness, double contrast,
-                                                    double brightnessShift, double contrastCenter, bool clamp,
-                                                    std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> VarShapeBrightnessContrastScalar(ImageBatchVarShape &src, double brightness,
+                                                                     double contrast, double brightnessShift,
+                                                                     double contrastCenter, bool clamp,
+                                                                     NVCVRoundMode           round,
+                                                                     std::optional<Stream *> pstream)
 {
     return UnaryElementwiseVarShape<cvcuda::BrightnessContrast>(src, pstream, brightness, contrast, brightnessShift,
-                                                                contrastCenter, clamp);
+                                                                contrastCenter, clamp, round);
 }
 
 } // namespace
 
-void ExportOpBrightnessContrast(py::module &m)
+void ExportOpBrightnessContrast(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("brightness_contrast", NvtxTrace("cvcuda.brightness_contrast", &BrightnessContrast), "src"_a,
           "brightness"_a = nullptr, "contrast"_a = nullptr, "brightness_shift"_a = nullptr,
-          "contrast_center"_a = nullptr, py::kw_only(), "stream"_a = nullptr,
-          R"pbdoc(
+          "contrast_center"_a = nullptr, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Adjusts the brightness and contrast of the images according to the formula:
         ``out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))``.
 
@@ -192,7 +191,7 @@ void ExportOpBrightnessContrast(py::module &m)
     )pbdoc");
     m.def("brightness_contrast_into", NvtxTrace("cvcuda.brightness_contrast_into", &BrightnessContrastInto), "dst"_a,
           "src"_a, "brightness"_a = nullptr, "contrast"_a = nullptr, "brightness_shift"_a = nullptr,
-          "contrast_center"_a = nullptr, py::kw_only(), "stream"_a = nullptr,
+          "contrast_center"_a = nullptr, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Adjusts the brightness and contrast of the images according to the formula:
         ``out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))``.
@@ -224,8 +223,7 @@ void ExportOpBrightnessContrast(py::module &m)
     // VarShape variants
     m.def("brightness_contrast", NvtxTrace("cvcuda.brightness_contrast", &VarShapeBrightnessContrast), "src"_a,
           "brightness"_a = nullptr, "contrast"_a = nullptr, "brightness_shift"_a = nullptr,
-          "contrast_center"_a = nullptr, py::kw_only(), "stream"_a = nullptr,
-          R"pbdoc(
+          "contrast_center"_a = nullptr, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Adjusts the brightness and contrast of the images according to the formula:
         ``out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))``.
 
@@ -262,7 +260,7 @@ void ExportOpBrightnessContrast(py::module &m)
     )pbdoc");
     m.def("brightness_contrast_into", NvtxTrace("cvcuda.brightness_contrast_into", &VarShapeBrightnessContrastInto),
           "dst"_a, "src"_a, "brightness"_a = nullptr, "contrast"_a = nullptr, "brightness_shift"_a = nullptr,
-          "contrast_center"_a = nullptr, py::kw_only(), "stream"_a = nullptr,
+          "contrast_center"_a = nullptr, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Adjusts the brightness and contrast of the images according to the formula:
         ``out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))``.
@@ -303,7 +301,7 @@ void ExportOpBrightnessContrast(py::module &m)
     // By-value variants
     m.def("brightness_contrast", NvtxTrace("cvcuda.brightness_contrast", &BrightnessContrastScalar), "src"_a,
           "brightness"_a, "contrast"_a, "brightness_shift"_a, "contrast_center"_a, py::kw_only(), "clamp"_a = false,
-          "stream"_a = nullptr,
+          "round"_a = NVCV_ROUND_NEAREST, "stream"_a = nullptr,
           R"pbdoc(
         Adjusts brightness and contrast using one set of scalar parameters for every input image.
 
@@ -315,6 +313,9 @@ void ExportOpBrightnessContrast(py::module &m)
             contrast_center (float): Contrast center.
             clamp (bool, optional): Clamp to the nominal image range: ``[0, 1]`` for floating-point
                 output and ``[0, max]`` for integer output. Defaults to ``False``.
+            round (cvcuda.Round, optional): Rounding mode used for integer outputs. Defaults to
+                cvcuda.Round.NEAREST; use cvcuda.Round.TRUNCATE to drop the fractional part, which is
+                what torchvision's adjust_brightness does. Has no effect on floating-point outputs.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -322,7 +323,7 @@ void ExportOpBrightnessContrast(py::module &m)
     )pbdoc");
     m.def("brightness_contrast_into", NvtxTrace("cvcuda.brightness_contrast_into", &BrightnessContrastScalarInto),
           "dst"_a, "src"_a, "brightness"_a, "contrast"_a, "brightness_shift"_a, "contrast_center"_a, py::kw_only(),
-          "clamp"_a = false, "stream"_a = nullptr,
+          "clamp"_a = false, "round"_a = NVCV_ROUND_NEAREST, "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Adjusts brightness and contrast into ``dst`` using scalar parameters.
 
@@ -334,6 +335,9 @@ void ExportOpBrightnessContrast(py::module &m)
             brightness_shift (float): Brightness shift.
             contrast_center (float): Contrast center.
             clamp (bool, optional): Clamp to the nominal image range. Defaults to ``False``.
+            round (cvcuda.Round, optional): Rounding mode used for integer outputs. Defaults to
+                cvcuda.Round.NEAREST; use cvcuda.Round.TRUNCATE to drop the fractional part, which is
+                what torchvision's adjust_brightness does. Has no effect on floating-point outputs.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -341,8 +345,7 @@ void ExportOpBrightnessContrast(py::module &m)
     )pbdoc");
     m.def("brightness_contrast", NvtxTrace("cvcuda.brightness_contrast", &VarShapeBrightnessContrastScalar), "src"_a,
           "brightness"_a, "contrast"_a, "brightness_shift"_a, "contrast_center"_a, py::kw_only(), "clamp"_a = false,
-          "stream"_a = nullptr,
-          R"pbdoc(
+          "round"_a = NVCV_ROUND_NEAREST, "stream"_a = nullptr, R"pbdoc(
         Adjusts brightness and contrast using one set of scalar parameters for every image in a batch.
 
         Args:
@@ -352,6 +355,9 @@ void ExportOpBrightnessContrast(py::module &m)
             brightness_shift (float): Brightness shift.
             contrast_center (float): Contrast center.
             clamp (bool, optional): Clamp to the nominal image range. Defaults to ``False``.
+            round (cvcuda.Round, optional): Rounding mode used for integer outputs. Defaults to
+                cvcuda.Round.NEAREST; use cvcuda.Round.TRUNCATE to drop the fractional part, which is
+                what torchvision's adjust_brightness does. Has no effect on floating-point outputs.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -360,8 +366,7 @@ void ExportOpBrightnessContrast(py::module &m)
     m.def("brightness_contrast_into",
           NvtxTrace("cvcuda.brightness_contrast_into", &VarShapeBrightnessContrastScalarInto), "dst"_a, "src"_a,
           "brightness"_a, "contrast"_a, "brightness_shift"_a, "contrast_center"_a, py::kw_only(), "clamp"_a = false,
-          "stream"_a = nullptr,
-          R"pbdoc(
+          "round"_a = NVCV_ROUND_NEAREST, "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Adjusts brightness and contrast into ``dst`` using scalar parameters.
 
         Args:
@@ -372,6 +377,9 @@ void ExportOpBrightnessContrast(py::module &m)
             brightness_shift (float): Brightness shift.
             contrast_center (float): Contrast center.
             clamp (bool, optional): Clamp to the nominal image range. Defaults to ``False``.
+            round (cvcuda.Round, optional): Rounding mode used for integer outputs. Defaults to
+                cvcuda.Round.NEAREST; use cvcuda.Round.TRUNCATE to drop the fractional part, which is
+                what torchvision's adjust_brightness does. Has no effect on floating-point outputs.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:

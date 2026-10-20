@@ -1,6 +1,6 @@
 #!/bin/sh -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +17,22 @@
 
 case "$1" in
     configure)
+        python_version="@PYTHON_VERSION@"
         src_path="@SRC_PYTHON_MODULE_PATH@"
         dst_path="@DST_PYTHON_MODULE_PATH@"
+        case "$python_version" in
+            *t)
+                # APT omits /usr/local/bin from maintainer scripts' PATH.
+                dst_path=$(PATH="/usr/local/bin:$PATH" "python$python_version" -I -c '
+import sys, sysconfig
+assert sys.version_info[:2] == (@Python_VERSION_MAJOR@, @Python_VERSION_MINOR@)
+assert sysconfig.get_config_var("Py_GIL_DISABLED")
+print(sysconfig.get_path("platlib"))
+') || { echo "Free-threaded Python $python_version is required to configure this package" >&2; exit 1; }
+                # Removal must use this location even if the interpreter is gone.
+                printf '%s\n' "$dst_path" > "$src_path/.python${python_version}-install-path"
+                ;;
+        esac
         mkdir -p "$dst_path"
         # shellcheck disable=SC2043
         for mod in @PYTHON_MODULE_FILENAME_LIST@; do

@@ -77,10 +77,19 @@ endfunction()
 function(configure_symbol_versioning dso_target VERPREFIX input_targets)
     # Create exports file for symbol versioning ---------------------------------
     set(EXPORTS_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/exports.ldscript")
-    target_link_libraries(${dso_target}
-        PRIVATE
-        -Wl,--version-script ${EXPORTS_OUTPUT}
-    )
+
+    # A version script only governs a dynamic symbol table, so it does nothing
+    # for a static library -- but CMake hands a static library's PRIVATE link
+    # items to whatever links it, so attaching it unconditionally puts the
+    # script on every consuming executable. That silently localizes symbols the
+    # executable is supposed to export, __asan_default_options among them.
+    get_target_property(dso_target_type ${dso_target} TYPE)
+    if(dso_target_type STREQUAL "SHARED_LIBRARY")
+        target_link_libraries(${dso_target}
+            PRIVATE
+            -Wl,--version-script ${EXPORTS_OUTPUT}
+        )
+    endif()
     set(ALL_SOURCES "")
     foreach(tgt ${input_targets})
         get_target_property(tgt_sources ${tgt} SOURCES)

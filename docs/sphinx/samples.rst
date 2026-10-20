@@ -161,6 +161,7 @@ Operators
 .. toctree::
    :maxdepth: 1
 
+   cvcuda.tv <samples/operators/cvcuda_tv>
    adaptivethreshold <samples/operators/adaptivethreshold>
    advcvtcolor <samples/operators/advcvtcolor>
    averageblur <samples/operators/averageblur>

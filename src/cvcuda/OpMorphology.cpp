@@ -17,6 +17,7 @@
 
 #include "priv/OpMorphology.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -52,6 +53,8 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMorphologySubmit,
         [&in, &out, &maskWidth, &maskHeight, &anchorX, &anchorY, &handle, &stream, &workspace, &morphType, &iteration,
          &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
+            priv::CheckEnumArg(morphType, NVCV_CLOSE, "morphology type");
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
             nvcv::Size2D           maskSize = {maskWidth, maskHeight};
@@ -71,6 +74,8 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMorphologyVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &masks, &anchors, &handle, &stream, &workspace, &morphType, &iteration, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
+            priv::CheckEnumArg(morphType, NVCV_CLOSE, "morphology type");
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::ImageBatchVarShapeWrapHandle output(out);
             nvcv::TensorWrapHandle             masksWrap(masks);

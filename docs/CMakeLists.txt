@@ -167,6 +167,9 @@ add_custom_command(OUTPUT ${SPHINX_INDEX_FILE}
                     COMMAND ${CMAKE_COMMAND} -E env
                             "LD_LIBRARY_PATH=${CUDA_LIB_DIR}:$ENV{LD_LIBRARY_PATH}"
                             ${SPHINX_PYTHON} -m sphinx -j 1 -b html
+                            # Without -d the doctree cache lands in the output directory and
+                            # follows the site into every archive built from it.
+                            -d ${CMAKE_CURRENT_BINARY_DIR}/doctrees
                             # Tell Breathe where to find the Doxygen's xml output. Needed to have c/cpp documentation.
                             -Dbreathe_projects.cvcuda=${DOXYGEN_OUTPUT_DIR}/xml
                             ${SPHINX_SOURCE} ${SPHINX_BUILD}
@@ -180,6 +183,16 @@ add_custom_command(OUTPUT ${SPHINX_INDEX_FILE}
                     COMMENT "Building Sphinx HTML documentation")
 
 add_custom_target(cvcuda_sphinx ALL DEPENDS ${SPHINX_INDEX_FILE})
+
+# GitHub Pages runs Jekyll unless this marker is present, and Jekyll discards
+# every underscore-prefixed directory -- _static, _images, _sources -- serving
+# the site unstyled with broken API pages. Created at build time so every
+# archive built from the site inherits it.
+add_custom_command(
+    TARGET cvcuda_sphinx POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E touch ${SPHINX_BUILD}/.nojekyll
+    COMMENT "Marking the documentation tree as not Jekyll-processed"
+)
 
 # Automatically clean up venv after documentation is built
 add_custom_command(
@@ -207,4 +220,5 @@ install(DIRECTORY ${SPHINX_BUILD}/
     PATTERN "*.stamp" EXCLUDE
     PATTERN ".doctrees" EXCLUDE
     PATTERN ".buildinfo" EXCLUDE
+    PATTERN ".nojekyll" EXCLUDE
 )

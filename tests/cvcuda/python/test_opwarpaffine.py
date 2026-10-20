@@ -15,13 +15,174 @@
 
 import cvcuda
 
+import cupy
 import pytest
 import numpy as np
 
 import cvcuda_util as util
 import cvcuda_tools as cv_tools
+from cvcuda_test_utils import as_cupy_stream
 
 RNG = np.random.default_rng(0)
+
+_DELAY_KERNEL = cupy.RawKernel(
+    r"""
+extern "C" __global__ void cvcuda_warp_affine_delay(
+    unsigned long long cycles)
+{
+    unsigned long long start = clock64();
+    while (clock64() - start < cycles) { }
+}
+""",
+    "cvcuda_warp_affine_delay",
+)
+
+
+def test_op_warp_affine_constant_coverage_tensor_only():
+    src = cvcuda.Tensor((1, 4, 4, 1), cvcuda.Type.U8, "NHWC")
+    xform = np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
+    kwargs = {
+        "flags": cvcuda.Interp.LINEAR,
+        "border_mode": cvcuda.Border.CONSTANT_COVERAGE,
+        "border_value": [0.5],
+    }
+    assert isinstance(cvcuda.warp_affine(src, xform, **kwargs), cvcuda.Tensor)
+    dst = cvcuda.Tensor(src.shape, src.dtype, src.layout)
+    assert cvcuda.warp_affine_into(dst, src, xform, **kwargs) is dst
+
+    batch = util.create_image_batch(1, cvcuda.Format.U8, size=(4, 4))
+    batch_dst = util.clone_image_batch(batch)
+    batch_xform = util.to_cvcuda_tensor(xform.reshape(1, 6), "NC")
+    with pytest.raises(RuntimeError):
+        cvcuda.warp_affine(batch, batch_xform, **kwargs)
+    with pytest.raises(RuntimeError):
+        cvcuda.warp_affine_into(batch_dst, batch, batch_xform, **kwargs)
+
+
+def test_op_warp_affine_host_array_binding_contract():
+    source = cupy.zeros((1, 2, 2, 3), dtype=cupy.uint8)
+    input = cvcuda.as_tensor(source, "NHWC")
+    xform = np.array([[1, 0, 100], [0, 1, 100]], dtype=np.float32)
+    xform.setflags(write=False)
+
+    output = cvcuda.warp_affine(
+        input,
+        xform,
+        cvcuda.Interp.NEAREST,
+        border_mode=cvcuda.Border.CONSTANT,
+        border_value=7,
+    )
+
+    np.testing.assert_array_equal(
+        cupy.asarray(output.cuda()).get(), np.full(source.shape, 7, dtype=np.uint8)
+    )
+
+    with pytest.raises(TypeError, match="incompatible function arguments"):
+        cvcuda.warp_affine(
+            input,
+            cupy.asarray(xform),
+            cvcuda.Interp.NEAREST,
+            border_mode=cvcuda.Border.CONSTANT,
+        )
+
+
+def test_op_warp_affine_varshape_completion_lease_across_streams():
+    """In-flight coefficient scratch must not serialize another stream."""
+    cvcuda.clear_cache()
+    input_a = util.create_image_batch(
+        2,
+        cvcuda.Format.RGB8,
+        size=(64, 64),
+        max_random=255,
+        rng=RNG,
+    )
+    input_b = util.create_image_batch(
+        2,
+        cvcuda.Format.RGB8,
+        size=(64, 64),
+        max_random=255,
+        rng=RNG,
+    )
+    identity = util.to_cvcuda_tensor(
+        np.tile([1, 0, 0, 0, 1, 0], (len(input_a), 1)).astype(np.float32),
+        "NC",
+    )
+    translated = util.to_cvcuda_tensor(
+        np.tile([1, 0, 256, 0, 1, 256], (len(input_b), 1)).astype(np.float32),
+        "NC",
+    )
+    output_a = util.clone_image_batch(input_a)
+    output_b = util.clone_image_batch(input_b)
+
+    # Prime two operator states, their coefficient allocations, and the CUDA
+    # module before introducing the delay; lazy initialization could otherwise
+    # hide whether the second stream was independently submitted.
+    warm_stream = cvcuda.Stream()
+    cvcuda.warp_affine_into(
+        output_a,
+        input_a,
+        identity,
+        cvcuda.Interp.NEAREST,
+        border_value=[0, 0, 0],
+        stream=warm_stream,
+    )
+    cvcuda.warp_affine_into(
+        output_b,
+        input_b,
+        translated,
+        cvcuda.Interp.NEAREST,
+        border_value=[0, 0, 0],
+        stream=warm_stream,
+    )
+    warm_stream.sync()
+    cvcuda.internal.drain_pending_releases()
+
+    stream_a = cvcuda.Stream()
+    stream_b = cvcuda.Stream()
+    external_a = as_cupy_stream(stream_a.handle)
+    _DELAY_KERNEL(
+        (1,),
+        (1,),
+        (np.uint64(500_000_000),),
+        stream=external_a,
+    )
+    assert not external_a.done
+
+    cvcuda.warp_affine_into(
+        output_a,
+        input_a,
+        identity,
+        cvcuda.Interp.NEAREST,
+        border_value=[0, 0, 0],
+        stream=stream_a,
+    )
+    cvcuda.warp_affine_into(
+        output_b,
+        input_b,
+        translated,
+        cvcuda.Interp.NEAREST,
+        border_mode=cvcuda.Border.CONSTANT,
+        border_value=[73, 73, 73],
+        stream=stream_b,
+    )
+    stream_b.sync()
+    submission_a_still_pending = not external_a.done
+    stream_a.sync()
+
+    assert submission_a_still_pending, (
+        "the second WarpAffine cache acquisition waited for the first "
+        "stream instead of leasing independent coefficient scratch"
+    )
+    for source, result in zip(input_a, output_a, strict=True):
+        np.testing.assert_array_equal(
+            cupy.from_dlpack(result.cuda()).get(),
+            cupy.from_dlpack(source.cuda()).get(),
+        )
+    for result in output_b:
+        np.testing.assert_array_equal(
+            cupy.from_dlpack(result.cuda()).get(),
+            np.full((64, 64, 3), 73, dtype=np.uint8),
+        )
 
 
 @pytest.mark.parametrize(

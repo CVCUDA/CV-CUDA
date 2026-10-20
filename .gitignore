@@ -22,11 +22,19 @@
 /cvcuda-installer*/
 /.cache/
 
+# Local secrets (direnv-style; nsight-profile reads CP_API_KEY from here)
+/.envrc
+
 # CMake user presets (personal overrides)
 CMakeUserPresets.json
 
 # Build time benchmark reports
 /bench-reports/
+
+# Baseline import reports
+/baseline-stability.md
+/baseline-stability.json
+/baseline-update.md
 
 # Visual Studio Code
 # ------------------
@@ -79,9 +87,3 @@ bench/python/requirements.bench.*.txt
 samples/requirements.samples.*.txt
 docs/requirements.docs.txt
 
-# Benchmark per-config outputs
-# ----------------------------
-# run_bench.py writes one out_<config>_<lang>.csv per config (see make output
-# filename in bench/run_bench.py); these are run artifacts, never source.
-out_*_cpp.csv
-out_*_python.csv

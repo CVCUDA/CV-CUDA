@@ -45,7 +45,9 @@ def copymakeborder(state):
     dtype = get_dtype(dtype_str)
     num_channels = get_num_channels(dtype_str)
     border = get_border_type(state.get_string("border"))
-    input_kind = get_input_kind(state.get_string("inputKind"))
+    input_mode = state.get_string("inputKind")
+    is_stack = input_mode == "VarShapeToTensor"
+    input_kind = get_input_kind("VarShape" if is_stack else input_mode)
     layout = state.get_string("layout")
     device_id = state.get_device()
 
@@ -148,14 +150,14 @@ def copymakeborder(state):
     else:  # ImageBatchVarShape mode
         top_scalar, left_scalar = top, left
         top = create_tensor(
-            (N, 1, 1, 1),
+            (1, 1, N, 1),
             cvcuda.Type.S32,
             device_id,
             layout="NHWC",
             fill_mode=top_scalar,
         )
         left = create_tensor(
-            (N, 1, 1, 1),
+            (1, 1, N, 1),
             cvcuda.Type.S32,
             device_id,
             layout="NHWC",
@@ -170,17 +172,27 @@ def copymakeborder(state):
             device_id,
             fill_mode="checkerboard",
         )
-        dst = create_image_batch_varshape(
-            (N, top_scalar + H, left_scalar + W, num_channels),
-            0,
-            img_format,
-            dtype,
-            device_id,
-            fill_mode="checkerboard",
-        )
+        if is_stack:
+            dst_shape = (
+                (N, num_channels, top_scalar + H, left_scalar + W)
+                if is_planar
+                else (N, top_scalar + H, left_scalar + W, num_channels)
+            )
+            dst = create_tensor(dst_shape, dtype, device_id, layout=layout, fill_mode=0)
+        else:
+            dst = create_image_batch_varshape(
+                (N, top_scalar + H, left_scalar + W, num_channels),
+                0,
+                img_format,
+                dtype,
+                device_id,
+                fill_mode="checkerboard",
+            )
+
+    submit = cvcuda.copymakeborderstack_into if is_stack else cvcuda.copymakeborder_into
 
     def run(launch):
-        cvcuda.copymakeborder_into(
+        submit(
             dst,
             src,
             border_mode=border,

@@ -23,34 +23,39 @@
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
 // Thin Python-facing wrappers; the create/guard/submit body lives in UnaryElementwiseOp.hpp, with
 // the bit count forwarded as the trailing submit() parameter.
-Tensor PosterizeInto(Tensor &output, Tensor &input, int32_t bits, std::optional<Stream> pstream)
+Tensor &PosterizeInto(Tensor &output, Tensor &input, int32_t bits, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::Posterize>(output, input, pstream, bits);
 }
 
-Tensor Posterize(Tensor &input, int32_t bits, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Posterize(Tensor &input, int32_t bits, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseTensor<cvcuda::Posterize>(input, pstream, bits);
 }
 
-ImageBatchVarShape PosterizeVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, int32_t bits,
-                                         std::optional<Stream> pstream)
+ImageBatchVarShape &PosterizeVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, int32_t bits,
+                                          std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::Posterize>(output, input, pstream, bits);
 }
 
-ImageBatchVarShape PosterizeVarShape(ImageBatchVarShape &input, int32_t bits, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> PosterizeVarShape(ImageBatchVarShape &input, int32_t bits,
+                                                      std::optional<Stream *> pstream)
 {
     return UnaryElementwiseVarShape<cvcuda::Posterize>(input, pstream, bits);
 }
 
 } // namespace
 
-void ExportOpPosterize(py::module &m)
+void ExportOpPosterize(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("posterize", NvtxTrace("cvcuda.posterize", &Posterize), "src"_a, "bits"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
@@ -59,7 +64,10 @@ void ExportOpPosterize(py::module &m)
 
         Keeps the ``bits`` most-significant bits of every channel value and zeros the rest:
         ``out = in & ~((1 << (W - bits)) - 1)``, where ``W`` is the data type bit width (8 for uint8,
-        16 for uint16). Mirrors torchvision.transforms.v2.functional.posterize / PIL ImageOps.posterize.
+        16 for uint16). A floating-point image has no bit layout to keep and its values are normalized
+        to ``[0, 1]``, so it is quantized into ``2 ** bits`` levels instead:
+        ``out = clamp(floor(in * levels), 0, levels - 1) / levels``. Mirrors
+        torchvision.transforms.v2.functional.posterize / PIL ImageOps.posterize.
 
         See also:
             Refer to the CV-CUDA C API reference for the Posterize operator for more details and usage
@@ -68,8 +76,8 @@ void ExportOpPosterize(py::module &m)
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
             bits (int): Number of most-significant bits to keep per channel; must be in [0, W] where W
-                is the data type bit width (8 for uint8, 16 for uint16). bits == W leaves the image
-                unchanged; bits == 0 zeros the image.
+                is the data type bit width (8 for uint8, 16 for uint16), or in [0, 8] for a
+                floating-point image. bits == W leaves the image unchanged; bits == 0 zeros the image.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -81,7 +89,7 @@ void ExportOpPosterize(py::module &m)
     )pbdoc");
 
     m.def("posterize_into", NvtxTrace("cvcuda.posterize_into", &PosterizeInto), "dst"_a, "src"_a, "bits"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Posterize operation on the given cuda stream.
 
@@ -122,8 +130,7 @@ void ExportOpPosterize(py::module &m)
     )pbdoc");
 
     m.def("posterize_into", NvtxTrace("cvcuda.posterize_into", &PosterizeVarShapeInto), "dst"_a, "src"_a, "bits"_a,
-          py::kw_only(), "stream"_a = nullptr,
-          R"pbdoc(
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Posterize operation on the given cuda stream.
 

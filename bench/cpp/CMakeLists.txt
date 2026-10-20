@@ -20,13 +20,15 @@ project(cvcuda_bench)
 # the CMake config files installed by cvcuda-dev. This lets a CI test pod
 # compile bench against a pre-built cvcuda from a manylinux artifact, without
 # having to rebuild the lib itself. When BUILD_LIB=ON, the in-tree targets
-# already exist and these find_package calls are skipped.
+# already exist and this find_package call is skipped.
 if(NOT TARGET cvcuda)
-    find_package(nvcv_types CONFIG REQUIRED)
-    find_package(cvcuda CONFIG REQUIRED)
+    find_package(cvcuda ${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJECT_VERSION_MINOR} CONFIG REQUIRED)
 endif()
 
 set(bench_sources
+    ops/BenchMerge.cpp
+    ops/BenchSplit.cpp
+    ops/BenchTvResize.cpp
     ops/BenchJpegCompressionDistortion.cpp
     ops/BenchAdjustHue.cpp
     ops/BenchAdjustSaturation.cpp
@@ -140,20 +142,20 @@ message(STATUS "Configured ${NUM_BENCHMARKS} benchmark config header generation 
 # Metatarget for all benchmarks
 add_custom_target(bench_all)
 
-# Shared CUDA fill helpers — typed device-side random / checkerboard fills.
-# Built once and linked into every bench executable; replaces the host-side
-# uniform_int_distribution + cudaMemcpy round-trip that dominated big-tensor
-# setup time on multi-hundred-MB src tensors (1-6 s host fill -> ms GPU fill).
-add_library(cvcuda_bench_fill_kernels STATIC BenchFillKernels.cu)
-set_target_properties(cvcuda_bench_fill_kernels PROPERTIES
+# Shared device helpers — clock probe plus typed random / checkerboard fills.
+# Built once and linked into every bench executable. The fill kernels replace
+# the host-side uniform_int_distribution + cudaMemcpy round-trip that dominated
+# big-tensor setup time on multi-hundred-MB src tensors.
+add_library(cvcuda_bench_device_utils STATIC BenchClockProbe.cu BenchFillKernels.cu)
+set_target_properties(cvcuda_bench_device_utils PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CUDA_SEPARABLE_COMPILATION OFF)
-target_include_directories(cvcuda_bench_fill_kernels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(cvcuda_bench_device_utils PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # Link cudart so the CUDA toolkit include dir is exposed as -isystem (matching
 # every other .cu in the tree). Without this the nvcc host pass treats CUDA's
 # own headers as user code and the global -Wredundant-decls / -Werror in
 # ConfigCompiler.cmake fires on duplicate decls inside CUDA itself.
-target_link_libraries(cvcuda_bench_fill_kernels PUBLIC CUDA::cudart_static)
+target_link_libraries(cvcuda_bench_device_utils PUBLIC CUDA::cudart_static)
 
 foreach(bench_source IN LISTS bench_sources)
   get_filename_component(bench_file_name "${bench_source}" NAME_WLE)
@@ -166,7 +168,7 @@ foreach(bench_source IN LISTS bench_sources)
 
   # Add executable with generated header as a source dependency
   add_executable(${bench_name} "${bench_source}" "${GENERATED_HEADER}")
-  target_link_libraries(${bench_name} PRIVATE cvcuda::nvbench::main cvcuda cvcuda_bench_fill_kernels)
+  target_link_libraries(${bench_name} PRIVATE cvcuda::nvbench::main cvcuda cvcuda_bench_device_utils)
   set_target_properties(${bench_name} PROPERTIES COMPILE_FEATURES cuda_std_17)
 
   # Add generated config headers directory to include path
@@ -187,6 +189,7 @@ endforeach()
 install(PROGRAMS
         ${CMAKE_CURRENT_SOURCE_DIR}/../run_bench.py
         ${CMAKE_CURRENT_SOURCE_DIR}/../compare_wheels.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/../binding_bench.py
         DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT bench)
 
@@ -216,4 +219,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../run_bench.py
                COPYONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../compare_wheels.py
                ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/compare_wheels.py
+               COPYONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../binding_bench.py
+               ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/binding_bench.py
                COPYONLY)

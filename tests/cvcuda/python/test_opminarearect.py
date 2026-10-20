@@ -270,6 +270,29 @@ def test_op_minarearect_rejects_rank_one_num_points_tensor():
         cvcuda.minarearect(src, num_points, 1)
 
 
+def test_op_minarearect_negative_total_contours_mismatch():
+    # The operator always processes the input tensor's own contour count, so a totalContours
+    # that disagrees with it must be rejected rather than silently ignored.
+    num_contours = 2
+    points_per_contour = 4
+    src = cvcuda.as_tensor(
+        cupy.zeros((num_contours, points_per_contour, 2), dtype=cupy.int16), "NWC"
+    )
+    num_points = cvcuda.as_tensor(
+        cupy.full((1, num_contours), points_per_contour, dtype=cupy.int32), "NW"
+    )
+
+    # An over-count is the case that used to pass silently: the bindings size the operator from
+    # totalContours, so an under-count was already caught by the operator's own capacity check.
+    for total_contours in (num_contours + 1, num_contours - 1):
+        with pytest.raises(Exception):
+            cvcuda.minarearect(src, num_points, total_contours)
+
+        out = cvcuda.Tensor((num_contours, 8), np.float32, "NW")
+        with pytest.raises(Exception):
+            cvcuda.minarearect_into(out, src, num_points, total_contours)
+
+
 def _minarearect_params(dtype, layout, channels):
     num_contours = 1
     points_per_contour = 5

@@ -37,9 +37,7 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaInvertCreate, (NVCVOperatorHandle * ha
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            // Ownership of the operator is transferred to the C handle and released by
-            // cvcudaOperatorDestroy; this matches every other operator's Create entry point.
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Invert()); // NOSONAR
+            *handle = priv::CreateOperatorHandle<priv::Invert>();
         });
 }
 

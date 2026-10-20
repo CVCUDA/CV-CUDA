@@ -158,8 +158,8 @@ static void StoreNearestPixel(T *dstPtr, int dstBase, const T *srcPtr, int srcRo
 
 template<typename T>
 static void Rotate(std::vector<T> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<T> &hSrc,
-                   int srcRowStride, nvcv::Size2D, nvcv::ImageFormat fmt, const double angleDeg, const double2 shift,
-                   NVCVInterpolationType interpolation)
+                   int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, const double angleDeg,
+                   const double2 shift, NVCVInterpolationType interpolation)
 {
     assert(fmt.numPlanes() == 1);
 
@@ -172,8 +172,8 @@ static void Rotate(std::vector<T> &hDst, int dstRowStride, nvcv::Size2D dstSize,
     std::array<double, 6> d_aCoeffs;
     compute_warpAffine(angleDeg, shift.x, shift.y, d_aCoeffs.data());
 
-    int width  = dstSize.w;
-    int height = dstSize.h;
+    int width  = srcSize.w;
+    int height = srcSize.h;
 
     for (int dst_y = 0; dst_y < dstSize.h; dst_y++)
     {
@@ -216,6 +216,9 @@ NVCV_TEST_SUITE_P(OpRotate, test::ValueList<int, int, int, int, NVCVInterpolatio
     {         4,         4,        4,         4,    NVCV_INTERP_NEAREST,           4,     45},
     {         5,         5,        5,         5,    NVCV_INTERP_LINEAR,            1,     45},
     {         5,         5,        5,         5,    NVCV_INTERP_LINEAR,            4,     45},
+
+    {        97,        97,       65,        33,    NVCV_INTERP_LINEAR,            1,     90},
+    {       129,       129,       97,        65,    NVCV_INTERP_LINEAR,            1,     90},
 
     {         4,         4,        4,         4,    NVCV_INTERP_CUBIC,             1,     90},
     {         4,         4,        4,         4,    NVCV_INTERP_CUBIC,             4,     90},
@@ -863,6 +866,44 @@ TEST(OpRotatePlanar, single_channel_cubic_tensor_matches_interleaved)
         });
 }
 
+TEST(OpRotatePlanar, single_channel_int16_tensor_matches_interleaved)
+{
+    constexpr int    width    = 49;
+    constexpr int    height   = 37;
+    constexpr double angleDeg = 37;
+    double           shiftX   = 0;
+    double           shiftY   = 0;
+    compute_center_shift((width - 1) / 2, (height - 1) / 2, angleDeg, shiftX, shiftY);
+    const double2 shift = {shiftX, shiftY};
+
+    for (const auto dtype : {nvcv::TYPE_U16, nvcv::TYPE_S16})
+    {
+        test::planar::RunTensorSingleChannelLayoutParity(
+            width, height, width, height, 2, dtype,
+            [shift](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst)
+            {
+                ZeroTensor(dst, stream);
+                cvcuda::Rotate op(0);
+                EXPECT_NO_THROW(op(stream, src, dst, angleDeg, shift, NVCV_INTERP_LINEAR));
+            });
+    }
+}
+
+TEST(OpRotatePlanar, varshape_single_image_compute_affine)
+{
+    RunPlanarParityVarShapeCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 9, 7, NVCV_INTERP_NEAREST, 90, 1);
+}
+
+TEST(OpRotatePlanar, varshape_multi_image_compute_affine)
+{
+    RunPlanarParityVarShapeCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 33, 17, NVCV_INTERP_LINEAR, 30, 3);
+}
+
+TEST(OpRotatePlanar, varshape_rgbf32_compute_affine_body)
+{
+    RunPlanarParityVarShapeCase(nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, 19, 15, NVCV_INTERP_LINEAR, 37, 2);
+}
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpRotate_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVInterpolationType>{
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_INTERP_LANCZOS},
@@ -1023,4 +1064,66 @@ TEST(OpRotate_Negative, varshape_hasDifferentFormat)
 TEST(OpRotate_Negative, create_null_handle)
 {
     EXPECT_EQ(cvcudaRotateCreate(nullptr, 2), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+TEST(OpRotate_Negative, two_channel_tensor_rejected)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor imgSrc(2, {4, 4}, nvcv::FMT_2F32);
+    nvcv::Tensor imgDst(2, {4, 4}, nvcv::FMT_2F32);
+
+    cvcuda::Rotate        rotateOp(0);
+    double                angleDeg      = 90;
+    double2               shift         = {-1, -1};
+    NVCVInterpolationType interpolation = NVCV_INTERP_NEAREST;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&rotateOp, &stream, &imgSrc, &imgDst, &angleDeg, &shift, &interpolation]
+                                { rotateOp(stream, imgSrc, imgDst, angleDeg, shift, interpolation); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpRotate_Negative, varshape_rejects_non_positive_max_batch_size)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int numberOfImages = 1;
+
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
+    imgSrc.emplace_back(nvcv::Size2D{4, 4}, nvcv::FMT_RGB8);
+    imgDst.emplace_back(nvcv::Size2D{4, 4}, nvcv::FMT_RGB8);
+
+    nvcv::ImageBatchVarShape batchSrc(numberOfImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    nvcv::ImageBatchVarShape batchDst(numberOfImages);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    nvcv::Tensor angleDegTensor(nvcv::TensorShape({numberOfImages}, "N"), nvcv::TYPE_F64);
+    nvcv::Tensor shiftTensor(nvcv::TensorShape({numberOfImages, 2}, nvcv::TENSOR_NW), nvcv::TYPE_F64);
+
+    cvcuda::Rotate                  rotateOp(0);
+    constexpr NVCVInterpolationType interpolation = NVCV_INTERP_NEAREST;
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall([&] { rotateOp(stream, batchSrc, batchDst, angleDegTensor, shiftTensor, interpolation); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpRotatePlanar, varshape_rgba_u16_cubic_matches_interleaved)
+{
+    const nvcv::ImageFormat rgbaU16{nvcv::ColorModel::RGB,    nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                    nvcv::DataKind::UNSIGNED, nvcv::Swizzle::S_XYZW, nvcv::Packing::X16_Y16_Z16_W16};
+    const nvcv::ImageFormat rgbaU16p{nvcv::ColorModel::RGB,    nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                     nvcv::DataKind::UNSIGNED, nvcv::Swizzle::S_XYZW, nvcv::Packing::X16,
+                                     nvcv::Packing::X16,       nvcv::Packing::X16,    nvcv::Packing::X16};
+
+    RunPlanarParityVarShapeCase(rgbaU16p, rgbaU16, 67, 43, NVCV_INTERP_CUBIC, 90, 2);
 }

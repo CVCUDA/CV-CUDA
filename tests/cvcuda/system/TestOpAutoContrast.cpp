@@ -512,6 +512,7 @@ NVCV_TYPED_TEST_SUITE(
         NVCV_TEST_CASE(101, 107, 2, ushort,  NVCV_IMAGE_FORMAT_U16),
         NVCV_TEST_CASE( 33,  21, 3, ushort3, NVCV_IMAGE_FORMAT_RGB16U),
         NVCV_TEST_CASE( 17,  19, 2, ushort4, NVCV_IMAGE_FORMAT_RGBA16U),
+        NVCV_TEST_CASE( 41,  39, 2,  short,  NVCV_IMAGE_FORMAT_S16),
         NVCV_TEST_CASE(128,   9, 2,  float,  NVCV_IMAGE_FORMAT_F32),
         NVCV_TEST_CASE( 59,  77, 3, float3,  NVCV_IMAGE_FORMAT_RGBf32),
         NVCV_TEST_CASE( 32,  48, 4, float4,  NVCV_IMAGE_FORMAT_RGBAf32),
@@ -776,10 +777,125 @@ TEST(OpAutoContrast, single_channel_stretch)
     }
 }
 
+TEST(OpAutoContrast, padded_planar_tensor_falls_back_to_reduce_and_apply_tensor)
+{
+    constexpr int numSamples   = 2;
+    constexpr int numPlanes    = 3;
+    constexpr int width        = 37;
+    constexpr int height       = 5;
+    constexpr int rowStride    = width + 4;
+    constexpr int planeStride  = rowStride * height + 3;
+    constexpr int sampleStride = planeStride * numPlanes + 5;
+    const size_t  bufferSize   = static_cast<size_t>(sampleStride) * numSamples;
+
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), bufferSize));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstAllocation), bufferSize));
+
+    nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+    srcBuffer.basePtr    = srcAllocation;
+    srcBuffer.strides[0] = sampleStride;
+    srcBuffer.strides[1] = planeStride;
+    srcBuffer.strides[2] = rowStride;
+    srcBuffer.strides[3] = 1;
+    auto dstBuffer       = srcBuffer;
+    dstBuffer.basePtr    = dstAllocation;
+
+    std::vector<uint8_t> srcVec(bufferSize, uint8_t{0});
+    std::vector<uint8_t> refVec(bufferSize, uint8_t{0});
+    std::vector<uint8_t> dstVec(bufferSize, uint8_t{0});
+    for (int plane = 0; plane < numSamples * numPlanes; ++plane)
+    {
+        const int s = plane / numPlanes;
+        const int p = plane % numPlanes;
+        for (int y = 0; y < height; ++y)
+        {
+            for (int x = 0; x < width; ++x)
+            {
+                const size_t offset = static_cast<size_t>(s) * sampleStride + static_cast<size_t>(p) * planeStride
+                                    + static_cast<size_t>(y) * rowStride + x;
+                srcVec[offset] = static_cast<uint8_t>((s * 53 + p * 71 + y * 17 + x * 13) % 251);
+            }
+        }
+        AutoContrastGoldSample<uchar>(srcVec.data() + s * sampleStride + p * planeStride,
+                                      refVec.data() + s * sampleStride + p * planeStride, width, height, rowStride);
+    }
+
+    // The non-16-byte row stride makes MakeStreamShape decline, reaching the wrapper-based Tensor kernels.
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcAllocation, srcVec.data(), bufferSize, cudaMemcpyHostToDevice));
+
+    {
+        nvcv::Tensor src = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{numSamples, numPlanes, height, width}, "NCHW"},
+            nvcv::TYPE_U8, srcBuffer
+        });
+        nvcv::Tensor dst = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{numSamples, numPlanes, height, width}, "NCHW"},
+            nvcv::TYPE_U8, dstBuffer
+        });
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+        cvcuda::AutoContrast op;
+        ASSERT_NO_THROW(op(stream, src, dst));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(dstVec.data(), dstAllocation, bufferSize, cudaMemcpyDeviceToHost));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+
+    for (int s = 0; s < numSamples; ++s)
+    {
+        for (int p = 0; p < numPlanes; ++p)
+        {
+            SCOPED_TRACE(testing::Message() << "sample=" << s << ", plane=" << p);
+            ExpectSampleEqual<uchar>(dstVec.data() + s * sampleStride + p * planeStride,
+                                     refVec.data() + s * sampleStride + p * planeStride, width, height, rowStride);
+        }
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaFree(srcAllocation));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstAllocation));
+}
+
 TEST(OpAutoContrast, integer_midpoints_truncate_like_pillow_and_torchvision)
 {
     ExpectTensorMatchesGold<uchar>(3, 1, nvcv::FMT_U8, [](int x, int) { return static_cast<uchar>(x); });
     ExpectTensorMatchesGold<ushort>(3, 1, nvcv::FMT_U16, [](int x, int) { return static_cast<ushort>(x); });
+}
+
+TEST(OpAutoContrast, signed16_ranges_and_flat_channels_match_gold)
+{
+    const auto run = []<typename T>(T, nvcv::ImageFormat fmt)
+    {
+        constexpr int channels = nvcvcuda::NumElements<T>;
+        for (int width : {256, 257})
+        {
+            const int height = width == 256 ? 256 : 17;
+            for (bool flatLast : {false, true})
+            {
+                auto pixelAt = [=](int x, int y)
+                {
+                    T                            value{};
+                    constexpr std::array<int, 4> ranges{65535, 32769, 257, 1};
+                    for (int c = 0; c < channels; ++c)
+                    {
+                        const int delta = (x + y * width) % (ranges[c] + 1);
+                        nvcvcuda::GetElement(value, c)
+                            = static_cast<short>(flatLast && c == channels - 1 ? -123 : -32768 + delta);
+                    }
+                    return value;
+                };
+                SCOPED_TRACE(::testing::Message()
+                             << "channels=" << channels << " width=" << width << " flatLast=" << flatLast);
+                ExpectTensorMatchesGold<T>(width, height, fmt, pixelAt);
+                ExpectVarShapeMatchesGold<T>(width, height, fmt, pixelAt);
+            }
+        }
+    };
+    run(short{}, nvcv::FMT_S16);
+    run(short3{}, nvcv::FMT_RGBf16.dataKind(nvcv::DataKind::SIGNED));
+    run(short4{}, nvcv::FMT_RGBAf16.dataKind(nvcv::DataKind::SIGNED));
 }
 
 TEST(OpAutoContrast, negative_float_reduction_matches_gold)
@@ -820,6 +936,32 @@ TEST(OpAutoContrast, nonsymmetric_extreme_finite_float_range_matches_gold)
     ExpectTensorMatchesGold<float>(3, 1, nvcv::FMT_F32, [](int x, int) { return values[x]; });
 }
 
+TEST(OpAutoContrast, varshape_extreme_finite_float_range_matches_gold)
+{
+    constexpr float low  = -0x1.66c172p+127f;
+    constexpr float high = 0x1.323798p+127f;
+    ASSERT_TRUE(std::isinf(high - low));
+
+    ExpectVarShapeMatchesGold<float3>(3, 1, nvcv::FMT_RGBf32,
+                                      [](int x, int)
+                                      {
+                                          float value = 0.f;
+                                          if (x == 0)
+                                          {
+                                              value = low;
+                                          }
+                                          else if (x == 2)
+                                          {
+                                              value = high;
+                                          }
+                                          return float3{
+                                              value,
+                                              static_cast<float>(x),
+                                              static_cast<float>(2 * x),
+                                          };
+                                      });
+}
+
 TEST(OpAutoContrast, flat_positive_infinite_float_channel_passes_through)
 {
     ExpectTensorMatchesGold<float>(7, 3, nvcv::FMT_F32,
@@ -840,6 +982,286 @@ TEST(OpAutoContrast, mixed_finite_and_nonfinite_float_channel_matches_gold)
     const std::array values{-std::numeric_limits<float>::infinity(), -2.f,    0.f, 2.f,
                             std::numeric_limits<float>::infinity(),  nanValue};
     ExpectTensorMatchesGold<float>(values.size(), 1, nvcv::FMT_F32, [&values](int x, int) { return values[x]; });
+}
+
+constexpr int FULL_STREAM_TEST_WIDTH = 5120;
+
+TEST(OpAutoContrast, full_stream_rgbf32_matches_gold)
+{
+    ExpectTensorMatchesGold<float3>(FULL_STREAM_TEST_WIDTH, 1, nvcv::FMT_RGBf32,
+                                    [](int x, int)
+                                    {
+                                        return float3{-8.f + static_cast<float>(x % 257) * 0.0625f,
+                                                      20.f + static_cast<float>((x * 17) % 251) * 0.125f,
+                                                      -3.5f + static_cast<float>((x * 31) % 263) * 0.03125f};
+                                    });
+}
+
+TEST(OpAutoContrast, full_stream_rgbf32_flat_and_nonfinite_matches_gold)
+{
+    constexpr uint32_t nanBits  = 0x7fc12345;
+    const float        nanValue = BitwiseCopy<float>(nanBits);
+
+    ExpectTensorMatchesGold<float3>(FULL_STREAM_TEST_WIDTH, 1, nvcv::FMT_RGBf32,
+                                    [nanValue](int x, int)
+                                    {
+                                        float3 pixel{-8.f + static_cast<float>(x % 257) * 0.0625f,
+                                                     20.f + static_cast<float>((x * 17) % 251) * 0.125f, 0.25f};
+                                        if (x == 0)
+                                        {
+                                            pixel.x = -std::numeric_limits<float>::infinity();
+                                        }
+                                        else if (x == 2048)
+                                        {
+                                            pixel.x = std::numeric_limits<float>::infinity();
+                                        }
+                                        else if (x == 4096)
+                                        {
+                                            pixel.y = nanValue;
+                                        }
+                                        return pixel;
+                                    });
+}
+
+TEST(OpAutoContrast, stream_reduce_and_apply_handles_nonfinite_and_flat_channels)
+{
+    constexpr int     numSamples   = 2;
+    constexpr int     width        = 1025;
+    constexpr int     height       = 1;
+    constexpr int     channels     = 3;
+    constexpr int64_t rowStride    = static_cast<int64_t>(width * channels + 1) * sizeof(float);
+    constexpr int64_t sampleStride = rowStride * height;
+    const size_t      bufferSize   = static_cast<size_t>(sampleStride) * numSamples;
+
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), bufferSize));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstAllocation), bufferSize));
+
+    std::vector<uint8_t> srcVec(bufferSize, uint8_t{0});
+    std::vector<uint8_t> refVec(bufferSize, uint8_t{0});
+    std::vector<uint8_t> dstVec(bufferSize, uint8_t{0});
+    const float          nanValue = BitwiseCopy<float>(0x7fc12345u);
+
+    for (int s = 0; s < numSamples; ++s)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            float3 pixel{};
+            if (s == 0)
+            {
+                pixel.x = x == 0 ? nanValue : static_cast<float>(x);
+                pixel.y = 10.f + static_cast<float>(2 * x);
+                pixel.z = -100.f + static_cast<float>(3 * x);
+            }
+            else
+            {
+                pixel.x = 7.f;
+                pixel.y = 100.f + static_cast<float>(x);
+                pixel.z = -200.f + static_cast<float>(2 * x);
+            }
+            *reinterpret_cast<float3 *>(srcVec.data() + static_cast<size_t>(s) * sampleStride
+                                        + static_cast<size_t>(x) * sizeof(float3))
+                = pixel;
+        }
+        AutoContrastGoldSample<float3>(srcVec.data() + static_cast<size_t>(s) * sampleStride,
+                                       refVec.data() + static_cast<size_t>(s) * sampleStride, width, height, rowStride);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcAllocation, srcVec.data(), bufferSize, cudaMemcpyHostToDevice));
+
+    nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+    srcBuffer.basePtr    = srcAllocation;
+    srcBuffer.strides[0] = sampleStride;
+    srcBuffer.strides[1] = rowStride;
+    srcBuffer.strides[2] = sizeof(float3);
+    srcBuffer.strides[3] = sizeof(float);
+    auto dstBuffer       = srcBuffer;
+    dstBuffer.basePtr    = dstAllocation;
+
+    const nvcv::TensorShape shape{
+        {numSamples, height, width, channels},
+        "NHWC"
+    };
+    nvcv::Tensor src = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_F32, srcBuffer});
+    nvcv::Tensor dst = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_F32, dstBuffer});
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::AutoContrast op;
+    ASSERT_NO_THROW(op(stream, src, dst));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstVec.data(), dstAllocation, bufferSize, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (int s = 0; s < numSamples; ++s)
+    {
+        SCOPED_TRACE("sample " + std::to_string(s));
+        ExpectSampleEqual<float3>(dstVec.data() + static_cast<size_t>(s) * sampleStride,
+                                  refVec.data() + static_cast<size_t>(s) * sampleStride, width, height, rowStride);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaFree(srcAllocation));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstAllocation));
+}
+
+TEST(OpAutoContrast, stream_reduce_and_apply_cover_aligned_padded_f32_tail)
+{
+    constexpr int     numSamples   = 2;
+    constexpr int     width        = 1023;
+    constexpr int     height       = 1;
+    constexpr int     channels     = 3;
+    constexpr int64_t rowStride    = 3072 * sizeof(float);
+    constexpr int64_t sampleStride = rowStride * height;
+    const size_t      bufferSize   = static_cast<size_t>(sampleStride) * numSamples;
+    constexpr float   low          = -0x1.66c172p+127f;
+    constexpr float   high         = 0x1.323798p+127f;
+
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), bufferSize));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstAllocation), bufferSize));
+
+    std::vector<uint8_t> srcVec(bufferSize, uint8_t{0});
+    std::vector<uint8_t> refVec(bufferSize, uint8_t{0});
+    std::vector<uint8_t> dstVec(bufferSize, uint8_t{0});
+    for (int s = 0; s < numSamples; ++s)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            auto value = static_cast<float>((x % 17) - 8);
+            if (s == 0 && x == 0)
+            {
+                value = low;
+            }
+            else if (s == 0 && x == width - 1)
+            {
+                value = high;
+            }
+            float3 pixel{
+                value,
+                static_cast<float>((x * 3 + s) % 19) * 0.25f - 2.f,
+                static_cast<float>((x * 5 + s) % 23) * 0.125f - 1.f,
+            };
+            *reinterpret_cast<float3 *>(srcVec.data() + static_cast<size_t>(s) * sampleStride
+                                        + static_cast<size_t>(x) * sizeof(float3))
+                = pixel;
+        }
+        AutoContrastGoldSample<float3>(srcVec.data() + static_cast<size_t>(s) * sampleStride,
+                                       refVec.data() + static_cast<size_t>(s) * sampleStride, width, height, rowStride);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcAllocation, srcVec.data(), bufferSize, cudaMemcpyHostToDevice));
+
+    nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+    srcBuffer.basePtr    = srcAllocation;
+    srcBuffer.strides[0] = sampleStride;
+    srcBuffer.strides[1] = rowStride;
+    srcBuffer.strides[2] = sizeof(float3);
+    srcBuffer.strides[3] = sizeof(float);
+    auto dstBuffer       = srcBuffer;
+    dstBuffer.basePtr    = dstAllocation;
+
+    const nvcv::TensorShape shape{
+        {numSamples, height, width, channels},
+        "NHWC"
+    };
+    nvcv::Tensor src = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_F32, srcBuffer});
+    nvcv::Tensor dst = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_F32, dstBuffer});
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::AutoContrast op;
+    ASSERT_NO_THROW(op(stream, src, dst));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstVec.data(), dstAllocation, bufferSize, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (int s = 0; s < numSamples; ++s)
+    {
+        SCOPED_TRACE("sample " + std::to_string(s));
+        ExpectSampleEqual<float3>(dstVec.data() + static_cast<size_t>(s) * sampleStride,
+                                  refVec.data() + static_cast<size_t>(s) * sampleStride, width, height, rowStride);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaFree(srcAllocation));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstAllocation));
+}
+
+TEST(OpAutoContrast, strided_interleaved_f32_wrapper_matches_gold)
+{
+    constexpr int     width        = 37;
+    constexpr int     height       = 5;
+    constexpr int     channels     = 3;
+    constexpr int64_t rowStride    = width * channels * sizeof(float) + 8;
+    constexpr int64_t sampleStride = rowStride * height;
+    const auto        bufferSize   = static_cast<size_t>(sampleStride);
+
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), bufferSize));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstAllocation), bufferSize));
+
+    nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+    srcBuffer.basePtr    = srcAllocation;
+    srcBuffer.strides[0] = sampleStride;
+    srcBuffer.strides[1] = rowStride;
+    srcBuffer.strides[2] = channels * sizeof(float);
+    srcBuffer.strides[3] = sizeof(float);
+    auto dstBuffer       = srcBuffer;
+    dstBuffer.basePtr    = dstAllocation;
+
+    // The eight-byte row padding makes MakeStreamShape decline the 16-byte carrier, leaving the
+    // interleaved Tensor wrapper kernels responsible for both reduction and apply.
+    std::vector<uint8_t> srcVec(bufferSize, uint8_t{0});
+    std::vector<uint8_t> refVec(bufferSize, uint8_t{0});
+    std::vector<uint8_t> dstVec(bufferSize, uint8_t{0});
+    constexpr float      low  = -0x1.66c172p+127f;
+    constexpr float      high = 0x1.323798p+127f;
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            float3 pixel{
+                static_cast<float>((x % 13) - 6) * 0.25f,
+                static_cast<float>((y * 7 + x * 3) % 19) * 0.125f - 1.f,
+                static_cast<float>((x + 2 * y) % 11) * 0.5f - 2.f,
+            };
+            if (x == 0 && y == 0)
+            {
+                pixel.x = low;
+            }
+            else if (x == 1 && y == 0)
+            {
+                pixel.x = high;
+            }
+            *reinterpret_cast<float3 *>(srcVec.data() + y * rowStride + x * sizeof(float3)) = pixel;
+        }
+    }
+    AutoContrastGoldSample<float3>(srcVec.data(), refVec.data(), width, height, rowStride);
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcAllocation, srcVec.data(), bufferSize, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstAllocation, dstVec.data(), bufferSize, cudaMemcpyHostToDevice));
+
+    const nvcv::TensorShape shape{
+        {1, height, width, channels},
+        "NHWC"
+    };
+    nvcv::Tensor src = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_F32, srcBuffer});
+    nvcv::Tensor dst = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_F32, dstBuffer});
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::AutoContrast op;
+    ASSERT_NO_THROW(op(stream, src, dst));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstVec.data(), dstAllocation, bufferSize, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    ExpectSampleEqual<float3>(dstVec.data(), refVec.data(), width, height, rowStride);
+
+    ASSERT_EQ(cudaSuccess, cudaFree(srcAllocation));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstAllocation));
 }
 
 constexpr int BOUNDED_GRID_TEST_HEIGHT = 16385;
@@ -1032,10 +1454,20 @@ TEST(OpAutoContrast, bounded_grid_varshape_planar_matches_interleaved)
     RunPlanarParityVarShapeCase(nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, 1, BOUNDED_GRID_TEST_HEIGHT, 1);
 }
 
+TEST(OpAutoContrast, bounded_grid_varshape_planar_u8_matches_interleaved)
+{
+    static_assert((BOUNDED_GRID_TEST_HEIGHT + 3) / 4 > 4096);
+    RunPlanarParityVarShapeCase(nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 1, BOUNDED_GRID_TEST_HEIGHT, 1);
+}
+
 // Parameters: width, height, numImages, planarFmt, interleavedFmt
 // clang-format off
 NVCV_TEST_SUITE_P(OpAutoContrastPlanar,
     test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat>{
+    {256, 17, 2, nvcv::FMT_RGBf16p.dataKind(nvcv::DataKind::SIGNED),
+                  nvcv::FMT_RGBf16.dataKind(nvcv::DataKind::SIGNED)},
+    {257, 17, 2, nvcv::FMT_RGBAf16p.dataKind(nvcv::DataKind::SIGNED),
+                  nvcv::FMT_RGBAf16.dataKind(nvcv::DataKind::SIGNED)},
     {64, 48, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
     {37, 29, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
     {41, 33, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
@@ -1144,7 +1576,7 @@ TEST(OpAutoContrast_Negative, zero_extent_unsupported_dtype)
             {1, 0, 5, 1},
             "NHWC"
     },
-        nvcv::TYPE_S16, NVCV_ERROR_INVALID_ARGUMENT);
+        nvcv::TYPE_S32, NVCV_ERROR_INVALID_ARGUMENT);
 }
 
 // clang-format off
@@ -1154,7 +1586,6 @@ NVCV_TYPED_TEST_SUITE(
     OpAutoContrast_Negative,
     ttype::Types<
         NVCV_NEG_CASE(32, 32, 1, NVCV_IMAGE_FORMAT_S8),    // unsupported signed 8-bit
-        NVCV_NEG_CASE(32, 32, 1, NVCV_IMAGE_FORMAT_S16),   // unsupported signed 16-bit
         NVCV_NEG_CASE(32, 32, 1, NVCV_IMAGE_FORMAT_S32),   // unsupported signed 32-bit
         NVCV_NEG_CASE(32, 32, 1, NVCV_IMAGE_FORMAT_F64),   // unsupported double
         NVCV_NEG_CASE(32, 32, 1, NVCV_IMAGE_FORMAT_2F32)>); // unsupported 2-channel
@@ -1402,13 +1833,13 @@ TEST(OpAutoContrast_Negative, raw_tensor_dimensions_are_validated_before_narrowi
             {wrapsToOne, 1, 1, 1},
             "NHWC"
     },
-        NVCV_ERROR_INVALID_ARGUMENT);
+        NVCV_ERROR_OVERFLOW);
     expectStatus(
         nvcv::TensorShape{
             {wrapsToOne, 1, 1},
             "HWC"
     },
-        NVCV_ERROR_INVALID_ARGUMENT);
+        NVCV_ERROR_OVERFLOW);
     expectStatus(
         nvcv::TensorShape{
             {1, wrapsToOne, 1},
@@ -1420,7 +1851,7 @@ TEST(OpAutoContrast_Negative, raw_tensor_dimensions_are_validated_before_narrowi
             {1, 1, wrapsToOne},
             "HWC"
     },
-        NVCV_ERROR_INVALID_ARGUMENT);
+        NVCV_ERROR_OVERFLOW);
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
     ASSERT_EQ(cudaSuccess, cudaFree(srcAllocation));
@@ -1531,6 +1962,69 @@ TEST(OpAutoContrast, launch_grid_arithmetic_does_not_overflow)
     EXPECT_EQ(8388608, cvcuda::priv::detail::AutoContrastGridX(maxWidth, 32, 8));
     EXPECT_EQ(16777216, cvcuda::priv::detail::AutoContrastGridX(maxWidth, 32, 4));
     EXPECT_EQ(67108864, cvcuda::priv::detail::AutoContrastGridX(maxWidth, 32, 4, 4));
+}
+
+TEST(OpAutoContrast, workspace_reuse_across_streams_and_capacity_growth)
+{
+    // The public operator owns the workspace; alternating streams and request sizes exercises its
+    // event-ordered reuse and capacity-growth paths without linking private implementation symbols.
+    cvcuda::AutoContrast op;
+
+    cudaStream_t streamA{};
+    cudaStream_t streamB{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&streamA));
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&streamB));
+
+    nvcv::Tensor smallSrc = nvcv::util::CreateTensor(1, 8, 8, nvcv::FMT_U8);
+    nvcv::Tensor smallDst = nvcv::util::CreateTensor(1, 8, 8, nvcv::FMT_U8);
+    nvcv::Tensor largeSrc = nvcv::util::CreateTensor(1, 256, 256, nvcv::FMT_RGBA8);
+    nvcv::Tensor largeDst = nvcv::util::CreateTensor(1, 256, 256, nvcv::FMT_RGBA8);
+
+    EXPECT_NO_THROW(op(streamA, smallSrc, smallDst));
+    EXPECT_NO_THROW(op(streamB, largeSrc, largeDst));
+    EXPECT_NO_THROW(op(streamA, largeSrc, largeDst));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(streamA));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(streamB));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(streamA));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(streamB));
+}
+
+TEST(OpAutoContrast, workspace_public_submission_handles_completed_stream)
+{
+    cvcuda::AutoContrast op;
+
+    cudaStream_t stream{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor src = nvcv::util::CreateTensor(1, 8, 8, nvcv::FMT_U8);
+    nvcv::Tensor dst = nvcv::util::CreateTensor(1, 8, 8, nvcv::FMT_U8);
+
+    ASSERT_NO_THROW(op(stream, src, dst));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAutoContrast, workspace_release_no_throw_handles_stream_errors)
+{
+    cvcuda::AutoContrast op;
+
+    cudaStream_t streamA{};
+    cudaStream_t streamB{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&streamA));
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&streamB));
+
+    nvcv::Tensor src = nvcv::util::CreateTensor(1, 8, 8, nvcv::FMT_U8);
+    nvcv::Tensor dst = nvcv::util::CreateTensor(1, 8, 8, nvcv::FMT_U8);
+
+    EXPECT_NO_THROW(op(streamA, src, dst));
+    EXPECT_NO_THROW(op(streamB, src, dst));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(streamB));
+    EXPECT_NO_THROW(op(streamA, src, dst));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(streamA));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(streamA));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(streamB));
 }
 
 TEST(OpAutoContrast_Negative, varshape_plane_descriptors_must_match_format)

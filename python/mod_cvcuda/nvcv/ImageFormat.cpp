@@ -19,17 +19,10 @@
 
 #include <nvcv/ImageFormat.hpp>
 
+#include <new>
 #include <sstream>
 #include <string_view>
-
-// So that pybind can export nvcv::ImageFormat as python enum
-namespace std {
-template<>
-struct underlying_type<nvcv::ImageFormat>
-{
-    using type = uint64_t;
-};
-} // namespace std
+#include <vector>
 
 namespace nvcv {
 size_t ComputeHash(const nvcv::ImageFormat &fmt)
@@ -40,6 +33,20 @@ size_t ComputeHash(const nvcv::ImageFormat &fmt)
 } // namespace nvcv
 
 namespace nvcvpy::priv {
+
+using namespace py::literals;
+
+struct RegisteredImageFormat
+{
+    NVCVImageFormat  value;
+    std::string_view name;
+};
+
+static std::vector<RegisteredImageFormat> &RegisteredImageFormats()
+{
+    static std::vector<RegisteredImageFormat> formats;
+    return formats;
+}
 
 static std::string ImageFormatToString(nvcv::ImageFormat fmt)
 {
@@ -73,14 +80,43 @@ static std::string ImageFormatToString(nvcv::ImageFormat fmt)
     return out.str();
 }
 
-void ExportImageFormat(py::module &m)
+static std::string ImageFormatName(nvcv::ImageFormat fmt)
 {
-    py::enum_<nvcv::ImageFormat> fmt(m, "Format");
+    auto value = static_cast<NVCVImageFormat>(fmt);
+    for (const RegisteredImageFormat &entry : RegisteredImageFormats())
+    {
+        if (entry.value == value)
+        {
+            return std::string(entry.name);
+        }
+    }
+    return "???";
+}
 
-#define DEF(F)     fmt.value(#F, nvcv::FMT_##F);
+static std::string ImageFormatStr(nvcv::ImageFormat fmt)
+{
+    return "Format." + ImageFormatName(fmt);
+}
+
+void ExportImageFormat(py::module_ &m)
+{
+    py::class_<nvcv::ImageFormat> fmt(m, "Format", py::is_weak_referenceable());
+    py::dict                      members;
+
+    RegisteredImageFormats().clear();
+
+#define REGISTER_FORMAT(NAME, VALUE)                                                     \
+    {                                                                                    \
+        RegisteredImageFormats().push_back({static_cast<NVCVImageFormat>(VALUE), NAME}); \
+        py::object value = py::cast(VALUE);                                              \
+        fmt.attr(NAME)   = value;                                                        \
+        m.attr(NAME)     = value;                                                        \
+        members[NAME]    = value;                                                        \
+    }
+#define DEF(F)     REGISTER_FORMAT(#F, nvcv::FMT_##F)
 // for formats that begin with a number, we must prepend it with underscore to make
 // it a valid python identifier
-#define DEF_NUM(F) fmt.value("_" #F, nvcv::FMT_##F);
+#define DEF_NUM(F) REGISTER_FORMAT("_" #F, nvcv::FMT_##F)
 
 #include "NVCVPythonImageFormatDefs.inc"
 
@@ -88,20 +124,39 @@ void ExportImageFormat(py::module &m)
     // Expose it so signature defaults like `format=FMT_NONE` render as the
     // valid Python expression `nvcv.Format.NONE` instead of an unrepresentable
     // `<Unknown image format>` string.
-    fmt.value("NONE", nvcv::FMT_NONE);
+    DEF(NONE)
 
 #undef DEF
 #undef DEF_NUM
+#undef REGISTER_FORMAT
 
-    fmt.export_values()
-        .def_property_readonly("planes", &nvcv::ImageFormat::numPlanes,
-                               "Read-only property that returns the number of planes in the image")
-        .def_property_readonly("channels", &nvcv::ImageFormat::numChannels,
-                               "Read-only property that returns the number of color channels in the image");
+    std::ostringstream doc;
+    doc << "Members:";
+    for (const RegisteredImageFormat &entry : RegisteredImageFormats())
+    {
+        doc << "\n\n  " << entry.name;
+    }
 
-    // Need to do this way because pybind11 doesn't allow enums to have methods.
-    fmt.attr("__repr__") = py::cpp_function(&ImageFormatToString, py::name("__repr__"), py::is_method(fmt),
-                                            "String representation of the image format.");
+    fmt.attr("__doc__")     = doc.str();
+    fmt.attr("__members__") = members;
+    fmt.def(py::new_([](uint64_t value) { return nvcv::ImageFormat{value}; }), "value"_a)
+        .def_prop_ro("name", &ImageFormatName)
+        .def_prop_ro("value", [](nvcv::ImageFormat value) { return static_cast<uint64_t>(value); })
+        .def_prop_ro("planes", &nvcv::ImageFormat::numPlanes,
+                     "Read-only property that returns the number of planes in the image")
+        .def_prop_ro("channels", &nvcv::ImageFormat::numChannels,
+                     "Read-only property that returns the number of color channels in the image")
+        .def("__repr__", &ImageFormatToString, "String representation of the image format.")
+        .def("__str__", &ImageFormatStr)
+        .def("__int__", [](nvcv::ImageFormat value) { return static_cast<uint64_t>(value); })
+        .def("__index__", [](nvcv::ImageFormat value) { return static_cast<uint64_t>(value); })
+        .def("__getstate__", [](nvcv::ImageFormat value) { return static_cast<uint64_t>(value); })
+        .def("__setstate__", [](nvcv::ImageFormat *self, uint64_t state) { new (self) nvcv::ImageFormat{state}; })
+        .def("__hash__", [](nvcv::ImageFormat value) { return nvcv::ComputeHash(value); })
+        .def(
+            "__eq__", [](nvcv::ImageFormat a, nvcv::ImageFormat b) { return a == b; }, py::is_operator())
+        .def(
+            "__ne__", [](nvcv::ImageFormat a, nvcv::ImageFormat b) { return a != b; }, py::is_operator());
 }
 
 } // namespace nvcvpy::priv

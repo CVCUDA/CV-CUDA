@@ -15,23 +15,24 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpResize.hpp>
-#include <nvcv/python/Image.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
+#include <optional>
 #include <stdexcept>
 
 namespace cvcudapy {
 
 namespace {
+
+using native::Image;
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
 class ResizeError : public std::runtime_error
 {
@@ -39,72 +40,78 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-Tensor ResizeInto(Tensor &output, Tensor &input, NVCVInterpolationType interp, std::optional<Stream> pstream)
+Tensor &ResizeInto(Tensor &output, Tensor &input, NVCVInterpolationType interp, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto resize = CreateOperator<cvcuda::Resize>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*resize});
 
-    guard.run([&resize, &pstream, &input, &output, &interp]()
-              { resize->submit(pstream->cudaHandle(), input, output, interp); });
-
-    return std::move(output);
-}
-
-Tensor Resize(Tensor &input, const Shape &out_shape, NVCVInterpolationType interp, std::optional<Stream> pstream)
-{
-    Tensor output = Tensor::Create(out_shape, input.dtype(), input.shape().layout());
-
-    return ResizeInto(output, input, interp, pstream);
-}
-
-ImageBatchVarShape ResizeVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                      NVCVInterpolationType interp, std::optional<Stream> pstream)
-{
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
-
-    auto resize = CreateOperator<cvcuda::Resize>();
-
-    ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_MODE_READ, {input});
-    guard.add(LockMode::LOCK_MODE_WRITE, {output});
-    guard.add(LockMode::LOCK_MODE_NONE, {*resize});
-
-    guard.run([&resize, &pstream, &input, &output, &interp]()
-              { resize->submit(pstream->cudaHandle(), input, output, interp); });
+    guard.run([&resize, &stream, &input, &output, &interp]()
+              { resize->submit(stream.handle(), input.impl(), output.impl(), interp); });
 
     return output;
 }
 
-ImageBatchVarShape ResizeVarShape(ImageBatchVarShape &input, const std::vector<std::tuple<int, int>> &out_size,
-                                  NVCVInterpolationType interp, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Resize(Tensor &input, const Shape &out_shape, NVCVInterpolationType interp,
+                               std::optional<Stream *> pstream)
+{
+    nvcv::TensorShape tensorShape = CreateNVCVTensorShape(out_shape, input.impl().layout());
+    auto output = nvcvpy::priv::Tensor::CreateFromReqs(nvcv::Tensor::CalcRequirements(tensorShape, input.dtype()));
+
+    ResizeInto(*output, input, interp, pstream);
+    return output;
+}
+
+ImageBatchVarShape &ResizeVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                       NVCVInterpolationType interp, std::optional<Stream *> pstream)
+{
+    Stream &stream = native::GetStream(pstream);
+
+    auto resize = CreateOperator<cvcuda::Resize>();
+
+    ResourceGuard guard(stream);
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*resize});
+
+    guard.run([&resize, &stream, &input, &output, &interp]()
+              { resize->submit(stream.handle(), input.impl(), output.impl(), interp); });
+
+    return output;
+}
+
+std::shared_ptr<ImageBatchVarShape> ResizeVarShape(ImageBatchVarShape                      &input,
+                                                   const std::vector<std::tuple<int, int>> &out_size,
+                                                   NVCVInterpolationType interp, std::optional<Stream *> pstream)
 {
     if (input.numImages() != (int)out_size.size())
     {
         throw ResizeError("Number of input images must be equal to the number of elements in output size list ");
     }
 
-    ImageBatchVarShape output = CreateSizedImageBatch(input, out_size);
+    auto output = ImageBatchVarShape::Create(input.capacity());
+    auto image  = input.begin();
+    for (const auto &[width, height] : out_size)
+    {
+        auto resized = Image::Create({width, height}, (*image)->format(), 0);
+        output->pushBack(*resized);
+        ++image;
+    }
 
-    return ResizeVarShapeInto(output, input, interp, pstream);
+    ResizeVarShapeInto(*output, input, interp, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpResize(py::module &m)
+void ExportOpResize(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("resize", NvtxTrace("cvcuda.resize", &Resize), "src"_a, "shape"_a, "interp"_a = NVCV_INTERP_LINEAR,
           py::kw_only(), "stream"_a = nullptr,
@@ -124,7 +131,8 @@ void ExportOpResize(py::module &m)
     )pbdoc");
 
     m.def("resize_into", NvtxTrace("cvcuda.resize_into", &ResizeInto), "dst"_a, "src"_a,
-          "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
+          R"pbdoc(
         Executes the Resize operation on the given cuda stream.
 
 
@@ -155,7 +163,8 @@ void ExportOpResize(py::module &m)
     )pbdoc");
 
     m.def("resize_into", NvtxTrace("cvcuda.resize_into", &ResizeVarShapeInto), "dst"_a, "src"_a,
-          "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
+          R"pbdoc(
         Executes the Resize operation on the given cuda stream.
 
 

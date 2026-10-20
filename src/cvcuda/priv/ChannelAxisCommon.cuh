@@ -18,6 +18,8 @@
 #ifndef CVCUDA_PRIV_CHANNEL_AXIS_COMMON_CUH
 #define CVCUDA_PRIV_CHANNEL_AXIS_COMMON_CUH
 
+#include "ElementStreamCommon.cuh"
+
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/DataType.hpp>
 #include <nvcv/Exception.hpp>
@@ -30,6 +32,7 @@
 #include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/TensorLayout.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <type_traits>
 
@@ -53,52 +56,9 @@ inline bool IsPlanarLayout(nvcv::TensorLayout layout)
     return layout == nvcv::TENSOR_NCHW || layout == nvcv::TENSOR_CHW;
 }
 
-// Resolve the runtime channel count and dtype to a compile-time pixel type and channel count, then
-// hand both to `cb`. Unlike SameShapeCommon's split dispatch, this switch resolves type and channel
-// together, so it has no separate type switch to defer to and hoists whole. `opName` names the
-// operator in the two error messages only.
-template<typename Cb>
-inline void RunChannelSwitch(int numChannels, nvcv::DataType dtype, const char *opName, const Cb &cb)
-{
-    const bool isU8  = (dtype == nvcv::TYPE_U8 || dtype == nvcv::TYPE_3U8);
-    const bool isF32 = (dtype == nvcv::TYPE_F32 || dtype == nvcv::TYPE_3F32);
-
-    if (!isU8 && !isF32)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid data type: %s supports 8-bit unsigned and 32-bit float", opName);
-    }
-
-    if (numChannels == 1)
-    {
-        if (isU8)
-        {
-            cb(uchar1{}, std::integral_constant<int, 1>{});
-        }
-        else
-        {
-            cb(float1{}, std::integral_constant<int, 1>{});
-        }
-    }
-    else if (numChannels == 3)
-    {
-        if (isU8)
-        {
-            cb(uchar3{}, std::integral_constant<int, 3>{});
-        }
-        else
-        {
-            cb(float3{}, std::integral_constant<int, 3>{});
-        }
-    }
-    else
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid number of channels: %s supports 1 or 3 channels", opName);
-    }
-}
-
 // Validation ----------------------------------------------------------------------------
+
+// The Optional data arguments must be engaged: obtain them via RequireCudaTensor / RequireCudaVarShape.
 
 // `dtype` and `numSamples` are both reported because the consumers want different ones and the body
 // computes both regardless; an operator that needs only one ignores the other.
@@ -106,16 +66,6 @@ inline bool ValidateSrcDstTensors(bool &isEmpty, int &numChannels, nvcv::DataTyp
                                   const nvcv::Optional<nvcv::TensorDataStridedCuda> &srcData,
                                   const nvcv::Optional<nvcv::TensorDataStridedCuda> &dstData)
 {
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
     if (srcData->layout() != dstData->layout())
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
@@ -169,7 +119,8 @@ inline bool ValidateSrcDstTensors(bool &isEmpty, int &numChannels, nvcv::DataTyp
     return isPlanar;
 }
 
-inline void ValidateImagePlanes(const nvcv::Image &image, const nvcv::ImageFormat &format)
+inline void ValidateImagePlanes(const nvcv::Image &image, const nvcv::ImageFormat &format,
+                                elem_stream::GroupBatchInfo *groupInfo = nullptr)
 {
     auto data = image.exportData<nvcv::ImageDataStridedCuda>();
     if (!data || data->numPlanes() != format.numPlanes())
@@ -204,24 +155,22 @@ inline void ValidateImagePlanes(const nvcv::Image &image, const nvcv::ImageForma
                                   "Input or output image-plane maximum byte offset exceeds %d",
                                   static_cast<int>(limit));
         }
+
+        if (groupInfo != nullptr)
+        {
+            groupInfo->dense &= (plane.rowStride == plane.width * pixelStride);
+            groupInfo->ptrOr |= reinterpret_cast<uintptr_t>(plane.basePtr);
+            groupInfo->maxPixels = std::max(groupInfo->maxPixels, static_cast<int64_t>(plane.width) * plane.height);
+        }
     }
 }
 
 inline bool ValidateSrcDstVarBatch(bool &isEmpty, int &numChannels, nvcv::DataType &dtype,
                                    const nvcv::ImageBatchVarShape &src, const nvcv::ImageBatchVarShape &dst,
                                    const nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda> &srcData,
-                                   const nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda> &dstData)
+                                   const nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda> &dstData,
+                                   elem_stream::GroupBatchInfo                                   *groupInfo = nullptr)
 {
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, varshape pitch-linear image batch");
-    }
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, varshape pitch-linear image batch");
-    }
     if (srcData->numImages() != dstData->numImages())
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
@@ -304,8 +253,8 @@ inline bool ValidateSrcDstVarBatch(bool &isEmpty, int &numChannels, nvcv::DataTy
                                   "Input and output image %d sizes must match: input is %dx%d, output is %dx%d", i,
                                   srcSize.w, srcSize.h, dstSize.w, dstSize.h);
         }
-        ValidateImagePlanes(src[i], srcFormat);
-        ValidateImagePlanes(dst[i], dstFormat);
+        ValidateImagePlanes(src[i], srcFormat, groupInfo);
+        ValidateImagePlanes(dst[i], dstFormat, groupInfo);
     }
 
     return numPlanes > 1;

@@ -17,6 +17,7 @@
 
 #include "priv/OpWarpAffine.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -52,6 +53,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaWarpAffineSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &xform, &flags, &borderMode, &borderValue]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_CONSTANT_COVERAGE, "border type");
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
             priv::ToDynamicRef<priv::WarpAffine>(handle)(stream, input.resource(), output.resource(), xform, flags,
@@ -68,6 +70,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaWarpAffineVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &transMatrix, &handle, &stream, &flags, &borderMode, &borderValue]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::ImageBatchVarShapeWrapHandle output(out);
             nvcv::TensorWrapHandle             transMatrixWrap(transMatrix);

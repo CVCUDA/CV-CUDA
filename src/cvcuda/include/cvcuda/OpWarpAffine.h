@@ -121,7 +121,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpAffineCreate(NVCVOperatorHandle *handle, cons
  * @param [in] flags Combination of interpolation methods(NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR or NVCV_INTERP_CUBIC)
                      and the optional flag NVCV_WARP_INVERSE_MAP, that sets xform as the inverse transformation.
  *
- * @param [in] borderMode pixel extrapolation method (NVCV_BORDER_CONSTANT or NVCV_BORDER_REPLICATE).
+ * @param [in] borderMode Pixel extrapolation method (NVCV_BORDER_CONSTANT, NVCV_BORDER_REPLICATE,
+ *                        or NVCV_BORDER_CONSTANT_COVERAGE; see \ref NVCVBorderType).
+ *
  *
  * @param [in] borderValue used in case of a constant border.
  *
@@ -134,6 +136,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpAffineSubmit(NVCVOperatorHandle handle, cudaS
                                                 const int32_t flags, const NVCVBorderType borderMode,
                                                 const float4 borderValue);
 
+/**
+ * @brief Executes Warp Affine on a variable-shape image batch.
+ *
+ * The parameters follow \ref cvcudaWarpAffineSubmit, except that
+ * NVCV_BORDER_CONSTANT_COVERAGE is not supported and returns NVCV_ERROR_INVALID_ARGUMENT.
+ */
 CVCUDA_PUBLIC NVCVStatus cvcudaWarpAffineVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
                                                         NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                                                         NVCVTensorHandle transMatrix, const int32_t flags,

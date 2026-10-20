@@ -78,7 +78,7 @@ Combines manylinux base with CUDA toolkit for building CV-CUDA packages.
 All builder images include:
 - **CMake 3.24.3** - Modern build system
 - **Python Support** - Multiple Python versions (3.10-3.14) from ManyLinux
-- **pybind11** - Installed for all Python versions (Python bindings build dependency)
+- **nanobind** - Installed for all Python versions (Python bindings build dependency)
 - **dlpack** - DLPack tensor exchange protocol headers (installed from source)
 - **Documentation Tools** - Sphinx 7.4.7, sphinx_rtd_theme, breathe
 - **Development Tools** - patchelf 0.17.2, setuptools, wheel, clang 14.0
@@ -131,19 +131,26 @@ in **`versions.env`** at the repository root — the single source of truth.
 To update a version:
 1. Edit `versions.env`
 2. Run `bash generate_requirements.sh`
-3. Commit both files together
+3. Run `python3 docker/generate_sys_python_lock.py` (requires `uv`) to refresh the
+   hashed system-Python build/docs lock, `docker/requirements.sys_python.lock`
+4. Commit `versions.env` and the regenerated tracked files together
 
 Most requirements files under `tests/`, `bench/`, and `samples/` are **auto-generated** from
 `versions.env` and carry an `AUTO-GENERATED` header. Do not edit them directly.
 
-The following files are **not** auto-generated and are maintained manually:
+The generated dependency groups include:
 
 | File | Purpose |
 |------|---------|
-| `requirements.build.sys_python.txt` | System Python: build, packaging, and linting tools |
+| `docker/requirements.build.sys_python.txt` | System Python: build, packaging, and linting tools |
 | `docs/requirements.docs.txt` | System Python: Sphinx documentation tools |
-| `requirements.build.all_pythons.txt` | All Python versions: pybind11 for CMake find_package |
+| `docker/requirements.build.all_pythons.txt` | All Python versions: nanobind for CMake find_package |
 | `tests/requirements.tests.common.txt` | All Python versions: pytest and typing-extensions |
+
+Both images enforce the system-Python lock with pip's `--require-hashes`.
+The image build and pre-commit hook reject stale locks. When updating the pip
+bootstrap in `Dockerfile.devel.deps`, update `GET_PIP_COMMIT` and `GET_PIP_SHA256`
+together, including when overriding these build arguments.
 
 ### Build Script
 

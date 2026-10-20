@@ -424,4 +424,10 @@ __all__ = [
     "create_image_batch",
     "clone_image_batch",
     "run_parallel",
+    "NON_BUFFER_SCALARS",
 ]
+
+# Arguments that expose neither __cuda_array_interface__ nor __dlpack__, for the
+# as_image / as_images / as_tensors negative tests. Shared so the three suites
+# cannot drift apart.
+NON_BUFFER_SCALARS = [42, "hello", object()]

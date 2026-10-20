@@ -15,7 +15,7 @@
 
 # CV-CUDA
 
-![Version](https://img.shields.io/badge/Version-v0.18.0-blue)
+![Version](https://img.shields.io/badge/Version-v0.19.0-blue)
 [![PyPI](https://img.shields.io/badge/PyPI-available-blue?logo=pypi&logoColor=white)](https://pypi.org/search/?q=cvcuda)
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
@@ -23,7 +23,7 @@
 
 [![CUDA](https://img.shields.io/badge/CUDA-v12.2+_%7c_v13.x-%2376B900?logo=nvidia)](https://developer.nvidia.com/cuda-toolkit-archive)
 [![GCC](https://img.shields.io/badge/GCC-v11.0-yellow)](https://gcc.gnu.org/gcc-11/changes.html)
-[![Python](https://img.shields.io/badge/python-3.10--3.14-blue?logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.10--3.14%20%7C%203.14t-blue?logo=python)](https://www.python.org/)
 [![CMake](https://img.shields.io/badge/CMake-v3.24.3+-%23008FBA?logo=cmake)](https://cmake.org/)
 
 CV-CUDA is an open-source library of GPU-accelerated computer vision algorithms designed for speed and scalability. It delivers high-throughput, low-latency image/video processing for AI pipelines across NVIDIA cloud, desktop, and edge platforms. CV-CUDA is built for performance and works seamlessly with C/C++ and Python Image and AI frameworks.
@@ -55,7 +55,7 @@ resized = cvcuda.resize(cvcuda_tensor, (224, 224, 3), cvcuda.Interp.LINEAR)
 ## Installation
 
 CV-CUDA can be installed from pre-built packages (Python wheels, Debian packages, or tar archives) or built from source.
-We provide pre-built Python wheels on pypi.org for a variety of Python versions (3.10 to 3.14) and Linux-based platforms (x86_64 and aarch64). See [cvcuda-cu12] and [cvcuda-cu13] for CUDA 12 and CUDA 13, respectively.
+Python bindings support Python 3.10 through 3.14, including free-threaded Python 3.14 (`3.14t`), on Linux x86_64 and aarch64 SBSA. Jetson support varies by platform; see the compatibility table below. See [cvcuda-cu12] and [cvcuda-cu13] on PyPI for CUDA 12 and CUDA 13 wheels, respectively.
 
 | CUDA Version | Installation Command |
 |--------------|---------------------|
@@ -75,11 +75,11 @@ See [Installation](https://cvcuda.github.io/CV-CUDA/installation.html) for compl
 
 |CV-CUDA Build|Platform|CUDA Version|CUDA Compute Capability|Hardware Architectures|Nvidia Driver|Python Versions|Supported Compilers (build from source and API compatiblity)|API compatibility with prebuilt binaries|OS/Linux distributions tested with prebuilt packages|
 |-|-|-|-|-|-|-|-|-|-|
-|x86_64_cu12|x86_64|≥12.2|≥SM7.5|Turing, Ampere, Ada Lovelace, Hopper, Blackwell|≥r525**|3.10 - 3.14|gcc≥10*|gcc≥10 <br> clang≥11|ManyLinux2014-compliant, Ubuntu≥22.04<br>WSL2/Ubuntu≥22.04|
-|x86_64_cu13|x86_64|≥13.0|≥SM7.5|Turing, Ampere, Ada Lovelace, Hopper, Blackwell|≥r580**|3.10 - 3.14|gcc≥10*|gcc≥10 <br> clang≥11|ManyLinux2014-compliant, Ubuntu≥22.04<br>WSL2/Ubuntu≥22.04|
-|aarch64_cu12|aarch64 SBSA***|≥12.2|≥SM7.5|ARM SBSA (incl. Grace): Turing, Ampere, Ada Lovelace, Hopper, Blackwell|≥r525**|3.10 - 3.14|gcc≥10*|gcc≥10 <br> clang≥11|ManyLinux2014-compliant, Ubuntu≥22.04|
+|x86_64_cu12|x86_64|≥12.2|≥SM7.5|Turing, Ampere, Ada Lovelace, Hopper, Blackwell|≥r525**|3.10 - 3.14, 3.14t|gcc≥10*|gcc≥10 <br> clang≥11|ManyLinux2014-compliant, Ubuntu≥22.04<br>WSL2/Ubuntu≥22.04|
+|x86_64_cu13|x86_64|≥13.0|≥SM7.5|Turing, Ampere, Ada Lovelace, Hopper, Blackwell|≥r580**|3.10 - 3.14, 3.14t|gcc≥10*|gcc≥10 <br> clang≥11|ManyLinux2014-compliant, Ubuntu≥22.04<br>WSL2/Ubuntu≥22.04|
+|aarch64_cu12|aarch64 SBSA***|≥12.2|≥SM7.5|ARM SBSA (incl. Grace): Turing, Ampere, Ada Lovelace, Hopper, Blackwell|≥r525**|3.10 - 3.14, 3.14t|gcc≥10*|gcc≥10 <br> clang≥11|ManyLinux2014-compliant, Ubuntu≥22.04|
 |aarch64_cu12|aarch64 Jetson***|12.2|≥SM7.5|Jetson AGX Orin, IGX Orin + Ampere RTX6000, IGX Orin + ADA RTX6000|JetPack 6.0 DP, r535 (IGX OS v0.6)|3.10|gcc≥10*|gcc≥10 <br> clang≥11|Jetson Linux 36.2<br> IGX OS v0.6|
-|aarch64_cu13|aarch64 SBSA and Jetson Thor***|≥13.0|≥SM7.5|ARM SBSA (incl. Grace): Turing, Ampere, Ada Lovelace, Hopper, Blackwell, Jetson Thor|≥r580**|3.10 - 3.14|gcc≥10*|gcc≥10 <br> clang≥11|ManyLinux2014-compliant, Ubuntu≥22.04|
+|aarch64_cu13|aarch64 SBSA and Jetson Thor***|≥13.0|≥SM7.5|ARM SBSA (incl. Grace): Turing, Ampere, Ada Lovelace, Hopper, Blackwell, Jetson Thor|≥r580**|3.10 - 3.14, 3.14t|gcc≥10*|gcc≥10 <br> clang≥11|ManyLinux2014-compliant, Ubuntu≥22.04|
 
 
 

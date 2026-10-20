@@ -112,6 +112,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaGammaContrastCreate(NVCVOperatorHandle *handle, c
  * @param [out] out Output image batch.
  *
  * @param [in] gamma 1D tensor with the gamma value for each image / image channel.
+ *                   + Must be of pixel type NVCV_DATA_TYPE_F32
  *
  *
  *
@@ -131,6 +132,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaGammaContrastVarShapeSubmit(NVCVOperatorHandle ha
  * @param [in] in  Input tensor.
  * @param [out] out Output tensor.
  * @param [in] gamma 1D tensor with the gamma value for each sample / sample channel.
+ *                   + Must be of pixel type NVCV_DATA_TYPE_F32
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
