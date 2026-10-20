@@ -15,100 +15,97 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpAdaptiveThreshold.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 namespace cvcudapy {
 
 namespace {
-Tensor AdaptiveThresholdInto(Tensor &output, Tensor &input, double max_value, NVCVAdaptiveThresholdType adaptive_method,
-                             NVCVThresholdType threshold_type, int32_t block_size, double c,
-                             std::optional<Stream> pstream)
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
+Tensor &AdaptiveThresholdInto(Tensor &output, Tensor &input, double max_value,
+                              NVCVAdaptiveThresholdType adaptive_method, NVCVThresholdType threshold_type,
+                              int32_t block_size, double c, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto adaptiveThreshold = CreateOperator<cvcuda::AdaptiveThreshold>(block_size, 0);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*adaptiveThreshold});
 
     guard.run(
-        [&adaptiveThreshold, &pstream, &c, &input, &output, &max_value, &adaptive_method, &threshold_type,
-         &block_size]()
+        [&adaptiveThreshold, &stream, &c, &input, &output, &max_value, &adaptive_method, &threshold_type, &block_size]()
         {
-            adaptiveThreshold->submit(pstream->cudaHandle(), input, output, max_value, adaptive_method, threshold_type,
-                                      block_size, c);
+            adaptiveThreshold->submit(stream.handle(), input.impl(), output.impl(), max_value, adaptive_method,
+                                      threshold_type, block_size, c);
         });
 
     return output;
 }
 
-Tensor AdaptiveThreshold(Tensor &input, double max_value, NVCVAdaptiveThresholdType adaptive_method,
-                         NVCVThresholdType threshold_type, int32_t block_size, double c, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> AdaptiveThreshold(Tensor &input, double max_value, NVCVAdaptiveThresholdType adaptive_method,
+                                          NVCVThresholdType threshold_type, int32_t block_size, double c,
+                                          std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return AdaptiveThresholdInto(output, input, max_value, adaptive_method, threshold_type, block_size, c, pstream);
+    AdaptiveThresholdInto(*output, input, max_value, adaptive_method, threshold_type, block_size, c, pstream);
+    return output;
 }
 
-ImageBatchVarShape AdaptiveThresholdVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                                 Tensor &max_value, NVCVAdaptiveThresholdType adaptive_method,
-                                                 NVCVThresholdType threshold_type, int32_t max_block_size,
-                                                 Tensor &block_size, Tensor &c, std::optional<Stream> pstream)
+ImageBatchVarShape &AdaptiveThresholdVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                                  Tensor &max_value, NVCVAdaptiveThresholdType adaptive_method,
+                                                  NVCVThresholdType threshold_type, int32_t max_block_size,
+                                                  Tensor &block_size, Tensor &c, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto adaptiveThreshold = CreateOperator<cvcuda::AdaptiveThreshold>(max_block_size, input.capacity());
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, max_value, block_size, c});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*adaptiveThreshold});
 
     guard.run(
-        [&adaptiveThreshold, &pstream, &c, &input, &output, &max_value, &adaptive_method, &threshold_type,
-         &block_size]()
+        [&adaptiveThreshold, &stream, &c, &input, &output, &max_value, &adaptive_method, &threshold_type, &block_size]()
         {
-            adaptiveThreshold->submit(pstream->cudaHandle(), input, output, max_value, adaptive_method, threshold_type,
-                                      block_size, c);
+            adaptiveThreshold->submit(stream.handle(), input.impl(), output.impl(), max_value.impl(), adaptive_method,
+                                      threshold_type, block_size.impl(), c.impl());
         });
 
     return output;
 }
 
-ImageBatchVarShape AdaptiveThresholdVarShape(ImageBatchVarShape &input, Tensor &max_value,
-                                             NVCVAdaptiveThresholdType adaptive_method,
-                                             NVCVThresholdType threshold_type, int32_t max_block_size,
-                                             Tensor &block_size, Tensor &c, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> AdaptiveThresholdVarShape(ImageBatchVarShape &input, Tensor &max_value,
+                                                              NVCVAdaptiveThresholdType adaptive_method,
+                                                              NVCVThresholdType threshold_type, int32_t max_block_size,
+                                                              Tensor &block_size, Tensor &c,
+                                                              std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return AdaptiveThresholdVarShapeInto(output, input, max_value, adaptive_method, threshold_type, max_block_size,
-                                         block_size, c, pstream);
+    AdaptiveThresholdVarShapeInto(*output, input, max_value, adaptive_method, threshold_type, max_block_size,
+                                  block_size, c, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpAdaptiveThreshold(py::module &m)
+void ExportOpAdaptiveThreshold(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("adaptivethreshold", NvtxTrace("cvcuda.adaptivethreshold", &AdaptiveThreshold), "src"_a, "max_value"_a,
           "adaptive_method"_a = NVCV_ADAPTIVE_THRESH_MEAN_C, "threshold_type"_a = NVCV_THRESH_BINARY, "block_size"_a,
@@ -132,7 +129,8 @@ void ExportOpAdaptiveThreshold(py::module &m)
 
     m.def("adaptivethreshold_into", NvtxTrace("cvcuda.adaptivethreshold_into", &AdaptiveThresholdInto), "dst"_a,
           "src"_a, "max_value"_a, "adaptive_method"_a = NVCV_ADAPTIVE_THRESH_MEAN_C,
-          "threshold_type"_a = NVCV_THRESH_BINARY, "block_size"_a, "c"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "threshold_type"_a = NVCV_THRESH_BINARY, "block_size"_a, "c"_a, py::kw_only(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
             Executes the adaptive threshold operation on the given cuda stream.
 
 
@@ -174,7 +172,7 @@ void ExportOpAdaptiveThreshold(py::module &m)
     m.def("adaptivethreshold_into", NvtxTrace("cvcuda.adaptivethreshold_into", &AdaptiveThresholdVarShapeInto), "dst"_a,
           "src"_a, "max_value"_a, "adaptive_method"_a = NVCV_ADAPTIVE_THRESH_MEAN_C,
           "threshold_type"_a = NVCV_THRESH_BINARY, "max_block_size"_a, "block_size"_a, "c"_a, py::kw_only(),
-          "stream"_a         = nullptr, R"pbdoc(
+          "stream"_a         = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the adaptive threshold operation on the given cuda stream.
 
 

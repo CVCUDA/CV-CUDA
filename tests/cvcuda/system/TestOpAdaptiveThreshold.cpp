@@ -588,6 +588,490 @@ TEST(OpAdaptiveThresholdVarshape, mixed_block_sizes_match_cpu_gold)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpAdaptiveThreshold, tensor_generic_gaussian_tail_match_cpu_gold)
+{
+    constexpr int    width     = 33;
+    constexpr int    height    = 17;
+    constexpr int    batch     = 1;
+    constexpr int    blockSize = 5;
+    constexpr double maxValue  = 251.0;
+    constexpr double c         = -4.3;
+
+    const nvcv::ImageFormat fmt = nvcv::FMT_U8;
+
+    std::vector<std::vector<uint8_t>> srcVec(batch, std::vector<uint8_t>(width * height));
+    for (size_t idx = 0; idx < srcVec[0].size(); ++idx)
+    {
+        srcVec[0][idx] = static_cast<uint8_t>((idx * 37 + 11) & 0xFF);
+    }
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor src(
+        {
+            {height, width, 1},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dst(
+        {
+            {height, width, 1},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+    CopySingleChannelSamples(src, srcVec, width, height, stream);
+
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(blockSize, batch);
+    EXPECT_NO_THROW(adaptiveThresholdOp(stream, src, dst, maxValue, NVCV_ADAPTIVE_THRESH_GAUSSIAN_C,
+                                        NVCV_THRESH_BINARY_INV, blockSize, c));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<std::vector<uint8_t>> testVec;
+    CopySingleChannelSamplesToHost(testVec, dst, width, height);
+
+    const nvcv::Size2D       kernelSize{blockSize, blockSize};
+    const double             sigmaValue = 0.3 * ((blockSize - 1) * 0.5 - 1) + 0.8;
+    const std::vector<float> kernel     = test::ComputeGaussianKernel(kernelSize, {sigmaValue, sigmaValue});
+    std::vector<uint8_t>     goldVec(srcVec[0].size());
+    const long3              strides{height * width, width, 1};
+    const int3               shape{width, height, 1};
+    AdaptiveThreshold(goldVec, srcVec[0], strides, shape, fmt, kernel, kernelSize, maxValue, NVCV_THRESH_BINARY_INV, c);
+
+    ASSERT_EQ(1, testVec.size());
+    EXPECT_EQ(testVec[0], goldVec);
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdaptiveThreshold, tensor_generic_mean_block9_tail_match_cpu_gold)
+{
+    constexpr int    width     = 129;
+    constexpr int    height    = 17;
+    constexpr int    batch     = 2;
+    constexpr int    blockSize = 9;
+    constexpr double maxValue  = 251.0;
+    constexpr double c         = 2.5;
+
+    const nvcv::ImageFormat fmt = nvcv::FMT_U8;
+
+    std::vector<std::vector<uint8_t>> srcVec(batch, std::vector<uint8_t>(width * height));
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        for (size_t idx = 0; idx < srcVec[sample].size(); ++idx)
+        {
+            srcVec[sample][idx] = static_cast<uint8_t>((idx * 31 + sample * 73 + 17) & 0xFF);
+        }
+    }
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor src(
+        {
+            {batch, 1, height, width},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dst(
+        {
+            {batch, 1, height, width},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    CopySingleChannelSamples(src, srcVec, width, height, stream);
+
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(blockSize, batch);
+    EXPECT_NO_THROW(
+        adaptiveThresholdOp(stream, src, dst, maxValue, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY, blockSize, c));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<std::vector<uint8_t>> testVec;
+    CopySingleChannelSamplesToHost(testVec, dst, width, height);
+
+    const nvcv::Size2D       kernelSize{blockSize, blockSize};
+    const std::vector<float> kernel = test::ComputeMeanKernel(kernelSize);
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        std::vector<uint8_t> goldVec(srcVec[sample].size());
+        const long3          strides{height * width, width, 1};
+        const int3           shape{width, height, 1};
+        AdaptiveThreshold(goldVec, srcVec[sample], strides, shape, fmt, kernel, kernelSize, maxValue,
+                          NVCV_THRESH_BINARY, c);
+
+        SCOPED_TRACE(sample);
+        EXPECT_EQ(testVec[sample], goldVec);
+    }
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdaptiveThreshold, coefficient_reuse_fixed_block_tail_match_cpu_gold)
+{
+    constexpr int    width     = 129;
+    constexpr int    height    = 17;
+    constexpr int    batch     = 2;
+    constexpr int    blockSize = 7;
+    constexpr double maxValue  = 251.0;
+    constexpr double c         = 9.2;
+
+    const nvcv::ImageFormat fmt = nvcv::FMT_U8;
+
+    std::vector<std::vector<uint8_t>> tensorSrc(batch, std::vector<uint8_t>(width * height));
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        for (size_t idx = 0; idx < tensorSrc[sample].size(); ++idx)
+        {
+            tensorSrc[sample][idx] = static_cast<uint8_t>((idx * 29 + sample * 71 + 13) & 0xFF);
+        }
+    }
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(blockSize, batch);
+
+    {
+        nvcv::Tensor src(
+            {
+                {batch, height, width, 1},
+                "NHWC"
+        },
+            nvcv::TYPE_U8);
+        nvcv::Tensor dst(
+            {
+                {batch, height, width, 1},
+                "NHWC"
+        },
+            nvcv::TYPE_U8);
+        CopySingleChannelSamples(src, tensorSrc, width, height, stream);
+
+        EXPECT_NO_THROW(adaptiveThresholdOp(stream, src, dst, maxValue, NVCV_ADAPTIVE_THRESH_GAUSSIAN_C,
+                                            NVCV_THRESH_BINARY, blockSize, c));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        std::vector<std::vector<uint8_t>> testVec;
+        CopySingleChannelSamplesToHost(testVec, dst, width, height);
+
+        const nvcv::Size2D       kernelSize{blockSize, blockSize};
+        const double             sigmaValue = 0.3 * ((blockSize - 1) * 0.5 - 1) + 0.8;
+        const std::vector<float> kernel     = test::ComputeGaussianKernel(kernelSize, {sigmaValue, sigmaValue});
+        for (int sample = 0; sample < batch; ++sample)
+        {
+            std::vector<uint8_t> goldVec(tensorSrc[sample].size());
+            const long3          strides{height * width, width, 1};
+            const int3           shape{width, height, 1};
+            AdaptiveThreshold(goldVec, tensorSrc[sample], strides, shape, fmt, kernel, kernelSize, maxValue,
+                              NVCV_THRESH_BINARY, c);
+
+            SCOPED_TRACE(sample);
+            EXPECT_EQ(testVec[sample], goldVec);
+        }
+    }
+
+    const std::vector<nvcv::Size2D> sizes{
+        {129, 17},
+        {145, 33}
+    };
+    std::vector<nvcv::Image>          imgSrc;
+    std::vector<nvcv::Image>          imgDst;
+    std::vector<std::vector<uint8_t>> varshapeSrc(batch);
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        imgSrc.emplace_back(sizes[sample], fmt);
+        imgDst.emplace_back(sizes[sample], fmt);
+
+        varshapeSrc[sample].resize(sizes[sample].w * sizes[sample].h);
+        for (size_t idx = 0; idx < varshapeSrc[sample].size(); ++idx)
+        {
+            varshapeSrc[sample][idx] = static_cast<uint8_t>((idx * 31 + sample * 47 + 19) & 0xFF);
+        }
+
+        auto srcData = imgSrc[sample].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(srcData, nvcv::NullOpt);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2DAsync(srcData->plane(0).basePtr, srcData->plane(0).rowStride, varshapeSrc[sample].data(),
+                                    sizes[sample].w, sizes[sample].w, sizes[sample].h, cudaMemcpyHostToDevice, stream));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(batch);
+    nvcv::ImageBatchVarShape batchDst(batch);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    nvcv::Tensor maxValueTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    nvcv::Tensor blockSizeTensor({{batch}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor cTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    CopyTensorData(maxValueTensor, std::vector<double>{maxValue, maxValue}, stream);
+    CopyTensorData(blockSizeTensor, std::vector<int>{blockSize, blockSize}, stream);
+    CopyTensorData(cTensor, std::vector<double>{c, c}, stream);
+
+    EXPECT_NO_THROW(adaptiveThresholdOp(stream, batchSrc, batchDst, maxValueTensor, NVCV_ADAPTIVE_THRESH_GAUSSIAN_C,
+                                        NVCV_THRESH_BINARY, blockSizeTensor, cTensor));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    const nvcv::Size2D       kernelSize{blockSize, blockSize};
+    const double             sigmaValue = 0.3 * ((blockSize - 1) * 0.5 - 1) + 0.8;
+    const std::vector<float> kernel     = test::ComputeGaussianKernel(kernelSize, {sigmaValue, sigmaValue});
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        SCOPED_TRACE(sample);
+
+        auto dstData = imgDst[sample].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(dstData, nvcv::NullOpt);
+        std::vector<uint8_t> testVec(varshapeSrc[sample].size());
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(testVec.data(), sizes[sample].w, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
+                               sizes[sample].w, sizes[sample].h, cudaMemcpyDeviceToHost));
+
+        std::vector<uint8_t> goldVec(varshapeSrc[sample].size());
+        const long3          strides{sizes[sample].h * sizes[sample].w, sizes[sample].w, 1};
+        const int3           shape{sizes[sample].w, sizes[sample].h, 1};
+        AdaptiveThreshold(goldVec, varshapeSrc[sample], strides, shape, fmt, kernel, kernelSize, maxValue,
+                          NVCV_THRESH_BINARY, c);
+
+        EXPECT_EQ(testVec, goldVec);
+    }
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdaptiveThresholdVarshape, mean_single_image_tail_match_cpu_gold)
+{
+    constexpr int    width     = 17;
+    constexpr int    height    = 19;
+    constexpr int    batch     = 1;
+    constexpr int    blockSize = 5;
+    constexpr double maxValue  = 200.0;
+    constexpr double c         = 2.5;
+
+    const nvcv::ImageFormat fmt = nvcv::FMT_U8;
+
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
+    imgSrc.emplace_back(nvcv::Size2D{width, height}, fmt);
+    imgDst.emplace_back(nvcv::Size2D{width, height}, fmt);
+
+    std::vector<uint8_t> srcVec(width * height);
+    for (size_t idx = 0; idx < srcVec.size(); ++idx)
+    {
+        srcVec[idx] = static_cast<uint8_t>((idx * 29 + 7) & 0xFF);
+    }
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    auto srcData = imgSrc[0].exportData<nvcv::ImageDataStridedCuda>();
+    ASSERT_NE(srcData, nvcv::NullOpt);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2DAsync(srcData->plane(0).basePtr, srcData->plane(0).rowStride, srcVec.data(),
+                                             width, width, height, cudaMemcpyHostToDevice, stream));
+
+    nvcv::ImageBatchVarShape batchSrc(batch);
+    nvcv::ImageBatchVarShape batchDst(batch);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    nvcv::Tensor maxValueTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    nvcv::Tensor blockSizeTensor({{batch}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor cTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    CopyTensorData(maxValueTensor, std::vector<double>{maxValue}, stream);
+    CopyTensorData(blockSizeTensor, std::vector<int>{blockSize}, stream);
+    CopyTensorData(cTensor, std::vector<double>{c}, stream);
+
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(blockSize, batch);
+    EXPECT_NO_THROW(adaptiveThresholdOp(stream, batchSrc, batchDst, maxValueTensor, NVCV_ADAPTIVE_THRESH_MEAN_C,
+                                        NVCV_THRESH_BINARY, blockSizeTensor, cTensor));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    auto dstData = imgDst[0].exportData<nvcv::ImageDataStridedCuda>();
+    ASSERT_NE(dstData, nvcv::NullOpt);
+    std::vector<uint8_t> testVec(width * height);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(testVec.data(), width, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
+                                        width, height, cudaMemcpyDeviceToHost));
+
+    const nvcv::Size2D       kernelSize{blockSize, blockSize};
+    const std::vector<float> kernel = test::ComputeMeanKernel(kernelSize);
+    std::vector<uint8_t>     goldVec(testVec.size());
+    const long3              strides{width * height, width, 1};
+    const int3               shape{width, height, 1};
+    AdaptiveThreshold(goldVec, srcVec, strides, shape, fmt, kernel, kernelSize, maxValue, NVCV_THRESH_BINARY, c);
+
+    EXPECT_EQ(testVec, goldVec);
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdaptiveThresholdVarshape, gaussian_block9_tail_match_cpu_gold)
+{
+    constexpr int batch        = 2;
+    constexpr int maxBlockSize = 9;
+
+    const std::vector<nvcv::Size2D> sizes{
+        { 17, 19},
+        {129, 33}
+    };
+    const std::vector<int>    blockSizes{9, 9};
+    const std::vector<double> maxValues{63.0, 251.0};
+    const std::vector<double> cValues{-4.3, 9.2};
+    const nvcv::ImageFormat   fmt = nvcv::FMT_U8;
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    std::vector<nvcv::Image>          imgSrc;
+    std::vector<nvcv::Image>          imgDst;
+    std::vector<std::vector<uint8_t>> srcVec(batch);
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        imgSrc.emplace_back(sizes[sample], fmt);
+        imgDst.emplace_back(sizes[sample], fmt);
+
+        srcVec[sample].resize(sizes[sample].w * sizes[sample].h);
+        for (size_t idx = 0; idx < srcVec[sample].size(); ++idx)
+        {
+            srcVec[sample][idx] = static_cast<uint8_t>((idx * 37 + sample * 89 + 17) & 0xFF);
+        }
+
+        auto srcData = imgSrc[sample].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(srcData, nvcv::NullOpt);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2DAsync(srcData->plane(0).basePtr, srcData->plane(0).rowStride, srcVec[sample].data(),
+                                    sizes[sample].w, sizes[sample].w, sizes[sample].h, cudaMemcpyHostToDevice, stream));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(batch);
+    nvcv::ImageBatchVarShape batchDst(batch);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    nvcv::Tensor maxValueTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    nvcv::Tensor blockSizeTensor({{batch}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor cTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    CopyTensorData(maxValueTensor, maxValues, stream);
+    CopyTensorData(blockSizeTensor, blockSizes, stream);
+    CopyTensorData(cTensor, cValues, stream);
+
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(maxBlockSize, batch);
+    EXPECT_NO_THROW(adaptiveThresholdOp(stream, batchSrc, batchDst, maxValueTensor, NVCV_ADAPTIVE_THRESH_GAUSSIAN_C,
+                                        NVCV_THRESH_BINARY_INV, blockSizeTensor, cTensor));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        SCOPED_TRACE(sample);
+
+        auto dstData = imgDst[sample].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(dstData, nvcv::NullOpt);
+        std::vector<uint8_t> testVec(srcVec[sample].size());
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(testVec.data(), sizes[sample].w, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
+                               sizes[sample].w, sizes[sample].h, cudaMemcpyDeviceToHost));
+
+        const nvcv::Size2D       kernelSize{blockSizes[sample], blockSizes[sample]};
+        const double             sigmaValue = 0.3 * ((blockSizes[sample] - 1) * 0.5 - 1) + 0.8;
+        const std::vector<float> kernel     = test::ComputeGaussianKernel(kernelSize, {sigmaValue, sigmaValue});
+        std::vector<uint8_t>     goldVec(testVec.size());
+        const long3              strides{sizes[sample].h * sizes[sample].w, sizes[sample].w, 1};
+        const int3               shape{sizes[sample].w, sizes[sample].h, 1};
+        AdaptiveThreshold(goldVec, srcVec[sample], strides, shape, fmt, kernel, kernelSize, maxValues[sample],
+                          NVCV_THRESH_BINARY_INV, cValues[sample]);
+
+        EXPECT_EQ(testVec, goldVec);
+    }
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdaptiveThresholdVarshape_Negative, rejects_subsampled_multi_plane_format)
+{
+    constexpr int batch = 1;
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageBatchVarShape batchSrc(batch);
+    nvcv::ImageBatchVarShape batchDst(batch);
+    batchSrc.pushBack(nvcv::Image(nvcv::Size2D{8, 8}, nvcv::FMT_NV12));
+    batchDst.pushBack(nvcv::Image(nvcv::Size2D{8, 8}, nvcv::FMT_NV12));
+
+    nvcv::Tensor maxValueTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    nvcv::Tensor blockSizeTensor({{batch}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor cTensor({{batch}, "N"}, nvcv::TYPE_F64);
+
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(3, batch);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&]
+                                               {
+                                                   adaptiveThresholdOp(stream, batchSrc, batchDst, maxValueTensor,
+                                                                       NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY,
+                                                                       blockSizeTensor, cTensor);
+                                               }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdaptiveThresholdVarshape_Negative, rejects_mixed_plane_data_types)
+{
+    constexpr int batch = 1;
+
+    const nvcv::ImageFormat mixedPlaneFormat{NVCV_DETAIL_MAKE_NONCOLOR_FMT2(PL, UNSIGNED, XY00, ASSOCIATED, X8, X16)};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageBatchVarShape batchSrc(batch);
+    nvcv::ImageBatchVarShape batchDst(batch);
+    batchSrc.pushBack(nvcv::Image(nvcv::Size2D{8, 8}, mixedPlaneFormat));
+    batchDst.pushBack(nvcv::Image(nvcv::Size2D{8, 8}, mixedPlaneFormat));
+
+    nvcv::Tensor maxValueTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    nvcv::Tensor blockSizeTensor({{batch}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor cTensor({{batch}, "N"}, nvcv::TYPE_F64);
+
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(3, batch);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&]
+                                               {
+                                                   adaptiveThresholdOp(stream, batchSrc, batchDst, maxValueTensor,
+                                                                       NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY,
+                                                                       blockSizeTensor, cTensor);
+                                               }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdaptiveThresholdVarshape_Negative, rejects_single_image_two_plane_format)
+{
+    constexpr int batch = 1;
+
+    const nvcv::ImageFormat twoPlaneFormat{NVCV_DETAIL_MAKE_NONCOLOR_FMT2(PL, UNSIGNED, XY00, ASSOCIATED, X8, X8)};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageBatchVarShape batchSrc(batch);
+    nvcv::ImageBatchVarShape batchDst(batch);
+    batchSrc.pushBack(nvcv::Image(nvcv::Size2D{8, 8}, twoPlaneFormat));
+    batchDst.pushBack(nvcv::Image(nvcv::Size2D{8, 8}, twoPlaneFormat));
+
+    nvcv::Tensor maxValueTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    nvcv::Tensor blockSizeTensor({{batch}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor cTensor({{batch}, "N"}, nvcv::TYPE_F64);
+
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(3, batch);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&]
+                                               {
+                                                   adaptiveThresholdOp(stream, batchSrc, batchDst, maxValueTensor,
+                                                                       NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY,
+                                                                       blockSizeTensor, cTensor);
+                                               }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 static auto OpAdaptiveThresholdVarshapeNegativeParams()
 {
     test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, NVCVAdaptiveThresholdType, NVCVThresholdType>
@@ -864,6 +1348,31 @@ TEST(OpAdaptiveThresholdVarshape_Negative, rejects_invalid_block_sizes)
                                               cTensor);
                       }));
     }
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdaptiveThresholdVarshape_Negative, rejects_non_positive_max_varshape_batch_size)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int                     batch = 1;
+    AdaptiveThresholdVarShapeTestData data(batch);
+
+    nvcv::Tensor maxValueTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    nvcv::Tensor blockSizeTensor({{batch}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor cTensor({{batch}, "N"}, nvcv::TYPE_F64);
+
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(3, 0);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&adaptiveThresholdOp, &stream, &data, &maxValueTensor, &blockSizeTensor, &cTensor]
+                  {
+                      adaptiveThresholdOp(stream, data.batchSrc, data.batchDst, maxValueTensor,
+                                          NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY, blockSizeTensor, cTensor);
+                  }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));

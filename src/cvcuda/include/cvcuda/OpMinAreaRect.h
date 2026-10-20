@@ -112,6 +112,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMinAreaRectCreate(NVCVOperatorHandle *handle, int
  * @param [in] numPointsInContourHost number of point of each contour.
  *
  * @param [in] totalContours total number of contour.
+ *                          + Must be equal to the number of contours in the input tensor, i.e. its
+ *                            sample (N) dimension.
  *
  * @param [out] out output tensor.
  *

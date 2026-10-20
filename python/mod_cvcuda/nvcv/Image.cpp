@@ -18,6 +18,7 @@
 #include "Image.hpp"
 
 #include "../NvtxRange.hpp"
+#include "BufferAllocator.hpp"
 #include "Cache.hpp"
 #include "CastUtils.hpp"
 #include "DataType.hpp"
@@ -25,15 +26,13 @@
 #include "Stream.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <common/CheckError.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <dlpack/dlpack.h>
 #include <nvcv/TensorLayout.hpp>
 #include <nvcv/TensorShapeInfo.hpp>
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 
 #include <array>
 #include <stdexcept>
@@ -57,7 +56,7 @@ bool Image::Key::doIsCompatible(const IKey &ithat) const
     }
     else
     {
-        return std::tie(m_size, m_format) == std::tie(that.m_size, that.m_format);
+        return m_format == that.m_format;
     }
 }
 
@@ -70,8 +69,29 @@ size_t Image::Key::doGetHash() const
     else
     {
         using util::ComputeHash;
-        return ComputeHash(m_size, m_format);
+        return ComputeHash(m_format);
     }
+}
+
+Image::Key::Key(const nvcv::Image::Requirements &reqs)
+    : m_format(reqs.format)
+    , m_numPlanes(m_format.numPlanes())
+    , m_isWrapper(false)
+{
+    setDescriptor(reqs);
+}
+
+bool Image::Key::matchesDescriptor(const Key &requested) const noexcept
+{
+    return m_size == requested.m_size
+        && std::equal(m_rowStrides.begin(), m_rowStrides.begin() + m_numPlanes, requested.m_rowStrides.begin());
+}
+
+void Image::Key::setDescriptor(const nvcv::Image::Requirements &reqs) noexcept
+{
+    m_size       = {reqs.width, reqs.height};
+    m_alignBytes = reqs.alignBytes;
+    std::copy_n(reqs.planeRowStride, m_numPlanes, m_rowStrides.begin());
 }
 
 namespace {
@@ -458,17 +478,13 @@ nvcv::ImageDataStridedHost CreateNVCVImageDataHost(const std::vector<DLPackTenso
 
 } // namespace
 
-Image::Image(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign)
-    : m_key{size, fmt}
+Image::Image(const nvcv::Image::Requirements &reqs)
+    : m_buffer{AllocateBuffer(doComputeSizeInBytes(reqs))}
+    , m_impl{reqs, CreateBufferAllocator(m_buffer)}
+    , m_key{reqs}
+    , m_size_inbytes{doComputeSizeInBytes(reqs)}
 {
-    nvcv::MemAlignment    bufAlign = rowAlign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowAlign);
-    NVCVImageRequirements reqs;
-
-    nvcvImageCalcRequirements(std::get<0>(size), std::get<1>(size), static_cast<NVCVImageFormat>(fmt),
-                              bufAlign.baseAddr(), bufAlign.rowAddr(), &reqs);
-
-    m_impl         = nvcv::Image(reqs);
-    m_size_inbytes = doComputeSizeInBytes(reqs);
+    bindSubmissionState();
 }
 
 Image::Image(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const nvcv::ImageDataStridedCuda &imgData)
@@ -479,46 +495,7 @@ Image::Image(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const nvcv::Imag
     this->setWrapData(std::move(bufs), imgData);
 }
 
-Image::Image(const std::vector<py::buffer> &, const nvcv::ImageDataStridedHost &hostData, int rowAlign)
-{
-    // Input buffer is host data.
-    // We'll create a regular image and copy the host data into it.
-
-    // Create the image with same size and format as host data
-    nvcv::MemAlignment    bufAlign = nvcv::MemAlignment{}.rowAddr(rowAlign);
-    NVCVImageRequirements reqs;
-
-    nvcvImageCalcRequirements(hostData.size().w, hostData.size().h, static_cast<NVCVImageFormat>(hostData.format()),
-                              bufAlign.baseAddr(), bufAlign.rowAddr(), &reqs);
-
-    m_impl         = nvcv::Image(reqs);
-    m_size_inbytes = doComputeSizeInBytes(reqs);
-
-    auto devData = *m_impl.exportData<nvcv::ImageDataStridedCuda>();
-    NVCV_ASSERT(hostData.format() == devData.format());
-    NVCV_ASSERT(hostData.numPlanes() == devData.numPlanes());
-
-    // Now copy each plane from host to device
-    for (int p = 0; p < devData.numPlanes(); ++p)
-    {
-        const nvcv::ImagePlaneStrided &devPlane  = devData.plane(p);
-        const nvcv::ImagePlaneStrided &hostPlane = hostData.plane(p);
-
-        NVCV_ASSERT(devPlane.width == hostPlane.width);
-        NVCV_ASSERT(devPlane.height == hostPlane.height);
-
-        util::CheckThrow(cudaMemcpy2D(devPlane.basePtr, devPlane.rowStride, hostPlane.basePtr, hostPlane.rowStride,
-                                      static_cast<size_t>(hostPlane.width) * hostData.format().planePixelStrideBytes(p),
-                                      hostPlane.height, cudaMemcpyHostToDevice));
-    }
-
-    m_key = Key{
-        {m_impl.size().w, m_impl.size().h},
-        m_impl.format()
-    };
-}
-
-int64_t Image::doComputeSizeInBytes(const NVCVImageRequirements &reqs) const
+int64_t Image::doComputeSizeInBytes(const NVCVImageRequirements &reqs)
 {
     int64_t size_inbytes;
     util::CheckThrow(nvcvMemRequirementsCalcTotalSizeBytes(&(reqs.mem.cudaMem), &size_inbytes));
@@ -532,22 +509,60 @@ int64_t Image::GetSizeInBytes() const
     return m_size_inbytes;
 }
 
+RetainedMemory Image::retainedMemory() const
+{
+    return m_wrapData ? RetainedMemory{0, 1} : Container::retainedMemory();
+}
+
+bool Image::allowsCacheReuse(bool pendingRelease) const
+{
+    return !pendingRelease && m_impl.refCount() == 1;
+}
+
 std::shared_ptr<Image> Image::Create(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign)
 {
-    std::vector<std::shared_ptr<CacheItem>> vcont = Cache::Instance().fetch(Key{size, fmt});
+    const auto alignment = rowAlign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowAlign);
+    const auto reqs      = nvcv::Image::CalcRequirements({size.width, size.height}, fmt, alignment);
+    const Key  requested{reqs};
+    const auto exact = [](const CacheItem &item, const IKey &requestedKey)
+    {
+        const auto &image = static_cast<const Image &>(*item.cachedResource());
+        const auto &key   = static_cast<const Key &>(requestedKey);
+        return image.m_key.matchesDescriptor(key)
+            && reinterpret_cast<uintptr_t>(image.m_buffer->data.get()) % key.alignment() == 0;
+    };
+    if (auto item = Cache::Instance().fetchOne(requested, exact))
+        return std::static_pointer_cast<Image>(item->acquireClaimedObject());
 
-    // None found?
-    if (vcont.empty())
+    std::optional<int64_t> requiredBytes;
+    auto                   getRequiredBytes = [&requiredBytes, &reqs]
     {
-        std::shared_ptr<Image> img(new Image(size, fmt, rowAlign)); // NOSONAR: constructor is private.
-        Cache::Instance().add(*img);
-        return img;
-    }
-    else
+        if (!requiredBytes.has_value())
+            requiredBytes = doComputeSizeInBytes(reqs);
+        return *requiredBytes;
+    };
+    auto fits = [&reqs, &getRequiredBytes](Resource &resource, bool pending)
     {
-        // Get the first one
-        return std::static_pointer_cast<Image>(vcont[0]);
+        const auto &image = static_cast<const Image &>(resource);
+        return image.allowsCacheReuse(pending) && image.m_size_inbytes >= getRequiredBytes()
+            && reinterpret_cast<uintptr_t>(image.m_buffer->data.get()) % reqs.alignBytes == 0;
+    };
+    auto smaller = [](const CacheItem &a, const CacheItem &b)
+    {
+        return a.GetSizeInBytes() < b.GetSizeInBytes();
+    };
+    if (auto item = Cache::Instance().fetchOne(requested, {}, nullptr, fits, getRequiredBytes, smaller))
+    {
+        auto image    = std::static_pointer_cast<Image>(item->acquireClaimedObject());
+        auto impl     = nvcv::Image(reqs, CreateBufferAllocator(image->m_buffer));
+        image->m_impl = std::move(impl);
+        image->m_key.setDescriptor(reqs);
+        return image;
     }
+
+    std::shared_ptr<Image> img(new Image(reqs)); // NOSONAR: constructor is private.
+    Cache::Instance().add(*img);
+    return img;
 }
 
 std::shared_ptr<Image> Image::Zeros(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign)
@@ -571,7 +586,7 @@ std::shared_ptr<Image> Image::Zeros(const Size2D &size, nvcv::ImageFormat fmt, i
 std::shared_ptr<Image> Image::WrapExternalBuffer(ExternalBuffer &buffer, nvcv::ImageFormat fmt)
 {
     py::object obj = py::cast(buffer.shared_from_this());
-    return WrapExternalBufferVector({obj}, fmt);
+    return WrapExternalBufferVector({std::move(obj)}, fmt);
 }
 
 // Seed the Image's Resource with the producer stream of its wrapping
@@ -583,6 +598,21 @@ std::shared_ptr<Image> Image::WrapExternalBuffer(ExternalBuffer &buffer, nvcv::I
 // single buffer so this captures the full producer-stream contract.
 static void SeedImageFromBuffers(Image &img, const std::vector<std::shared_ptr<ExternalBuffer>> &bufs)
 {
+#ifdef NB_FREE_THREADED
+    SubmissionStates states;
+    for (const auto &buf : bufs)
+    {
+        if (!buf)
+            continue;
+        buf->seedSubmissionState();
+        for (const auto &state : buf->submissionStates())
+            if (std::find(states.begin(), states.end(), state) == states.end())
+                states.push_back(state);
+    }
+    img.setSubmissionStates(std::move(states));
+    img.setReadOnly(std::any_of(bufs.begin(), bufs.end(), [](const auto &buf) { return buf && buf->readOnly(); }));
+    return;
+#endif
     for (const auto &buf : bufs)
     {
         if (!buf || buf->producerIsSynced() || buf->producerStream() == nullptr)
@@ -636,7 +666,7 @@ std::vector<std::shared_ptr<Image>> Image::WrapExternalBufferMany(std::vector<st
         }
         else
         {
-            std::shared_ptr<Image> img = std::static_pointer_cast<Image>(items.back());
+            std::shared_ptr<Image> img = std::static_pointer_cast<Image>(items.back()->cachedObject());
             items.pop_back();
             img->setWrapData(spBuffers, imgData);
             SeedImageFromBuffers(*img, spBuffers);
@@ -693,7 +723,7 @@ std::shared_ptr<Image> Image::WrapExternalBufferVector(std::vector<py::object> b
     }
     else
     {
-        img = std::static_pointer_cast<Image>(item);
+        img = std::static_pointer_cast<Image>(item->acquireClaimedObject());
         img->setWrapData(spBuffers, imgData);
     }
     SeedImageFromBuffers(*img, spBuffers);
@@ -712,7 +742,9 @@ void Image::setWrapData(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const
 
     NVCV_ASSERT(bufs.size() >= 1);
     const DLDeviceType devType = bufs[0]->dlTensor().device.device_type;
+    const int          devId   = bufs[0]->dlTensor().device.device_id;
     py::object         newObj;
+    ExternalBuffer    *singleBuffer = bufs.size() == 1 ? bufs[0].get() : nullptr;
 
     if (bufs.size() == 1)
     {
@@ -737,12 +769,30 @@ void Image::setWrapData(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const
     // Cache::fetch only returns wrappers after their prior stream work has
     // released them, so the old buffer's ordering state is safe to discard.
     resetLastStreamForRebind();
-    m_wrapData->devType = devType;
-    m_wrapData->obj     = std::move(newObj);
+    m_wrapData->devType      = devType;
+    m_wrapData->devId        = devId;
+    m_wrapData->obj          = std::move(newObj);
+    m_wrapData->singleBuffer = singleBuffer;
 
-    //We recreate the nvcv::Image wrapper (m_impl) because it's cheap.
-    //It's not cheap to create nvcvpy::Image as it might have allocated expensive resources (cudaEvent_t in Resource parent).
     m_impl = std::move(newImpl);
+    bindSubmissionState();
+}
+
+void Image::bindSubmissionState()
+{
+#ifdef NB_FREE_THREADED
+    SubmissionStates states;
+    if (auto data = m_impl.exportData<nvcv::ImageDataStridedCuda>())
+    {
+        for (int plane = 0; plane < data->numPlanes(); ++plane)
+        {
+            auto state = AllocationSubmissionState(data->plane(plane).basePtr);
+            if (std::find(states.begin(), states.end(), state) == states.end())
+                states.push_back(std::move(state));
+        }
+        setSubmissionStates(std::move(states));
+    }
+#endif
 }
 
 std::shared_ptr<Image> Image::CreateHost(py::buffer buffer, nvcv::ImageFormat fmt, int rowAlign)
@@ -767,8 +817,16 @@ std::shared_ptr<Image> Image::CreateHostVector(const std::vector<py::buffer> &bu
     Image::Key key;
     Cache::Instance().removeAllNotInUseMatching(key);
 
-    std::shared_ptr<Image> img(new Image(buffers, imgData, rowAlign)); // NOSONAR: constructor is private.
-    Cache::Instance().add(*img);
+    auto       img     = Create({imgData.size().w, imgData.size().h}, imgData.format(), rowAlign);
+    const auto devData = *img->m_impl.exportData<nvcv::ImageDataStridedCuda>();
+    for (int p = 0; p < imgData.numPlanes(); ++p)
+    {
+        const auto &devPlane  = devData.plane(p);
+        const auto &hostPlane = imgData.plane(p);
+        util::CheckThrow(cudaMemcpy2D(devPlane.basePtr, devPlane.rowStride, hostPlane.basePtr, hostPlane.rowStride,
+                                      static_cast<size_t>(hostPlane.width) * imgData.format().planePixelStrideBytes(p),
+                                      hostPlane.height, cudaMemcpyHostToDevice));
+    }
     return img;
 }
 
@@ -807,7 +865,7 @@ struct InferredBufferInfo
     std::vector<ssize_t> shape;
     std::vector<ssize_t> strides;
     nvcv::TensorLayout   layout;
-    py::dtype            dtype;
+    py::numpy_dtype      dtype;
 };
 
 void ValidateExportLayout(const std::optional<nvcv::TensorLayout> &userLayout)
@@ -887,7 +945,7 @@ InferredBufferInfo InferSingleBufferInfo(const nvcv::ImageDataStrided &imgData, 
         info.shape   = {plane.height, plane.width};
         info.strides = {plane.rowStride, planeBPP};
         info.layout  = nvcv::TensorLayout{"HW"};
-        info.dtype   = py::cast(imgData.format().planeDataType(p));
+        info.dtype   = py::numpy_dtype(py::cast(imgData.format().planeDataType(p)));
         return info;
     }
 
@@ -900,7 +958,7 @@ InferredBufferInfo InferSingleBufferInfo(const nvcv::ImageDataStrided &imgData, 
         info.shape   = {plane.height, plane.width, planeNumChannels};
         info.strides = {plane.rowStride, planeBPP, planeBPP / planeNumChannels};
         info.layout  = nvcv::TensorLayout{"HWC"};
-        info.dtype   = py::cast(imgData.format().planeDataType(p).channelType(0));
+        info.dtype   = py::numpy_dtype(py::cast(imgData.format().planeDataType(p).channelType(0)));
         return info;
     }
 
@@ -913,7 +971,7 @@ InferredBufferInfo InferSingleBufferInfo(const nvcv::ImageDataStrided &imgData, 
     info.shape   = {imgData.numPlanes(), plane.height, plane.width};
     info.strides = {planeStride, plane.rowStride, planeBPP};
     info.layout  = nvcv::TensorLayout{"CHW"};
-    info.dtype   = py::cast(imgData.format().planeDataType(p));
+    info.dtype   = py::numpy_dtype(py::cast(imgData.format().planeDataType(p)));
     return info;
 }
 
@@ -930,7 +988,7 @@ InferredBufferInfo InferPlaneBufferInfo(const nvcv::ImageDataStrided &imgData, i
     info.strides = {static_cast<ssize_t>(plane.rowStride), static_cast<ssize_t>(planeBPP),
                     static_cast<ssize_t>(planeBPP / planeNumChannels)};
     info.layout  = nvcv::TensorLayout{"HWC"};
-    info.dtype   = py::cast(imgData.format().planeDataType(p).channelType(0));
+    info.dtype   = py::numpy_dtype(py::cast(imgData.format().planeDataType(p).channelType(0)));
     return info;
 }
 
@@ -950,7 +1008,8 @@ void ValidateRequiredLayoutDimensions(const InferredBufferInfo &inferred, const 
     {
         if (inferred.shape[i] >= 2 && userLayout.find(inferred.layout[i]) < 0)
         {
-            throw py::value_error(util::ConcatString("Layout need dimension '", inferred.layout[i], "'"));
+            std::string message = util::ConcatString("Layout need dimension '", inferred.layout[i], "'");
+            throw py::value_error(message.c_str());
         }
     }
 }
@@ -1025,20 +1084,50 @@ std::vector<std::pair<py::buffer_info, nvcv::TensorLayout>> ToPyBufferInfo(const
 
         InferredBufferInfo resolved = ResolveBufferInfoLayout(inferred, userLayout);
 
-        // There's no direct way to construct a py::buffer_info from data together with a py::dtype.
-        // To do that, we first construct a py::array (it accepts py::dtype), and use ".request()"
-        // to retrieve the corresponding py::buffer_info.
-        // To avoid spurious data copies in py::array ctor, we create this dummy owner.
-        py::tuple tmpOwner = py::make_tuple();
-        py::array tmp(resolved.dtype, resolved.shape, resolved.strides, imgData.plane(p).basePtr, tmpOwner);
-        out.emplace_back(tmp.request(), resolved.layout);
+        std::string format = py::cast<std::string>(resolved.dtype.attr("str"));
+        out.emplace_back(py::buffer_info(imgData.plane(p).basePtr, resolved.dtype.itemsize(), std::move(format),
+                                         static_cast<ssize_t>(resolved.shape.size()), resolved.shape, resolved.strides),
+                         resolved.layout);
     }
 
     return out;
 }
 
+void RefreshWrappedBufferExportStream(py::object bufferObject, const Resource::ExportStreamState &exportStream)
+{
+    std::shared_ptr<ExternalBuffer> buffer = cast_py_object_as<ExternalBuffer>(bufferObject);
+    if (!buffer)
+    {
+        throw ImageError("Wrapped image buffer is not an ExternalBuffer");
+    }
+    buffer->setExportStream(*exportStream.handle, exportStream.owner, bufferObject);
+#ifdef NB_FREE_THREADED
+    buffer->shareSubmissionStates(exportStream.states);
+#endif
+}
+
+void RefreshWrappedImageExportStream(py::object wrappedObject, const Resource::ExportStreamState &exportStream)
+{
+    if (!exportStream.handle.has_value())
+    {
+        return;
+    }
+
+    if (py::isinstance<py::list>(wrappedObject))
+    {
+        for (py::handle item : py::cast<py::list>(wrappedObject))
+        {
+            RefreshWrappedBufferExportStream(py::reinterpret_borrow<py::object>(item), exportStream);
+        }
+    }
+    else
+    {
+        RefreshWrappedBufferExportStream(std::move(wrappedObject), exportStream);
+    }
+}
+
 std::vector<py::object> ToPython(const nvcv::ImageData &imgData, std::optional<nvcv::TensorLayout> userLayout,
-                                 py::object owner, cudaStream_t exportStream, bool setExportStream)
+                                 py::object owner, int device, const Resource::ExportStreamState &exportStream)
 {
     std::vector<py::object> out;
 
@@ -1052,18 +1141,17 @@ std::vector<py::object> ToPython(const nvcv::ImageData &imgData, std::optional<n
     {
         if (pitchData->cast<nvcv::ImageDataStridedCuda>())
         {
-            // REVISIT: set correct device_type and device_id
             out.emplace_back(ExternalBuffer::Create(
                 DLPackTensor{
                     info,
-                    {kDLCUDA, 0}
+                    {kDLCUDA, device}
             },
-                owner, exportStream, setExportStream));
+                owner, exportStream.handle, exportStream.owner));
         }
         else if (pitchData->cast<nvcv::ImageDataStridedHost>())
         {
-            // With no owner, python/pybind11 will make a copy of the data
-            out.emplace_back(py::array(info, owner));
+            // With no owner, python/nanobind will make a copy of the data
+            out.emplace_back(util::MakeNumpyArray(info, owner));
         }
         else
         {
@@ -1086,7 +1174,28 @@ py::object Image::cuda(std::optional<nvcv::TensorLayout> layout) const
             throw ImageError("Image data can't be exported, it's not cuda-accessible");
         }
 
-        // That's what we'll return, as m_impl is wrapping it.
+#ifdef NB_FREE_THREADED
+        // A single buffer already shares this image's allocation state and
+        // reads its current writer when CAI or DLPack is requested.
+        if (m_wrapData->singleBuffer)
+            return m_wrapData->obj;
+#else
+        if (auto *buffer = m_wrapData->singleBuffer)
+        {
+            // Another image may have refreshed this shared buffer's export.
+            if (!isExportStreamCurrent(buffer->exportStreamOwner()))
+            {
+                auto state = exportStreamState();
+                if (state.handle.has_value()) // NOSONAR: retain the measured wrapped-buffer stream fast path.
+                    buffer->setExportStream(*state.handle, state.owner, m_wrapData->obj);
+            }
+            return m_wrapData->obj;
+        }
+#endif
+        // Preserve the pass-through object's identity, but refresh the native
+        // stream state (and any existing dynamic CAI snapshot) after a cvcuda
+        // writer has claimed the wrapped storage.
+        RefreshWrappedImageExportStream(m_wrapData->obj, this->exportStreamState());
         return m_wrapData->obj;
     }
     else
@@ -1099,10 +1208,11 @@ py::object Image::cuda(std::optional<nvcv::TensorLayout> layout) const
 
         // Advertise the stream the image's data was last written on so
         // downstream consumers (cupy/torch) can sync via CAI `stream`.
-        cudaStream_t lastStream = this->getLastStreamHandle();
-        bool         setStream  = lastStream != nullptr;
+        ExportStreamState exportStream = this->exportStreamState();
 
-        std::vector<py::object> out = ToPython(*imgData, layout, py::cast(*this), lastStream, setStream);
+        const int               exportDevice = m_wrapData ? m_wrapData->devId : m_key.deviceId();
+        std::vector<py::object> out
+            = ToPython(*imgData, layout, py::cast(this, py::rv_policy::reference), exportDevice, exportStream);
 
         if (out.size() == 1)
         {
@@ -1127,14 +1237,40 @@ py::object Image::cpu(std::optional<nvcv::TensorLayout> layout) const
 
     std::vector<py::object> out;
 
+#ifdef NB_FREE_THREADED
+    struct HostFree
+    {
+        void operator()(void *pointer) const
+        {
+            util::CheckLog(cudaFreeHost(pointer));
+        }
+    };
+
+    struct Copy
+    {
+        void       *host;
+        const void *device;
+        size_t      hostPitch, devicePitch, width, height;
+    };
+
+    struct Staging
+    {
+        std::unique_ptr<void, HostFree> data;
+        void                           *destination;
+        size_t                          bytes;
+    };
+
+    std::vector<Copy>    copies;
+    std::vector<Staging> staging;
+#endif
     for (const auto &[devBufInfo, bufLayout] : vDevBufInfo)
     {
         std::vector<ssize_t> shape      = devBufInfo.shape;
         std::vector<ssize_t> devStrides = devBufInfo.strides;
 
-        py::array hostData(util::ToDType(devBufInfo), shape);
+        py::object hostData = py::module_::import_("numpy").attr("empty")(py::cast(shape), util::ToDType(devBufInfo));
 
-        py::buffer_info      hostBufInfo = hostData.request();
+        py::buffer_info      hostBufInfo(hostData);
         std::vector<ssize_t> hostStrides = hostBufInfo.strides;
 
         auto infoShape = nvcv::TensorShapeInfoImagePlanar::Create(
@@ -1164,17 +1300,98 @@ py::object Image::cpu(std::optional<nvcv::TensorLayout> layout) const
         ssize_t hostPlaneStride = hostRowStride * nrows;
         ssize_t devPlaneStride  = devRowStride * nrows;
 
+#ifdef NB_FREE_THREADED
+        size_t bytes  = hostPlaneStride * nplanes;
+        void  *pinned = nullptr;
+        util::CheckThrow(cudaHostAlloc(&pinned, bytes, cudaHostAllocPortable));
+        Staging buffer{std::unique_ptr<void, HostFree>(pinned), hostBufInfo.ptr, bytes};
+        staging.push_back(std::move(buffer));
+#endif
         for (int p = 0; p < nplanes; ++p)
         {
+#ifdef NB_FREE_THREADED
+            copies.push_back({static_cast<std::byte *>(pinned) + p * hostPlaneStride,
+                              static_cast<std::byte *>(devBufInfo.ptr) + p * devPlaneStride,
+                              static_cast<size_t>(hostRowStride), static_cast<size_t>(devRowStride),
+                              static_cast<size_t>(ncols * colStride), static_cast<size_t>(nrows)});
+#else
             util::CheckThrow(cudaMemcpy2D(reinterpret_cast<std::byte *>(hostBufInfo.ptr) + p * hostPlaneStride,
                                           hostRowStride,
                                           reinterpret_cast<std::byte *>(devBufInfo.ptr) + p * devPlaneStride,
                                           devRowStride, ncols * colStride, nrows, cudaMemcpyDeviceToHost));
+#endif
         }
 
         out.push_back(std::move(hostData));
     }
 
+#ifdef NB_FREE_THREADED
+    cudaPointerAttributes attributes{};
+    util::CheckThrow(cudaPointerGetAttributes(&attributes, devStrided->plane(0).basePtr));
+    int previousDevice;
+    util::CheckThrow(cudaGetDevice(&previousDevice));
+
+    struct RestoreDevice
+    {
+        int device;
+
+        ~RestoreDevice()
+        {
+            util::CheckLog(cudaSetDevice(device));
+        }
+    } restore{previousDevice};
+
+    util::CheckThrow(cudaSetDevice(attributes.device));
+    auto            stream = Stream::Create();
+    SubmissionLocks locks;
+    locks.add(submissionStates(), LOCK_MODE_READ);
+    locks.lock();
+    locks.prepare(*stream, attributes.device);
+    // Preserve cpu()'s legacy-stream ordering for writes made through an
+    // exported view by another library, which cannot update our access history.
+    cudaEvent_t defaultReady;
+    util::CheckThrow(cudaEventCreateWithFlags(&defaultReady, cudaEventDisableTiming));
+
+    struct EventCleanup
+    {
+        cudaEvent_t event;
+
+        ~EventCleanup()
+        {
+            util::CheckLog(cudaEventDestroy(event));
+        }
+    } eventCleanup{defaultReady};
+
+    util::CheckThrow(cudaEventRecord(defaultReady, nullptr));
+    util::CheckThrow(cudaStreamWaitEvent(stream->handle(), defaultReady));
+    cudaError_t copyStatus = cudaSuccess;
+    {
+        py::gil_scoped_release release;
+        for (const auto &copy : copies)
+        {
+            copyStatus = cudaMemcpy2DAsync(copy.host, copy.hostPitch, copy.device, copy.devicePitch, copy.width,
+                                           copy.height, cudaMemcpyDeviceToHost, stream->handle());
+            if (copyStatus != cudaSuccess)
+                break;
+        }
+        // Pinned destinations make enqueue nonblocking. Release the lease before
+        // draining, including when a later plane fails after an earlier enqueue.
+        locks.unlock();
+        cudaError_t drainStatus = cudaStreamSynchronize(stream->handle());
+        if (drainStatus != cudaSuccess)
+        {
+            // CUDA cannot prove the copies finished; retain both ends of the transfer.
+            for (auto &buffer : staging) (void)buffer.data.release();
+            auto *owners = new (std::nothrow)
+                std::pair<std::shared_ptr<const Object>, std::shared_ptr<Stream>>(Object::shared_from_this(), stream);
+            if (!owners)
+                std::terminate();
+            util::CheckThrow(drainStatus);
+        }
+        util::CheckThrow(copyStatus);
+        for (const auto &buffer : staging) std::memcpy(buffer.destination, buffer.data.get(), buffer.bytes);
+    }
+#endif
     if (out.size() == 1)
     {
         return std::move(out[0]);
@@ -1185,16 +1402,16 @@ py::object Image::cpu(std::optional<nvcv::TensorLayout> layout) const
     }
 }
 
-void Image::Export(py::module &m)
+void Image::Export(py::module_ &m)
 {
     using namespace py::literals;
 
-    py::class_<Image, std::shared_ptr<Image>, Container>(m, "Image", "Image")
-        .def(py::init(&Image::Create), "size"_a, "format"_a, "rowalign"_a = 0,
+    py::class_<Image, Container>(m, "Image", "Image", py::is_weak_referenceable())
+        .def(py::new_(&Image::Create), "size"_a, "format"_a, "rowalign"_a = 0,
              "Constructor that takes a size, format and optional row align of the image")
-        .def(py::init(&Image::CreateHost), "buffer"_a, "format"_a = nvcv::FMT_NONE, "rowalign"_a = 0,
+        .def(py::new_(&Image::CreateHost), "buffer"_a, "format"_a = nvcv::FMT_NONE, "rowalign"_a = 0,
              "Constructor that takes a host buffer, format and optional row align")
-        .def(py::init(&Image::CreateHostVector), "buffer"_a, "format"_a = nvcv::FMT_NONE, "rowalign"_a = 0,
+        .def(py::new_(&Image::CreateHostVector), "buffer"_a, "format"_a = nvcv::FMT_NONE, "rowalign"_a = 0,
              "Constructor that takes a host buffer vector, format and optional row align")
         .def_static("zeros", &Image::Zeros, "size"_a, "format"_a, "rowalign"_a = 0,
                     "Create an image filled with zeros with a given size, format and optional row align")
@@ -1203,17 +1420,17 @@ void Image::Export(py::module &m)
              "The image on the CUDA device")
         .def("cpu", ::cvcudapy::NvtxTrace("cvcuda.Image.cpu", &Image::cpu), "layout"_a = std::nullopt,
              "The image on the CPU")
-        .def_property_readonly("size", &Image::size, "Read-only property that returns the size of the image")
-        .def_property_readonly("width", &Image::width, "Read-only property that returns the width of the image")
-        .def_property_readonly("height", &Image::height, "Read-only property that returns the height of the image")
-        .def_property_readonly("format", &Image::format, "Read-only property that returns the format of the image");
+        .def_prop_ro("size", &Image::size, "Read-only property that returns the size of the image")
+        .def_prop_ro("width", &Image::width, "Read-only property that returns the width of the image")
+        .def_prop_ro("height", &Image::height, "Read-only property that returns the height of the image")
+        .def_prop_ro("format", &Image::format, "Read-only property that returns the format of the image");
 
     // Make sure buffer lifetime is tied to image's (keep_alive)
     m.def("as_image", ::cvcudapy::NvtxTrace("cvcuda.as_image", &Image::WrapExternalBuffer), "buffer"_a,
           "format"_a = nvcv::FMT_NONE, py::keep_alive<0, 1>(),
           "Wrap an external buffer as an image and tie the buffer lifetime to the image");
     m.def("as_image", ::cvcudapy::NvtxTrace("cvcuda.as_image", &Image::WrapExternalBufferVector),
-          py::arg_v("buffer", std::vector<py::object>{}), "format"_a = nvcv::FMT_NONE, py::keep_alive<0, 1>(),
+          "buffer"_a = std::vector<py::object>{}, "format"_a = nvcv::FMT_NONE, py::keep_alive<0, 1>(),
           "Wrap a vector of external buffers as an image and tie the buffer lifetime to the image");
 }
 

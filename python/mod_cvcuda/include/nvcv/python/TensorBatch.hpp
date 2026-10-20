@@ -26,10 +26,11 @@
 #include <nvcv/python/Tensor.hpp>
 
 #include <cassert>
+#include <stdexcept>
 
 namespace nvcvpy {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 class TensorBatch
     : public Resource
@@ -44,7 +45,8 @@ public:
 
     static TensorBatch Create(int capacity)
     {
-        PyObject *tensorBatch = capi().TensorBatch_Create(capacity);
+        // reinterpret_steal below takes a non-const PyObject *.
+        PyObject *tensorBatch = capi().TensorBatch_Create(capacity); // NOSONAR
         CheckCAPIError();
         NVCV_ASSERT(tensorBatch != nullptr);
         py::object pytensorBatch = py::reinterpret_steal<py::object>(tensorBatch);
@@ -52,19 +54,23 @@ public:
         return TensorBatch(pytensorBatch);
     }
 
-    void pushBackTensor(Tensor tensor)
+    void pushBackTensor(const Tensor &tensor) // NOSONAR: mutates state through the wrapped C handle.
     {
         capi().TensorBatch_PushBack(this->ptr(), tensor.ptr());
         CheckCAPIError();
     }
 
-    void popBackTensors(int cnt)
+    void popBackTensors(int cnt) // NOSONAR: mutates state through the wrapped C handle.
     {
-        capi().TensorBatch_PopBack(this->ptr(), cnt);
+        if (cnt < 0)
+        {
+            throw std::invalid_argument("cnt must be >= 0");
+        }
+        capi().TensorBatch_PopBack(this->ptr(), static_cast<uint32_t>(cnt));
         CheckCAPIError();
     }
 
-    void clearTensors()
+    void clearTensors() // NOSONAR: mutates state through the wrapped C handle.
     {
         capi().TensorBatch_Clear(this->ptr());
         CheckCAPIError();
@@ -88,36 +94,31 @@ private:
 
 } // namespace nvcvpy
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 namespace cvpy = nvcvpy;
 
 template<>
-struct type_caster<cvpy::TensorBatch> : type_caster_base<cvpy::TensorBatch>
+struct type_caster<cvpy::TensorBatch>
 {
-    PYBIND11_TYPE_CASTER(cvpy::TensorBatch, const_name("cvcuda.TensorBatch"));
+    NB_TYPE_CASTER(cvpy::TensorBatch, const_name("cvcuda.TensorBatch"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *)
     {
-        // Does it have the correct object type?
-        const PyTypeObject *srctype = Py_TYPE(src.ptr());
-        if (strcmp(name.text, srctype->tp_name) == 0)
+        if (cvpy::IsFacadeInstance<cvpy::FacadeType::TENSOR_BATCH>(src.ptr()))
         {
             value = cvpy::TensorBatch(reinterpret_borrow<object>(src));
             return true;
         }
-        else
-        {
-            return false;
-        }
+        return false;
     }
 
-    static handle cast(cvpy::TensorBatch tensor, return_value_policy /* policy */, handle /*parent */)
+    static handle from_cpp(cvpy::TensorBatch tensor, rv_policy, cleanup_list *) noexcept
     {
         return static_cast<object &>(tensor).release();
     }
 };
 
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_TENSORBATCH_HPP

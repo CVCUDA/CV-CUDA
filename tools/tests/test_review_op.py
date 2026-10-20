@@ -20,6 +20,7 @@ of any specific operator (so legitimately fixing an operator's gaps never breaks
 
 Stdlib-only. Run with ``python3 -m pytest tools/tests/``.
 """
+
 import json
 import re
 import subprocess
@@ -241,7 +242,9 @@ def test_current_tensor_positive_suites_remain_recognized(operator):
     assert tst2["status"] == "PASS"
 
 
-@pytest.mark.parametrize("operator", ["CropFlipNormalizeReformat", "PadAndStack"])
+@pytest.mark.parametrize(
+    "operator", ["CropFlipNormalizeReformat", "PadAndStack", "Conv2D"]
+)
 def test_legacy_generic_varshape_correctness_suite_is_recognized(operator):
     r = run(operator, "--domain", "test", "--format", "json")
     findings = {f["id"]: f for f in json.loads(r.stdout)["findings"]}
@@ -491,10 +494,7 @@ def test_domain_filter_scopes_output():
 
 
 def test_gaussian_shared_sources_are_checked():
-    assert ro.SHARED_KERNEL_SOURCES["gaussian"] == (
-        "legacy/filter.cu",
-        "legacy/filter_var_shape.cu",
-    )
+    assert ro.SHARED_KERNEL_SOURCES["gaussian"] == ("FilterCommon.cuh",)
 
 
 def test_planar_not_applicable_declarations_are_colocated():
@@ -614,6 +614,38 @@ def test_ben7_reports_missing_declared_case_key():
     assert "VarShape" in finding.evidence
 
 
+@pytest.mark.parametrize(
+    "tier, expected", [("advanced", "PASS"), ("basic", "GAP"), (None, "GAP")]
+)
+def test_ben7_respects_required_sku_tiers(tmp_path, monkeypatch, tier, expected):
+    sku_path = tmp_path / "bench/config/sku_map.json"
+    sku_path.parent.mkdir(parents=True)
+    sku_path.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {"stem": "cloud"},
+                    {"stem": "basic_only", "baseline": {"tiers": ["basic"]}},
+                    {"stem": "optional", "baseline": {"required": False}},
+                ]
+            }
+        )
+    )
+    monkeypatch.setattr(ro, "REPO", tmp_path)
+    config = {"dtypes": ["uint8"], "tier": tier}
+    case_key = ro.expected_case_keys_for_entry("resize_case", config)[0]
+    config["baselines"] = {case_key: {"cloud": {}}}
+
+    finding = ro.baseline_completeness(
+        SimpleNamespace(op="resize"), {"resize_case": config}, "guideline"
+    )
+
+    assert finding.status == expected
+    if expected == "GAP":
+        assert "basic_only" in finding.evidence
+        assert "optional" not in finding.evidence
+
+
 def test_ben7_reports_malformed_case_payload_as_gap():
     case_key = "resize_basic[InOutDataType=uint8][shape=1x2x3][inputKind=Tensor]"
     configs = {
@@ -650,13 +682,16 @@ def test_legacy_kernel_files_match_across_underscores():
     assert not ro.legacy_belongs("pillow_resize", "resize", ops)  # not the owner
 
 
-def test_histogram_resolves_non_derivable_legacy_kernel_source():
-    histogram = ro.resolve_op("Histogram")
+def test_resolves_non_derivable_shared_kernel_source():
+    # WarpAffine's shared kernels live in WarpCommon.cuh, which its name does not derive, so the
+    # source map is the only thing that attributes them. (Histogram/calc_hist.cu and then
+    # legacy/warp.cu used to be the fixture here; neither operator has a legacy TU any more.)
+    warp_affine = ro.resolve_op("WarpAffine")
     relative_priv = {
         path.relative_to(ro.REPO / "src/cvcuda/priv").as_posix()
-        for path in histogram.priv
+        for path in warp_affine.priv
     }
-    assert "legacy/calc_hist.cu" in relative_priv
+    assert "WarpCommon.cuh" in relative_priv
 
 
 def test_load_curated_normalizes_valid_data(monkeypatch):

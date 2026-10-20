@@ -515,6 +515,7 @@ public:
      *
      * @param data The tensor data to use for creation.
      * @return An instance of this class if the data is compatible, NullOpt otherwise.
+     * @throws nvcv::Exception ERROR_OVERFLOW if a cached dimension is outside the int32 range.
      */
     static Optional<TensorDataAccessStrided> Create(const TensorData &data)
     {
@@ -568,6 +569,7 @@ public:
      *
      * @param data The tensor data to use for creation.
      * @return An instance of this class if the data is compatible, NullOpt otherwise.
+     * @throws nvcv::Exception ERROR_OVERFLOW if a cached dimension is outside the int32 range.
      */
     static Optional<TensorDataAccessStridedImage> Create(const TensorData &data)
     {
@@ -625,6 +627,7 @@ public:
      *
      * @param data The tensor data to use for creation.
      * @return An instance of this class if the data is compatible, NullOpt otherwise.
+     * @throws nvcv::Exception ERROR_OVERFLOW if a cached dimension is outside the int32 range.
      */
     static Optional<TensorDataAccessStridedImagePlanar> Create(const TensorData &data)
     {

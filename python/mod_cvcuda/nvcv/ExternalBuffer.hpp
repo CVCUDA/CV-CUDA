@@ -19,21 +19,26 @@
 #define NVCV_PYTHON_PRIV_EXTERNAL_BUFFER_HPP
 
 #include "DLPackUtils.hpp"
+#include "Submission.hpp"
 
+#include <common/Binding.hpp>
 #include <cuda_runtime.h>
 #include <nvcv/python/Shape.hpp>
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
+
+#include <memory>
+#include <optional>
+#include <utility>
 
 namespace nvcvpy::priv {
 
-namespace py = pybind11;
+namespace py = nanobind;
+
+class StreamHandleOwner;
 
 class ExternalBuffer final : public std::enable_shared_from_this<ExternalBuffer>
 {
 public:
-    static void Export(py::module &m);
+    static void Export(py::module_ &m);
 
     ExternalBuffer(ExternalBuffer &&that) = delete;
 
@@ -43,20 +48,21 @@ public:
      * @param dlTensor       Tensor data to wrap.
      * @param wrappedObj     Owner Python object kept alive with the buffer.
      * @param exportStream   Stream handle to advertise via the exported CAI
-     *                       `stream` field.  Use the special value (void*)0x1
-     *                       to skip populating (defaults to legacy default
-     *                       stream), or any valid CUDA stream handle when the
-     *                       producer (typically a cvcuda Tensor) wants
-     *                       downstream consumers to wait on a specific stream.
+     *                       `stream` field. A null handle represents CUDA's
+     *                       real legacy default stream; any other valid handle
+     *                       identifies the producer stream.
      *                       Pass (cudaStream_t)-1 to advertise "no sync
      *                       needed" (CAI `stream: -1`).
-     * @param setExportStream When true, `exportStream` is used to populate
-     *                       the CAI `stream` field (including the -1
-     *                       opt-out).  When false, the field defaults to
-     *                       `1` (legacy default).
+     * @param exportStreamOwner Keeps the advertised handle valid for the
+     *                       lifetime of the exported view.
      */
-    static py::object Create(DLPackTensor &&dlTensor, py::object wrappedObj, cudaStream_t exportStream = nullptr,
-                             bool setExportStream = false);
+    static py::object Create(DLPackTensor &&dlTensor, py::object wrappedObj,
+                             std::optional<cudaStream_t>              exportStream      = std::nullopt,
+                             std::shared_ptr<const StreamHandleOwner> exportStreamOwner = {});
+
+    // Test-only helper: consume a DLPack capsule from a thread that does not
+    // hold the GIL. Bound only under cvcuda._test.
+    static void ReleaseDLPackCapsuleOffGil(py::capsule capsule);
 
     const DLTensor &dlTensor() const;
 
@@ -65,6 +71,17 @@ public:
     py::object dtype() const;
 
     bool load(PyObject *o);
+#ifdef NB_FREE_THREADED
+    void seedSubmissionState() const;
+
+    bool readOnly() const
+    {
+        return m_readOnly;
+    }
+
+    SubmissionStates submissionStates() const;
+    void             shareSubmissionStates(const SubmissionStates &states);
+#endif
 
     /**
      * @brief Producer stream handle advertised via CAI `stream` on wrap.
@@ -116,19 +133,25 @@ public:
      * cvcuda owning stream of the data so downstream consumers (cupy/torch)
      * know which stream to synchronize with.
      */
-    void setExportStream(cudaStream_t handle)
-    {
-        m_exportStream    = handle;
-        m_hasExportStream = true;
-        m_cacheCudaArrayInterface.reset();
-    }
+    void setExportStream(cudaStream_t handle, const std::shared_ptr<const StreamHandleOwner> &owner,
+                         py::handle wrapper = py::handle{});
+
+#ifndef NB_FREE_THREADED
+    const StreamHandleOwner *exportStreamOwner() const;
+#endif
 
     explicit ExternalBuffer(DLPackTensor &&dlTensor);
     ExternalBuffer() = default;
+#ifndef NB_FREE_THREADED
+    ~ExternalBuffer();
+#endif
 
 private:
-    friend py::detail::type_caster<ExternalBuffer>;
-
+#ifdef NB_FREE_THREADED
+    mutable py::ft_mutex m_interfaceMutex;
+    SubmissionStates     m_submissionStates;
+    bool                 m_readOnly = false;
+#endif
     DLPackTensor                    m_dlTensor;
     mutable std::optional<py::dict> m_cacheCudaArrayInterface;
     py::object                      m_wrappedObj;
@@ -142,8 +165,11 @@ private:
 
     // Producer stream to advertise back out via CAI export.  When unset, the
     // exporter emits the conservative "stream: 1" (legacy default stream).
-    cudaStream_t m_exportStream    = nullptr;
-    bool         m_hasExportStream = false;
+    mutable std::optional<cudaStream_t>              m_exportStream;
+    mutable std::shared_ptr<const StreamHandleOwner> m_exportStreamOwner;
+#ifndef NB_FREE_THREADED
+    mutable cudaEvent_t m_exportEvent = nullptr; // Re-recorded per export; the GIL serializes access.
+#endif
 
     // Owns the DLManagedTensorVersioned for v1.0 imports.
     // null for v0 imports and locally-created tensors.
@@ -158,6 +184,21 @@ private:
 
     std::unique_ptr<DLManagedTensorVersioned, VersionedDeleter> m_dlManagedVersioned;
 
+    // Owns the DLManagedTensor for legacy (v0) imports. DLPack requires the
+    // deleter to run on the pointer the capsule carried: producers routinely
+    // free the enclosing allocation through it, so handing it the address of a
+    // copy frees the wrong object.
+    struct LegacyDeleter
+    {
+        void operator()(DLManagedTensor *p) const
+        {
+            if (p && p->deleter)
+                p->deleter(p);
+        }
+    };
+
+    std::unique_ptr<DLManagedTensor, LegacyDeleter> m_dlManagedLegacy;
+
     // Returns the __cuda_array_interface__ if the buffer is cuda-accessible,
     // or std::nullopt if it's not.
     std::optional<py::dict> cudaArrayInterface() const;
@@ -170,7 +211,7 @@ private:
     void loadDLPackCapsule(py::capsule &cap);
 
     // __dlpack__ implementation
-    py::capsule dlpack(py::object stream, py::object maxVersion) const;
+    py::capsule dlpack(py::handle stream, py::handle maxVersion) const;
 
     // __dlpack_device__ implementation
     py::tuple dlpackDevice() const;
@@ -178,31 +219,45 @@ private:
 
 } // namespace nvcvpy::priv
 
-namespace PYBIND11_NAMESPACE { namespace detail {
+namespace nanobind::detail {
 
 namespace priv = nvcvpy::priv;
 
+// ExternalBuffer is both a bound Python class and the input adapter for CUDA
+// array interface / DLPack producers.  Keep the regular nanobind class caster
+// behavior for bound instances while retaining the established implicit input
+// conversion for external producers.
 template<>
-struct type_caster<priv::ExternalBuffer> : public type_caster_base<priv::ExternalBuffer>
+struct type_caster<priv::ExternalBuffer> : type_caster_base<priv::ExternalBuffer>
 {
-    using type = priv::ExternalBuffer;
-    using Base = type_caster_base<type>;
+    using Type = priv::ExternalBuffer;
 
-    PYBIND11_TYPE_CASTER(std::shared_ptr<type>, const_name("cvcuda.ExternalBuffer"));
+    static constexpr auto Name = const_name("cvcuda.ExternalBuffer");
 
-    explicit operator type *()
+    bool from_python(handle src, uint32_t flags, cleanup_list *cleanup);
+
+    template<typename T>
+    bool can_cast() const noexcept
     {
-        return value.get();
+        return std::is_pointer_v<T> || m_value != nullptr;
     }
 
-    explicit operator type &()
+    operator Type *() // NOSONAR: nanobind's caster protocol invokes these conversions implicitly.
     {
-        return *value;
+        return m_value;
     }
 
-    bool load(handle src, bool);
+    operator Type &() // NOSONAR: nanobind's caster protocol invokes these conversions implicitly.
+    {
+        return *m_value;
+    }
+
+private:
+    // Bound arguments live for the Python call; only implicit adapters need an owner.
+    Type                 *m_value = nullptr;
+    std::shared_ptr<Type> m_owner;
 };
 
-}} // namespace PYBIND11_NAMESPACE::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_PRIV_EXTERNAL_BUFFER_HPP

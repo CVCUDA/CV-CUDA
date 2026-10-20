@@ -34,17 +34,11 @@ from _internal.baselines import (
     ConfigRef,
     baseline_updates_from_jsons,
     load_config_index,
+    load_sku_policies,
     parse_case_key,
-    validate_baselines_in_document,
     validate_case_key_for_config,
-    sku_stems,
+    validate_baselines_in_document,
 )
-
-
-# Rows per section in the printed copy of the report. A bootstrap or SKU-rename
-# run puts every row in "New in current" or "Missing SKU" at once, which is
-# thousands of lines; the file written by --markdown keeps all of them.
-CONSOLE_SECTION_ROWS = 25
 
 
 @dataclass
@@ -425,10 +419,13 @@ def format_junit(result: CompareResult, sku: str) -> bytes:
 
 
 def _validate_json_baselines(index: ConfigIndex, sku_map_path: Path) -> None:
-    stems = sku_stems(sku_map_path, strict=True)
+    policies = load_sku_policies(sku_map_path, strict=True)
+    stems = set(policies)
     errors: List[str] = []
     for doc in index.docs_by_path.values():
-        errors.extend(validate_baselines_in_document(doc, index, stems))
+        errors.extend(
+            validate_baselines_in_document(doc, index, stems, sku_policies=policies)
+        )
     if errors:
         raise BaselineError("invalid JSON baseline entries:\n  " + "\n  ".join(errors))
 
@@ -544,9 +541,7 @@ Exit status:
         type=Path,
         default=None,
         help=(
-            "Also write the Markdown report to MD. The report is printed "
-            "either way; the printed copy lists at most "
-            f"{CONSOLE_SECTION_ROWS} rows per section."
+            "Also write the Markdown report to MD. The report is printed either way, in full."
         ),
     )
     return p.parse_args(argv)
@@ -598,23 +593,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.markdown:
         args.markdown.write_text(report)
 
-    # Print the detail whether or not a file was requested. CI passes
-    # --markdown, and that file is archived with the build rather than shown in
-    # the job log, so the counts line above used to be the only on-screen
-    # evidence: "improvements=8" named none of the eight rows. Cap the printed
-    # copy per section when the full list is on disk anyway.
+    # CI archives --markdown rather than showing it, so the printed copy is the only on-screen
+    # evidence of which rows moved. Print it in full.
     print()
     if args.markdown:
-        print(
-            format_markdown(
-                result,
-                sku,
-                operators_dir,
-                args.current,
-                thresholds,
-                max_rows_per_section=CONSOLE_SECTION_ROWS,
-            )
-        )
+        print(format_markdown(result, sku, operators_dir, args.current, thresholds))
         print(f"Full report written to {args.markdown}")
     else:
         print(report)

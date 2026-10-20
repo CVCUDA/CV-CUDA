@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(CUDAToolkit)
+# Support direct installs and package-manager versioned config-directory symlinks.
+find_dependency(nvcv_types @NVCV_VERSION_API@ CONFIG
+    HINTS
+        "${CMAKE_CURRENT_LIST_DIR}/../nvcv_types"
+        "${CMAKE_CURRENT_LIST_DIR}/../nvcv_types@NVCV_VERSION_MAJOR@")
+
+include("${CMAKE_CURRENT_LIST_DIR}/cvcuda-targets.cmake")
+check_required_components(${CMAKE_FIND_PACKAGE_NAME})

@@ -17,7 +17,8 @@
 
 #include "DeviceBorderVarShapeWrap.hpp" // to test in the device
 
-#include <common/BorderUtils.hpp>                       // for test::IsInside, etc.
+#include <common/BorderUtils.hpp> // for test::IsInside, etc.
+#include <common/DeviceBuffer.hpp>
 #include <common/Printers.hpp>                          // for stream operator, etc.
 #include <common/TypedTests.hpp>                        // for NVCV_TYPED_TEST_SUITE, etc.
 #include <cvcuda/cuda_tools/BorderVarShapeWrap.hpp>     // the object of this test
@@ -30,6 +31,7 @@
 #include <array>
 #include <numeric>
 #include <random>
+#include <type_traits>
 
 namespace cuda  = nvcv::cuda;
 namespace test  = nvcv::test;
@@ -349,4 +351,126 @@ TYPED_TEST(BorderVarShapeWrapNHWCTest, correct_fill)
 
         EXPECT_EQ(testVec, goldVec);
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+
+template<typename ValueType, NVCVBorderType B>
+static void ExpectVarShapeValueMatchesSubscriptOnDevice()
+{
+    constexpr int kSamples = 2;
+
+    test::StreamGuard streamGuard;
+    ASSERT_NE(nullptr, streamGuard.get());
+    cudaStream_t stream = streamGuard.get();
+
+    nvcv::ImageBatchVarShape batch(kSamples);
+
+    // The wrap's element type and the image format must agree, or the strides do not line up.
+    nvcv::ImageFormat format = nvcv::FMT_RGB8;
+    if constexpr (std::is_same_v<ValueType, uchar4>)
+    {
+        format = nvcv::FMT_RGBA8;
+    }
+    else if constexpr (std::is_same_v<ValueType, float4>)
+    {
+        format = nvcv::FMT_RGBAf32;
+    }
+    else if constexpr (std::is_same_v<ValueType, uchar1>)
+    {
+        format = nvcv::FMT_U8;
+    }
+    else if constexpr (std::is_same_v<ValueType, float1>)
+    {
+        format = nvcv::FMT_F32;
+    }
+    else
+    {
+        // Not a default: a mismatched format makes both compared paths read the same wrong
+        // address, so the probe would agree and prove nothing.
+        static_assert(std::is_same_v<ValueType, uchar3>, "add the image format for this ValueType");
+    }
+
+    std::vector<nvcv::Image> images;
+    images.emplace_back(nvcv::Size2D{5, 4}, format);
+    images.emplace_back(nvcv::Size2D{3, 6}, format);
+    batch.pushBack(images.begin(), images.end());
+
+    // Fill the images before probing. Both paths read the same address, so a wrong address stays
+    // invisible here no matter what the images hold -- that is what the CONSTANT rows and
+    // ReadConstantBorderFormsAgree cover. The ramp is here so the compared taps carry known
+    // values instead of an uninitialized read.
+    for (std::size_t img = 0; img < images.size(); ++img)
+    {
+        const auto imgData = images[img].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgData, nullptr);
+
+        const int rowStride = imgData->plane(0).rowStride;
+        const int height    = images[img].size().h;
+
+        std::vector<uint8_t> host(height * rowStride);
+        for (std::size_t i = 0; i < host.size(); ++i)
+        {
+            host[i] = static_cast<uint8_t>((img * 97 + i * 7) % 251 + 1);
+        }
+        // Synchronous on purpose: `host` dies at the end of this iteration, so an async copy
+        // would outlive its source. The fill is not on any timing path.
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(imgData->plane(0).basePtr, host.data(), host.size(), cudaMemcpyHostToDevice));
+    }
+
+    auto batchData = batch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+    ASSERT_NE(batchData, nullptr);
+
+    // Inside, both edges, and well outside in x and y. The sample index stays in range on
+    // purpose: a var-shape wrap does not bound-check it, so an out-of-range sample would be an
+    // out-of-bounds read of the image list rather than a border hit.
+    std::vector<int3> probes;
+    for (int z = 0; z < kSamples; ++z)
+    {
+        for (int y : {0, 1, 3, -1, -4, 5, 9})
+        {
+            for (int x : {0, 2, -1, -3, 4, 8})
+            {
+                probes.push_back(int3{x, y, z});
+            }
+        }
+    }
+
+    test::DeviceBuffer<int3> probesBuf{probes.size()};
+    test::DeviceBuffer<int>  resultBuf{1};
+    ASSERT_NE(nullptr, probesBuf.get());
+    ASSERT_NE(nullptr, resultBuf.get());
+    ASSERT_EQ(cudaSuccess, test::SeedResult(resultBuf.get()));
+
+    int3 *devProbes = probesBuf.get();
+    int  *devResult = resultBuf.get();
+
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpyAsync(devProbes, probes.data(), probes.size() * sizeof(int3), cudaMemcpyHostToDevice, stream));
+
+    cuda::BorderVarShapeWrap<const ValueType, B> wrap(*batchData, cuda::SetAll<ValueType>(42));
+
+    DeviceRunVarShapeValueMatchesSubscript(wrap, devProbes, (int)probes.size(), devResult, stream);
+    ASSERT_EQ(cudaSuccess, cudaGetLastError());
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    int mismatch = 0;
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(&mismatch, devResult, sizeof(int), cudaMemcpyDeviceToHost));
+    ASSERT_NE(test::kResultUnwritten, mismatch) << "the parity kernel did not run";
+
+    EXPECT_EQ(0, mismatch) << "border " << (int)B << " at probe " << mismatch;
+}
+
+TEST(BorderVarShapeWrapTest, ValueMatchesSubscriptOnDevice)
+{
+    ExpectVarShapeValueMatchesSubscriptOnDevice<uchar3, NVCV_BORDER_CONSTANT>();
+    // The element width is what the spill this API avoids depends on, and these two are the other
+    // instantiations the device translation unit provides.
+    ExpectVarShapeValueMatchesSubscriptOnDevice<uchar4, NVCV_BORDER_CONSTANT>();
+    ExpectVarShapeValueMatchesSubscriptOnDevice<float4, NVCV_BORDER_CONSTANT>();
+
+    // Warp's opt-in interpolation path routes up to three components through value(), so these
+    // cover the narrowest elements taking that arm; uchar3 covers the wide end.
+    ExpectVarShapeValueMatchesSubscriptOnDevice<uchar1, NVCV_BORDER_CONSTANT>();
+    ExpectVarShapeValueMatchesSubscriptOnDevice<float1, NVCV_BORDER_CONSTANT>();
 }

@@ -21,6 +21,7 @@
 
 #include "Nvtx.hpp"
 #include "OpMinAreaRect.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cvcuda/cuda_tools/TensorWrap.hpp>
 #include <nvcv/DataType.hpp>
@@ -293,25 +294,9 @@ void MinAreaRect::operator()(cudaStream_t stream, const nvcv::Tensor &in, const 
                              const nvcv::Tensor &numPointsInContour, const int totalContours) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::MinAreaRect::operator()[Tensor]");
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-    auto numPointsInContourData = numPointsInContour.exportData<nvcv::TensorDataStridedCuda>();
-    if (numPointsInContourData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "numPointsInContour must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData                 = RequireCudaTensor(in, "Input");
+    auto outData                = RequireCudaTensor(out, "Output");
+    auto numPointsInContourData = RequireCudaTensor(numPointsInContour, "numPointsInContour");
 
     if (inData->layout() != nvcv::TENSOR_NWC)
     {
@@ -351,6 +336,14 @@ void MinAreaRect::operator()(cudaStream_t stream, const nvcv::Tensor &in, const 
 
     int contourBatch          = static_cast<int>(inShape[0]);
     int maxNumPointsInContour = static_cast<int>(inShape[1]);
+    // Every sample of the input tensor is processed, so a totalContours that disagrees with the
+    // sample count would silently process a different number of contours than the caller asked for.
+    if (totalContours != contourBatch)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "totalContours (%d) must match the number of contours in the input tensor (%d)",
+                              totalContours, contourBatch);
+    }
     if (contourBatch > m_maxContourNum)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid contour number %d", contourBatch);

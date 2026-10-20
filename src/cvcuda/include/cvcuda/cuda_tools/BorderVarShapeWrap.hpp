@@ -102,18 +102,23 @@ using BorderVarShapeWrapNHWCImpl = BorderIWImpl<ImageBatchVarShapeWrapNHWC<T>, B
  * using PixelType = ...;
  * using ImageBatchWrap = ImageBatchVarShapeWrap<PixelType>;
  * using BorderVarShape = BorderVarShapeWrap<PixelType, NVCV_BORDER_REPLICATE>;
- * ImageBatchWrap dst(...);
- * ImageBatchWrap srcImageBatch(...);
+ * const ImageBatchVarShapeDataStridedCuda &dstData = ...;
+ * const ImageBatchVarShapeDataStridedCuda &srcData = ...;
+ * ImageBatchWrap dst(dstData);
+ * ImageBatchWrap srcImageBatch(srcData);
  * BorderVarShape src(srcImageBatch);
  * dim3 grid{...}, block{...};
  * int2 fillBorderSize{2, 2};
- * FillBorder<<<grid, block>>>(dst, src, src.numImages(), fillBorderSize);
+ * // No wrapper carries the sample count, so the bound comes from the batch data. dstCoord.z
+ * // indexes src as well, so the bound has to hold for both batches; here they are equal in size.
+ * FillBorder<<<grid, block>>>(dst, src, dstData.numImages(), fillBorderSize);
  *
  * template<typename T, NVCVBorderType B>
  * __global__ void FillBorder(ImageBatchVarShapeWrap<T> dst, BorderVarShapeWrap<T, B> src, int ns, int2 bs)
  * {
  *     int3 dstCoord = StaticCast<int>(blockIdx * blockDim + threadIdx);
- *     if (dstCoord.x >= dst.width(dstCoord.z) || dstCoord.y >= dst.height(dstCoord.z) || dstCoord.z >= ns)
+ *     // dstCoord.z must be bounded first: width()/height() do not bound the sample index.
+ *     if (dstCoord.z >= ns || dstCoord.x >= dst.width(dstCoord.z) || dstCoord.y >= dst.height(dstCoord.z))
  *         return;
  *     int3 srcCoord = {dstCoord.x - bs.x, dstCoord.y - bs.y, dstCoord.z};
  *     dst[dstCoord] = src[srcCoord];
@@ -126,6 +131,13 @@ using BorderVarShapeWrapNHWCImpl = BorderIWImpl<ImageBatchVarShapeWrapNHWC<T>, B
 template<typename T, NVCVBorderType B>
 class BorderVarShapeWrap : public detail::BorderVarShapeWrapImpl<T, B>
 {
+    // NVCV_BORDER_CONSTANT_COVERAGE needs a wrap that reports which taps landed inside the image,
+    // which only the tensor wraps provide. Without a specialization it would remap the index
+    // through a chain with no case for it, leaving the coordinate untouched and reading out of bounds.
+    //
+    static_assert(B != NVCV_BORDER_CONSTANT_COVERAGE,
+                  "NVCV_BORDER_CONSTANT_COVERAGE is not supported on variable-shape image batches");
+
     using Base = detail::BorderVarShapeWrapImpl<T, B>;
 
 public:
@@ -184,6 +196,27 @@ public:
     inline __host__ __device__ ValueType &operator[](int3 c) const
     {
         return *doGetPtr(c.z, 0, c.y, c.x);
+    }
+
+    /**
+     * Read-only access returning the accessed element by value.
+     *
+     * @note Provided so a generic kernel can read a tap by name from any border wrap. On this
+     * border mode it forwards to `operator[]`, so the result is still a reference.
+     *
+     * @param[in] c 4D (or 3D, plane=0) coordinate to be accessed.
+     *
+     * @return Accessed element.
+     */
+    inline __host__ __device__ decltype(auto) value(int4 c) const
+    {
+        return (*this)[c];
+    }
+
+    /** @copydoc value(int4) const */
+    inline __host__ __device__ decltype(auto) value(int3 c) const
+    {
+        return (*this)[c];
     }
 
     /**
@@ -319,6 +352,26 @@ public:
     }
 
     /**
+     * Read-only access returning the accessed element by value.
+     *
+     * @note Prefer this over `operator[]` in device code; see \ref nvcv::cuda::detail::ReadConstantBorder.
+     *
+     * @param[in] c 4D (or 3D, plane=0) coordinate to be accessed.
+     *
+     * @return Accessed value, or the border value when \p c is outside the image.
+     */
+    inline __host__ __device__ ValueType value(int4 c) const
+    {
+        return detail::ReadConstantBorder(static_cast<const ValueType *>(doGetPtr(c.w, c.z, c.y, c.x)), m_borderValue);
+    }
+
+    /** @copydoc value(int4) const */
+    inline __host__ __device__ ValueType value(int3 c) const
+    {
+        return detail::ReadConstantBorder(static_cast<const ValueType *>(doGetPtr(c.z, 0, c.y, c.x)), m_borderValue);
+    }
+
+    /**
      * Get a read-only or read-and-write proxy (as pointer) at the given coordinates.
      *
      * @note This method may return a nullptr pointer when accessing outside the wrapped \ref
@@ -371,6 +424,13 @@ private:
 template<typename T, NVCVBorderType B>
 class BorderVarShapeWrapNHWC : public detail::BorderVarShapeWrapNHWCImpl<T, B>
 {
+    // NVCV_BORDER_CONSTANT_COVERAGE needs a wrap that reports which taps landed inside the image,
+    // which only the tensor wraps provide. Without a specialization it would remap the index
+    // through a chain with no case for it, leaving the coordinate untouched and reading out of bounds.
+    //
+    static_assert(B != NVCV_BORDER_CONSTANT_COVERAGE,
+                  "NVCV_BORDER_CONSTANT_COVERAGE is not supported on variable-shape image batches");
+
     using Base = detail::BorderVarShapeWrapNHWCImpl<T, B>;
 
 public:
@@ -431,6 +491,27 @@ public:
     inline __host__ __device__ ValueType &operator[](int3 c) const
     {
         return *doGetPtr(c.x, c.y, c.z, 0);
+    }
+
+    /**
+     * Read-only access returning the accessed element by value.
+     *
+     * @note Provided so a generic kernel can read a tap by name from any border wrap. On this
+     * border mode it forwards to `operator[]`, so the result is still a reference.
+     *
+     * @param[in] c 4D (or 3D, plane=0) coordinate to be accessed.
+     *
+     * @return Accessed element.
+     */
+    inline __host__ __device__ decltype(auto) value(int4 c) const
+    {
+        return (*this)[c];
+    }
+
+    /** @copydoc value(int4) const */
+    inline __host__ __device__ decltype(auto) value(int3 c) const
+    {
+        return (*this)[c];
     }
 
     /**
@@ -556,6 +637,26 @@ public:
         }
 
         return *p;
+    }
+
+    /**
+     * Read-only access returning the accessed element by value.
+     *
+     * @note Prefer this over `operator[]` in device code; see \ref nvcv::cuda::detail::ReadConstantBorder.
+     *
+     * @param[in] c 4D coordinate (x sample, y row, z column, w channel) to be accessed.
+     *
+     * @return Accessed value, or the border value when \p c is outside the image.
+     */
+    inline __host__ __device__ ValueType value(int4 c) const
+    {
+        return detail::ReadConstantBorder(doGetPtr(c.x, c.y, c.z, c.w), m_borderValue);
+    }
+
+    /** @copydoc value(int4) const */
+    inline __host__ __device__ ValueType value(int3 c) const
+    {
+        return detail::ReadConstantBorder(doGetPtr(c.x, c.y, c.z, 0), m_borderValue);
     }
 
     /**

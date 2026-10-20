@@ -238,6 +238,114 @@ TEST(OpChannelReorderVarShape, varshape_correct_output_rgba)
     RunChannelReorderOrdersGold(nvcv::FMT_RGBA8, {2, -1, 1, 3});
 }
 
+TEST(OpChannelReorderVarShape, varshape_planar_u8_unaligned_source_falls_back_to_scalar)
+{
+    constexpr int    kChannels   = 3;
+    constexpr int    kWidth      = 4;
+    constexpr int    kHeight     = 1;
+    constexpr size_t kPlaneBytes = static_cast<size_t>(kWidth) * kHeight;
+    constexpr size_t kImageBytes = kChannels * kPlaneBytes;
+
+    NVCVByte *srcAllocation = nullptr;
+    NVCVByte *dstAllocation = nullptr;
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&srcAllocation, kImageBytes + 1));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&dstAllocation, kImageBytes));
+    ASSERT_EQ(0u, reinterpret_cast<uintptr_t>(srcAllocation) & 3u);
+    ASSERT_EQ(0u, reinterpret_cast<uintptr_t>(dstAllocation) & 3u);
+
+    const std::array<uint8_t, kImageBytes> srcValues{1, 2, 3, 4, 11, 12, 13, 14, 21, 22, 23, 24};
+    const std::array<uint8_t, kImageBytes> expected{21, 22, 23, 24, 0, 0, 0, 0, 11, 12, 13, 14};
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcAllocation + 1, srcValues.data(), kImageBytes, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemset(dstAllocation, 0xA5, kImageBytes));
+
+    auto wrapPlanarImage = [](NVCVByte *base)
+    {
+        nvcv::ImageDataStridedCuda::Buffer buffer{};
+        buffer.numPlanes = kChannels;
+        for (int plane = 0; plane < kChannels; ++plane)
+        {
+            buffer.planes[plane].width     = kWidth;
+            buffer.planes[plane].height    = kHeight;
+            buffer.planes[plane].rowStride = kWidth;
+            buffer.planes[plane].basePtr   = base + plane * kPlaneBytes;
+        }
+        return nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_RGB8p, buffer});
+    };
+
+    nvcv::Image              srcImage = wrapPlanarImage(srcAllocation + 1);
+    nvcv::Image              dstImage = wrapPlanarImage(dstAllocation);
+    nvcv::ImageBatchVarShape srcBatch(1);
+    nvcv::ImageBatchVarShape dstBatch(1);
+    srcBatch.pushBack(srcImage);
+    dstBatch.pushBack(dstImage);
+    nvcv::Tensor orders = MakeChannelReorderOrders(1, {2, -1, 1});
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::ChannelReorder op;
+    EXPECT_NO_THROW(op(stream, srcBatch, dstBatch, orders));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::array<uint8_t, kImageBytes> got{};
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(got.data(), dstAllocation, kImageBytes, cudaMemcpyDeviceToHost));
+    EXPECT_EQ(expected, got);
+
+    ASSERT_EQ(cudaSuccess, cudaFree(srcAllocation));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstAllocation));
+}
+
+TEST(OpChannelReorderVarShape, varshape_signed32_single_channel_correct_output)
+{
+    constexpr std::array<nvcv::Size2D, 2> sizes{
+        {{5, 3}, {3, 4}}
+    };
+
+    std::vector<nvcv::Image>          srcImages;
+    std::vector<nvcv::Image>          dstImages;
+    std::vector<std::vector<int32_t>> srcValues(sizes.size());
+    for (size_t image = 0; image < sizes.size(); ++image)
+    {
+        srcImages.emplace_back(sizes[image], nvcv::FMT_S32);
+        dstImages.emplace_back(sizes[image], nvcv::FMT_S32);
+
+        auto &values = srcValues[image];
+        values.resize(static_cast<size_t>(sizes[image].w) * sizes[image].h);
+        std::iota(values.begin(), values.end(), static_cast<int32_t>(image * 100 + 1));
+
+        auto srcData = srcImages.back().exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_TRUE(srcData);
+        const size_t rowBytes = static_cast<size_t>(sizes[image].w) * sizeof(int32_t);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(srcData->plane(0).basePtr, srcData->plane(0).rowStride, values.data(),
+                                            rowBytes, rowBytes, sizes[image].h, cudaMemcpyHostToDevice));
+    }
+
+    nvcv::ImageBatchVarShape srcBatch(sizes.size());
+    nvcv::ImageBatchVarShape dstBatch(sizes.size());
+    srcBatch.pushBack(srcImages.begin(), srcImages.end());
+    dstBatch.pushBack(dstImages.begin(), dstImages.end());
+    nvcv::Tensor orders = MakeChannelReorderOrders(static_cast<int>(sizes.size()), std::vector<int>{0});
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::ChannelReorder op;
+    EXPECT_NO_THROW(op(stream, srcBatch, dstBatch, orders));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (size_t image = 0; image < sizes.size(); ++image)
+    {
+        auto dstData = dstImages[image].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_TRUE(dstData);
+        const size_t         rowBytes = static_cast<size_t>(sizes[image].w) * sizeof(int32_t);
+        std::vector<int32_t> got(srcValues[image].size());
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(got.data(), rowBytes, dstData->plane(0).basePtr, dstData->plane(0).rowStride, rowBytes,
+                               sizes[image].h, cudaMemcpyDeviceToHost));
+        EXPECT_EQ(srcValues[image], got);
+    }
+}
+
 static nvcv::TensorShape MakeChannelReorderTensorShape(nvcv::TensorLayout layout, int numSamples, int width, int height,
                                                        int channels)
 {
@@ -696,6 +804,21 @@ TEST_F(TestOpChannelReorder, infer_invalid_input_dataType)
     output().pushBack(nvcv::Image{
         nvcv::Size2D{4, 2},
         nvcv::FMT_F64
+    });
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([this] { channelReorder()(nullptr, input(), output(), orders()); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_input_unsigned_32bit_dataType)
+{
+    input().pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_U32
+    });
+    output().pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_U32
     });
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,

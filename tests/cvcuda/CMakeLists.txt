@@ -26,6 +26,9 @@ endif()
 if(BUILD_TESTS_PYTHON AND BUILD_PYTHON)
     # NVTX injection probe used by the python NVTX marker test
     add_subdirectory(nvtx_probe)
+    if("${PYTHON_VERSIONS}" MATCHES "(^|;)3\\.[0-9]+t(;|$)")
+        add_subdirectory(free_threading_probe)
+    endif()
 
     # System tests for cvcuda python
     add_subdirectory(python)

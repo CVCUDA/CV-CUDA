@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,13 +18,13 @@
 #ifndef NVCV_PYTHON_PRIV_RECT_HPP
 #define NVCV_PYTHON_PRIV_RECT_HPP
 
-#include <pybind11/pybind11.h>
+#include <common/Binding.hpp>
 
 namespace nvcvpy::priv {
 
-namespace py = ::pybind11;
+namespace py = ::nanobind;
 
-void ExportRect(py::module &m);
+void ExportRect(py::module_ &m);
 
 } // namespace nvcvpy::priv
 

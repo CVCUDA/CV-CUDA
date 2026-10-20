@@ -23,34 +23,39 @@
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
 // Thin Python-facing wrappers; the create/guard/submit body lives in UnaryElementwiseOp.hpp, with
 // the hue factor forwarded as the trailing submit() parameter.
-Tensor AdjustHueInto(Tensor &output, Tensor &input, double hue, std::optional<Stream> pstream)
+Tensor &AdjustHueInto(Tensor &output, Tensor &input, double hue, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::AdjustHue>(output, input, pstream, hue);
 }
 
-Tensor AdjustHue(Tensor &input, double hue, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> AdjustHue(Tensor &input, double hue, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseTensor<cvcuda::AdjustHue>(input, pstream, hue);
 }
 
-ImageBatchVarShape AdjustHueVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, double hue,
-                                         std::optional<Stream> pstream)
+ImageBatchVarShape &AdjustHueVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, double hue,
+                                          std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::AdjustHue>(output, input, pstream, hue);
 }
 
-ImageBatchVarShape AdjustHueVarShape(ImageBatchVarShape &input, double hue, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> AdjustHueVarShape(ImageBatchVarShape &input, double hue,
+                                                      std::optional<Stream *> pstream)
 {
     return UnaryElementwiseVarShape<cvcuda::AdjustHue>(input, pstream, hue);
 }
 
 } // namespace
 
-void ExportOpAdjustHue(py::module &m)
+void ExportOpAdjustHue(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("adjust_hue", NvtxTrace("cvcuda.adjust_hue", &AdjustHue), "src"_a, "hue"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
@@ -80,7 +85,7 @@ void ExportOpAdjustHue(py::module &m)
     )pbdoc");
 
     m.def("adjust_hue_into", NvtxTrace("cvcuda.adjust_hue_into", &AdjustHueInto), "dst"_a, "src"_a, "hue"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Adjust Hue operation on the given cuda stream.
 
@@ -121,7 +126,7 @@ void ExportOpAdjustHue(py::module &m)
     )pbdoc");
 
     m.def("adjust_hue_into", NvtxTrace("cvcuda.adjust_hue_into", &AdjustHueVarShapeInto), "dst"_a, "src"_a, "hue"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Adjust Hue operation on the given cuda stream.
 

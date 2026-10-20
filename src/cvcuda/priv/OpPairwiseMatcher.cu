@@ -366,7 +366,7 @@ inline __device__ void SortKeyValue(float &sortedDist, int &sortedIdx, const Poi
 // Write a match of (set1Idx, set2Idx) with (distance) found at matchIdx inside output matches and distances
 template<NVCVNormType NORM>
 inline __device__ void WriteMatch(int matchIdx, int set1Idx, int set2Idx, int sampleIdx, float &distance,
-                                  cuda::Tensor3DWrap<int> matches, cuda::Tensor2DWrap<float> distances)
+                                  cuda::Tensor3DWrap<int> matches, cuda::TensorWrapT<float, int64_t, -1, -1> distances)
 {
     *matches.ptr(sampleIdx, matchIdx, 0) = set1Idx;
     *matches.ptr(sampleIdx, matchIdx, 1) = set2Idx;
@@ -386,10 +386,11 @@ inline __device__ void WriteMatch(int matchIdx, int set1Idx, int set2Idx, int sa
 // is instantiated by: <NB> an upper limit of each point size in bytes; <NORM> type; and <ST> source type
 template<int NB, NVCVNormType NORM, typename ST, class Point = PointT<ST, NB>>
 __global__ void BruteForceMatcher(cuda::Tensor3DWrap<ST> set1, cuda::Tensor3DWrap<ST> set2,
-                                  cuda::Tensor1DWrap<const int> numSet1, cuda::Tensor1DWrap<const int> numSet2,
-                                  cuda::Tensor3DWrap<int> matches, cuda::Tensor1DWrap<int> numMatches,
-                                  cuda::Tensor2DWrap<float> distances, int set1Capacity, int set2Capacity,
-                                  int outCapacity, int numDim, bool crossCheck, int matchesPerPoint)
+                                  cuda::TensorWrapT<const int, int64_t, -1> numSet1,
+                                  cuda::TensorWrapT<const int, int64_t, -1> numSet2, cuda::Tensor3DWrap<int> matches,
+                                  cuda::TensorWrapT<int, int64_t, -1>       numMatches,
+                                  cuda::TensorWrapT<float, int64_t, -1, -1> distances, int set1Capacity,
+                                  int set2Capacity, int outCapacity, int numDim, bool crossCheck, int matchesPerPoint)
 {
     int sampleIdx = blockIdx.x;
     int set1Idx   = blockIdx.y;
@@ -466,8 +467,8 @@ __global__ void BruteForceMatcher(cuda::Tensor3DWrap<ST> set1, cuda::Tensor3DWra
 }
 
 // Write number of matches in the case without cross check this number is set1 size times matches per point
-__global__ void WriteNumMatches(cuda::Tensor1DWrap<const int> numSet1, cuda::Tensor1DWrap<int> numMatches,
-                                int set1Capacity, int matchesPerPoint)
+__global__ void WriteNumMatches(cuda::TensorWrapT<const int, int64_t, -1> numSet1,
+                                cuda::TensorWrapT<int, int64_t, -1> numMatches, int set1Capacity, int matchesPerPoint)
 {
     int sampleIdx = blockIdx.x;
     int set1Size  = (numSet1.ptr(0) == nullptr) ? set1Capacity : numSet1[sampleIdx];
@@ -484,13 +485,14 @@ inline void RunBruteForceMatcherForNorm(cudaStream_t stream, const nvcv::Tensor 
                                         const nvcv::Tensor &matches, const nvcv::Tensor &numMatches,
                                         const nvcv::Tensor &distances, bool crossCheck, int matchesPerPoint)
 {
-    cuda::Tensor3DWrap<const SrcT>    w_set1; // tensor wraps of set1 and set2 and other tensors
-    cuda::Tensor3DWrap<const SrcT>    w_set2;
-    cuda::Tensor1DWrap<const int32_t> w_numSet1;
-    cuda::Tensor1DWrap<const int32_t> w_numSet2;
-    cuda::Tensor3DWrap<int32_t>       w_matches;
-    cuda::Tensor1DWrap<int32_t>       w_numMatches;
-    cuda::Tensor2DWrap<float>         w_distances;
+    cuda::Tensor3DWrap<const SrcT>                w_set1; // tensor wraps of set1 and set2 and other tensors
+    cuda::Tensor3DWrap<const SrcT>                w_set2;
+    // Optional NC/NMC tensors may have padding before their singleton channel.
+    cuda::TensorWrapT<const int32_t, int64_t, -1> w_numSet1;
+    cuda::TensorWrapT<const int32_t, int64_t, -1> w_numSet2;
+    cuda::Tensor3DWrap<int32_t>                   w_matches;
+    cuda::TensorWrapT<int32_t, int64_t, -1>       w_numMatches;
+    cuda::TensorWrapT<float, int64_t, -1, -1>     w_distances;
 
 #define CVCUDA_BFM_WRAP(TENSOR)                                                                                     \
     if (TENSOR)                                                                                                     \
@@ -533,7 +535,8 @@ inline void RunBruteForceMatcherForNorm(cudaStream_t stream, const nvcv::Tensor 
         // match from set1 to set2 and back from set2 to set1, the numMatches output starts at zero and is
         // atomically incremented in the BruteForceMatcher kernel
 
-        NVCV_CHECK_THROW(cudaMemsetAsync(w_numMatches.ptr(0), 0, sizeof(int32_t) * numSamples, stream));
+        NVCV_CHECK_THROW(
+            cudaMemset2DAsync(w_numMatches.ptr(0), w_numMatches.strides()[0], 0, sizeof(int32_t), numSamples, stream));
     }
     else
     {

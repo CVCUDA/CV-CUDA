@@ -61,6 +61,20 @@ CV-CUDA offers a comprehensive collection of Computer Vision and Image Processin
 .. include:: operator_list.rst
 
 
+Submodules
+^^^^^^^^^^
+
+.. list-table:: List of submodules
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Submodule
+     - Definition
+   * - :doc:`cvcuda.tv <modules/python/tv>`
+     - Provides a ``torchvision.transforms.v2.functional``-style API backed by
+       CV-CUDA.
+
+
 Where Are the Release Notes?
 ----------------------------
 
@@ -123,6 +137,7 @@ Copyright
 
     Installation <installation>
     Getting Started <getting_started>
+    Using cvcuda.tv <cvcuda_tv>
     Docker <docker_images>
     Data Types <datatypes>
     Samples <samples>
@@ -133,6 +148,7 @@ Copyright
     :hidden:
 
     Object Cache <advanced/object_cache>
+    Free-threaded Python <advanced/python_free_threading>
     Operator Variants <advanced/operator_variants>
     Make Operator Tool <advanced/make_operator>
 
@@ -149,6 +165,7 @@ Copyright
     :maxdepth: 1
     :hidden:
 
+    v0.19.0-beta <relnotes/v0.19.0-beta>
     v0.18.0-beta <relnotes/v0.18.0-beta>
     v0.17.0-beta <relnotes/v0.17.0-beta>
     v0.16.0-beta <relnotes/v0.16.0-beta>

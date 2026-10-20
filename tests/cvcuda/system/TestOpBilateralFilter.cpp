@@ -1164,6 +1164,92 @@ TEST(OpBilateralFilterPlanar, tensor_rgba8_matches_interleaved)
     RunBilateralTensorPlanarParity(nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p, NVCV_BORDER_CONSTANT);
 }
 
+TEST(OpBilateralFilterPlanar, tensor_single_channel_matches_interleaved)
+{
+    cvcuda::BilateralFilter op;
+    auto                    invoke = [&op](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst)
+    {
+        op(stream, src, dst, 5, 15.f, 3.f, NVCV_BORDER_REFLECT);
+    };
+    nvcv::test::planar::RunTensorSingleChannelLayoutParity(33, 25, 33, 25, 2, nvcv::TYPE_U8, invoke);
+}
+
+TEST(OpBilateralFilterPlanar, tensor_single_channel_u16_matches_interleaved)
+{
+    cvcuda::BilateralFilter op;
+    auto                    invoke = [&op](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst)
+    {
+        op(stream, src, dst, 5, 15.f, 3.f, NVCV_BORDER_REFLECT);
+    };
+    nvcv::test::planar::RunTensorSingleChannelLayoutParity(33, 25, 33, 25, 2, nvcv::TYPE_U16, invoke);
+}
+
+TEST(OpBilateralFilterPlanar, tensor_single_channel_hwc_chw_matches)
+{
+    constexpr int width  = 33;
+    constexpr int height = 25;
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor srcHwc(
+        {
+            {height, width, 1},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstHwc(
+        {
+            {height, width, 1},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor srcChw(
+        {
+            {1, height, width},
+            "CHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstChw(
+        {
+            {1, height, width},
+            "CHW"
+    },
+        nvcv::TYPE_U8);
+
+    auto srcHwcData = srcHwc.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstHwcData = dstHwc.exportData<nvcv::TensorDataStridedCuda>();
+    auto srcChwData = srcChw.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstChwData = dstChw.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcHwcData && dstHwcData && srcChwData && dstChwData);
+
+    auto srcHwcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcHwcData);
+    auto dstHwcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstHwcData);
+    auto srcChwAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcChwData);
+    auto dstChwAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstChwData);
+    ASSERT_TRUE(srcHwcAccess && dstHwcAccess && srcChwAccess && dstChwAccess);
+
+    std::vector<uint8_t> input(static_cast<size_t>(width) * height);
+    nvcv::test::planar::FillDeterministicValues(input, 37, nvcv::TYPE_U8);
+    nvcv::test::planar::UploadInterleavedSample(*srcHwcAccess, 0, input, width, height, width);
+    nvcv::test::planar::UploadPlanarSample(*srcChwAccess, 0, input, width, height, 1, sizeof(uint8_t));
+    nvcv::test::planar::UploadInterleavedSample(*dstHwcAccess, 0, std::vector<uint8_t>(input.size(), 0xA5), width,
+                                                height, width);
+    nvcv::test::planar::UploadPlanarSample(*dstChwAccess, 0, std::vector<uint8_t>(input.size(), 0x5A), width, height, 1,
+                                           sizeof(uint8_t));
+
+    cvcuda::BilateralFilter op;
+    op(stream, srcHwc, dstHwc, 5, 15.f, 3.f, NVCV_BORDER_REFLECT);
+    op(stream, srcChw, dstChw, 5, 15.f, 3.f, NVCV_BORDER_REFLECT);
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    const auto hwc = nvcv::test::planar::DownloadInterleavedSample(*dstHwcAccess, 0, width, height, width);
+    const auto chw = nvcv::test::planar::DownloadPlanarSample(*dstChwAccess, 0, width, height, 1, sizeof(uint8_t));
+    EXPECT_EQ(hwc, chw);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpBilateralFilterPlanar, tensor_rgbf32_matches_interleaved)
 {
     RunBilateralTensorPlanarFloatParity(nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p, NVCV_BORDER_REFLECT);
@@ -1177,6 +1263,11 @@ TEST(OpBilateralFilterPlanar, tensor_rgbaf32_matches_interleaved)
 TEST(OpBilateralFilterPlanar, varshape_rgb8_matches_interleaved)
 {
     RunBilateralVarShapePlanarParity(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_REFLECT);
+}
+
+TEST(OpBilateralFilterPlanar, varshape_rgb8_reflect_edge_parameters_match_interleaved)
+{
+    RunBilateralVarShapePlanarParity(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_REFLECT, true);
 }
 
 TEST(OpBilateralFilterPlanar, varshape_rgba8_matches_interleaved)

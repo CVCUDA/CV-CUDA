@@ -26,7 +26,6 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
 #include <cuda_runtime.h>
 #include <nvcv/Tensor.hpp>
@@ -66,7 +65,6 @@ public:
 private:
     static std::unique_ptr<HistogramPlanarBridgeWorkspace> CreatePlanarBridgeWorkspace(int);
 
-    std::unique_ptr<nvcv::legacy::cuda_op::Histogram>         m_legacyOp;
     std::unique_ptr<Reformat>                                 m_reformatOp;
     mutable PerDeviceResource<HistogramPlanarBridgeWorkspace> m_planarWorkspace{CreatePlanarBridgeWorkspace};
 };

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -78,8 +78,14 @@ if(NVCV_ENABLE_INSTALL)
             FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.inc")
 
     include(CMakePackageConfigHelpers)
+    # Pre-1.0 minor releases may break API and ABI compatibility.
+    if(NVCV_VERSION_MAJOR EQUAL 0)
+        set(NVCV_PACKAGE_VERSION_COMPATIBILITY SameMinorVersion)
+    else()
+        set(NVCV_PACKAGE_VERSION_COMPATIBILITY SameMajorVersion)
+    endif()
     write_basic_package_version_file(nvcv_types-config-version.cmake
-                                     COMPATIBILITY SameMajorVersion)
+                                     COMPATIBILITY ${NVCV_PACKAGE_VERSION_COMPATIBILITY})
 
     if(UNIX)
         install(EXPORT nvcv_types

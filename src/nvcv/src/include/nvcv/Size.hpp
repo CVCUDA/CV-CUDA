@@ -41,8 +41,8 @@ struct Size2D : NVCVSize2D
 {
     using NVCVSize2D::NVCVSize2D;
 
-    constexpr Size2D(int32_t w, int32_t h)
-        : NVCVSize2D{w, h}
+    constexpr Size2D(int32_t width, int32_t height)
+        : NVCVSize2D{width, height}
     {
     }
 

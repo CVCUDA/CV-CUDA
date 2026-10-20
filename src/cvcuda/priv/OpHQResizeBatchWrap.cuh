@@ -38,6 +38,11 @@
 //    with rigged sample stride
 // 3. ImageBatchVarShapeWrap/TensorBatchWrap adapters that handle ROI on top of the usual wrappers
 
+namespace cvcuda::priv::hq_resize::kernel::resampling {
+template<int>
+struct SampleDesc;
+}
+
 namespace cvcuda::priv::hq_resize::batch_wrapper {
 
 namespace cuda = nvcv::cuda;
@@ -78,7 +83,34 @@ auto ComputeDenseStrides(VecI<3> shape, Channels... channels)
     return ComputeDenseStrides<T>(channels..., shape.x, shape.y, shape.z);
 }
 
+namespace dynamic {
+template<typename StrideT>
+struct TensorAccessDesc;
+}
+
 namespace tensor {
+
+struct PlanarTensorBatchElement
+{
+    NVCVByte *data;
+    int64_t   rowStride;
+};
+
+struct PlanarTensorBatchData
+{
+    PlanarTensorBatchElement *elements;
+};
+
+static_assert(sizeof(PlanarTensorBatchElement) == 16);
+
+template<typename StrideT>
+void SetupPlanarTensorBatchElements(PlanarTensorBatchElement *expandedSrc, PlanarTensorBatchElement *expandedDst,
+                                    dynamic::TensorAccessDesc<StrideT> *intermediateMeta, float *intermediate,
+                                    const ::cvcuda::priv::hq_resize::kernel::resampling::SampleDesc<2> *sampleDescs,
+                                    const nvcv::TensorBatchDataStridedCuda                             &src,
+                                    const nvcv::TensorBatchDataStridedCuda &dst, bool hasSampleDim,
+                                    cudaStream_t stream);
+
 template<typename T, typename StrideT, int kNStrides>
 auto CreateDenseWrap(cuda::BaseType<T> *base, const std::array<int64_t, kNStrides> strides)
 {
@@ -416,9 +448,7 @@ struct TensorBatchWrapAdapter
     static_assert(kVariableStrides == TensorWrapT::kVariableStrides);
     static_assert(kVariableStrides == TensorBatchWrapT::kVariableStrides);
 
-    // The trailing argument exists only to share RunPasses' adapter construction with the
-    // ImageBatchVarShape adapter (which uses it for plane decode). TensorBatch planar is not yet
-    // supported, so it is always 1 here and ignored.
+    // The trailing argument only shares RunPasses' construction with ImageBatchVarShape.
     TensorBatchWrapAdapter(const nvcv::TensorBatchDataStridedCuda &batchData, int = 1)
         : m_batch{TensorBatchWrapT{batchData}}
     {
@@ -441,6 +471,40 @@ struct TensorBatchWrapAdapter
 
 private:
     TensorBatchWrapT m_batch;
+};
+
+template<typename T, typename StrideT>
+struct PlanarTensorBatchWrapAdapter
+{
+    using ValueType                       = T;
+    using StrideType                      = StrideT;
+    static constexpr int kNumDimensions   = 3; // NHW
+    static constexpr int kNumSampleDim    = 2; // HW
+    static constexpr int kVariableStrides = 1;
+    using TensorWrapT                     = cuda::TensorNDWrap<T, kNumSampleDim, StrideT>;
+    static_assert(kVariableStrides == TensorWrapT::kVariableStrides);
+    static_assert(cuda::NumElements<T> == 1);
+
+    PlanarTensorBatchWrapAdapter(const tensor::PlanarTensorBatchData &batchData, int = 1)
+        : m_elements{batchData.elements}
+    {
+    }
+
+    inline __device__ TensorWrapT GetSampleView(const int sampleIdx, const VecI<2> roi) const
+    {
+        const auto sample = m_elements[sampleIdx];
+        auto      *data   = sample.data + sample.rowStride * roi.y + sizeof(T) * roi.x;
+        return TensorWrapT{reinterpret_cast<T *>(data), static_cast<StrideT>(sample.rowStride)};
+    }
+
+    inline __device__ TensorWrapT GetSampleView(const int sampleIdx) const
+    {
+        const auto sample = m_elements[sampleIdx];
+        return TensorWrapT{reinterpret_cast<T *>(sample.data), static_cast<StrideT>(sample.rowStride)};
+    }
+
+private:
+    const tensor::PlanarTensorBatchElement *m_elements;
 };
 } // namespace cvcuda::priv::hq_resize::batch_wrapper
 #endif // CVCUDA_PRIV_HQ_RESIZE_BATCH_WRAP_CUH

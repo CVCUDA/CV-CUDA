@@ -15,93 +15,93 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpBilateralFilter.hpp>
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 namespace cvcudapy {
 
 namespace {
-Tensor BilateralFilterInto(Tensor &output, Tensor &input, int diameter, float sigmaColor, float sigmaSpace,
-                           NVCVBorderType borderMode, std::optional<Stream> pstream)
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
+Tensor &BilateralFilterInto(Tensor &output, Tensor &input, int diameter, float sigmaColor, float sigmaSpace,
+                            NVCVBorderType borderMode, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto bilateral_filter = CreateOperator<cvcuda::BilateralFilter>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*bilateral_filter});
 
     guard.run(
-        [&bilateral_filter, &pstream, &input, &output, &diameter, &sigmaColor, &sigmaSpace, &borderMode]() {
-            bilateral_filter->submit(pstream->cudaHandle(), input, output, diameter, sigmaColor, sigmaSpace,
+        [&bilateral_filter, &stream, &input, &output, &diameter, &sigmaColor, &sigmaSpace, &borderMode]()
+        {
+            bilateral_filter->submit(stream.handle(), input.impl(), output.impl(), diameter, sigmaColor, sigmaSpace,
                                      borderMode);
         });
 
     return output;
 }
 
-Tensor BilateralFilter(Tensor &input, int diameter, float sigmaColor, float sigmaSpace, NVCVBorderType borderMode,
-                       std::optional<Stream> pstream)
+std::shared_ptr<Tensor> BilateralFilter(Tensor &input, int diameter, float sigmaColor, float sigmaSpace,
+                                        NVCVBorderType borderMode, std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return BilateralFilterInto(output, input, diameter, sigmaColor, sigmaSpace, borderMode, pstream);
+    BilateralFilterInto(*output, input, diameter, sigmaColor, sigmaSpace, borderMode, pstream);
+    return output;
 }
 
-ImageBatchVarShape VarShapeBilateralFilterInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &diameter,
-                                               Tensor &sigmaColor, Tensor &sigmaSpace, NVCVBorderType borderMode,
-                                               std::optional<Stream> pstream)
+ImageBatchVarShape &VarShapeBilateralFilterInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &diameter,
+                                                Tensor &sigmaColor, Tensor &sigmaSpace, NVCVBorderType borderMode,
+                                                std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto bilateral_filter = CreateOperator<cvcuda::BilateralFilter>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, diameter, sigmaColor, sigmaSpace});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*bilateral_filter});
 
     guard.run(
-        [&bilateral_filter, &pstream, &input, &output, &diameter, &sigmaColor, &sigmaSpace, &borderMode]() {
-            bilateral_filter->submit(pstream->cudaHandle(), input, output, diameter, sigmaColor, sigmaSpace,
-                                     borderMode);
+        [&bilateral_filter, &stream, &input, &output, &diameter, &sigmaColor, &sigmaSpace, &borderMode]()
+        {
+            bilateral_filter->submit(stream.handle(), input.impl(), output.impl(), diameter.impl(), sigmaColor.impl(),
+                                     sigmaSpace.impl(), borderMode);
         });
 
     return output;
 }
 
-ImageBatchVarShape VarShapeBilateralFilter(ImageBatchVarShape &input, Tensor &diameter, Tensor &sigmaColor,
-                                           Tensor &sigmaSpace, NVCVBorderType borderMode, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> VarShapeBilateralFilter(ImageBatchVarShape &input, Tensor &diameter,
+                                                            Tensor &sigmaColor, Tensor &sigmaSpace,
+                                                            NVCVBorderType borderMode, std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return VarShapeBilateralFilterInto(output, input, diameter, sigmaColor, sigmaSpace, borderMode, pstream);
+    VarShapeBilateralFilterInto(*output, input, diameter, sigmaColor, sigmaSpace, borderMode, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpBilateralFilter(py::module &m)
+void ExportOpBilateralFilter(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("bilateral_filter", NvtxTrace("cvcuda.bilateral_filter", &BilateralFilter), "src"_a, "diameter"_a,
           "sigma_color"_a, "sigma_space"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(),
@@ -124,7 +124,7 @@ void ExportOpBilateralFilter(py::module &m)
 
     m.def("bilateral_filter_into", NvtxTrace("cvcuda.bilateral_filter_into", &BilateralFilterInto), "dst"_a, "src"_a,
           "diameter"_a, "sigma_color"_a, "sigma_space"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
-          py::kw_only(), "stream"_a = nullptr,
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Executes the Bilateral Filter operation on the given cuda stream.
 
@@ -163,7 +163,7 @@ void ExportOpBilateralFilter(py::module &m)
 
     m.def("bilateral_filter_into", NvtxTrace("cvcuda.bilateral_filter_into", &VarShapeBilateralFilterInto), "dst"_a,
           "src"_a, "diameter"_a, "sigma_color"_a, "sigma_space"_a, py::kw_only(),
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr,
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Executes the Bilateral Filter operation on the given cuda stream.
 

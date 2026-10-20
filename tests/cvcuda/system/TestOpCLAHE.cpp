@@ -385,6 +385,156 @@ TEST(OpCLAHEPlanar, varshape_single_plane_matches_interleaved)
         });
 }
 
+TEST(OpCLAHE, varshape_dynamic_tiles_use_per_image_extents)
+{
+    test::planar::RunVarShapeParity(nvcv::FMT_U8, nvcv::FMT_U8,
+                                    std::vector<nvcv::Size2D>{
+                                        {65, 33},
+                                        {70, 36}
+    },
+                                    std::vector<nvcv::Size2D>{{65, 33}, {70, 36}},
+                                    [](cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                       const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+                                    {
+                                        cvcuda::CLAHE op(src.numImages(), 7, 9);
+                                        EXPECT_NO_THROW(op(stream, src, dst, 2.0));
+                                    });
+}
+
+TEST(OpCLAHE, tensor_and_varshape_validation_success_paths)
+{
+    RunTensorLayoutParity("NHWC", "NCHW", 32, 24, 1, 2.0, 8, 8);
+
+    test::planar::RunVarShapeParity(nvcv::FMT_U8, nvcv::FMT_U8, 37, 29, 37, 29, 2,
+                                    [](cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                       const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+                                    {
+                                        cvcuda::CLAHE op(src.numImages(), 7, 9);
+                                        EXPECT_NO_THROW(op(stream, src, dst, 2.0));
+                                    });
+}
+
+TEST(OpCLAHE, tensor_dynamic_tiles_use_tensor_shape)
+{
+    RunTensorLayoutParity("HWC", "CHW", 65, 33, 1, 2.0, 7, 9);
+}
+
+TEST(OpCLAHE, tensor_direct_lut_row_stride_tail)
+{
+    // An 8x8 grid over 64x72 pixels gives each direct-LUT tile 8 rows plus one warp-row tail.
+    RunTensorLayoutParity("NHWC", "NCHW", 64, 72, 1, 2.0, 8, 8);
+}
+
+TEST(OpCLAHE_Negative, tensor_and_varshape_batch_exceeds_grid_z_limit)
+{
+    constexpr int kNumEntries = 65536; // one past CUDA's grid.z limit
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::CLAHE op(kNumEntries, 1, 1); // keep the LUT allocation small for this host-side guard test
+    const auto    expectGridZRejected = [&op, &stream](const auto &src, const auto &dst)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, src, dst, 2.0); }));
+    };
+
+    nvcv::Tensor tensorSrc(kNumEntries, {1, 1}, nvcv::FMT_U8);
+    nvcv::Tensor tensorDst(kNumEntries, {1, 1}, nvcv::FMT_U8);
+    expectGridZRejected(tensorSrc, tensorDst);
+
+    nvcv::Image oneImage{
+        {1, 1},
+        nvcv::FMT_U8
+    };
+    std::vector<nvcv::Image> images(kNumEntries, oneImage);
+    nvcv::ImageBatchVarShape batchSrc(kNumEntries);
+    nvcv::ImageBatchVarShape batchDst(kNumEntries);
+    batchSrc.pushBack(images.begin(), images.end());
+    batchDst.pushBack(images.begin(), images.end());
+    expectGridZRejected(batchSrc, batchDst);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpCLAHE_Negative, tensor_and_varshape_validation_edges)
+{
+    cvcuda::CLAHE op(2, 8, 8);
+    const auto    expectInvalid = [&op](const auto &src, const auto &dst)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, src, dst, 2.0); }));
+    };
+
+    {
+        nvcv::Tensor input(nvcv::TensorShape({2, 32}, "NC"), nvcv::TYPE_U8);
+        nvcv::Tensor output = util::CreateTensor(2, 32, 32, nvcv::FMT_U8);
+        expectInvalid(input, output);
+    }
+    {
+        nvcv::Tensor input = util::CreateTensor(2, 32, 32, nvcv::FMT_U8);
+        nvcv::Tensor output(nvcv::TensorShape({2, 32}, "NC"), nvcv::TYPE_U8);
+        expectInvalid(input, output);
+    }
+    {
+        nvcv::Tensor input  = util::CreateTensor(2, 32, 32, nvcv::FMT_U8);
+        nvcv::Tensor output = util::CreateTensor(2, 31, 32, nvcv::FMT_U8);
+        expectInvalid(input, output);
+    }
+    {
+        nvcv::Tensor input(nvcv::TensorShape({1, 32, 32}, "NHW"), nvcv::TYPE_U8);
+        nvcv::Tensor output(nvcv::TensorShape({1, 32, 32}, "NHW"), nvcv::TYPE_U8);
+        expectInvalid(input, output);
+    }
+    {
+        cvcuda::CLAHE limitedOp(1, 8, 8);
+        nvcv::Tensor  input  = util::CreateTensor(2, 32, 32, nvcv::FMT_U8);
+        nvcv::Tensor  output = util::CreateTensor(2, 32, 32, nvcv::FMT_U8);
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { limitedOp(nullptr, input, output, 2.0); }));
+    }
+    {
+        std::vector<nvcv::Image> srcImages{
+            nvcv::Image{{32, 32}, nvcv::FMT_U8}
+        };
+        std::vector<nvcv::Image> dstImages{
+            nvcv::Image{{32, 32}, nvcv::FMT_U8},
+            nvcv::Image{{32, 32}, nvcv::FMT_U8}
+        };
+        nvcv::ImageBatchVarShape src(1);
+        nvcv::ImageBatchVarShape dst(2);
+        src.pushBack(srcImages.begin(), srcImages.end());
+        dst.pushBack(dstImages.begin(), dstImages.end());
+        expectInvalid(src, dst);
+    }
+    {
+        std::vector<nvcv::Image> srcImages{
+            nvcv::Image{{32, 32}, nvcv::FMT_U8},
+            nvcv::Image{{16, 32}, nvcv::FMT_U8}
+        };
+        std::vector<nvcv::Image> dstImages{
+            nvcv::Image{{32, 32}, nvcv::FMT_U8},
+            nvcv::Image{{16, 31}, nvcv::FMT_U8}
+        };
+        nvcv::ImageBatchVarShape src(2);
+        nvcv::ImageBatchVarShape dst(2);
+        src.pushBack(srcImages.begin(), srcImages.end());
+        dst.pushBack(dstImages.begin(), dstImages.end());
+        expectInvalid(src, dst);
+    }
+    {
+        std::vector<nvcv::Image> srcImages{
+            nvcv::Image{{32, 32}, nvcv::FMT_RGB8}
+        };
+        std::vector<nvcv::Image> dstImages{
+            nvcv::Image{{32, 32}, nvcv::FMT_RGB8}
+        };
+        nvcv::ImageBatchVarShape src(1);
+        nvcv::ImageBatchVarShape dst(1);
+        src.pushBack(srcImages.begin(), srcImages.end());
+        dst.pushBack(dstImages.begin(), dstImages.end());
+        expectInvalid(src, dst);
+    }
+}
+
 TEST(OpCLAHE_Negative, invalid_input_format_or_type)
 {
     cudaStream_t stream;
@@ -420,4 +570,20 @@ TEST(OpCLAHE_Negative, create_invalid_arguments)
     EXPECT_EQ(cvcudaCLAHECreate(nullptr, 1, 8, 8), NVCV_ERROR_INVALID_ARGUMENT);
     EXPECT_EQ(cvcudaCLAHECreate(&handle, 0, 8, 8), NVCV_ERROR_INVALID_ARGUMENT);
     EXPECT_EQ(cvcudaCLAHECreate(&handle, 1, 0, 8), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+TEST(OpCLAHE_Negative, tensor_rejects_non_image_rank_via_c_api)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::CLAHE op(1, 8, 8);
+    nvcv::Tensor  input(nvcv::TensorShape({32}, "C"), nvcv::TYPE_U8);
+    nvcv::Tensor  output = util::CreateTensor(1, 32, 32, nvcv::FMT_U8);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaCLAHESubmit(op.handle(), stream, input.handle(), output.handle(), 2.0f));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

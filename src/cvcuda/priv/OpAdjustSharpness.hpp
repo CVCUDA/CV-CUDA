@@ -37,10 +37,10 @@ class AdjustSharpness final : public IOperator
 public:
     explicit AdjustSharpness();
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, float sharpnessFactor) const;
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double sharpnessFactor) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
-                    float sharpnessFactor) const;
+                    double sharpnessFactor) const;
 };
 
 } // namespace cvcuda::priv

@@ -21,34 +21,36 @@
 #include "Container.hpp"
 #include "Size.hpp"
 
+#include <common/Binding.hpp>
 #include <nvcv/Shape.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/python/Shape.hpp>
-#include <pybind11/numpy.h>
-#include <pybind11/pytypes.h>
+
+#include <array>
 
 namespace nvcvpy::priv {
-namespace py = pybind11;
+namespace py = nanobind;
 
 class ExternalBuffer;
 class Image;
+struct BufferAllocation;
 
 // Register nvcv::TensorLayout.  Split out of Tensor::Export so it can run
-// early — Image::cpu/cuda take a TensorLayout parameter and pybind11 needs
+// early — Image::cpu/cuda take a TensorLayout parameter and nanobind needs
 // the type registered before Image::Export binds those methods.
-void ExportTensorLayout(py::module &m);
+void ExportTensorLayout(py::module_ &m);
 
 class Tensor : public Container
 {
 public:
-    static void Export(py::module &m);
+    static void Export(py::module_ &m);
 
     static std::shared_ptr<Tensor> CreateForImageBatch(int numImages, const Size2D &size, nvcv::ImageFormat fmt,
                                                        int rowalign);
     static std::shared_ptr<Tensor> Create(Shape shape, nvcv::DataType dtype, std::optional<nvcv::TensorLayout> layout,
-                                          int rowalign);
+                                          int rowalign, Stream *consumer = nullptr);
 
-    static std::shared_ptr<Tensor> CreateFromReqs(const nvcv::Tensor::Requirements &reqs);
+    static std::shared_ptr<Tensor> CreateFromReqs(const nvcv::Tensor::Requirements &reqs, Stream *consumer = nullptr);
 
     static std::shared_ptr<Tensor> Wrap(ExternalBuffer &buffer, std::optional<nvcv::TensorLayout> layout);
     static std::shared_ptr<Tensor> WrapImage(Image &img);
@@ -67,40 +69,75 @@ public:
     class Key final : public IKey
     {
     public:
-        explicit Key()
-            : m_wrapper(true)
+        explicit Key(const nvcv::Tensor::Requirements &reqs);
+        Key(const Key &)            = delete;
+        Key &operator=(const Key &) = delete;
+
+        bool matchesDescriptor(const Key &requested) const noexcept;
+        void setDescriptor(const nvcv::Tensor::Requirements &reqs) noexcept;
+
+        int32_t alignment() const noexcept
         {
+            return m_alignBytes;
         }
 
-        explicit Key(const nvcv::Tensor::Requirements &reqs);
-        explicit Key(const nvcv::TensorShape &shape, nvcv::DataType dtype);
-
     private:
-        nvcv::TensorShape m_shape;
-        nvcv::DataType    m_dtype;
-        bool              m_wrapper;
+        // Descriptor fields are filtered separately; hash/equality use only
+        // layout and dtype so differently shaped allocations share capacity.
+        std::array<int64_t, NVCV_TENSOR_MAX_RANK> m_shape;
+        std::array<int64_t, NVCV_TENSOR_MAX_RANK> m_strides;
+        nvcv::TensorLayout                        m_layout;
+        nvcv::DataType                            m_dtype;
+        int32_t                                   m_alignBytes = 0;
+        int32_t                                   m_rank       = 0;
 
         size_t doGetHash() const override;
         bool   doIsCompatible(const IKey &that) const override;
     };
 
-    const Key &key() const override;
+    const IKey &key() const override;
 
     py::object cuda() const;
 
-    int64_t GetSizeInBytes() const override;
+    int64_t        GetSizeInBytes() const override;
+    RetainedMemory retainedMemory() const override;
+    bool           allowsCacheReuse(bool pendingRelease) const override;
 
 private:
+    class WrapperKey final : public IKey
+    {
+    public:
+        WrapperKey() = default;
+
+        explicit WrapperKey(const IKey &deviceKey)
+            : IKey(deviceKey)
+        {
+        }
+
+    private:
+        size_t doGetHash() const override
+        {
+            return 0;
+        }
+
+        bool doIsCompatible(const IKey &) const override
+        {
+            return true;
+        }
+    };
+
     explicit Tensor(const nvcv::Tensor::Requirements &reqs);
     Tensor(const nvcv::TensorData &data, py::object wrappedObject);
     explicit Tensor(Image &img);
-    explicit Tensor(nvcv::Tensor &&tensor);
+    Tensor(nvcv::Tensor &&tensor, const IKey &deviceKey);
 
-    int64_t doComputeSizeInBytes(const nvcv::Tensor::Requirements &reqs) const;
+    static int64_t doComputeSizeInBytes(const nvcv::Tensor::Requirements &reqs);
 
-    nvcv::Tensor m_impl; // must come before m_key
-    Key          m_key;
-    int64_t      m_size_inbytes = -1;
+    std::shared_ptr<BufferAllocation> m_buffer;
+    nvcv::Tensor                      m_impl; // must come before m_key
+    std::unique_ptr<Key>              m_key;
+    WrapperKey                        m_wrapperKey;
+    int64_t                           m_size_inbytes = -1;
 
     mutable py::object                        m_cacheExternalObject;
     mutable std::optional<nvcv::TensorLayout> m_cacheExternalObjectLayout;

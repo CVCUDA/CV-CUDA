@@ -123,6 +123,28 @@ Debian packages and tar archives can be found in the `CV-CUDA GitHub Releases`_ 
 
 where ``<cu_ver>`` is the desired CUDA version, ``<py_ver>`` is the desired Python version and ``<arch>`` is the desired architecture.
 
+Using CV-CUDA from CMake
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+After installing the library and development packages, use the exported
+``cvcuda`` target as follows:
+
+CMake must find a CUDA Toolkit development installation whose major version
+matches ``<cu_ver>`` in the installed CV-CUDA package.
+
+.. code-block:: cmake
+
+    find_package(cvcuda <x.x> CONFIG REQUIRED)
+    target_link_libraries(my_target PRIVATE cvcuda)
+
+For tar-archive installs, add the extracted ``opt/nvidia/cvcuda<major>``
+directory to ``CMAKE_PREFIX_PATH``. Debian packages register their CMake
+package directories automatically.
+
+The ``cvcuda`` target brings in ``nvcv_types`` and ``CUDA::cudart_static`` as
+public dependencies. Before 1.0, a versioned lookup must request the installed
+major and minor; replace ``<x.x>`` above with the version you installed.
+
 .. _building-from-source:
 
 Building from Source
@@ -191,7 +213,7 @@ The following table summarizes all dependencies needed to build and test CV-CUDA
    * - **Debian packages**
      - g++-11, cmake, ninja-build, CUDA toolkit
      - python3-dev
-     - libgtest-dev, libgmock-dev, libssl-dev, zlib1g-dev
+     - libgtest-dev, libgmock-dev, libssl-dev, zlib1g-dev (plus libjitterentropy3-dev, libzstd-dev on Ubuntu 26.04)
      - fonts-dejavu
      - doxygen, graphviz, python3, python3-pip, python3-sphinx
    * - **From-source libraries**
@@ -247,6 +269,17 @@ The following command intentionally excludes CUDA packages:
         libgtest-dev libgmock-dev libssl-dev zlib1g-dev \
         fonts-dejavu doxygen graphviz
 
+On Ubuntu 26.04, OpenSSL 3.5's static ``libcrypto`` (used by the C++ test suite's
+MD5 helper, linked statically by default) additionally pulls in jitterentropy and
+zstd, so install their development packages as well:
+
+.. code-block:: shell
+
+    sudo apt install -y libjitterentropy3-dev libzstd-dev
+
+Alternatively, configure with ``-DOPENSSL_USE_STATIC_LIBS=OFF`` to link
+``libcrypto`` dynamically and avoid these extra static dependencies.
+
 Python dependencies are specified with exact versions in ``docker/requirements.build.sys_python.txt`` (build/packaging tools) and ``docs/requirements.docs.txt`` (documentation tools).
 The recommended method to install these Python dependencies is to use a Python virtual environment, with **venv** or **uv**.
 
@@ -298,6 +331,7 @@ The central ``build.sh`` script is used to build the project, Python bindings an
 - ``-DBUILD_TESTS_PYTHON=1|0``: Enable/disable building Python tests
 - ``-DBUILD_BENCH=1|0``: Enable/disable benchmark builds (default: OFF). Requires `nvbench <https://github.com/NVIDIA/nvbench>`_ to be installed (``cmake --install`` or system package). See ``bench/README.md`` for details.
 - ``-DPYTHON_VERSIONS='3.10;3.11;3.12;3.13;3.14'``: Select Python versions to build bindings and wheels for (default: system Python3 only)
+- ``-DPYTHON_VERSIONS='3.14;3.14t'``: Build ordinary and free-threaded CPython 3.14 extensions together; see :ref:`python_free_threading`.
 - ``-DPUBLIC_API_COMPILERS='gcc-10;gcc-11;clang-11;clang-14'``: Select compilers for public API compatibility checks (default: gcc-11, clang-11, clang-14)
 - ``-DDOC_PYTHON_VERSION='3.11'``: Override Python version for documentation build (default: system Python)
 - ``-DENABLE_SANITIZER=1|0``: Enable/disable address sanitizer (default: disabled)

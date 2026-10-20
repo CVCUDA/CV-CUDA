@@ -10,6 +10,9 @@ include pyproject.toml
 recursive-include cvcuda *.so
 recursive-include cvcuda_cu*.libs *
 
+# Include pure-Python sources (e.g. the cvcuda.tv subpackage) for sdist completeness
+recursive-include cvcuda *.py
+
 # Include type stubs and PEP 561 marker
 recursive-include cvcuda *.pyi
 include cvcuda/py.typed

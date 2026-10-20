@@ -153,7 +153,7 @@ endfunction()
 # compile supplemental code for an operator they did not select.
 function(cvcuda_add_targeted_cuda_architectures_to_sources)
     set(_CVCUDA_OPTIONS)
-    set(_CVCUDA_ONE_VALUE_ARGS SELECTED_SOURCES_VAR)
+    set(_CVCUDA_ONE_VALUE_ARGS SELECTED_SOURCES_VAR PARENT_SOURCES_VAR)
     set(_CVCUDA_MULTI_VALUE_ARGS ARCHITECTURES SOURCES)
     cmake_parse_arguments(PARSE_ARGV 0 CVCUDA_TARGETED
         "${_CVCUDA_OPTIONS}" "${_CVCUDA_ONE_VALUE_ARGS}" "${_CVCUDA_MULTI_VALUE_ARGS}")
@@ -207,6 +207,23 @@ function(cvcuda_add_targeted_cuda_architectures_to_sources)
             list(REMOVE_ITEM _CVCUDA_TARGETED_ARCHITECTURES "${CMAKE_MATCH_1}")
         endif()
     endforeach()
+
+    # Checked before the early return below, because this is list hygiene rather than a property of
+    # the architecture selection: a source missing from the *filtered* list was deselected by
+    # CV_CUDA_SRC_PATERN, which is expected, but a source missing from the caller's *unfiltered*
+    # list is compiled by nothing at all. Naming it here is the only thing that makes it look
+    # otherwise, and the target still links -- without its symbols. Fail at configure time instead.
+    if(CVCUDA_TARGETED_PARENT_SOURCES_VAR)
+        foreach(_CVCUDA_SOURCE IN LISTS CVCUDA_TARGETED_SOURCES)
+            list(FIND ${CVCUDA_TARGETED_PARENT_SOURCES_VAR} "${_CVCUDA_SOURCE}" _CVCUDA_PARENT_INDEX)
+            if(_CVCUDA_PARENT_INDEX EQUAL -1)
+                message(FATAL_ERROR
+                    "cvcuda_add_targeted_cuda_architectures_to_sources(): '${_CVCUDA_SOURCE}' is "
+                    "targeted for extra architectures but is absent from "
+                    "${CVCUDA_TARGETED_PARENT_SOURCES_VAR}, so nothing compiles it.")
+            endif()
+        endforeach()
+    endif()
 
     if(NOT CVCUDA_TARGETED_SM8X_CUBINS_ACTIVE OR NOT _CVCUDA_TARGETED_ARCHITECTURES)
         return()

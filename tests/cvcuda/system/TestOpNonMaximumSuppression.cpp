@@ -300,6 +300,62 @@ TEST(OpNonMaximumSuppression, score_order_and_area_tiebreak)
     EXPECT_EQ(actual, expected);
 }
 
+TEST(OpNonMaximumSuppression, extreme_boxes_and_degenerate_candidate)
+{
+    constexpr int   numBoxes       = 3;
+    constexpr float scoreThreshold = 0.5f;
+    constexpr float iouThreshold   = 0.5f;
+
+    nvcv::Tensor srcBB(
+        {
+            {1, numBoxes},
+            "NW"
+    },
+        nvcv::TYPE_4S16);
+    nvcv::Tensor dstMk(
+        {
+            {1, numBoxes},
+            "NW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor srcSc(
+        {
+            {1, numBoxes},
+            "NW"
+    },
+        nvcv::TYPE_F32);
+
+    const std::vector<short4> boxes{
+        {-32768, -32768, 32767, 32767},
+        {-32767, -32767, 32767, 32767},
+        {     0,      0,     0,     0},
+    };
+    const std::vector<float>   scores{0.9f, 0.8f, 0.7f};
+    const std::vector<uint8_t> expected{1, 0, 1};
+
+    auto srcBBData = srcBB.exportData<nvcv::TensorDataStridedCuda>();
+    auto srcScData = srcSc.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstMkData = dstMk.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcBBData && srcScData && dstMkData);
+
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(srcBBData->basePtr(), boxes.data(), boxes.size() * sizeof(short4), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(srcScData->basePtr(), scores.data(), scores.size() * sizeof(float), cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::NonMaximumSuppression nms;
+    EXPECT_NO_THROW(nms(stream, srcBB, dstMk, srcSc, scoreThreshold, iouThreshold));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::vector<uint8_t> actual(numBoxes);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(actual.data(), dstMkData->basePtr(), actual.size() * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(actual, expected);
+}
+
 NVCV_TEST_SUITE_P(OpNonMaximumSuppressionIdenticalTies, test::ValueList<int>{
                                                             {2},
                                                             {1024},

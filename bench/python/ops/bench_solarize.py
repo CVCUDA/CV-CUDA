@@ -64,7 +64,7 @@ def solarize(state):
     dtype_size = get_dtype_size(dtype_str)
     threshold = (
         0.5
-        if dtype in (cvcuda.Type.F16, cvcuda.Type.F32)
+        if dtype in (cvcuda.Type.F16, cvcuda.Type.F32, cvcuda.Type.F64)
         else ((1 << (8 * get_dtype_size(dtype))) - 1) / 2.0
     )
     bytes_ = N * H * W * dtype_size

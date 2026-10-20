@@ -17,9 +17,11 @@
  * limitations under the License.
  */
 
+#include "LegacyFormatClassify.hpp"
 #include "Nvtx.hpp"
 #include "OpThreshold.hpp"
 #include "PlanarTensorView.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cuda_fp16.h>
 #include <cvcuda/Types.h>
@@ -60,109 +62,11 @@ constexpr int kHistogramBins = 256;
 // The CUDA grid-z dimension carries one plane per (sample, channel) pair on the planar paths.
 constexpr int64_t kMaxGridZ = 65535;
 
-// Mirrors the nvcv::legacy::cuda_op::DataType codes, which classify a dtype by data kind plus
-// bits-per-channel rather than by exact type: the packed multi-channel types (TYPE_3U8, TYPE_4U8,
-// ...) collapse onto the same code as their scalar counterpart, and the operator admitted them.
-enum class DataTypeCode : int
-{
-    kU8  = 0,
-    kS8  = 1,
-    kU16 = 2,
-    kS16 = 3,
-    kS32 = 4,
-    kF32 = 5,
-    kF64 = 6,
-    kF16 = 7,
-};
-
-// Mirrors nvcv::legacy::cuda_op::DataFormat, whose numeric values appear in the rejection messages.
-enum class DataFormatCode : int
-{
-    kNCHW = 0,
-    kNHWC = 1,
-    kCHW  = 2,
-    kHWC  = 3,
-};
-
-inline bool IsPlanar(DataFormatCode format)
-{
-    return format == DataFormatCode::kNCHW || format == DataFormatCode::kCHW;
-}
-
-// Reproduces nvcv::legacy::helpers::GetLegacyDataType(bpc, kind) exactly, including the rejection of
-// every (kind, width) pair the legacy enum has no name for -- 32/64-bit unsigned, 64-bit signed,
-// 8-bit float, complex and unspecified kinds all threw here before the operator's own dtype list was
-// ever consulted.
-inline DataTypeCode ClassifyDataType(int32_t bpc, nvcv::DataKind kind)
-{
-    switch (kind)
-    {
-    case nvcv::DataKind::FLOAT:
-        if (bpc == 64)
-            return DataTypeCode::kF64;
-        if (bpc == 32)
-            return DataTypeCode::kF32;
-        if (bpc == 16)
-            return DataTypeCode::kF16;
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for float cuda op type ", bpc);
-
-    case nvcv::DataKind::SIGNED:
-        if (bpc == 8)
-            return DataTypeCode::kS8;
-        if (bpc == 16)
-            return DataTypeCode::kS16;
-        if (bpc == 32)
-            return DataTypeCode::kS32;
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for signed cuda op type ", bpc);
-
-    case nvcv::DataKind::UNSIGNED:
-        if (bpc == 8)
-            return DataTypeCode::kU8;
-        if (bpc == 16)
-            return DataTypeCode::kU16;
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for unsigned cuda op type ", bpc);
-
-    case nvcv::DataKind::COMPLEX:
-    case nvcv::DataKind::UNSPECIFIED:
-        break;
-    }
-    throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                          "Only floating-point, signed integer and unsigned integer data kinds are supported ");
-}
-
-inline DataTypeCode ClassifyDataType(const nvcv::DataType &dtype)
-{
-    // NVCV_PACKING_X32_Y24b8 and friends are real, so non-uniform channel widths must be rejected
-    // before the dtype can be classified at all.
-    auto      bpc         = dtype.bitsPerChannel();
-    const int numChannels = dtype.numChannels();
-    for (int i = 1; i < numChannels; ++i)
-    {
-        if (bpc[i] != bpc[0])
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All channels must have same bit-depth");
-        }
-    }
-
-    return ClassifyDataType(bpc[0], dtype.dataKind());
-}
-
-inline DataTypeCode ClassifyDataType(const nvcv::ImageFormat &fmt)
-{
-    // numPlanes()/planeDataType() cross the nvcv shared-library boundary, so they cannot be hoisted
-    // by the compiler.
-    const int            numPlanes = fmt.numPlanes();
-    const nvcv::DataType plane0    = fmt.planeDataType(0);
-    for (int i = 1; i < numPlanes; ++i)
-    {
-        if (fmt.planeDataType(i) != plane0)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All planes must have the same data type");
-        }
-    }
-
-    return ClassifyDataType(plane0);
-}
+using cvcuda::priv::legacy_format::ClassifyDataFormat;
+using cvcuda::priv::legacy_format::ClassifyDataType;
+using cvcuda::priv::legacy_format::DataFormatCode;
+using cvcuda::priv::legacy_format::DataTypeCode;
+using cvcuda::priv::legacy_format::IsPlanar;
 
 // The exact set the operator admits: (unsigned, 8), (unsigned, 16), (signed, 16), (float, 16),
 // (float, 32) and (float, 64). OTSU and TRIANGLE narrow this further to 8-bit unsigned below.
@@ -194,58 +98,6 @@ inline void DispatchByDataType(DataTypeCode code, const Cb &cb)
     default: // DataTypeCode::kF64
         return cb(double{});
     }
-}
-
-inline DataFormatCode ClassifyDataFormat(const nvcv::TensorLayout &layout)
-{
-    if (layout == nvcv::TENSOR_NCHW)
-    {
-        return DataFormatCode::kNCHW;
-    }
-    if (layout == nvcv::TENSOR_CHW)
-    {
-        return DataFormatCode::kCHW;
-    }
-    if (layout == nvcv::TENSOR_NHWC)
-    {
-        return DataFormatCode::kNHWC;
-    }
-    if (layout == nvcv::TENSOR_HWC)
-    {
-        return DataFormatCode::kHWC;
-    }
-    throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Tensor layout not supported");
-}
-
-inline DataFormatCode ClassifyDataFormat(const nvcv::ImageBatchVarShapeDataStridedCuda &imgBatch)
-{
-    nvcv::ImageFormat fmt = imgBatch.uniqueFormat();
-    if (!fmt)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All images must have the same format");
-    }
-
-    const int            numPlanes = fmt.numPlanes();
-    const nvcv::DataType plane0    = fmt.planeDataType(0);
-    for (int i = 1; i < numPlanes; ++i)
-    {
-        if (fmt.planeDataType(i) != plane0)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All planes must have the same data type");
-        }
-    }
-
-    if (numPlanes >= 2)
-    {
-        if (numPlanes != fmt.numChannels())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Planar images must have one channel per plane");
-        }
-        return imgBatch.numImages() >= 2 ? DataFormatCode::kNCHW : DataFormatCode::kCHW;
-    }
-
-    return imgBatch.numImages() >= 2 ? DataFormatCode::kNHWC : DataFormatCode::kHWC;
 }
 
 // Validates the thresh / maxval parameter tensors, which must both be rank-1 F64 arrays of size N.
@@ -422,6 +274,60 @@ __device__ __forceinline__ T ThresholdValueDispatch(T inval, double th, double m
     {
         return ThresholdOverflowValue(inval, th, maxv, type);
     }
+}
+
+template<NVCVThresholdType Mode>
+inline constexpr bool UsesMaxval = Mode == NVCV_THRESH_BINARY || Mode == NVCV_THRESH_BINARY_INV;
+
+struct BinaryThresholdParameters
+{
+    cuda::Tensor1DWrap<double, int32_t> threshold;
+    cuda::Tensor1DWrap<double, int32_t> maxval;
+};
+
+template<NVCVThresholdType Mode>
+using ThresholdKernelParameters
+    = std::conditional_t<UsesMaxval<Mode>, BinaryThresholdParameters, cuda::Tensor1DWrap<double, int32_t>>;
+
+template<NVCVThresholdType Mode>
+__device__ __forceinline__ double ReadThreshold(ThresholdKernelParameters<Mode> parameters, int batch)
+{
+    if constexpr (UsesMaxval<Mode>)
+        return parameters.threshold[batch];
+    else
+        return parameters[batch];
+}
+
+#define NVCV_THRESHOLD_COMPARE(Mode, Type, Output, Input, Threshold, Maxval)   \
+    do                                                                         \
+    {                                                                          \
+        using Zero = std::conditional_t<UseGenericThreshold<Type>, Type, int>; \
+        if constexpr ((Mode) == NVCV_THRESH_BINARY)                            \
+            (Output) = (Input) > (Threshold) ? (Maxval) : Zero{0};             \
+        else if constexpr ((Mode) == NVCV_THRESH_BINARY_INV)                   \
+            (Output) = (Input) > (Threshold) ? Zero{0} : (Maxval);             \
+        else if constexpr ((Mode) == NVCV_THRESH_TRUNC)                        \
+            (Output) = (Input) > (Threshold) ? (Threshold) : (Input);          \
+        else if constexpr ((Mode) == NVCV_THRESH_TOZERO)                       \
+            (Output) = (Input) > (Threshold) ? (Input) : Zero{0};              \
+        else                                                                   \
+            (Output) = (Input) > (Threshold) ? Zero{0} : (Input);              \
+    }                                                                          \
+    while (false)
+
+template<NVCVThresholdType Mode, bool Below>
+inline constexpr bool CopyThresholdRange
+    = Below ? Mode == NVCV_THRESH_TOZERO : Mode == NVCV_THRESH_TRUNC || Mode == NVCV_THRESH_TOZERO_INV;
+
+template<NVCVThresholdType Mode, bool Below, typename T>
+__device__ __forceinline__ T ThresholdRangeValue(T maxval)
+{
+    if constexpr ((Below && Mode == NVCV_THRESH_BINARY) || (!Below && Mode == NVCV_THRESH_BINARY_INV))
+        return maxval;
+    else if constexpr (Below && Mode == NVCV_THRESH_TRUNC)
+        return cuda::TypeTraits<T>::min;
+    else
+        return 0;
 }
 
 // TRIANGLE threshold selection, shared by the tensor and var-shape paths: one block of 256 lanes per
@@ -909,6 +815,86 @@ __device__ __forceinline__ void OtsuCalBody(int *histogram, cuda::Tensor1DWrap<d
         thresh[(int)blockIdx.z] = (double)idx[0];
 }
 
+template<typename ImageWrap, typename... Dimensions>
+__global__ void Histogram(ImageWrap img, int *histogram, Dimensions... dimensions)
+{
+    __shared__ int hist[256];
+    int            localid = threadIdx.x;
+    hist[localid]          = 0;
+    __syncthreads();
+
+    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
+    if constexpr (std::is_same_v<ImageWrap, cuda::Tensor3DWrap<uchar, int32_t>>)
+    {
+        static_assert(sizeof...(Dimensions) == 2);
+        int sizes[]   = {dimensions...};
+        int rows      = sizes[0];
+        int cols      = sizes[1];
+        int threadCol = ceil((float)cols / 16);
+        int h         = globalid / threadCol;
+        int w         = (globalid % threadCol) * 16;
+        int batch     = blockIdx.z;
+
+        if (h < rows)
+        {
+            uchar *ptr = img.ptr(batch, h, w);
+            // Use a 16-byte vectorized load when the pointer is aligned and 16 bytes remain.
+            // When the tensor stride does not guarantee 16-byte alignment, or fewer than
+            // 16 columns remain, fall back to per-element loads to avoid out-of-bounds
+            // reads and misaligned-access crashes.
+            if (w + 16 <= cols && (reinterpret_cast<std::uintptr_t>(ptr) % 16) == 0)
+            {
+                int4   src   = *((int4 *)ptr);
+                uchar *inval = reinterpret_cast<uchar *>((void *)&src);
+                for (int i = 0; i < 16; i++) atomicAdd(&hist[inval[i]], 1);
+            }
+            else
+            {
+                int end = min(w + 16, cols);
+                for (int i = w; i < end; i++) atomicAdd(&hist[*img.ptr(batch, h, i)], 1);
+            }
+        }
+    }
+    else
+    {
+        static_assert(sizeof...(Dimensions) == 0);
+        int batch     = blockIdx.z;
+        int cols      = img.width(batch);
+        int rows      = img.height(batch);
+        int threadCol = ceil((float)cols / 16);
+        int h         = globalid / threadCol;
+        int w         = (globalid % threadCol) * 16;
+
+        if (h < rows)
+        {
+            if (w + 16 > cols)
+            {
+                for (int i = w; i < cols; i++) atomicAdd(&hist[*img.ptr(batch, h, i)], 1);
+            }
+            else
+            {
+                int4   src   = LoadPacked<int4>(img.ptr(batch, h, w));
+                uchar *inval = reinterpret_cast<uchar *>((void *)&src);
+                for (int i = 0; i < 16; i++) atomicAdd(&hist[inval[i]], 1);
+            }
+        }
+    }
+    __syncthreads();
+
+    int val = hist[localid];
+    if (val > 0)
+        atomicAdd(&histogram[blockIdx.z * 256 + localid], val);
+}
+
+template<typename Dimensions>
+__global__ void OtsuThreshold(int *histogram, cuda::Tensor1DWrap<double, int32_t> thresh, Dimensions dimensions)
+{
+    if constexpr (std::is_same_v<Dimensions, int>)
+        OtsuCalBody(histogram, thresh, dimensions);
+    else
+        OtsuCalBody(histogram, thresh, dimensions.width((int)blockIdx.z) * dimensions.height((int)blockIdx.z));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Tensor path
 // ---------------------------------------------------------------------------------------------
@@ -934,454 +920,108 @@ inline void ValidateTensorFitsInt32(const nvcv::TensorDataAccessStridedImagePlan
     }
 }
 
-template<typename P, typename SrcWrap, typename DstWrap>
-__global__ void Binary_overflow(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> _thresh,
-                                cuda::Tensor1DWrap<double, int32_t> _maxval, int height, int width, int channel)
+template<NVCVThresholdType Mode, typename P, typename SrcWrap, typename DstWrap>
+__device__ __forceinline__ void ThresholdInterleavedBody(SrcWrap src, DstWrap dst,
+                                                         ThresholdKernelParameters<Mode> parameters, int height,
+                                                         int width, int channel)
 {
     static_assert(std::is_same_v<SrcWrap, DstWrap>);
     using T = typename SrcWrap::ValueType;
 
-    int cn       = cuda::NumElements<P>;
-    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (globalid * cn >= height * width * channel)
+    int components = cuda::NumElements<P>;
+    int globalid   = blockIdx.x * blockDim.x + threadIdx.x;
+    if (globalid * components >= height * width * channel)
         return;
+    int row          = globalid / (width * channel / components);
+    int packedColumn = globalid % (width * channel / components);
+    int column       = (packedColumn * components) / channel;
+    int channelIndex = (packedColumn * components) % channel;
+    int batch        = blockIdx.z;
 
-    int h     = globalid / (width * channel / cn);
-    int wid   = globalid % (width * channel / cn);
-    int w     = (wid * cn) / channel;
-    int c     = (wid * cn) % channel;
-    int batch = blockIdx.z;
-
-    T      MAX     = cuda::TypeTraits<T>::max;
-    T      MIN     = cuda::TypeTraits<T>::min;
-    double maxv    = _maxval[batch];
-    double th      = _thresh[batch];
-    int    imaxval = round(maxv);
-    T      maxval  = cuda::SaturateCast<T>(imaxval);
-    int    ithresh = floor(th);
-    P      out;
-    if (ithresh >= MIN && ithresh <= MAX)
+    if constexpr (UseGenericThreshold<T>)
     {
-        T  thresh = (T)ithresh;
-        P  in     = *((P *)src.ptr(batch, h, w, c));
-        T *inval  = reinterpret_cast<T *>((void *)&in);
-        T  outval[4];
+        T maxval{};
+        if constexpr (UsesMaxval<Mode>)
+            maxval = (T)parameters.maxval[batch];
+        T  threshold = (T)ReadThreshold<Mode>(parameters, batch);
+        P  output;
+        P  input  = *((P *)src.ptr(batch, row, column, channelIndex));
+        T *values = reinterpret_cast<T *>((void *)&input);
+        T  outputValues[4];
 #pragma unroll
-        for (int i = 0; i < cn; i++)
+        for (int component = 0; component < components; component++)
         {
-            outval[i]                   = inval[i] > thresh ? maxval : 0;
-            cuda::GetElement<P>(out, i) = outval[i];
+            NVCV_THRESHOLD_COMPARE(Mode, T, outputValues[component], values[component], threshold, maxval);
+            cuda::GetElement<P>(output, component) = outputValues[component];
         }
-        *((P *)dst.ptr(batch, h, w, c)) = out;
-        return;
+        *((P *)dst.ptr(batch, row, column, channelIndex)) = output;
     }
-    if (ithresh < MIN)
+    else
     {
-        out                             = cuda::SetAll<P>(maxval);
-        *((P *)dst.ptr(batch, h, w, c)) = out;
-        return;
-    }
-
-    out                             = cuda::SetAll<P>(0);
-    *((P *)dst.ptr(batch, h, w, c)) = out;
-}
-
-template<typename P, typename SrcWrap, typename DstWrap>
-__global__ void Binary_Generic(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> _thresh,
-                               cuda::Tensor1DWrap<double, int32_t> _maxval, int height, int width, int channel)
-{
-    static_assert(std::is_same_v<SrcWrap, DstWrap>);
-    using T      = typename SrcWrap::ValueType;
-    int cn       = cuda::NumElements<P>;
-    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (globalid * cn >= height * width * channel)
-        return;
-    int h     = globalid / (width * channel / cn);
-    int wid   = globalid % (width * channel / cn);
-    int w     = (wid * cn) / channel;
-    int c     = (wid * cn) % channel;
-    int batch = blockIdx.z;
-
-    T maxval = (T)_maxval[batch];
-    T thresh = (T)_thresh[batch];
-
-    P  out;
-    P  in    = *((P *)src.ptr(batch, h, w, c));
-    T *inval = reinterpret_cast<T *>((void *)&in);
-    T  outval[4];
-#pragma unroll
-    for (int i = 0; i < cn; i++)
-    {
-        // (T)0 keeps both conditional operands a single type; the mixed __half/int conditional
-        // is ambiguous (same in the other Generic kernels below).
-        outval[i]                   = inval[i] > thresh ? maxval : (T)0;
-        cuda::GetElement<P>(out, i) = outval[i];
-    }
-    *((P *)dst.ptr(batch, h, w, c)) = out;
-}
-
-template<typename P, typename SrcWrap, typename DstWrap>
-__global__ void BinaryInv_overflow(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> _thresh,
-                                   cuda::Tensor1DWrap<double, int32_t> _maxval, int height, int width, int channel)
-{
-    static_assert(std::is_same_v<SrcWrap, DstWrap>);
-    using T = typename SrcWrap::ValueType;
-
-    int cn       = cuda::NumElements<P>;
-    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (globalid * cn >= height * width * channel)
-        return;
-    int h     = globalid / (width * channel / cn);
-    int wid   = globalid % (width * channel / cn);
-    int w     = (wid * cn) / channel;
-    int c     = (wid * cn) % channel;
-    int batch = blockIdx.z;
-
-    T      MAX     = cuda::TypeTraits<T>::max;
-    T      MIN     = cuda::TypeTraits<T>::min;
-    double maxv    = _maxval[batch];
-    double th      = _thresh[batch];
-    int    imaxval = round(maxv);
-    T      maxval  = cuda::SaturateCast<T>(imaxval);
-    int    ithresh = floor(th);
-    P      out;
-    if (ithresh >= MIN && ithresh <= MAX)
-    {
-        T  thresh = (T)ithresh;
-        P  in     = *((P *)src.ptr(batch, h, w, c));
-        T *inval  = reinterpret_cast<T *>((void *)&in);
-        T  outval[4];
-#pragma unroll
-        for (int i = 0; i < cn; i++)
+        T      maximum = cuda::TypeTraits<T>::max;
+        T      minimum = cuda::TypeTraits<T>::min;
+        double maxvalue{};
+        if constexpr (UsesMaxval<Mode>)
+            maxvalue = parameters.maxval[batch];
+        double thresholdValue = ReadThreshold<Mode>(parameters, batch);
+        T      maxval{};
+        if constexpr (UsesMaxval<Mode>)
         {
-            outval[i]                   = inval[i] > thresh ? 0 : maxval;
-            cuda::GetElement<P>(out, i) = outval[i];
+            int roundedMaxval = round(maxvalue);
+            maxval            = cuda::SaturateCast<T>(roundedMaxval);
         }
-        *((P *)dst.ptr(batch, h, w, c)) = out;
-        return;
-    }
-    if (ithresh < MIN)
-    {
-        out                             = cuda::SetAll<P>(0);
-        *((P *)dst.ptr(batch, h, w, c)) = out;
-        return;
-    }
-
-    out                             = cuda::SetAll<P>(maxval);
-    *((P *)dst.ptr(batch, h, w, c)) = out;
-}
-
-template<typename P, typename SrcWrap, typename DstWrap>
-__global__ void BinaryInv_Generic(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> _thresh,
-                                  cuda::Tensor1DWrap<double, int32_t> _maxval, int height, int width, int channel)
-{
-    static_assert(std::is_same_v<SrcWrap, DstWrap>);
-    using T = typename SrcWrap::ValueType;
-
-    int cn       = cuda::NumElements<P>;
-    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (globalid * cn >= height * width * channel)
-        return;
-    int h     = globalid / (width * channel / cn);
-    int wid   = globalid % (width * channel / cn);
-    int w     = (wid * cn) / channel;
-    int c     = (wid * cn) % channel;
-    int batch = blockIdx.z;
-
-    T maxval = (T)_maxval[batch];
-    T thresh = (T)_thresh[batch];
-
-    P  out;
-    P  in    = *((P *)src.ptr(batch, h, w, c));
-    T *inval = reinterpret_cast<T *>((void *)&in);
-    T  outval[4];
-#pragma unroll
-    for (int i = 0; i < cn; i++)
-    {
-        outval[i]                   = inval[i] > thresh ? (T)0 : maxval;
-        cuda::GetElement<P>(out, i) = outval[i];
-    }
-    *((P *)dst.ptr(batch, h, w, c)) = out;
-}
-
-template<typename P, typename SrcWrap, typename DstWrap>
-__global__ void Trunc_overflow(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> _thresh, int height,
-                               int width, int channel)
-{
-    static_assert(std::is_same_v<SrcWrap, DstWrap>);
-    using T = typename SrcWrap::ValueType;
-
-    int cn       = cuda::NumElements<P>;
-    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (globalid * cn >= height * width * channel)
-        return;
-    int h     = globalid / (width * channel / cn);
-    int wid   = globalid % (width * channel / cn);
-    int w     = (wid * cn) / channel;
-    int c     = (wid * cn) % channel;
-    int batch = blockIdx.z;
-
-    T      MAX     = cuda::TypeTraits<T>::max;
-    T      MIN     = cuda::TypeTraits<T>::min;
-    double th      = _thresh[batch];
-    int    ithresh = floor(th);
-    P      out;
-    if (ithresh >= MIN && ithresh <= MAX)
-    {
-        T  thresh = (T)ithresh;
-        P  in     = *((P *)src.ptr(batch, h, w, c));
-        T *inval  = reinterpret_cast<T *>((void *)&in);
-        T  outval[4];
-#pragma unroll
-        for (int i = 0; i < cn; i++)
+        int integerThreshold = floor(thresholdValue);
+        P   output;
+        if (integerThreshold >= minimum && integerThreshold <= maximum)
         {
-            outval[i]                   = inval[i] > thresh ? thresh : inval[i];
-            cuda::GetElement<P>(out, i) = outval[i];
+            T  threshold = (T)integerThreshold;
+            P  input     = *((P *)src.ptr(batch, row, column, channelIndex));
+            T *values    = reinterpret_cast<T *>((void *)&input);
+            T  outputValues[4];
+#pragma unroll
+            for (int component = 0; component < components; component++)
+            {
+                NVCV_THRESHOLD_COMPARE(Mode, T, outputValues[component], values[component], threshold, maxval);
+                cuda::GetElement<P>(output, component) = outputValues[component];
+            }
+            *((P *)dst.ptr(batch, row, column, channelIndex)) = output;
+            return;
         }
-        *((P *)dst.ptr(batch, h, w, c)) = out;
-        return;
-    }
-    if (ithresh < MIN)
-    {
-        out                             = cuda::SetAll<P>(MIN);
-        *((P *)dst.ptr(batch, h, w, c)) = out;
-        return;
-    }
-
-    *((P *)dst.ptr(batch, h, w, c)) = *((P *)src.ptr(batch, h, w, c));
-}
-
-template<typename P, typename SrcWrap, typename DstWrap>
-__global__ void Trunc_Generic(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> _thresh, int height,
-                              int width, int channel)
-{
-    static_assert(std::is_same_v<SrcWrap, DstWrap>);
-    using T = typename SrcWrap::ValueType;
-
-    int cn       = cuda::NumElements<P>;
-    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (globalid * cn >= height * width * channel)
-        return;
-    int h     = globalid / (width * channel / cn);
-    int wid   = globalid % (width * channel / cn);
-    int w     = (wid * cn) / channel;
-    int c     = (wid * cn) % channel;
-    int batch = blockIdx.z;
-
-    T  thresh = (T)_thresh[batch];
-    P  out;
-    P  in    = *((P *)src.ptr(batch, h, w, c));
-    T *inval = reinterpret_cast<T *>((void *)&in);
-    T  outval[4];
-#pragma unroll
-    for (int i = 0; i < cn; i++)
-    {
-        outval[i]                   = inval[i] > thresh ? thresh : inval[i];
-        cuda::GetElement<P>(out, i) = outval[i];
-    }
-    *((P *)dst.ptr(batch, h, w, c)) = out;
-}
-
-template<typename P, typename SrcWrap, typename DstWrap>
-__global__ void Tozero_overflow(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> _thresh, int height,
-                                int width, int channel)
-{
-    static_assert(std::is_same_v<SrcWrap, DstWrap>);
-    using T = typename SrcWrap::ValueType;
-
-    int cn       = cuda::NumElements<P>;
-    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (globalid * cn >= height * width * channel)
-        return;
-    int h     = globalid / (width * channel / cn);
-    int wid   = globalid % (width * channel / cn);
-    int w     = (wid * cn) / channel;
-    int c     = (wid * cn) % channel;
-    int batch = blockIdx.z;
-
-    T      MAX     = cuda::TypeTraits<T>::max;
-    T      MIN     = cuda::TypeTraits<T>::min;
-    double th      = _thresh[batch];
-    int    ithresh = floor(th);
-    P      out;
-    if (ithresh >= MIN && ithresh <= MAX)
-    {
-        T  thresh = (T)ithresh;
-        P  in     = *((P *)src.ptr(batch, h, w, c));
-        T *inval  = reinterpret_cast<T *>((void *)&in);
-        T  outval[4];
-#pragma unroll
-        for (int i = 0; i < cn; i++)
+        if (integerThreshold < minimum)
         {
-            outval[i]                   = inval[i] > thresh ? inval[i] : 0;
-            cuda::GetElement<P>(out, i) = outval[i];
+            if constexpr (CopyThresholdRange<Mode, true>)
+                *((P *)dst.ptr(batch, row, column, channelIndex)) = *((P *)src.ptr(batch, row, column, channelIndex));
+            else
+            {
+                output = cuda::SetAll<P>(ThresholdRangeValue<Mode, true>(maxval));
+                *((P *)dst.ptr(batch, row, column, channelIndex)) = output;
+            }
+            return;
         }
-        *((P *)dst.ptr(batch, h, w, c)) = out;
-        return;
-    }
-    if (ithresh < MIN)
-    {
-        *((P *)dst.ptr(batch, h, w, c)) = *((P *)src.ptr(batch, h, w, c));
-        return;
-    }
-
-    out                             = cuda::SetAll<P>(0);
-    *((P *)dst.ptr(batch, h, w, c)) = out;
-}
-
-template<typename P, typename SrcWrap, typename DstWrap>
-__global__ void Tozero_Generic(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> _thresh, int height,
-                               int width, int channel)
-{
-    static_assert(std::is_same_v<SrcWrap, DstWrap>);
-    using T = typename SrcWrap::ValueType;
-
-    int cn       = cuda::NumElements<P>;
-    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (globalid * cn >= height * width * channel)
-        return;
-    int h     = globalid / (width * channel / cn);
-    int wid   = globalid % (width * channel / cn);
-    int w     = (wid * cn) / channel;
-    int c     = (wid * cn) % channel;
-    int batch = blockIdx.z;
-
-    T thresh = (T)_thresh[batch];
-
-    P  out;
-    P  in    = *((P *)src.ptr(batch, h, w, c));
-    T *inval = reinterpret_cast<T *>((void *)&in);
-    T  outval[4];
-#pragma unroll
-    for (int i = 0; i < cn; i++)
-    {
-        outval[i]                   = inval[i] > thresh ? inval[i] : (T)0;
-        cuda::GetElement<P>(out, i) = outval[i];
-    }
-    *((P *)dst.ptr(batch, h, w, c)) = out;
-}
-
-template<typename P, typename SrcWrap, typename DstWrap>
-__global__ void TozeroInv_overflow(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> _thresh, int height,
-                                   int width, int channel)
-{
-    static_assert(std::is_same_v<SrcWrap, DstWrap>);
-    using T = typename SrcWrap::ValueType;
-
-    int cn       = cuda::NumElements<P>;
-    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (globalid * cn >= height * width * channel)
-        return;
-    int h     = globalid / (width * channel / cn);
-    int wid   = globalid % (width * channel / cn);
-    int w     = (wid * cn) / channel;
-    int c     = (wid * cn) % channel;
-    int batch = blockIdx.z;
-
-    T      MAX     = cuda::TypeTraits<T>::max;
-    T      MIN     = cuda::TypeTraits<T>::min;
-    double th      = _thresh[batch];
-    int    ithresh = floor(th);
-    P      out;
-    if (ithresh >= MIN && ithresh <= MAX)
-    {
-        T  thresh = (T)ithresh;
-        P  in     = *((P *)src.ptr(batch, h, w, c));
-        T *inval  = reinterpret_cast<T *>((void *)&in);
-        T  outval[4];
-#pragma unroll
-        for (int i = 0; i < cn; i++)
-        {
-            outval[i]                   = inval[i] > thresh ? 0 : inval[i];
-            cuda::GetElement<P>(out, i) = outval[i];
-        }
-        *((P *)dst.ptr(batch, h, w, c)) = out;
-        return;
-    }
-    if (ithresh < MIN)
-    {
-        out                             = cuda::SetAll<P>(0);
-        *((P *)dst.ptr(batch, h, w, c)) = out;
-        return;
-    }
-
-    *((P *)dst.ptr(batch, h, w, c)) = *((P *)src.ptr(batch, h, w, c));
-}
-
-template<typename P, typename SrcWrap, typename DstWrap>
-__global__ void TozeroInv_Generic(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> _thresh, int height,
-                                  int width, int channel)
-{
-    static_assert(std::is_same_v<SrcWrap, DstWrap>);
-    using T = typename SrcWrap::ValueType;
-
-    int cn       = cuda::NumElements<P>;
-    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (globalid * cn >= height * width * channel)
-        return;
-    int h     = globalid / (width * channel / cn);
-    int wid   = globalid % (width * channel / cn);
-    int w     = (wid * cn) / channel;
-    int c     = (wid * cn) % channel;
-    int batch = blockIdx.z;
-
-    T thresh = (T)_thresh[batch];
-
-    P  out;
-    P  in    = *((P *)src.ptr(batch, h, w, c));
-    T *inval = reinterpret_cast<T *>((void *)&in);
-    T  outval[4];
-#pragma unroll
-    for (int i = 0; i < cn; i++)
-    {
-        outval[i]                   = inval[i] > thresh ? (T)0 : inval[i];
-        cuda::GetElement<P>(out, i) = outval[i];
-    }
-    *((P *)dst.ptr(batch, h, w, c)) = out;
-}
-
-__global__ void hist_kernel(cuda::Tensor3DWrap<uchar, int32_t> img, int *histogram, int rows, int cols)
-{
-    __shared__ int hist[256];
-    int            localid = threadIdx.x;
-    hist[localid]          = 0;
-    __syncthreads();
-
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int threadCol = ceil((float)cols / 16);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * 16;
-    int batch     = blockIdx.z;
-
-    if (h < rows)
-    {
-        uchar *ptr = img.ptr(batch, h, w);
-        // Use a 16-byte vectorized load when the pointer is aligned and 16 bytes remain.
-        // When the tensor stride does not guarantee 16-byte alignment, or fewer than
-        // 16 columns remain, fall back to per-element loads to avoid out-of-bounds
-        // reads and misaligned-access crashes.
-        if (w + 16 <= cols && (reinterpret_cast<std::uintptr_t>(ptr) % 16) == 0)
-        {
-            int4   src   = *((int4 *)ptr);
-            uchar *inval = reinterpret_cast<uchar *>((void *)&src);
-            for (int i = 0; i < 16; i++) atomicAdd(&hist[inval[i]], 1);
-        }
+        if constexpr (CopyThresholdRange<Mode, false>)
+            *((P *)dst.ptr(batch, row, column, channelIndex)) = *((P *)src.ptr(batch, row, column, channelIndex));
         else
         {
-            int end = min(w + 16, cols);
-            for (int i = w; i < end; i++) atomicAdd(&hist[*img.ptr(batch, h, i)], 1);
+            output = cuda::SetAll<P>(ThresholdRangeValue<Mode, false>(maxval));
+            *((P *)dst.ptr(batch, row, column, channelIndex)) = output;
         }
     }
-    __syncthreads();
-
-    int val = hist[localid];
-    if (val > 0)
-        atomicAdd(&histogram[blockIdx.z * 256 + localid], val);
 }
 
-__global__ void otsu_cal(int *histogram, cuda::Tensor1DWrap<double, int32_t> thresh, int size)
+template<NVCVThresholdType Mode, typename P, typename SrcWrap, typename DstWrap>
+__global__ void ThresholdInterleaved(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> thresh,
+                                     cuda::Tensor1DWrap<double, int32_t> maxval, int height, int width, int channel)
 {
-    OtsuCalBody(histogram, thresh, size);
+    static_assert(UsesMaxval<Mode>);
+    ThresholdInterleavedBody<Mode, P>(src, dst, BinaryThresholdParameters{thresh, maxval}, height, width, channel);
+}
+
+template<NVCVThresholdType Mode, typename P, typename SrcWrap, typename DstWrap>
+__global__ void ThresholdInterleaved(SrcWrap src, DstWrap dst, cuda::Tensor1DWrap<double, int32_t> thresh, int height,
+                                     int width, int channel)
+{
+    static_assert(!UsesMaxval<Mode>);
+    ThresholdInterleavedBody<Mode, P>(src, dst, thresh, height, width, channel);
 }
 
 template<typename T, typename SrcWrap, typename DstWrap>
@@ -1439,41 +1079,27 @@ void thresholdDispatch(const nvcv::TensorDataStridedCuda &input, const nvcv::Ten
     dim3 block(256);
     dim3 grid(util::DivUp(size, static_cast<int>(block.x) * N), 1, batch);
 
-    constexpr bool useGeneric = UseGenericThreshold<T>;
-
     switch (type)
     {
     case NVCV_THRESH_BINARY:
-        if constexpr (useGeneric)
-            Binary_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
-        else
-            Binary_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
+        ThresholdInterleaved<NVCV_THRESH_BINARY, vectype>
+            <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
         break;
     case NVCV_THRESH_BINARY_INV:
-        if constexpr (useGeneric)
-            BinaryInv_Generic<vectype>
-                <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
-        else
-            BinaryInv_overflow<vectype>
-                <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
+        ThresholdInterleaved<NVCV_THRESH_BINARY_INV, vectype>
+            <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
         break;
     case NVCV_THRESH_TRUNC:
-        if constexpr (useGeneric)
-            Trunc_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
-        else
-            Trunc_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
+        ThresholdInterleaved<NVCV_THRESH_TRUNC, vectype>
+            <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         break;
     case NVCV_THRESH_TOZERO:
-        if constexpr (useGeneric)
-            Tozero_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
-        else
-            Tozero_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
+        ThresholdInterleaved<NVCV_THRESH_TOZERO, vectype>
+            <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         break;
-    default: //NVCV_THRESH_TOZERO_INV
-        if constexpr (useGeneric)
-            TozeroInv_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
-        else
-            TozeroInv_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
+    default:
+        ThresholdInterleaved<NVCV_THRESH_TOZERO_INV, vectype>
+            <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         break;
     }
 
@@ -1549,7 +1175,7 @@ inline void AccumulateHistogram(const nvcv::TensorDataStridedCuda &inData, int *
     dim3 block(256);
     int  td = util::DivUp(cols, 16) * rows;
     dim3 grid(util::DivUp(td, 256), 1, batch);
-    hist_kernel<<<grid, block, 0, stream>>>(wrap, histogram, rows, cols);
+    Histogram<<<grid, block, 0, stream>>>(wrap, histogram, rows, cols);
 }
 
 inline void getThreshVal_Triangle(const nvcv::TensorDataStridedCuda &inData,
@@ -1572,7 +1198,7 @@ inline void getThreshVal_Otsu(const nvcv::TensorDataStridedCuda &inData, const n
     cuda::Tensor1DWrap<double, int32_t> thresh(threshold);
     dim3                                block2(256);
     dim3                                grid2(1, 1, batch);
-    otsu_cal<<<grid2, block2, 0, stream>>>(histogram, thresh, rows * cols);
+    OtsuThreshold<<<grid2, block2, 0, stream>>>(histogram, thresh, rows * cols);
 }
 
 inline void RunThresholdScale(DataTypeCode code, const nvcv::TensorDataStridedCuda &input,
@@ -1632,88 +1258,171 @@ __device__ __forceinline__ uint4 BinaryThresholdU8Pack(uint4 in, uchar thresh, u
     return out;
 }
 
-template<typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
-__global__ void Binary_overflow(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                                cuda::Tensor1DWrap<double, int32_t> _thresh,
-                                cuda::Tensor1DWrap<double, int32_t> _maxval, int channel)
+template<NVCVThresholdType Mode, typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
+__device__ __forceinline__ void ThresholdInterleavedBody(cuda::ImageBatchVarShapeWrapNHWC<T> src,
+                                                         cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                                         ThresholdKernelParameters<Mode> parameters, int channel)
 {
-    int cn        = cuda::NumElements<P>;
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int width     = src.width(batch);
-    int height    = src.height(batch);
-    int threadCol = ceil((float)width * channel / cn);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * cn;
-    if (h >= height || w >= width * channel)
+    int components = cuda::NumElements<P>;
+    int globalid   = blockIdx.x * blockDim.x + threadIdx.x;
+    int batch      = blockIdx.z;
+    int width      = src.width(batch);
+    int height     = src.height(batch);
+    int threadCol  = ceil((float)width * channel / components);
+    int row        = globalid / threadCol;
+    int column     = (globalid % threadCol) * components;
+    if (row >= height || column >= width * channel)
         return;
 
-    T      MAX     = cuda::TypeTraits<T>::max;
-    T      MIN     = cuda::TypeTraits<T>::min;
-    double maxv    = _maxval[batch];
-    double th      = _thresh[batch];
-    int    imaxval = round(maxv);
-    T      maxval  = cuda::SaturateCast<T>(imaxval);
-    int    ithresh = floor(th);
-
-    int loop = width * channel - w;
-    int c    = w % channel;
-    w        = w / channel;
-    if (loop >= cn)
+    if constexpr (UseGenericThreshold<T>)
     {
-        P out;
-        if (ithresh >= MIN && ithresh <= MAX)
+        T maxval{};
+        if constexpr (UsesMaxval<Mode>)
+            maxval = (T)parameters.maxval[batch];
+        T   threshold    = (T)ReadThreshold<Mode>(parameters, batch);
+        int remaining    = width * channel - column;
+        int channelIndex = column % channel;
+        column           = column / channel;
+        if (remaining >= components)
         {
-            T  thresh = (T)ithresh;
-            P  in     = LoadPacked<P>(src.ptr(batch, h, w, c));
-            T *inval  = reinterpret_cast<T *>((void *)&in);
-            T  outval[4];
+            P  output;
+            P  input  = LoadPacked<P>(src.ptr(batch, row, column, channelIndex));
+            T *values = reinterpret_cast<T *>((void *)&input);
+            T  outputValues[4];
 #pragma unroll
-            for (int i = 0; i < cn; i++)
+            for (int component = 0; component < components; component++)
             {
-                outval[i]                   = inval[i] > thresh ? maxval : 0;
-                cuda::GetElement<P>(out, i) = outval[i];
+                NVCV_THRESHOLD_COMPARE(Mode, T, outputValues[component], values[component], threshold, maxval);
+                cuda::GetElement<P>(output, component) = outputValues[component];
             }
-            StorePacked(dst.ptr(batch, h, w, c), out);
-            return;
+            StorePacked(dst.ptr(batch, row, column, channelIndex), output);
         }
-        if (ithresh < MIN)
+        else
         {
-            out = cuda::SetAll<P>(maxval);
-            StorePacked(dst.ptr(batch, h, w, c), out);
-            return;
+#pragma unroll
+            for (int component = 0; component < remaining; component++)
+            {
+                T input = *(src.ptr(batch, row, column, channelIndex) + component);
+                NVCV_THRESHOLD_COMPARE(Mode, T, *(dst.ptr(batch, row, column, channelIndex) + component), input,
+                                       threshold, maxval);
+            }
         }
-
-        out = cuda::SetAll<P>(0);
-        StorePacked(dst.ptr(batch, h, w, c), out);
     }
     else
     {
-        if (ithresh >= MIN && ithresh <= MAX)
+        T      maximum = cuda::TypeTraits<T>::max;
+        T      minimum = cuda::TypeTraits<T>::min;
+        double maxvalue{};
+        if constexpr (UsesMaxval<Mode>)
+            maxvalue = parameters.maxval[batch];
+        double thresholdValue = ReadThreshold<Mode>(parameters, batch);
+        T      maxval{};
+        if constexpr (UsesMaxval<Mode>)
         {
-            T thresh = (T)ithresh;
-#pragma unroll
-            for (int i = 0; i < loop; i++)
+            int roundedMaxval = round(maxvalue);
+            maxval            = cuda::SaturateCast<T>(roundedMaxval);
+        }
+        int integerThreshold = floor(thresholdValue);
+        int remaining        = width * channel - column;
+        int channelIndex     = column % channel;
+        column               = column / channel;
+        if (remaining >= components)
+        {
+            P output;
+            if (integerThreshold >= minimum && integerThreshold <= maximum)
             {
-                T inval                        = *(src.ptr(batch, h, w, c) + i);
-                *(dst.ptr(batch, h, w, c) + i) = inval > thresh ? maxval : 0;
+                T  threshold = (T)integerThreshold;
+                P  input     = LoadPacked<P>(src.ptr(batch, row, column, channelIndex));
+                T *values    = reinterpret_cast<T *>((void *)&input);
+                T  outputValues[4];
+#pragma unroll
+                for (int component = 0; component < components; component++)
+                {
+                    NVCV_THRESHOLD_COMPARE(Mode, T, outputValues[component], values[component], threshold, maxval);
+                    cuda::GetElement<P>(output, component) = outputValues[component];
+                }
+                StorePacked(dst.ptr(batch, row, column, channelIndex), output);
+                return;
             }
-            return;
+            if (integerThreshold < minimum)
+            {
+                if constexpr (CopyThresholdRange<Mode, true>)
+                    StorePacked(dst.ptr(batch, row, column, channelIndex),
+                                LoadPacked<P>(src.ptr(batch, row, column, channelIndex)));
+                else
+                {
+                    output = cuda::SetAll<P>(ThresholdRangeValue<Mode, true>(maxval));
+                    StorePacked(dst.ptr(batch, row, column, channelIndex), output);
+                }
+                return;
+            }
+            if constexpr (CopyThresholdRange<Mode, false>)
+                StorePacked(dst.ptr(batch, row, column, channelIndex),
+                            LoadPacked<P>(src.ptr(batch, row, column, channelIndex)));
+            else
+            {
+                output = cuda::SetAll<P>(ThresholdRangeValue<Mode, false>(maxval));
+                StorePacked(dst.ptr(batch, row, column, channelIndex), output);
+            }
         }
-        if (ithresh < MIN)
+        else
         {
+            if (integerThreshold >= minimum && integerThreshold <= maximum)
+            {
+                T threshold = (T)integerThreshold;
 #pragma unroll
-            for (int i = 0; i < loop; i++) *(dst.ptr(batch, h, w, c) + i) = maxval;
-            return;
+                for (int component = 0; component < remaining; component++)
+                {
+                    T input = *(src.ptr(batch, row, column, channelIndex) + component);
+                    NVCV_THRESHOLD_COMPARE(Mode, T, *(dst.ptr(batch, row, column, channelIndex) + component), input,
+                                           threshold, maxval);
+                }
+                return;
+            }
+            if (integerThreshold < minimum)
+            {
+#pragma unroll
+                for (int component = 0; component < remaining; component++)
+                {
+                    if constexpr (CopyThresholdRange<Mode, true>)
+                        *(dst.ptr(batch, row, column, channelIndex) + component)
+                            = *(src.ptr(batch, row, column, channelIndex) + component);
+                    else
+                        *(dst.ptr(batch, row, column, channelIndex) + component)
+                            = ThresholdRangeValue<Mode, true>(maxval);
+                }
+                return;
+            }
+#pragma unroll
+            for (int component = 0; component < remaining; component++)
+            {
+                if constexpr (CopyThresholdRange<Mode, false>)
+                    *(dst.ptr(batch, row, column, channelIndex) + component)
+                        = *(src.ptr(batch, row, column, channelIndex) + component);
+                else
+                    *(dst.ptr(batch, row, column, channelIndex) + component) = ThresholdRangeValue<Mode, false>(maxval);
+            }
         }
-
-#pragma unroll
-        for (int i = 0; i < loop; i++) *(dst.ptr(batch, h, w, c) + i) = 0;
     }
 }
 
-// Sixteen-byte element batching for the 8-bit binary case: four times the elements per thread of the
-// generic packed path, with an unaligned fallback because var-shape rows are not guaranteed aligned.
+template<NVCVThresholdType Mode, typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
+__global__ void ThresholdInterleaved(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                     cuda::Tensor1DWrap<double, int32_t> thresh,
+                                     cuda::Tensor1DWrap<double, int32_t> maxval, int channel)
+{
+    static_assert(UsesMaxval<Mode>);
+    ThresholdInterleavedBody<Mode, T, P>(src, dst, BinaryThresholdParameters{thresh, maxval}, channel);
+}
+
+template<NVCVThresholdType Mode, typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
+__global__ void ThresholdInterleaved(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                     cuda::Tensor1DWrap<double, int32_t> thresh, int channel)
+{
+    static_assert(!UsesMaxval<Mode>);
+    ThresholdInterleavedBody<Mode, T, P>(src, dst, thresh, channel);
+}
+
 __global__ void Binary_overflow_u8_nix16(cuda::ImageBatchVarShapeWrapNHWC<uchar> src,
                                          cuda::ImageBatchVarShapeWrapNHWC<uchar> dst,
                                          cuda::Tensor1DWrap<double, int32_t>     _thresh,
@@ -1808,539 +1517,6 @@ __global__ void Binary_overflow_u8_nix16(cuda::ImageBatchVarShapeWrapNHWC<uchar>
     }
 }
 
-template<typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
-__global__ void Binary_Generic(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                               cuda::Tensor1DWrap<double, int32_t> _thresh, cuda::Tensor1DWrap<double, int32_t> _maxval,
-                               int channel)
-{
-    int cn        = cuda::NumElements<P>;
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int width     = src.width(batch);
-    int height    = src.height(batch);
-    int threadCol = ceil((float)width * channel / cn);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * cn;
-    if (h >= height || w >= width * channel)
-        return;
-
-    T   maxval = (T)_maxval[batch];
-    T   thresh = (T)_thresh[batch];
-    int loop   = width * channel - w;
-    int c      = w % channel;
-    w          = w / channel;
-
-    if (loop >= cn)
-    {
-        P  out;
-        P  in    = LoadPacked<P>(src.ptr(batch, h, w, c));
-        T *inval = reinterpret_cast<T *>((void *)&in);
-        T  outval[4];
-#pragma unroll
-        for (int i = 0; i < cn; i++)
-        {
-            // (T)0 keeps both conditional operands a single type; the mixed __half/int
-            // conditional is ambiguous (same in the other Generic kernels below).
-            outval[i]                   = inval[i] > thresh ? maxval : (T)0;
-            cuda::GetElement<P>(out, i) = outval[i];
-        }
-        StorePacked(dst.ptr(batch, h, w, c), out);
-    }
-    else
-    {
-#pragma unroll
-        for (int i = 0; i < loop; i++)
-        {
-            T inval                        = *(src.ptr(batch, h, w, c) + i);
-            *(dst.ptr(batch, h, w, c) + i) = inval > thresh ? maxval : (T)0;
-        }
-    }
-}
-
-template<typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
-__global__ void BinaryInv_overflow(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                                   cuda::Tensor1DWrap<double, int32_t> _thresh,
-                                   cuda::Tensor1DWrap<double, int32_t> _maxval, int channel)
-{
-    int cn        = cuda::NumElements<P>;
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int width     = src.width(batch);
-    int height    = src.height(batch);
-    int threadCol = ceil((float)width * channel / cn);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * cn;
-    if (h >= height || w >= width * channel)
-        return;
-
-    T      MAX     = cuda::TypeTraits<T>::max;
-    T      MIN     = cuda::TypeTraits<T>::min;
-    double maxv    = _maxval[batch];
-    double th      = _thresh[batch];
-    int    imaxval = round(maxv);
-    T      maxval  = cuda::SaturateCast<T>(imaxval);
-    int    ithresh = floor(th);
-
-    int loop = width * channel - w;
-    int c    = w % channel;
-    w        = w / channel;
-    if (loop >= cn)
-    {
-        P out;
-        if (ithresh >= MIN && ithresh <= MAX)
-        {
-            T  thresh = (T)ithresh;
-            P  in     = LoadPacked<P>(src.ptr(batch, h, w, c));
-            T *inval  = reinterpret_cast<T *>((void *)&in);
-            T  outval[4];
-#pragma unroll
-            for (int i = 0; i < cn; i++)
-            {
-                outval[i]                   = inval[i] > thresh ? 0 : maxval;
-                cuda::GetElement<P>(out, i) = outval[i];
-            }
-            StorePacked(dst.ptr(batch, h, w, c), out);
-            return;
-        }
-        if (ithresh < MIN)
-        {
-            out = cuda::SetAll<P>(0);
-            StorePacked(dst.ptr(batch, h, w, c), out);
-            return;
-        }
-
-        out = cuda::SetAll<P>(maxval);
-        StorePacked(dst.ptr(batch, h, w, c), out);
-    }
-    else
-    {
-        if (ithresh >= MIN && ithresh <= MAX)
-        {
-            T thresh = (T)ithresh;
-#pragma unroll
-            for (int i = 0; i < loop; i++)
-                *(dst.ptr(batch, h, w, c) + i) = *(src.ptr(batch, h, w, c) + i) > thresh ? 0 : maxval;
-            return;
-        }
-        if (ithresh < MIN)
-        {
-#pragma unroll
-            for (int i = 0; i < loop; i++) *(dst.ptr(batch, h, w, c) + i) = 0;
-            return;
-        }
-
-#pragma unroll
-        for (int i = 0; i < loop; i++) *(dst.ptr(batch, h, w, c) + i) = maxval;
-    }
-}
-
-template<typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
-__global__ void BinaryInv_Generic(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                                  cuda::Tensor1DWrap<double, int32_t> _thresh,
-                                  cuda::Tensor1DWrap<double, int32_t> _maxval, int channel)
-{
-    int cn        = cuda::NumElements<P>;
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int width     = src.width(batch);
-    int height    = src.height(batch);
-    int threadCol = ceil((float)width * channel / cn);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * cn;
-    if (h >= height || w >= width * channel)
-        return;
-
-    T   maxval = (T)_maxval[batch];
-    T   thresh = (T)_thresh[batch];
-    int loop   = width * channel - w;
-    int c      = w % channel;
-    w          = w / channel;
-
-    if (loop >= cn)
-    {
-        P  out;
-        P  in    = LoadPacked<P>(src.ptr(batch, h, w, c));
-        T *inval = reinterpret_cast<T *>((void *)&in);
-        T  outval[4];
-#pragma unroll
-        for (int i = 0; i < cn; i++)
-        {
-            outval[i]                   = inval[i] > thresh ? (T)0 : maxval;
-            cuda::GetElement<P>(out, i) = outval[i];
-        }
-        StorePacked(dst.ptr(batch, h, w, c), out);
-    }
-    else
-    {
-#pragma unroll
-        for (int i = 0; i < loop; i++)
-        {
-            T inval                        = *(src.ptr(batch, h, w, c) + i);
-            *(dst.ptr(batch, h, w, c) + i) = inval > thresh ? (T)0 : maxval;
-        }
-    }
-}
-
-template<typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
-__global__ void Trunc_overflow(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                               cuda::Tensor1DWrap<double, int32_t> _thresh, int channel)
-{
-    int cn        = cuda::NumElements<P>;
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int width     = src.width(batch);
-    int height    = src.height(batch);
-    int threadCol = ceil((float)width * channel / cn);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * cn;
-    if (h >= height || w >= width * channel)
-        return;
-
-    T      MAX     = cuda::TypeTraits<T>::max;
-    T      MIN     = cuda::TypeTraits<T>::min;
-    double th      = _thresh[batch];
-    int    ithresh = floor(th);
-
-    int loop = width * channel - w;
-    int c    = w % channel;
-    w        = w / channel;
-    if (loop >= cn)
-    {
-        P out;
-        if (ithresh >= MIN && ithresh <= MAX)
-        {
-            T  thresh = (T)ithresh;
-            P  in     = LoadPacked<P>(src.ptr(batch, h, w, c));
-            T *inval  = reinterpret_cast<T *>((void *)&in);
-            T  outval[4];
-#pragma unroll
-            for (int i = 0; i < cn; i++)
-            {
-                outval[i]                   = inval[i] > thresh ? thresh : inval[i];
-                cuda::GetElement<P>(out, i) = outval[i];
-            }
-            StorePacked(dst.ptr(batch, h, w, c), out);
-            return;
-        }
-        if (ithresh < MIN)
-        {
-            out = cuda::SetAll<P>(MIN);
-            StorePacked(dst.ptr(batch, h, w, c), out);
-            return;
-        }
-
-        StorePacked(dst.ptr(batch, h, w, c), LoadPacked<P>(src.ptr(batch, h, w, c)));
-    }
-    else
-    {
-        if (ithresh >= MIN && ithresh <= MAX)
-        {
-            T thresh = (T)ithresh;
-#pragma unroll
-            for (int i = 0; i < loop; i++)
-            {
-                T inval                        = *(src.ptr(batch, h, w, c) + i);
-                *(dst.ptr(batch, h, w, c) + i) = inval > thresh ? thresh : inval;
-            }
-            return;
-        }
-        if (ithresh < MIN)
-        {
-#pragma unroll
-            for (int i = 0; i < loop; i++) *(dst.ptr(batch, h, w, c) + i) = MIN;
-            return;
-        }
-
-#pragma unroll
-        for (int i = 0; i < loop; i++) *(dst.ptr(batch, h, w, c) + i) = *(src.ptr(batch, h, w, c) + i);
-    }
-}
-
-template<typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
-__global__ void Trunc_Generic(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                              cuda::Tensor1DWrap<double, int32_t> _thresh, int channel)
-{
-    int cn        = cuda::NumElements<P>;
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int width     = src.width(batch);
-    int height    = src.height(batch);
-    int threadCol = ceil((float)width * channel / cn);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * cn;
-    if (h >= height || w >= width * channel)
-        return;
-
-    T   thresh = (T)_thresh[batch];
-    int loop   = width * channel - w;
-    int c      = w % channel;
-    w          = w / channel;
-
-    if (loop >= cn)
-    {
-        P  out;
-        P  in    = LoadPacked<P>(src.ptr(batch, h, w, c));
-        T *inval = reinterpret_cast<T *>((void *)&in);
-        T  outval[4];
-#pragma unroll
-        for (int i = 0; i < cn; i++)
-        {
-            outval[i]                   = inval[i] > thresh ? thresh : inval[i];
-            cuda::GetElement<P>(out, i) = outval[i];
-        }
-        StorePacked(dst.ptr(batch, h, w, c), out);
-    }
-    else
-    {
-#pragma unroll
-        for (int i = 0; i < loop; i++)
-        {
-            T inval                        = *(src.ptr(batch, h, w, c) + i);
-            *(dst.ptr(batch, h, w, c) + i) = inval > thresh ? thresh : inval;
-        }
-    }
-}
-
-template<typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
-__global__ void Tozero_overflow(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                                cuda::Tensor1DWrap<double, int32_t> _thresh, int channel)
-{
-    int cn        = cuda::NumElements<P>;
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int width     = src.width(batch);
-    int height    = src.height(batch);
-    int threadCol = ceil((float)width * channel / cn);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * cn;
-    if (h >= height || w >= width * channel)
-        return;
-
-    T      MAX     = cuda::TypeTraits<T>::max;
-    T      MIN     = cuda::TypeTraits<T>::min;
-    double th      = _thresh[batch];
-    int    ithresh = floor(th);
-
-    int loop = width * channel - w;
-    int c    = w % channel;
-    w        = w / channel;
-    if (loop >= cn)
-    {
-        P out;
-        if (ithresh >= MIN && ithresh <= MAX)
-        {
-            T  thresh = (T)ithresh;
-            P  in     = LoadPacked<P>(src.ptr(batch, h, w, c));
-            T *inval  = reinterpret_cast<T *>((void *)&in);
-            T  outval[4];
-#pragma unroll
-            for (int i = 0; i < cn; i++)
-            {
-                outval[i]                   = inval[i] > thresh ? inval[i] : 0;
-                cuda::GetElement<P>(out, i) = outval[i];
-            }
-            StorePacked(dst.ptr(batch, h, w, c), out);
-            return;
-        }
-        if (ithresh < MIN)
-        {
-            StorePacked(dst.ptr(batch, h, w, c), LoadPacked<P>(src.ptr(batch, h, w, c)));
-            return;
-        }
-
-        out = cuda::SetAll<P>(0);
-        StorePacked(dst.ptr(batch, h, w, c), out);
-    }
-    else
-    {
-        if (ithresh >= MIN && ithresh <= MAX)
-        {
-            T thresh = (T)ithresh;
-#pragma unroll
-            for (int i = 0; i < loop; i++)
-            {
-                T inval                        = *(src.ptr(batch, h, w, c) + i);
-                *(dst.ptr(batch, h, w, c) + i) = inval > thresh ? inval : 0;
-            }
-            return;
-        }
-        if (ithresh < MIN)
-        {
-#pragma unroll
-            for (int i = 0; i < loop; i++) *(dst.ptr(batch, h, w, c) + i) = *(src.ptr(batch, h, w, c) + i);
-            return;
-        }
-
-#pragma unroll
-        for (int i = 0; i < loop; i++) *(dst.ptr(batch, h, w, c) + i) = 0;
-    }
-}
-
-template<typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
-__global__ void Tozero_Generic(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                               cuda::Tensor1DWrap<double, int32_t> _thresh, int channel)
-{
-    int cn        = cuda::NumElements<P>;
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int width     = src.width(batch);
-    int height    = src.height(batch);
-    int threadCol = ceil((float)width * channel / cn);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * cn;
-    if (h >= height || w >= width * channel)
-        return;
-
-    T   thresh = (T)_thresh[batch];
-    int loop   = width * channel - w;
-    int c      = w % channel;
-    w          = w / channel;
-
-    if (loop >= cn)
-    {
-        P  out;
-        P  in    = LoadPacked<P>(src.ptr(batch, h, w, c));
-        T *inval = reinterpret_cast<T *>((void *)&in);
-        T  outval[4];
-#pragma unroll
-        for (int i = 0; i < cn; i++)
-        {
-            outval[i]                   = inval[i] > thresh ? inval[i] : (T)0;
-            cuda::GetElement<P>(out, i) = outval[i];
-        }
-        StorePacked(dst.ptr(batch, h, w, c), out);
-    }
-    else
-    {
-#pragma unroll
-        for (int i = 0; i < loop; i++)
-        {
-            T inval                        = *(src.ptr(batch, h, w, c) + i);
-            *(dst.ptr(batch, h, w, c) + i) = inval > thresh ? inval : (T)0;
-        }
-    }
-}
-
-template<typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
-__global__ void TozeroInv_overflow(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                                   cuda::Tensor1DWrap<double, int32_t> _thresh, int channel)
-{
-    int cn        = cuda::NumElements<P>;
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int width     = src.width(batch);
-    int height    = src.height(batch);
-    int threadCol = ceil((float)width * channel / cn);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * cn;
-    if (h >= height || w >= width * channel)
-        return;
-
-    T      MAX     = cuda::TypeTraits<T>::max;
-    T      MIN     = cuda::TypeTraits<T>::min;
-    double th      = _thresh[batch];
-    int    ithresh = floor(th);
-
-    int loop = width * channel - w;
-    int c    = w % channel;
-    w        = w / channel;
-    if (loop >= cn)
-    {
-        P out;
-        if (ithresh >= MIN && ithresh <= MAX)
-        {
-            T  thresh = (T)ithresh;
-            P  in     = LoadPacked<P>(src.ptr(batch, h, w, c));
-            T *inval  = reinterpret_cast<T *>((void *)&in);
-            T  outval[4];
-#pragma unroll
-            for (int i = 0; i < cn; i++)
-            {
-                outval[i]                   = inval[i] > thresh ? 0 : inval[i];
-                cuda::GetElement<P>(out, i) = outval[i];
-            }
-            StorePacked(dst.ptr(batch, h, w, c), out);
-            return;
-        }
-        if (ithresh < MIN)
-        {
-            out = cuda::SetAll<P>(0);
-            StorePacked(dst.ptr(batch, h, w, c), out);
-            return;
-        }
-
-        StorePacked(dst.ptr(batch, h, w, c), LoadPacked<P>(src.ptr(batch, h, w, c)));
-    }
-    else
-    {
-        if (ithresh >= MIN && ithresh <= MAX)
-        {
-            T thresh = (T)ithresh;
-#pragma unroll
-            for (int i = 0; i < loop; i++)
-            {
-                T inval                        = *(src.ptr(batch, h, w, c) + i);
-                *(dst.ptr(batch, h, w, c) + i) = inval > thresh ? 0 : inval;
-            }
-            return;
-        }
-        if (ithresh < MIN)
-        {
-#pragma unroll
-            for (int i = 0; i < loop; i++) *(dst.ptr(batch, h, w, c) + i) = 0;
-            return;
-        }
-
-#pragma unroll
-        for (int i = 0; i < loop; i++) *(dst.ptr(batch, h, w, c) + i) = *(src.ptr(batch, h, w, c) + i);
-    }
-}
-
-template<typename T, typename P = cuda::MakeType<T, sizeof(T) == 8 ? 2 : 4>>
-__global__ void TozeroInv_Generic(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                                  cuda::Tensor1DWrap<double, int32_t> _thresh, int channel)
-{
-    int cn        = cuda::NumElements<P>;
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int width     = src.width(batch);
-    int height    = src.height(batch);
-    int threadCol = ceil((float)width * channel / cn);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * cn;
-    if (h >= height || w >= width * channel)
-        return;
-
-    T   thresh = (T)_thresh[batch];
-    int loop   = width * channel - w;
-    int c      = w % channel;
-    w          = w / channel;
-
-    if (loop >= cn)
-    {
-        P  out;
-        P  in    = LoadPacked<P>(src.ptr(batch, h, w, c));
-        T *inval = reinterpret_cast<T *>((void *)&in);
-        T  outval[4];
-#pragma unroll
-        for (int i = 0; i < cn; i++)
-        {
-            outval[i]                   = inval[i] > thresh ? (T)0 : inval[i];
-            cuda::GetElement<P>(out, i) = outval[i];
-        }
-        StorePacked(dst.ptr(batch, h, w, c), out);
-    }
-    else
-    {
-#pragma unroll
-        for (int i = 0; i < loop; i++)
-        {
-            T inval                        = *(src.ptr(batch, h, w, c) + i);
-            *(dst.ptr(batch, h, w, c) + i) = inval > thresh ? (T)0 : inval;
-        }
-    }
-}
-
 template<typename T>
 __global__ void ThresholdPlanar(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst,
                                 cuda::Tensor1DWrap<double, int32_t> _thresh,
@@ -2428,49 +1604,6 @@ __global__ void BinaryThresholdPlanarU8(cuda::ImageBatchVarShapeWrap<uchar> src,
     }
 }
 
-__global__ void hist_kernel(cuda::ImageBatchVarShapeWrapNHWC<uchar> img, int *histogram)
-{
-    __shared__ int hist[256];
-    int            localid = threadIdx.x;
-    hist[localid]          = 0;
-    __syncthreads();
-
-    int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
-    int batch     = blockIdx.z;
-    int cols      = img.width(batch);
-    int rows      = img.height(batch);
-    int threadCol = ceil((float)cols / 16);
-    int h         = globalid / threadCol;
-    int w         = (globalid % threadCol) * 16;
-
-    if (h < rows)
-    {
-        if (w + 16 > cols)
-        {
-            for (int i = w; i < cols; i++) atomicAdd(&hist[*img.ptr(batch, h, i)], 1);
-        }
-        else
-        {
-            int4   src   = LoadPacked<int4>(img.ptr(batch, h, w));
-            uchar *inval = reinterpret_cast<uchar *>((void *)&src);
-            for (int i = 0; i < 16; i++) atomicAdd(&hist[inval[i]], 1);
-        }
-    }
-    __syncthreads();
-
-    int val = hist[localid];
-    if (val > 0)
-        atomicAdd(&histogram[blockIdx.z * 256 + localid], val);
-}
-
-// The var-shape twin of tensor_impl::otsu_cal: the normalization size comes from the per-image
-// dimensions rather than a host-side constant.
-__global__ void otsu_cal_varshape(int *histogram, cuda::Tensor1DWrap<double, int32_t> thresh,
-                                  cuda::ImageBatchVarShapeWrapNHWC<uchar> img)
-{
-    OtsuCalBody(histogram, thresh, img.width((int)blockIdx.z) * img.height((int)blockIdx.z));
-}
-
 template<typename T>
 void thresholdDispatch(const nvcv::ImageBatchVarShapeDataStridedCuda &input,
                        const nvcv::ImageBatchVarShapeDataStridedCuda &output,
@@ -2492,45 +1625,31 @@ void thresholdDispatch(const nvcv::ImageBatchVarShapeDataStridedCuda &input,
     int  td = util::DivUp(maxsize.w * channel, N) * maxsize.h;
     dim3 grid(util::DivUp(td, 256), 1, batch);
 
-    constexpr bool useGeneric = UseGenericThreshold<T>;
-
     switch (type)
     {
     case NVCV_THRESH_BINARY:
-        if constexpr (useGeneric)
-            Binary_Generic<T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, channel);
-        else if constexpr (std::is_same_v<T, uchar>)
+        if constexpr (std::is_same_v<T, uchar>)
         {
             int  tdU8 = util::DivUp(maxsize.w * channel, kU8BinaryElementsPerThread) * maxsize.h;
             dim3 gridU8(util::DivUp(tdU8, 256), 1, batch);
             Binary_overflow_u8_nix16<<<gridU8, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, channel);
         }
         else
-            Binary_overflow<T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, channel);
+            ThresholdInterleaved<NVCV_THRESH_BINARY, T>
+                <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, channel);
         break;
     case NVCV_THRESH_BINARY_INV:
-        if constexpr (useGeneric)
-            BinaryInv_Generic<T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, channel);
-        else
-            BinaryInv_overflow<T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, channel);
+        ThresholdInterleaved<NVCV_THRESH_BINARY_INV, T>
+            <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, channel);
         break;
     case NVCV_THRESH_TRUNC:
-        if constexpr (useGeneric)
-            Trunc_Generic<T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, channel);
-        else
-            Trunc_overflow<T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, channel);
+        ThresholdInterleaved<NVCV_THRESH_TRUNC, T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, channel);
         break;
     case NVCV_THRESH_TOZERO:
-        if constexpr (useGeneric)
-            Tozero_Generic<T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, channel);
-        else
-            Tozero_overflow<T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, channel);
+        ThresholdInterleaved<NVCV_THRESH_TOZERO, T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, channel);
         break;
-    default: //NVCV_THRESH_TOZERO_INV
-        if constexpr (useGeneric)
-            TozeroInv_Generic<T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, channel);
-        else
-            TozeroInv_overflow<T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, channel);
+    default:
+        ThresholdInterleaved<NVCV_THRESH_TOZERO_INV, T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, channel);
         break;
     }
 
@@ -2571,7 +1690,7 @@ void thresholdDispatchPlanar(const nvcv::ImageBatchVarShapeDataStridedCuda &inpu
     NVCV_CHECK_THROW(cudaGetLastError());
 }
 
-// The var-shape twin of tensor_impl::AccumulateHistogram; returns the wrap because otsu_cal_varshape
+// The var-shape twin of tensor_impl::AccumulateHistogram; returns the wrap because OtsuThreshold
 // needs it again to recover each image's size.
 inline cuda::ImageBatchVarShapeWrapNHWC<uchar> AccumulateHistogram(
     const nvcv::ImageBatchVarShapeDataStridedCuda &inData, int *histogram, cudaStream_t stream)
@@ -2585,7 +1704,7 @@ inline cuda::ImageBatchVarShapeWrapNHWC<uchar> AccumulateHistogram(
     dim3 block(256);
     int  td = util::DivUp(maxsize.w, 16) * maxsize.h;
     dim3 grid(util::DivUp(td, 256), 1, batch);
-    hist_kernel<<<grid, block, 0, stream>>>(wrap, histogram);
+    Histogram<<<grid, block, 0, stream>>>(wrap, histogram);
 
     return wrap;
 }
@@ -2609,7 +1728,7 @@ inline void getThreshVal_Otsu(const nvcv::ImageBatchVarShapeDataStridedCuda &inD
     cuda::Tensor1DWrap<double, int32_t> thresh(threshold);
     dim3                                block2(256);
     dim3                                grid2(1, 1, inData.numImages());
-    otsu_cal_varshape<<<grid2, block2, 0, stream>>>(histogram, thresh, wrap);
+    OtsuThreshold<<<grid2, block2, 0, stream>>>(histogram, thresh, wrap);
 }
 
 inline void RunThresholdDispatch(DataTypeCode code, const nvcv::ImageBatchVarShapeDataStridedCuda &input,
@@ -2631,6 +1750,8 @@ inline void RunThresholdDispatchPlanar(DataTypeCode code, const nvcv::ImageBatch
         code, [&](auto elem)
         { thresholdDispatchPlanar<decltype(elem)>(input, output, threshold, maxval, channels, type, stream); });
 }
+
+#undef NVCV_THRESHOLD_COMPARE
 
 } // namespace varshape_impl
 
@@ -2680,33 +1801,10 @@ void Threshold::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nv
     // Check order is frozen: dtype, then format. The var-shape overload below deliberately does the
     // opposite, because the two legacy infer() implementations did, and the negative tests assert
     // which error an input that is invalid in both ways reports.
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto threshData = thresh.exportData<nvcv::TensorDataStridedCuda>();
-    if (threshData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "thresh must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto maxvalData = maxval.exportData<nvcv::TensorDataStridedCuda>();
-    if (maxvalData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "maxval must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData     = RequireCudaTensor(in, "Input");
+    auto outData    = RequireCudaTensor(out, "Output");
+    auto threshData = RequireCudaTensor(thresh, "thresh");
+    auto maxvalData = RequireCudaTensor(maxval, "maxval");
 
     Histogram &histogram = m_histogram.get();
 
@@ -2826,19 +1924,8 @@ void Threshold::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output must be varshape image batch");
     }
 
-    auto threshData = thresh.exportData<nvcv::TensorDataStridedCuda>();
-    if (threshData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "thresh must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto maxvalData = maxval.exportData<nvcv::TensorDataStridedCuda>();
-    if (maxvalData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "maxval must be cuda-accessible, pitch-linear tensor");
-    }
+    auto threshData = RequireCudaTensor(thresh, "thresh");
+    auto maxvalData = RequireCudaTensor(maxval, "maxval");
 
     Histogram &histogram = m_histogramVarShape.get();
 

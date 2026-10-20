@@ -30,6 +30,7 @@ from _internal import validate_baselines
 from _internal.baselines import (
     case_key_from_axis_values,
     load_config_index,
+    load_sku_policies,
     split_operator_payload,
     sku_stems,
     validate_baselines_in_document,
@@ -106,7 +107,7 @@ def _payload():
     }
 
 
-def _write_tree(tmp_path, payload):
+def _write_tree(tmp_path, payload, *, baseline_policy=None):
     config_dir = tmp_path / "config"
     _write_json(config_dir / "operators" / "resize.json", payload)
     _write_json(
@@ -119,14 +120,34 @@ def _write_tree(tmp_path, payload):
                     "locked_sm_clock_mhz": 1095,
                     "cuda_major": 13,
                     "stem": "TESTSKU",
-                }
+                    **({"baseline": baseline_policy} if baseline_policy else {}),
+                },
+                {
+                    "gpu_name": "NVIDIA Test GPU",
+                    "power_cap_w": 350,
+                    "locked_sm_clock_mhz": 1095,
+                    "cuda_major": 12,
+                    "stem": "TESTSKU",
+                    **({"baseline": baseline_policy} if baseline_policy else {}),
+                },
             ]
         },
     )
     index = load_config_index(config_dir / "operators")
     doc = index.docs_by_path[config_dir / "operators" / "resize.json"]
     stems = sku_stems(config_dir / "sku_map.json", strict=True)
-    return validate_baselines_in_document(doc, index, stems)
+    policies = load_sku_policies(config_dir / "sku_map.json", strict=True)
+    return validate_baselines_in_document(doc, index, stems, sku_policies=policies)
+
+
+def test_partial_refresh_marker_must_be_true(tmp_path):
+    payload = _payload()
+    payload["baseline_refresh_incomplete"] = "true"
+
+    assert any(
+        "baseline_refresh_incomplete must be the JSON literal true" in error
+        for error in _write_tree(tmp_path, payload)
+    )
 
 
 def _write_config_dir(tmp_path, payload):
@@ -142,7 +163,14 @@ def _write_config_dir(tmp_path, payload):
                     "locked_sm_clock_mhz": 1095,
                     "cuda_major": 13,
                     "stem": "TESTSKU",
-                }
+                },
+                {
+                    "gpu_name": "NVIDIA Test GPU",
+                    "power_cap_w": 350,
+                    "locked_sm_clock_mhz": 1095,
+                    "cuda_major": 12,
+                    "stem": "TESTSKU",
+                },
             ]
         },
     )
@@ -164,10 +192,10 @@ def _config_dir_with_ref_baseline(
         config_dir / "operators" / "resize.json", base_payload
     )
 
-    monkeypatch.setattr(validate_baselines, "_verify_git_ref", lambda ref: None)
+    monkeypatch.setattr(validate_baselines, "verify_git_ref", lambda ref: None)
     monkeypatch.setattr(
         validate_baselines,
-        "_operator_doc_at_ref",
+        "operator_doc_at_ref",
         lambda ref, path: base_doc,
     )
     return config_dir
@@ -175,6 +203,131 @@ def _config_dir_with_ref_baseline(
 
 def test_valid_operator_json_passes(tmp_path):
     assert _write_tree(tmp_path, _payload()) == []
+
+
+def test_main_rejects_multiple_clock_targets_for_one_profile(tmp_path, capsys):
+    config_dir = _write_config_dir(tmp_path, _payload())
+    sku_map_path = config_dir / "sku_map.json"
+    sku_map = json.loads(sku_map_path.read_text())
+    second = dict(sku_map["entries"][0])
+    second["locked_sm_clock_mhz"] = 1005
+    sku_map["entries"].append(second)
+    _write_json(sku_map_path, sku_map)
+
+    assert validate_baselines.main(["--config-dir", str(config_dir)]) == 2
+    assert "multiple SM clock targets" in capsys.readouterr().err
+
+
+def test_main_rejects_missing_cuda_major_for_gpu_power_profile(tmp_path, capsys):
+    config_dir = _write_config_dir(tmp_path, _payload())
+    sku_map_path = config_dir / "sku_map.json"
+    sku_map = json.loads(sku_map_path.read_text())
+    sku_map["entries"] = [
+        entry for entry in sku_map["entries"] if entry["cuda_major"] == 13
+    ]
+    _write_json(sku_map_path, sku_map)
+
+    assert validate_baselines.main(["--config-dir", str(config_dir)]) == 2
+    assert "missing CUDA major coverage" in capsys.readouterr().err
+
+
+def test_explicit_routing_stems_are_reported(tmp_path):
+    """Explicit-routing SKUs are absent from the hardware-routed map by design.
+
+    Consumers that need the full SKU set -- the stability report among them -- have
+    to ask for these separately, or a Jetson wave reads as an unknown SKU.
+    """
+    from _internal.baselines import explicit_routing_stems, load_sku_map
+
+    path = tmp_path / "sku_map.json"
+    _write_json(
+        path,
+        {
+            "entries": [
+                {
+                    "gpu_name": "NVIDIA Test GPU",
+                    "power_cap_w": 350,
+                    "locked_sm_clock_mhz": 1095,
+                    "cuda_major": 13,
+                    "stem": "TESTSKU",
+                },
+                {"routing": "explicit", "cuda_major": 12, "stem": "EXPLICITSKU"},
+            ]
+        },
+    )
+
+    assert explicit_routing_stems(path, strict=True) == {"EXPLICITSKU"}
+    assert "EXPLICITSKU" not in set(load_sku_map(path, strict=True).values())
+
+
+def test_tier_restricted_sku_is_not_required_outside_its_tiers(tmp_path):
+    """A SKU that only measures some tiers owes baselines for those alone.
+
+    Jetson runs the basic tier only, so requiring advanced rows there would demand
+    data no pipeline will ever produce and the gate could never go green.
+    """
+    payload = _payload()
+    payload["configs"]["resize_basic"]["tier"] = "advanced"
+    payload["configs"]["resize_basic"]["baselines"][_case()].pop("TESTSKU")
+
+    assert (
+        _write_tree(tmp_path, payload, baseline_policy={"tiers": ["basic"]}) == []
+    ), "an advanced config must not require a basic-only SKU"
+
+    assert any(
+        "missing SKU baseline" in error
+        for error in _write_tree(
+            tmp_path, payload, baseline_policy={"tiers": ["advanced"]}
+        )
+    ), "the SKU is still required for the tiers it does measure"
+
+
+def test_python_only_sku_policy_passes_and_enforces_five_runs(tmp_path):
+    payload = _payload()
+    metrics = payload["configs"]["resize_basic"]["baselines"][_case()]["TESTSKU"]
+    metrics["n_runs"] = 5
+    for field in ("gpu_time_us_cpp", "gpu_noise_us_cpp", "gpu_bwutil_cpp"):
+        metrics.pop(field)
+    policy = {"languages": ["python"], "n_runs": 5}
+
+    assert _write_tree(tmp_path, payload, baseline_policy=policy) == []
+
+    metrics["n_runs"] = 4
+    errors = _write_tree(tmp_path, payload, baseline_policy=policy)
+    assert any("n_runs must be 5" in error for error in errors)
+
+
+def test_sku_policy_can_raise_the_absolute_parity_limit(tmp_path):
+    # The 100us absolute default is sized for the reference GPUs. On hardware an
+    # order of magnitude slower a healthy sub-1% binding overhead exceeds it while
+    # the relative check reads fine, so a SKU may raise the absolute limit for
+    # itself. The relative limit is deliberately not weakened.
+    payload = _payload()
+    metrics = payload["configs"]["resize_basic"]["baselines"][_case()]["TESTSKU"]
+    metrics["gpu_time_us_cpp"] = 20000.0
+    metrics["gpu_time_us_python"] = 20150.0
+
+    errors = _write_tree(tmp_path, payload)
+    assert any("exceeds 100.00us" in error for error in errors)
+
+    policy = {"languages": ["cpp", "python"], "max_perf_diff_us": 1500}
+    assert _write_tree(tmp_path, payload, baseline_policy=policy) == []
+
+    # Still bounded: a diff past the raised limit is reported against it.
+    metrics["gpu_time_us_python"] = 22000.0
+    errors = _write_tree(tmp_path, payload, baseline_policy=policy)
+    assert any("exceeds 1500.00us" in error for error in errors)
+
+
+def test_python_only_sku_policy_rejects_cpp_metrics(tmp_path):
+    payload = _payload()
+    payload["configs"]["resize_basic"]["baselines"][_case()]["TESTSKU"]["n_runs"] = 5
+    errors = _write_tree(
+        tmp_path,
+        payload,
+        baseline_policy={"languages": ["python"], "n_runs": 5},
+    )
+    assert any("unexpected metric field" in error for error in errors)
 
 
 def test_valid_optional_paired_gap_stddev_passes(tmp_path):
@@ -401,7 +554,7 @@ def test_allow_regressions_rejects_invalid_comparison_ref(
             f"baseline regression ref does not exist: {ref}"
         )
 
-    monkeypatch.setattr(validate_baselines, "_verify_git_ref", reject_ref)
+    monkeypatch.setattr(validate_baselines, "verify_git_ref", reject_ref)
 
     assert (
         validate_baselines.main(
@@ -510,8 +663,8 @@ def test_git_ref_commands_trust_only_the_repository_root(monkeypatch):
 
     monkeypatch.setattr(validate_baselines.subprocess, "run", fake_run)
 
-    validate_baselines._verify_git_ref("origin/main")
-    validate_baselines._operator_doc_at_ref(
+    validate_baselines.verify_git_ref("origin/main")
+    validate_baselines.operator_doc_at_ref(
         "origin/main",
         validate_baselines._repo_root()
         / "bench"
@@ -542,9 +695,9 @@ def test_git_ref_commands_report_timeouts(monkeypatch, operation):
 
     with pytest.raises(validate_baselines.BaselineError, match="timed out"):
         if operation == "verify":
-            validate_baselines._verify_git_ref("origin/main")
+            validate_baselines.verify_git_ref("origin/main")
         else:
-            validate_baselines._operator_doc_at_ref(
+            validate_baselines.operator_doc_at_ref(
                 "origin/main",
                 validate_baselines._repo_root()
                 / "bench"

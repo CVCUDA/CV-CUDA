@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,11 +17,28 @@
 
 case "$1" in
     remove|deconfigure)
+        python_version="@PYTHON_VERSION@"
         dst_path="@DST_PYTHON_MODULE_PATH@"
+        path_file="@SRC_PYTHON_MODULE_PATH@/.python${python_version}-install-path"
+        case "$python_version" in
+            *t)
+                [ -f "$path_file" ] || exit 0
+                IFS= read -r dst_path < "$path_file" || exit 1
+                [ -n "$dst_path" ] || exit 1
+                ;;
+        esac
         # shellcheck disable=SC2043
         for mod in @PYTHON_MODULE_FILENAME_LIST@; do
             dst="$dst_path/$mod"
             rm -f "$dst"
         done
+        case "$python_version" in
+            *t)
+                # An empty directory would still import as a namespace package.
+                rm -f "$dst_path"/cvcuda/__pycache__/__init__.*.pyc
+                rmdir "$dst_path/cvcuda/__pycache__" "$dst_path/cvcuda" 2>/dev/null || true
+                rm -f "$path_file"
+                ;;
+        esac
         ;;
 esac

@@ -128,16 +128,18 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdjustSharpnessCreate(NVCVOperatorHandle *handle)
  * @param [in] sharpnessFactor Blend weight applied to the original image; the smoothed image
  *                             receives weight (1 - sharpnessFactor). 1.0 leaves the image
  *                             unchanged, 0.0 yields the fully-smoothed image, values above 1.0
- *                             sharpen. Must be non-negative. Only the image interior is blended;
- *                             the 1-pixel border is copied unchanged, and images with height or
- *                             width below 3 are copied unchanged in full.
+ *                             sharpen. Must be non-negative and <= FLT_MAX. Only the image
+ *                             interior is blended; the 1-pixel border is copied unchanged, and
+ *                             images with height or width below 3 are copied unchanged in full.
+ *                             The weight (1 - sharpnessFactor) is computed in double and rounded
+ *                             to float once, matching torchvision.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
 CVCUDA_PUBLIC NVCVStatus cvcudaAdjustSharpnessSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
-                                                     NVCVTensorHandle in, NVCVTensorHandle out, float sharpnessFactor);
+                                                     NVCVTensorHandle in, NVCVTensorHandle out, double sharpnessFactor);
 
 /** Executes the AdjustSharpness operation on a batch of variable-shaped images on the given cuda
  *  stream. Same limitations as cvcudaAdjustSharpnessSubmit.
@@ -154,7 +156,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdjustSharpnessSubmit(NVCVOperatorHandle handle, 
  */
 CVCUDA_PUBLIC NVCVStatus cvcudaAdjustSharpnessVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
                                                              NVCVImageBatchHandle in, NVCVImageBatchHandle out,
-                                                             float sharpnessFactor);
+                                                             double sharpnessFactor);
 
 #ifdef __cplusplus
 }

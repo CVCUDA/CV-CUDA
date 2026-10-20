@@ -63,7 +63,7 @@ try
     // interleaved (NHWC) profiles use the matching interleaved format for T (single-channel U8/F32,
     // RGB uchar3/float3, or RGBA uchar4/float4). Either way the per-channel scalar type is BT.
     nvcv::DataType    scalarDType{benchutils::GetDataType<BT>()};
-    nvcv::ImageFormat fmt = isPlanar ? benchutils::GetPlanarFormat<T>() : benchutils::GetFormat<T>();
+    nvcv::ImageFormat fmt = isPlanar && ch > 1 ? benchutils::GetPlanarFormat<T>() : benchutils::GetFormat<T>();
 
     const long srcBytes = srcShape.x * srcShape.y * srcShape.z * static_cast<long>(sizeof(T));
     const long dstBytes = dstShape.x * dstShape.y * dstShape.z * static_cast<long>(sizeof(T));

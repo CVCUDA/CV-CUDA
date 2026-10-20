@@ -26,7 +26,6 @@ import pytest
 
 import cvcuda_util as util
 
-
 ROOT = Path(__file__).resolve().parents[3]
 PYTHON_OPERATOR_DIR = ROOT / "python" / "mod_cvcuda" / "operators"
 C_API_INCLUDE_DIR = ROOT / "src" / "cvcuda" / "include" / "cvcuda"
@@ -93,6 +92,22 @@ def _flip():
 
 def _channelreorder_tensor():
     cvcuda.channelreorder(_tensor(), [2, 1, 0])
+
+
+def _tvresize():
+    cvcuda.tvresize(_tensor(), (8, 12))
+
+
+OPERATORS = {"tvresize": ("cvcudaTvResizeSubmit", _tvresize)}
+
+
+@requires_probe
+@pytest.mark.parametrize("name", OPERATORS)
+def test_registered_operator_submit_marker(name):
+    marker, invoke = OPERATORS[name]
+    _reset_probe()
+    invoke()
+    assert marker in _captured_ranges()
 
 
 def _public_operator_names():
@@ -197,6 +212,53 @@ def test_channelreorder_tensor_submit_marker():
     _reset_probe()
     _channelreorder_tensor()
     assert "cvcudaChannelReorderSubmit" in _captured_ranges()
+
+
+@requires_probe
+def test_split_merge_submit_markers():
+    _reset_probe()
+    bands = cvcuda.split(_tensor())
+    cvcuda.merge(bands)
+    captured = _captured_ranges()
+    for name in (
+        "cvcuda.split",
+        "cvcudaSplitSubmit",
+        "cvcuda.merge",
+        "cvcudaMergeSubmit",
+    ):
+        assert name in captured
+
+
+@requires_probe
+@pytest.mark.parametrize("into", [False, True])
+def test_split_merge_varshape_submit_markers(into):
+    source = cvcuda.ImageBatchVarShape(1)
+    source.pushback([cvcuda.Image((7, 3), cvcuda.Format.RGB8)])
+    bands = []
+    for _ in range(3):
+        band = cvcuda.ImageBatchVarShape(1)
+        band.pushback([cvcuda.Image((7, 3), cvcuda.Format.U8)])
+        bands.append(band)
+    output = cvcuda.ImageBatchVarShape(1)
+    output.pushback([cvcuda.Image((7, 3), cvcuda.Format.RGB8)])
+    _reset_probe()
+    if into:
+        cvcuda.split_into(bands, source)
+        cvcuda.merge_into(output, bands)
+    else:
+        bands = cvcuda.split(source)
+        cvcuda.merge(bands, format=cvcuda.Format.RGB8)
+    captured = _captured_ranges()
+    suffix = "_into" if into else ""
+    for name, marker in (
+        ("split", "cvcudaSplitVarShapeSubmit"),
+        ("merge", "cvcudaMergeVarShapeSubmit"),
+    ):
+        python_marker = f"cvcuda.{name}{suffix}"
+        assert python_marker in captured
+        assert marker in captured
+        assert captured.index(python_marker) < captured.index(marker)
+    cvcuda.Stream.current.sync()
 
 
 @requires_probe

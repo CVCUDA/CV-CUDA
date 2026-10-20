@@ -24,10 +24,11 @@
 #include "Stream.hpp"
 
 #include <cstdio>
+#include <vector>
 
 namespace nvcvpy {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 class ResourceGuard
 {
@@ -45,35 +46,38 @@ public:
     ~ResourceGuard()
     {
         finishNoThrow();
+        releaseRefs();
     }
 
-    ResourceGuard &add(LockMode mode, std::initializer_list<std::reference_wrapper<const Resource>> resources)
+    ResourceGuard &add([[maybe_unused]] LockMode                                     mode,
+                       std::initializer_list<std::reference_wrapper<const Resource>> resources)
     {
-        py::object pyLockMode;
-        switch (mode)
-        {
-        case LockMode::LOCK_MODE_NONE:
-            pyLockMode = py::str("");
-            break;
-        case LockMode::LOCK_MODE_READ:
-            pyLockMode = py::str("r");
-            break;
-        case LockMode::LOCK_MODE_WRITE:
-            pyLockMode = py::str("w");
-            break;
-        case LockMode::LOCK_MODE_READWRITE:
-            pyLockMode = py::str("rw");
-            break;
-        }
-
+#ifdef Py_GIL_DISABLED
+        if (m_submission || m_finished)
+            throw std::logic_error("Cannot add resources after submission has started");
+        m_modes.reserve(m_resources.size() + resources.size());
+        m_resources.reserve(m_resources.size() + resources.size());
+#endif
         // Just append; sync is deferred to run() (or commit() in the legacy
         // path used by out-of-tree consumers that haven't migrated).
         for (const std::reference_wrapper<const Resource> &r : resources)
         {
-            py::object pyRes = py::reinterpret_borrow<py::object>(r.get().ptr());
-            m_resourcesPerLockMode.append(std::make_pair(pyLockMode, std::move(pyRes)));
+            PyObject *obj = r.get().ptr();
+            // Append before taking ownership: vector growth may throw, whereas
+            // Py_INCREF cannot. This keeps the reference count consistent with
+            // the vector's contents while letting vector keep its geometric
+            // growth policy across add() calls.
+            m_resources.push_back(obj);
+#ifdef Py_GIL_DISABLED
+            m_modes.push_back(mode);
+#endif
+            Py_INCREF(obj);
         }
 
+#ifdef Py_GIL_DISABLED
+        if (m_running && !m_resources.empty())
+            beginSubmission();
+#endif
         return *this;
     }
 
@@ -101,18 +105,29 @@ public:
     template<class F>
     void run(F &&fn)
     {
-        // The C API callback reports failures only through a pending Python
-        // error (its implementation traps all C++ exceptions), so an explicit
-        // check needs no general catch clause here.
-        capi().Resources_SubmitSyncOnly(m_pyStream.ptr(), m_resourcesPerLockMode.ptr());
-        if (PyErr_Occurred())
+#ifdef Py_GIL_DISABLED
+        if (m_running || m_finished)
+            throw std::logic_error("ResourceGuard can only be submitted once");
+        m_running = true;
+        if (!m_resources.empty())
+            beginSubmission();
+#else
+        if (!m_resources.empty())
         {
-            // The callable never ran, so no consumer work needs a lifetime
-            // hold.  Marking the guard finished stops the destructor from
-            // retrying the failed synchronization through the legacy path.
-            m_finished = true;
-            throw py::error_already_set();
+            // The C API callback reports failures only through a pending Python
+            // error (its implementation traps all C++ exceptions), so an explicit
+            // check needs no general catch clause here.
+            capi().Resources_SubmitSyncOnlyRaw(m_pyStream.ptr(), m_resources.data(), m_resources.size());
+            if (PyErr_Occurred())
+            {
+                // The callable never ran, so no consumer work needs a lifetime
+                // hold.  Marking the guard finished stops the destructor from
+                // retrying the failed synchronization through the legacy path.
+                m_finished = true;
+                throw py::error_already_set();
+            }
         }
+#endif
 
         // Set before invoking the callable: if it throws after (partially)
         // submitting work, unwind runs ~ResourceGuard, which installs the
@@ -131,16 +146,33 @@ public:
         {
             return;
         }
+        if (m_resources.empty())
+        {
+            m_finished = true;
+            return;
+        }
         // Terminal before fallible code: makes commit() idempotent and
         // prevents a destructor retry during unwind.
         m_finished = true;
+#ifdef Py_GIL_DISABLED
+        if (m_submission)
+        {
+            void *submission = m_submission;
+            m_submission     = nullptr;
+            submissionCapi().End(submission);
+            CheckCAPIError();
+            return;
+        }
+#endif
+        bool canDrain = m_synced;
         try
         {
             if (m_synced)
             {
                 // Sync was performed by run() before the kernel; only the hold
                 // remains.  Skips redundant per-resource submitSync work.
-                capi().Stream_HoldResources(m_pyStream.ptr(), m_resourcesPerLockMode.ptr());
+                capi().Stream_HoldResourcesRaw(m_pyStream.ptr(), m_resources.data(), m_resources.size());
+                CheckCAPIError();
             }
             else
             {
@@ -150,9 +182,15 @@ public:
                 // AFTER the consumer kernel and do not protect it from
                 // external-producer races.  In-tree cvcuda ops should use
                 // run().
-                capi().Resources_SyncAndHold(m_pyStream.ptr(), m_resourcesPerLockMode.ptr());
+                capi().Resources_SubmitSyncOnlyRaw(m_pyStream.ptr(), m_resources.data(), m_resources.size());
+                CheckCAPIError();
+                // Every producer dependency is now ordered on this stream, so
+                // if the hold below fails, draining it proves both the
+                // producers and the already-submitted consumer work complete.
+                canDrain = true;
+                capi().Stream_HoldResourcesRaw(m_pyStream.ptr(), m_resources.data(), m_resources.size());
+                CheckCAPIError();
             }
-            CheckCAPIError();
         }
         catch (...)
         {
@@ -162,7 +200,7 @@ public:
             // resource idle.  The legacy combined call cannot distinguish a
             // producer-sync failure from a hold failure, so no drain of this
             // stream proves safety there — retain the references instead.
-            if (!m_synced || !drainStreamNoThrow())
+            if (!canDrain || !drainStreamNoThrow())
             {
                 quarantineNoThrow();
             }
@@ -171,6 +209,18 @@ public:
     }
 
 private:
+#ifdef Py_GIL_DISABLED
+    void beginSubmission()
+    {
+        m_submission = submissionCapi().Begin(m_pyStream.ptr(), m_resources.data(), m_modes.data(), m_resources.size());
+        if (!m_submission)
+        {
+            m_finished = true;
+            CheckCAPIError();
+            throw std::runtime_error("Unable to begin resource submission");
+        }
+    }
+#endif
     // Saves any pending Python error at construction and re-instates it at
     // scope exit, discarding errors raised in between.  Keeps the primary
     // exception authoritative across cleanup that may set secondary errors.
@@ -221,7 +271,7 @@ private:
         }
     }
 
-    bool drainStreamNoThrow() noexcept
+    bool drainStreamNoThrow() const noexcept
     {
         PyErrPreserver preserver;
         bool           drained = false;
@@ -263,18 +313,35 @@ private:
 
     void quarantineNoThrow() noexcept
     {
-        // Intentionally leak one reference to the list and stream.  This path
+        // Intentionally leak one reference per resource and the stream. This path
         // is only reached when completion cannot be proven; releasing or
         // reusing a GPU resource that may still be active would be unsafe.
-        (void)m_resourcesPerLockMode.release();
+        // Clearing without decref'ing is what makes the leak permanent, and it
+        // also stops the destructor from handing the references back.
+        m_resources.clear();
         (void)m_pyStream.release();
     }
 
+    // Drops the references add() took.  Safe to call once the resources are
+    // either held by the stream (commit succeeded) or deliberately quarantined.
+    void releaseRefs() noexcept
+    {
+        for (PyObject *obj : m_resources)
+        {
+            Py_DECREF(obj);
+        }
+        m_resources.clear();
+    }
+
     py::object m_pyStream;
-    py::object m_pyLockMode;
-    py::list   m_resourcesPerLockMode;
-    bool       m_synced   = false;
-    bool       m_finished = false;
+#ifdef Py_GIL_DISABLED
+    std::vector<uint8_t> m_modes;
+    void                *m_submission = nullptr;
+    bool                 m_running    = false;
+#endif
+    std::vector<PyObject *> m_resources;
+    bool                    m_synced   = false;
+    bool                    m_finished = false;
 };
 
 } // namespace nvcvpy

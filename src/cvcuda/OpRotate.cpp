@@ -17,6 +17,7 @@
 
 #include "priv/OpRotate.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -51,6 +52,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaRotateSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &angleDeg, &shift, &interpolation]
         {
+            priv::CheckEnumArg(interpolation, NVCV_INTERP_BOX, "interpolation type");
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
             priv::ToDynamicRef<priv::Rotate>(handle)(stream, input.resource(), output.resource(), angleDeg, shift,
@@ -66,6 +68,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaRotateVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &angleDeg, &shift, &handle, &stream, &interpolation]
         {
+            priv::CheckEnumArg(interpolation, NVCV_INTERP_BOX, "interpolation type");
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::ImageBatchVarShapeWrapHandle output(out);
             nvcv::TensorWrapHandle             angleDegWrap(angleDeg);

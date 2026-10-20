@@ -25,33 +25,24 @@
 #define CVCUDA_PRIV_LAPLACIAN_HPP
 
 #include "IOperator.hpp"
-#include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <nvcv/BorderType.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
 class Laplacian final : public IOperator
 {
 public:
-    explicit Laplacian();
+    explicit Laplacian() = default;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const int ksize,
                     const float scale, const NVCVBorderType borderMode) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                     const nvcv::Tensor &ksize, const nvcv::Tensor &scale, NVCVBorderType borderMode) const;
-
-private:
-    static std::unique_ptr<nvcv::legacy::cuda_op::Laplacian>         CreateLegacyOp(int deviceId);
-    static std::unique_ptr<nvcv::legacy::cuda_op::LaplacianVarShape> CreateLegacyOpVarShape(int deviceId);
-
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::Laplacian>         m_legacyOp{CreateLegacyOp};
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::LaplacianVarShape> m_legacyOpVarShape{CreateLegacyOpVarShape};
 };
 
 } // namespace cvcuda::priv

@@ -19,9 +19,10 @@
 The committed-baseline gate compares a run against a fixed +/-10% band. Measured
 spread on the reference SKUs is far tighter than that -- around 0.6% across a
 day and 1.5% within a stable stretch -- so a row can slide several percent and
-still pass. This reads a window of nightly artifacts and reports rows whose
-recent level sits outside their own historical spread, which is a far finer
-instrument than the fixed band.
+still pass. This reads a window of nightly artifacts, plus informative push-to-main
+runs of the idle-GPU boards, and reports rows whose recent level sits
+outside their own historical spread, which is a far finer instrument than
+the fixed band.
 
 It is deliberately read-only. It writes no baseline and fails no gate; a shift
 here is a prompt to look, not a verdict. That keeps a false positive cheap and
@@ -32,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import statistics
 import sys
 from dataclasses import dataclass, field
@@ -46,6 +48,7 @@ from _internal.baselines import (  # noqa: E402
     DEFAULT_CONFIG_DIR,
     BaselineError,
     baseline_update_samples_from_artifacts,
+    collect_artifact_jsons,
     load_artifacts,
     load_config_index,
 )
@@ -263,24 +266,53 @@ def validate_thresholds(args: argparse.Namespace) -> None:
         raise BaselineError("--recent-fraction must be between 0 and 1, exclusive")
 
 
+# bench-<nightly|main>-cu<major>-<device>-<sha>-p<pipeline>-<build>.json
+_HISTORY_NAME = re.compile(
+    r"^bench-(?:nightly|main)-cu\d+-[A-Za-z0-9_]+-"
+    r"[0-9a-f]{7,40}-p(?P<pipeline>\d+)-(?P<build>\d+)\.json$"
+)
+
+
+def artifact_feeds_drift(artifact) -> bool:
+    """Nightly runs, plus informative push-to-main runs of the idle-GPU jobs."""
+    metadata = artifact.run_metadata
+    if metadata.get("is_nightly"):
+        return True
+    return metadata.get("run_context") == "main" and bool(metadata.get("informative"))
+
+
+def _observation_order(index: int, artifact) -> tuple:
+    """Order history files by pipeline. Other names keep their input order.
+
+    A directory listing sorts ``bench-main`` before ``bench-nightly`` and then
+    by commit SHA, which is not time. The pipeline IID is the run order.
+    """
+    match = _HISTORY_NAME.match(artifact.path.name)
+    if match is None:
+        return (1, index, 0, index)
+    return (0, int(match.group("pipeline")), int(match.group("build")), index)
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     validate_thresholds(args)
 
-    paths: List[Path] = []
-    for path in args.from_paths:
-        if not path.exists():
-            raise BaselineError(f"--from path does not exist: {path}")
-        paths.extend(sorted(path.glob("*.json")) if path.is_dir() else [path])
-    if not paths:
-        raise BaselineError("no benchmark artifacts collected from --from")
-
-    artifacts = load_artifacts(paths)
-    nightly = [a for a in artifacts if a.run_metadata.get("is_nightly")]
+    artifacts = load_artifacts(collect_artifact_jsons(args.from_paths))
     if not args.any_run_context:
-        skipped = len(artifacts) - len(nightly)
+        eligible = [a for a in artifacts if artifact_feeds_drift(a)]
+        skipped = len(artifacts) - len(eligible)
         if skipped:
-            print(f"ignoring {skipped} artifact(s) that are not nightly runs")
-        artifacts = nightly
+            print(
+                f"ignoring {skipped} artifact(s) that are not nightly or "
+                "main-push informative runs"
+            )
+        artifacts = eligible
+    artifacts = [
+        artifact
+        for _, artifact in sorted(
+            enumerate(artifacts),
+            key=lambda item: _observation_order(item[0], item[1]),
+        )
+    ]
     if len(artifacts) < 2 * args.min_samples:
         raise BaselineError(
             f"need at least {2 * args.min_samples} eligible artifacts, "

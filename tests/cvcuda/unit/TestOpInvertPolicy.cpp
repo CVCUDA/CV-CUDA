@@ -21,16 +21,15 @@
 
 namespace priv = cvcuda::priv;
 
-TEST(OpInvertPolicy, UsesScalarU8C3VarShapeKernelOnL4)
+TEST(OpInvertPolicy, UsesScalarU8C3VarShapeKernelOnAda)
 {
-    EXPECT_FALSE(priv::UsePackedU8C3VarShapeKernelForDevice(89, "NVIDIA L4"));
+    EXPECT_FALSE(priv::UsePackedU8C3VarShapeKernelForDevice(89));
 }
 
-TEST(OpInvertPolicy, KeepsPackedU8C3VarShapeKernelOnOtherDevices)
+TEST(OpInvertPolicy, KeepsPackedU8C3VarShapeKernelOnOtherArchitectures)
 {
-    EXPECT_TRUE(priv::UsePackedU8C3VarShapeKernelForDevice(89, "NVIDIA L40"));
-    EXPECT_TRUE(priv::UsePackedU8C3VarShapeKernelForDevice(89, "NVIDIA L40S"));
-    EXPECT_TRUE(priv::UsePackedU8C3VarShapeKernelForDevice(80, "NVIDIA A100-PCIE-40GB"));
-    EXPECT_TRUE(priv::UsePackedU8C3VarShapeKernelForDevice(90, "NVIDIA H100 PCIe"));
-    EXPECT_TRUE(priv::UsePackedU8C3VarShapeKernelForDevice(90, "NVIDIA L4"));
+    EXPECT_TRUE(priv::UsePackedU8C3VarShapeKernelForDevice(80));
+    EXPECT_TRUE(priv::UsePackedU8C3VarShapeKernelForDevice(86));
+    EXPECT_TRUE(priv::UsePackedU8C3VarShapeKernelForDevice(90));
+    EXPECT_TRUE(priv::UsePackedU8C3VarShapeKernelForDevice(100));
 }

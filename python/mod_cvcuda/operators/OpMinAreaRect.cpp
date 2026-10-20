@@ -15,19 +15,20 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpMinAreaRect.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
+#include <array>
 #include <stdexcept>
 
 namespace cvcudapy {
 
 namespace {
+using native::Stream;
+using native::Tensor;
 
 class MinAreaRectError : public std::runtime_error
 {
@@ -35,31 +36,31 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-Tensor MinAreaRectInto(Tensor &output, Tensor &input, Tensor &numPointsInContour, const int totalContours,
-                       std::optional<Stream> pstream)
+Tensor &MinAreaRectInto(Tensor &output, Tensor &input, Tensor &numPointsInContour, const int totalContours,
+                        std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto minAreaRect = CreateOperator<cvcuda::MinAreaRect>(totalContours);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, numPointsInContour});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*minAreaRect});
 
-    guard.run([&minAreaRect, &pstream, &input, &output, &numPointsInContour, &totalContours]()
-              { minAreaRect->submit(pstream->cudaHandle(), input, output, numPointsInContour, totalContours); });
+    guard.run(
+        [&minAreaRect, &stream, &input, &output, &numPointsInContour, &totalContours]() {
+            minAreaRect->submit(stream.handle(), input.impl(), output.impl(), numPointsInContour.impl(), totalContours);
+        });
 
-    return std::move(output);
+    return output;
 }
 
-Tensor MinAreaRect(Tensor &input, Tensor &numPointsInContour, const int totalContours, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> MinAreaRect(Tensor &input, Tensor &numPointsInContour, const int totalContours,
+                                    std::optional<Stream *> pstream)
 {
-    const auto &srcShape                = input.shape();
-    const auto &numPointsInContourShape = numPointsInContour.shape();
+    const nvcv::TensorShape &srcShape                = input.impl().shape();
+    const nvcv::TensorShape &numPointsInContourShape = numPointsInContour.impl().shape();
     if (numPointsInContourShape.rank() < 2)
     {
         throw MinAreaRectError("Input numPointsInContour tensor must have rank at least 2");
@@ -68,25 +69,25 @@ Tensor MinAreaRect(Tensor &input, Tensor &numPointsInContour, const int totalCon
     {
         throw MinAreaRectError("Input src rank must 1 greater than numPointsInContourShape tensors rank");
     }
-    if (srcShape.shape()[0] != numPointsInContourShape.shape()[1])
+    if (srcShape[0] != numPointsInContourShape[1])
     {
         throw MinAreaRectError("Input src and numPointsInContourShape must have same batch size");
     }
 
-    Shape dstShape(2);
-    dstShape[0] = srcShape.shape()[0];
-    dstShape[1] = 8;
+    const std::array<int64_t, 2> dstShape{srcShape[0], 8};
 
-    Tensor output = Tensor::Create(dstShape, nvcv::TYPE_F32, numPointsInContour.layout());
+    auto output = native::CreateTensor(
+        {dstShape.data(), static_cast<int32_t>(dstShape.size()), numPointsInContourShape.layout()}, nvcv::TYPE_F32);
 
-    return MinAreaRectInto(output, input, numPointsInContour, totalContours, pstream);
+    MinAreaRectInto(*output, input, numPointsInContour, totalContours, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpMinAreaRect(py::module &m)
+void ExportOpMinAreaRect(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("minarearect", NvtxTrace("cvcuda.minarearect", &MinAreaRect), "src"_a, "numPointsInContour"_a,
           "totalContours"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -98,7 +99,7 @@ void ExportOpMinAreaRect(py::module &m)
                 where i ranges from 0 to batch-1, j ranges from 0 to max number of points in cotours
                 k is the coordinate of each points which is in [0,1]
             numPointsInContour (cvcuda.Tensor): Input tensor containing the number of points in each input contours.
-            totalContours (int): Number of input contours
+            totalContours (int): Number of input contours. Must be equal to src.shape[0].
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -108,7 +109,8 @@ void ExportOpMinAreaRect(py::module &m)
     )pbdoc");
 
     m.def("minarearect_into", NvtxTrace("cvcuda.minarearect_into", &MinAreaRectInto), "dst"_a, "src"_a,
-          "numPointsInContour"_a, "totalContours"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "numPointsInContour"_a, "totalContours"_a, py::kw_only(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Min Area Rect operation on the given cuda stream.
 
 
@@ -119,7 +121,7 @@ void ExportOpMinAreaRect(py::module &m)
                 where i ranges from 0 to batch-1, j ranges from 0 to max number of points in cotours
                 k is the coordinate of each points which is in [0,1]
             numPointsInContour (cvcuda.Tensor): Input tensor containing the number of points in each input contours.
-            totalContours (int): Number of input contours
+            totalContours (int): Number of input contours. Must be equal to src.shape[0].
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 

@@ -1,0 +1,159 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nanobind.stubgen assumes that any class attribute whose value has the same
+# type as its owning class is an enum member. Format and TensorLayout are value
+# classes with interned class constants, so describe those constants directly.
+# enum_compat intentionally exposes pybind11-style enum classes rather than
+# enum.Enum subclasses. Describe their protocol and members explicitly because
+# nanobind.stubgen otherwise treats the detached wrapper instances as integers.
+^cvcuda\.(AdaptiveThresholdType|Border|ChannelManip|ClockFormat|ColorConversion|ColorSpec|ConnectivityType|HistogramEq|Interp|LABEL|LabelMaskType|Matcher|MorphologyType|Norm|NormalizeFlags|Remap|Round|SIFT|ThreadScope|ThresholdType)\.__prefix__$:
+    \from typing import Any, ClassVar, SupportsIndex, SupportsInt
+    __members__: ClassVar[dict[str, \1]]
+    def __init__(self, value: SupportsInt | SupportsIndex) -> None: ...
+    def __eq__(self, other: Any) -> bool: ...
+    def __ne__(self, other: Any) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __index__(self) -> int: ...
+    def __int__(self) -> int: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+    @property
+    def name(self) -> str: ...
+    @property
+    def value(self) -> int: ...
+
+^cvcuda\.(AdaptiveThresholdType|Border|ChannelManip|ClockFormat|ColorConversion|ColorSpec|ConnectivityType|HistogramEq|Interp|LABEL|LabelMaskType|Matcher|MorphologyType|Norm|NormalizeFlags|Remap|Round|SIFT|ThreadScope|ThresholdType)\.(name|value)$:
+
+^cvcuda\.(AdaptiveThresholdType|Border|ChannelManip|ClockFormat|ColorConversion|ColorSpec|ConnectivityType|HistogramEq|Interp|LABEL|LabelMaskType|Matcher|MorphologyType|Norm|NormalizeFlags|Remap|Round|SIFT|ThreadScope|ThresholdType)\.([A-Z][A-Za-z0-9_]*|mRGBA2RGBA)$:
+    \from typing import ClassVar
+    \2: ClassVar[\1]
+^cvcuda\.Format\.(_?[0-9A-Z][A-Za-z0-9_]*)$:
+    \from typing import ClassVar
+    \1: ClassVar[Format]
+
+^cvcuda\.Type\.(_[234][0-9A-Z]*)$:
+    \from typing import ClassVar
+    \1: ClassVar[numpy.dtype[numpy.void]]
+
+^cvcuda\.Type\.U8$:
+    \from typing import ClassVar
+    U8: ClassVar[numpy.dtype[numpy.uint8]]
+
+^cvcuda\.Type\.S8$:
+    \from typing import ClassVar
+    S8: ClassVar[numpy.dtype[numpy.int8]]
+
+^cvcuda\.Type\.U16$:
+    \from typing import ClassVar
+    U16: ClassVar[numpy.dtype[numpy.uint16]]
+
+^cvcuda\.Type\.S16$:
+    \from typing import ClassVar
+    S16: ClassVar[numpy.dtype[numpy.int16]]
+
+^cvcuda\.Type\.U32$:
+    \from typing import ClassVar
+    U32: ClassVar[numpy.dtype[numpy.uint32]]
+
+^cvcuda\.Type\.S32$:
+    \from typing import ClassVar
+    S32: ClassVar[numpy.dtype[numpy.int32]]
+
+^cvcuda\.Type\.F16$:
+    \from typing import ClassVar
+    F16: ClassVar[numpy.dtype[numpy.float16]]
+
+^cvcuda\.Type\.F32$:
+    \from typing import ClassVar
+    F32: ClassVar[numpy.dtype[numpy.float32]]
+
+^cvcuda\.Type\.U64$:
+    \from typing import ClassVar
+    U64: ClassVar[numpy.dtype[numpy.uint64]]
+
+^cvcuda\.Type\.S64$:
+    \from typing import ClassVar
+    S64: ClassVar[numpy.dtype[numpy.int64]]
+
+^cvcuda\.Type\.F64$:
+    \from typing import ClassVar
+    F64: ClassVar[numpy.dtype[numpy.float64]]
+
+^cvcuda\.Type\.C64$:
+    \from typing import ClassVar
+    C64: ClassVar[numpy.dtype[numpy.complex64]]
+
+^cvcuda\.Type\.C128$:
+    \from typing import ClassVar
+    C128: ClassVar[numpy.dtype[numpy.complex128]]
+
+^cvcuda\.TensorLayout\.([A-Z][A-Z0-9_]*)$:
+    \from typing import ClassVar
+    \1: ClassVar[TensorLayout]
+
+^cvcuda\.Stream\.default$:
+    \from typing import ClassVar
+    default: ClassVar[Stream]
+
+# These legacy call surfaces place a defaulted positional argument before one
+# or more required arguments. The extension accepts that ordering, but Python
+# stub syntax does not. Keep the runtime API unchanged and describe the
+# trailing required arguments as keyword-only, which is the valid subset used
+# by the documented call forms.
+^cvcuda\.Label\.__init__$:
+    \from typing import overload, SupportsIndex, SupportsInt
+    @overload
+    def __init__(self, utf8Text: str, fontSize: SupportsInt | SupportsIndex, fontName: str, tlPos: tuple, fontColor: tuple, bgColor: tuple) -> None: ...
+    @overload
+    def __init__(self, utf8Text: str, fontSize: SupportsInt | SupportsIndex, *, fontName: str = 'DejaVuSansMono', tlPos: tuple, fontColor: tuple, bgColor: tuple) -> None: ...
+
+^cvcuda\.Clock\.__init__$:
+    \from typing import overload, SupportsIndex, SupportsInt
+    @overload
+    def __init__(self, clockFormat: ClockFormat, time: SupportsInt | SupportsIndex, fontSize: SupportsInt | SupportsIndex, font: str, tlPos: tuple, fontColor: tuple, bgColor: tuple) -> None: ...
+    @overload
+    def __init__(self, clockFormat: ClockFormat, time: SupportsInt | SupportsIndex, fontSize: SupportsInt | SupportsIndex, *, font: str = 'DejaVuSansMono', tlPos: tuple, fontColor: tuple, bgColor: tuple) -> None: ...
+
+^cvcuda\.match_into$:
+    \from typing import overload, SupportsIndex, SupportsInt
+    @overload
+    def match_into(matches: Tensor, num_matches: Tensor | None, distances: Tensor | None, set1: Tensor, set2: Tensor, num_set1: Tensor | None = None, num_set2: Tensor | None = None, cross_check: bool = False, matches_per_point: SupportsInt | SupportsIndex = 1, norm_type: Norm | None = None, algo_choice: Matcher = ..., *, stream: Stream | None = None) -> tuple[Tensor, Tensor | None, Tensor | None]: ...
+    @overload
+    def match_into(matches: Tensor, num_matches: Tensor | None = None, distances: Tensor | None = None, *, set1: Tensor, set2: Tensor, num_set1: Tensor | None = None, num_set2: Tensor | None = None, cross_check: bool = False, matches_per_point: SupportsInt | SupportsIndex = 1, norm_type: Norm | None = None, algo_choice: Matcher = ..., stream: Stream | None = None) -> tuple[Tensor, Tensor | None, Tensor | None]:
+        \doc
+
+^cvcuda\.label_into$:
+    \from typing import overload
+    @overload
+    def label_into(dst: Tensor, count: Tensor | None, stats: Tensor | None, src: Tensor, connectivity: ConnectivityType = ..., assign_labels: LABEL = ..., mask_type: LabelMaskType = ..., *, bg_label: Tensor | None = None, min_thresh: Tensor | None = None, max_thresh: Tensor | None = None, min_size: Tensor | None = None, mask: Tensor | None = None, stream: Stream | None = None) -> tuple[Tensor, Tensor | None, Tensor | None]: ...
+    @overload
+    def label_into(dst: Tensor, count: Tensor | None = None, stats: Tensor | None = None, *, src: Tensor, connectivity: ConnectivityType = ..., assign_labels: LABEL = ..., mask_type: LabelMaskType = ..., bg_label: Tensor | None = None, min_thresh: Tensor | None = None, max_thresh: Tensor | None = None, min_size: Tensor | None = None, mask: Tensor | None = None, stream: Stream | None = None) -> tuple[Tensor, Tensor | None, Tensor | None]:
+        \doc
+
+^cvcuda\.adaptivethreshold$:
+    \from typing import overload, SupportsIndex, SupportsInt
+    @overload
+    def adaptivethreshold(src: Tensor, max_value: float, adaptive_method: AdaptiveThresholdType, threshold_type: ThresholdType, block_size: SupportsInt | SupportsIndex, c: float, *, stream: Stream | None = None) -> Tensor: ...
+    @overload
+    def adaptivethreshold(src: Tensor, max_value: float, adaptive_method: AdaptiveThresholdType = ..., threshold_type: ThresholdType = ..., *, block_size: SupportsInt | SupportsIndex, c: float, stream: Stream | None = None) -> Tensor: ...
+    @overload
+    def adaptivethreshold(src: ImageBatchVarShape, max_value: Tensor, adaptive_method: AdaptiveThresholdType, threshold_type: ThresholdType, max_block_size: SupportsInt | SupportsIndex, block_size: Tensor, c: Tensor, *, stream: Stream | None = None) -> ImageBatchVarShape: ...
+    @overload
+    def adaptivethreshold(src: ImageBatchVarShape, max_value: Tensor, adaptive_method: AdaptiveThresholdType = ..., threshold_type: ThresholdType = ..., *, max_block_size: SupportsInt | SupportsIndex, block_size: Tensor, c: Tensor, stream: Stream | None = None) -> ImageBatchVarShape:
+        \doc
+
+^cvcuda\.adaptivethreshold_into$:
+    \from typing import overload, SupportsIndex, SupportsInt
+    @overload
+    def adaptivethreshold_into(dst: Tensor, src: Tensor, max_value: float, adaptive_method: AdaptiveThresholdType, threshold_type: ThresholdType, block_size: SupportsInt | SupportsIndex, c: float, *, stream: Stream | None = None) -> Tensor: ...
+    @overload
+    def adaptivethreshold_into(dst: Tensor, src: Tensor, max_value: float, adaptive_method: AdaptiveThresholdType = ..., threshold_type: ThresholdType = ..., *, block_size: SupportsInt | SupportsIndex, c: float, stream: Stream | None = None) -> Tensor: ...
+    @overload
+    def adaptivethreshold_into(dst: ImageBatchVarShape, src: ImageBatchVarShape, max_value: Tensor, adaptive_method: AdaptiveThresholdType, threshold_type: ThresholdType, max_block_size: SupportsInt | SupportsIndex, block_size: Tensor, c: Tensor, *, stream: Stream | None = None) -> ImageBatchVarShape: ...
+    @overload
+    def adaptivethreshold_into(dst: ImageBatchVarShape, src: ImageBatchVarShape, max_value: Tensor, adaptive_method: AdaptiveThresholdType = ..., threshold_type: ThresholdType = ..., *, max_block_size: SupportsInt | SupportsIndex, block_size: Tensor, c: Tensor, stream: Stream | None = None) -> ImageBatchVarShape:
+        \doc
+
+^cvcuda\.__version__$:
+    __version__: str

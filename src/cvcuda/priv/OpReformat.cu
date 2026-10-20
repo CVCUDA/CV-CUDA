@@ -17,8 +17,10 @@
  * limitations under the License.
  */
 
+#include "LegacyFormatClassify.hpp"
 #include "Nvtx.hpp"
 #include "OpReformat.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cuda_runtime.h>
 #include <cvcuda/cuda_tools/TensorWrap.hpp>
@@ -33,6 +35,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 namespace cuda = nvcv::cuda;
@@ -63,124 +66,15 @@ constexpr bool ShouldUsePitchedCopy(int numSamples, std::size_t pixelsPerSample,
         && (pixelsPerSample >= kAnyBatchMinPixels || (numSamples <= 8 && pixelsPerSample >= kLimitedBatchMinPixels));
 }
 
-// The four tensor layouts the operator accepts. The ordinals match the legacy DataFormat enum this
-// replaces, so the rejection message for an unsupported pairing still names the same numbers.
-enum class Layout
-{
-    kNCHW = 0,
-    kNHWC = 1,
-    kCHW  = 2,
-    kHWC  = 3,
-};
+// Ordinals are printed in the unsupported-pairing rejection message.
+using Layout = cvcuda::priv::legacy_format::DataFormatCode;
 
 template<Layout L>
 constexpr int LayoutDimensions = (L == Layout::kNCHW || L == Layout::kNHWC) ? 4 : 3;
 
-inline Layout GetLayout(const nvcv::TensorLayout &layout)
-{
-    if (layout == nvcv::TENSOR_NCHW)
-    {
-        return Layout::kNCHW;
-    }
-    if (layout == nvcv::TENSOR_CHW)
-    {
-        return Layout::kCHW;
-    }
-    if (layout == nvcv::TENSOR_NHWC)
-    {
-        return Layout::kNHWC;
-    }
-    if (layout == nvcv::TENSOR_HWC)
-    {
-        return Layout::kHWC;
-    }
-    throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Tensor layout not supported");
-}
-
-// The legacy gate ran both dtypes through GetLegacyDataType, which classifies on bits-per-channel
-// plus data kind -- packed types such as TYPE_3U8 therefore land on the same class as TYPE_U8 --
-// and throws for any (kind, width) pair its enum has no name for. Reproducing that enum, ordinals
-// included, keeps the admitted set and its rejection of unnamed (kind, width) pairs exactly as
-// they were; a width-and-kind predicate alone would be wider, silently admitting 32-/64-bit
-// unsigned and 64-bit signed.
-enum class ElementType
-{
-    kU8  = 0,
-    kS8  = 1,
-    kU16 = 2,
-    kS16 = 3,
-    kS32 = 4,
-    kF32 = 5,
-    kF64 = 6,
-    kF16 = 7,
-};
-
-inline ElementType ClassifyElementType(const nvcv::DataType &dtype)
-{
-    const auto bpc = dtype.bitsPerChannel();
-
-    for (int i = 1; i < dtype.numChannels(); ++i)
-    {
-        // A mixed-width packing is real (NVCV_PACKING_X32_Y24b8), and the legacy helper rejected it
-        // before classifying anything, so this arm is reachable rather than defensive.
-        if (bpc[i] != bpc[0])
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All channels must have same bit-depth");
-        }
-    }
-
-    switch (dtype.dataKind())
-    {
-    case nvcv::DataKind::FLOAT:
-        if (bpc[0] == 64)
-        {
-            return ElementType::kF64;
-        }
-        if (bpc[0] == 32)
-        {
-            return ElementType::kF32;
-        }
-        if (bpc[0] == 16)
-        {
-            return ElementType::kF16;
-        }
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for float cuda op type ", bpc[0]);
-
-    case nvcv::DataKind::SIGNED:
-        if (bpc[0] == 8)
-        {
-            return ElementType::kS8;
-        }
-        if (bpc[0] == 16)
-        {
-            return ElementType::kS16;
-        }
-        if (bpc[0] == 32)
-        {
-            return ElementType::kS32;
-        }
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for signed cuda op type ", bpc[0]);
-
-    case nvcv::DataKind::UNSIGNED:
-        if (bpc[0] == 8)
-        {
-            return ElementType::kU8;
-        }
-        if (bpc[0] == 16)
-        {
-            return ElementType::kU16;
-        }
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for unsigned cuda op type ",
-                              bpc[0]);
-
-    case nvcv::DataKind::COMPLEX:
-    case nvcv::DataKind::UNSPECIFIED:
-        break;
-    }
-
-    throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                          "Only floating-point, signed integer and unsigned integer data kinds are supported ");
-}
+using cvcuda::priv::legacy_format::ClassifyDataFormat;
+using cvcuda::priv::legacy_format::ClassifyDataType;
+using cvcuda::priv::legacy_format::DataTypeCode;
 
 __device__ __forceinline__ void packRGB8x4(uint32_t r, uint32_t g, uint32_t b, uint32_t &out0, uint32_t &out1,
                                            uint32_t &out2)
@@ -244,6 +138,33 @@ __global__ void transformFormatNCHWToNHWCRGB8(const uint8_t *__restrict__ src, u
     }
 }
 
+__global__ void transformFormatNCHWToNHWCU8C1(const uint8_t *__restrict__ src, uint8_t *__restrict__ dst, int width,
+                                              int height, int srcRowStride, int srcSampleStride, int dstRowStride,
+                                              int dstSampleStride)
+{
+    const int column = (blockIdx.x * blockDim.x + threadIdx.x) * sizeof(uint4);
+    const int row    = blockIdx.y * blockDim.y + threadIdx.y;
+    const int sample = blockIdx.z;
+    if (column >= width || row >= height)
+        return;
+
+    src += sample * srcSampleStride + row * srcRowStride + column;
+    dst += sample * dstSampleStride + row * dstRowStride + column;
+    if (column + sizeof(uint4) <= width)
+    {
+        *reinterpret_cast<uint4 *>(dst) = *reinterpret_cast<const uint4 *>(src);
+    }
+    else
+    {
+#pragma unroll
+        for (int byte = 0; byte < sizeof(uint4); ++byte)
+        {
+            if (column + byte < width)
+                dst[byte] = src[byte];
+        }
+    }
+}
+
 template<Layout SrcLayout, int RowsPerThread, class SrcWrapper, class DstWrapper>
 __global__ void transformFormat(const SrcWrapper src, DstWrapper dst, int3 inout_size)
 {
@@ -298,7 +219,8 @@ inline void Transform(cudaStream_t stream, const nvcv::TensorDataStridedCuda &in
                       const nvcv::TensorDataAccessStridedImagePlanar &inAccess,
                       const nvcv::TensorDataAccessStridedImagePlanar &outAccess)
 {
-    const int3 inout_size = {inAccess.numCols(), inAccess.numRows(), outAccess.numChannels()};
+    const int3        inout_size = {inAccess.numCols(), inAccess.numRows(), outAccess.numChannels()};
+    constexpr int64_t kMaxGridZ  = 65535;
 
     const int64_t inMaxStride  = inAccess.sampleStride() * inAccess.numSamples();
     const int64_t outMaxStride = outAccess.sampleStride() * outAccess.numSamples();
@@ -317,6 +239,33 @@ inline void Transform(cudaStream_t stream, const nvcv::TensorDataStridedCuda &in
             | static_cast<uintptr_t>(inAccess.rowStride()) | static_cast<uintptr_t>(inAccess.planeStride())
             | static_cast<uintptr_t>(inAccess.sampleStride()) | static_cast<uintptr_t>(outAccess.rowStride())
             | static_cast<uintptr_t>(outAccess.sampleStride());
+
+        constexpr int kBlockRows = 8;
+        constexpr int kMaxGridY  = 65535;
+        if (inAccess.numSamples() > 0 && inout_size.x > 0 && inout_size.y > 0 && inout_size.y <= kBlockRows * kMaxGridY
+            && inAccess.rowStride() > 0 && inAccess.sampleStride() > 0 && outAccess.rowStride() > 0
+            && outAccess.sampleStride() > 0 && inData.rank() == 4 && outData.rank() == 4 && inout_size.z == 1
+            && inData.stride(3) == 1 && outData.stride(2) == 1 && outData.stride(3) == 1
+            && (alignment & (alignof(uint4) - 1)) == 0)
+        {
+            const dim3 block{32, kBlockRows};
+            dim3       grid(util::DivUp(inout_size.x, static_cast<int>(block.x * sizeof(uint4))),
+                            util::DivUp(inout_size.y, static_cast<int>(block.y)));
+            int64_t    sample = 0;
+            do
+            {
+                grid.z = static_cast<unsigned int>(std::min(inAccess.numSamples() - sample, kMaxGridZ));
+                transformFormatNCHWToNHWCU8C1<<<grid, block, 0, stream>>>(
+                    reinterpret_cast<const uint8_t *>(inData.basePtr() + sample * inAccess.sampleStride()),
+                    reinterpret_cast<uint8_t *>(outData.basePtr() + sample * outAccess.sampleStride()), inout_size.x,
+                    inout_size.y, static_cast<int>(inAccess.rowStride()), static_cast<int>(inAccess.sampleStride()),
+                    static_cast<int>(outAccess.rowStride()), static_cast<int>(outAccess.sampleStride()));
+                NVCV_CHECK_THROW(cudaGetLastError());
+                sample += grid.z;
+            }
+            while (sample < inAccess.numSamples());
+            return;
+        }
 
         usedRGB8FastPath = inAccess.numSamples() > 0 && inout_size.x > 0 && inout_size.y > 0 && inAccess.rowStride() > 0
                         && inAccess.planeStride() > 0 && inAccess.sampleStride() > 0 && outAccess.rowStride() > 0
@@ -347,14 +296,25 @@ inline void Transform(cudaStream_t stream, const nvcv::TensorDataStridedCuda &in
         constexpr bool kUseWideBlock  = std::is_same_v<T, unsigned char>;
         constexpr int  kRowsPerThread = kUseWideBlock ? 8 : 1;
         const dim3     block          = kUseWideBlock ? dim3{128, 2} : dim3{32, 8};
-        const dim3     grid(util::DivUp(inout_size.x, static_cast<int>(block.x)),
-                            util::DivUp(inout_size.y, static_cast<int>(block.y) * kRowsPerThread),
-                            static_cast<unsigned int>(inAccess.numSamples()));
+        dim3           grid(util::DivUp(inout_size.x, static_cast<int>(block.x)),
+                            util::DivUp(inout_size.y, static_cast<int>(block.y) * kRowsPerThread));
 
         cuda::TensorNDWrap<const T, LayoutDimensions<SrcLayout>, int32_t> src(inData);
         cuda::TensorNDWrap<T, LayoutDimensions<SrcLayout>, int32_t>       dst(outData);
 
-        transformFormat<SrcLayout, kRowsPerThread><<<grid, block, 0, stream>>>(src, dst, inout_size);
+        // Rebase non-owning wraps so oversized batches can reuse the unchanged kernel indexing.
+        int64_t sample = 0;
+        do
+        {
+            grid.z = static_cast<unsigned int>(std::min(inAccess.numSamples() - sample, kMaxGridZ));
+            const decltype(src) chunkSrc(inData.basePtr() + sample * inAccess.sampleStride(), src.strides());
+            const decltype(dst) chunkDst(outData.basePtr() + sample * outAccess.sampleStride(), dst.strides());
+            transformFormat<SrcLayout, kRowsPerThread><<<grid, block, 0, stream>>>(chunkSrc, chunkDst, inout_size);
+            NVCV_CHECK_THROW(cudaGetLastError());
+            sample += grid.z;
+        }
+        while (sample < inAccess.numSamples());
+        return;
     }
 
     NVCV_CHECK_THROW(cudaGetLastError());
@@ -363,44 +323,44 @@ inline void Transform(cudaStream_t stream, const nvcv::TensorDataStridedCuda &in
 // The legacy 4x8 function-pointer table indexed by [input format][data type code] becomes two
 // nested switches; the instantiated set is identical.
 template<Layout SrcLayout>
-inline void TransformByElementType(ElementType type, cudaStream_t stream, const nvcv::TensorDataStridedCuda &inData,
+inline void TransformByElementType(DataTypeCode type, cudaStream_t stream, const nvcv::TensorDataStridedCuda &inData,
                                    const nvcv::TensorDataStridedCuda              &outData,
                                    const nvcv::TensorDataAccessStridedImagePlanar &inAccess,
                                    const nvcv::TensorDataAccessStridedImagePlanar &outAccess)
 {
     switch (type)
     {
-    case ElementType::kU8:
+    case DataTypeCode::kU8:
         Transform<SrcLayout, unsigned char>(stream, inData, outData, inAccess, outAccess);
         return;
-    case ElementType::kS8:
+    case DataTypeCode::kS8:
         Transform<SrcLayout, signed char>(stream, inData, outData, inAccess, outAccess);
         return;
-    case ElementType::kU16:
+    case DataTypeCode::kU16:
         Transform<SrcLayout, unsigned short>(stream, inData, outData, inAccess, outAccess);
         return;
-    case ElementType::kS16:
+    case DataTypeCode::kS16:
         Transform<SrcLayout, short>(stream, inData, outData, inAccess, outAccess);
         return;
-    case ElementType::kS32:
+    case DataTypeCode::kS32:
         Transform<SrcLayout, int>(stream, inData, outData, inAccess, outAccess);
         return;
-    case ElementType::kF32:
+    case DataTypeCode::kF32:
         Transform<SrcLayout, float>(stream, inData, outData, inAccess, outAccess);
         return;
-    case ElementType::kF64:
+    case DataTypeCode::kF64:
         Transform<SrcLayout, double>(stream, inData, outData, inAccess, outAccess);
         return;
     // Reformat relocates elements without arithmetic, so 16-bit float rides the 16-bit integer
     // instantiation and copies the bit patterns through unchanged. Sharing the instantiation with
     // kU16 rather than adding a half specialization is what makes the transfer bit-exact.
-    case ElementType::kF16:
+    case DataTypeCode::kF16:
         Transform<SrcLayout, unsigned short>(stream, inData, outData, inAccess, outAccess);
         return;
     }
 }
 
-inline void RunTransform(Layout srcLayout, ElementType type, cudaStream_t stream,
+inline void RunTransform(Layout srcLayout, DataTypeCode type, cudaStream_t stream,
                          const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                          const nvcv::TensorDataAccessStridedImagePlanar &inAccess,
                          const nvcv::TensorDataAccessStridedImagePlanar &outAccess)
@@ -425,8 +385,8 @@ inline void RunTransform(Layout srcLayout, ElementType type, cudaStream_t stream
 inline void RunReformat(cudaStream_t stream, const nvcv::TensorDataStridedCuda &inData,
                         const nvcv::TensorDataStridedCuda &outData)
 {
-    const Layout inLayout  = GetLayout(inData.layout());
-    const Layout outLayout = GetLayout(outData.layout());
+    const Layout inLayout  = ClassifyDataFormat(inData.layout());
+    const Layout outLayout = ClassifyDataFormat(outData.layout());
 
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
     if (!inAccess)
@@ -476,8 +436,8 @@ inline void RunReformat(cudaStream_t stream, const nvcv::TensorDataStridedCuda &
                               static_cast<int>(outLayout));
     }
 
-    const ElementType inType  = ClassifyElementType(inData.dtype());
-    const ElementType outType = ClassifyElementType(outData.dtype());
+    const DataTypeCode inType  = ClassifyDataType(inData.dtype());
+    const DataTypeCode outType = ClassifyDataType(outData.dtype());
 
     if (inType != outType)
     {
@@ -486,7 +446,7 @@ inline void RunReformat(cudaStream_t stream, const nvcv::TensorDataStridedCuda &
                               static_cast<int>(outType));
     }
 
-    if (inType == ElementType::kU8 && inAccess->numChannels() == 1 && outAccess->numChannels() == 1
+    if (inType == DataTypeCode::kU8 && inAccess->numChannels() == 1 && outAccess->numChannels() == 1
         && inAccess->numPlanes() == 1 && outAccess->numPlanes() == 1 && inAccess->numRows() == outAccess->numRows()
         && inAccess->numCols() == outAccess->numCols() && inAccess->colStride() == outAccess->colStride())
     {
@@ -513,6 +473,34 @@ inline void RunReformat(cudaStream_t stream, const nvcv::TensorDataStridedCuda &
 
         if (usePitchedCopy)
         {
+            if (numSamples > 1 && inAccess->numRows() > 0 && rowBytes > 0 && inAccess->rowStride() >= rowBytes
+                && outAccess->rowStride() >= rowBytes)
+            {
+                const auto rows            = static_cast<size_t>(inAccess->numRows());
+                const auto samples         = static_cast<size_t>(numSamples);
+                const auto inPitch         = static_cast<size_t>(inAccess->rowStride());
+                const auto outPitch        = static_cast<size_t>(outAccess->rowStride());
+                const auto inSampleStride  = static_cast<size_t>(inAccess->sampleStride());
+                const auto outSampleStride = static_cast<size_t>(outAccess->sampleStride());
+                // Bound both conservative buffer spans before forming any products, including copy height.
+                if (std::max(inPitch, outPitch) <= std::numeric_limits<size_t>::max() / rows / samples
+                    && inSampleStride == inPitch * rows && outSampleStride == outPitch * rows)
+                {
+                    const auto src = reinterpret_cast<uintptr_t>(inAccess->sampleData(0));
+                    const auto dst = reinterpret_cast<uintptr_t>(outAccess->sampleData(0));
+                    // Keep ordered per-sample behavior for aliases without forming overflowing end pointers.
+                    const bool disjoint
+                        = src < dst ? dst - src >= samples * inSampleStride : src - dst >= samples * outSampleStride;
+                    if (disjoint)
+                    {
+                        NVCV_CHECK_THROW(cudaMemcpy2DAsync(outAccess->sampleData(0), outPitch, inAccess->sampleData(0),
+                                                           inPitch, static_cast<size_t>(rowBytes), rows * samples,
+                                                           cudaMemcpyDeviceToDevice, stream));
+                        return;
+                    }
+                }
+            }
+
             for (int i = 0; i < numSamples; ++i)
             {
                 nvcv::Byte *inSampData  = inAccess->sampleData(i);
@@ -537,19 +525,8 @@ namespace cvcuda::priv {
 void Reformat::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::Reformat::operator()[Tensor]");
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData  = RequireCudaTensor(in, "Input");
+    auto outData = RequireCudaTensor(out, "Output");
 
     RunReformat(stream, *inData, *outData);
 }

@@ -25,6 +25,7 @@
 #include <nvcv/alloc/Allocator.hpp>
 
 #include <array>
+#include <cstddef>
 #include <list>
 #include <random>
 #include <vector>
@@ -836,4 +837,252 @@ TEST(TensorTests_Negative_, invalid_getDataType)
         nvcv::TYPE_U8);
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorGetDataType(tensor.handle(), nullptr));
+}
+
+// ---------------------------------------------------------------------------
+// Stride-alignment validation tests
+//
+// Non-packed strides must be multiples of the element alignment so every
+// element in every row/sample is naturally aligned on the device.
+// ---------------------------------------------------------------------------
+
+// Helper: build a TensorWrapData from raw components and return the status.
+static NVCVStatus MakeStridedTensor(const nvcv::TensorShape &shape, nvcv::DataType dtype,
+                                    std::initializer_list<int64_t> strides)
+{
+    NVCVTensorBufferStrided buf = {};
+    int                     i   = 0;
+    for (int64_t s : strides) buf.strides[i++] = s;
+    // basePtr: 16-byte-aligned pointer (no memory is accessed, just validated)
+    alignas(16) static std::array<std::byte, 1> dummy;
+    buf.basePtr = reinterpret_cast<NVCVByte *>(dummy.data());
+
+    NVCVTensorHandle h      = nullptr;
+    auto             td     = nvcv::TensorDataStridedCuda(shape, dtype, buf);
+    NVCVStatus       status = nvcvTensorWrapDataConstruct(&td.cdata(), nullptr, nullptr, &h);
+    if (h)
+        nvcvTensorDecRef(h, nullptr);
+    return status;
+}
+
+// ----- Negative: misaligned non-packed strides are rejected -----
+
+// Exact reproduction of the reported bug: U16 NHWC {2,2,8,1}, sample stride 33 (odd).
+TEST(TensorStrideAlignment_Negative, u16_nhwc_odd_sample_stride)
+{
+    // stride[0]=33 is not 2-aligned; should fail
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, MakeStridedTensor(
+                                               nvcv::TensorShape{
+                                                   {2, 2, 8, 1},
+                                                   "NHWC"
+    },
+                                               nvcv::TYPE_U16, {33, 16, 2, 2}));
+}
+
+// U16 NHWC: row stride misaligned (non-packed H dim).
+TEST(TensorStrideAlignment_Negative, u16_nhwc_odd_row_stride)
+{
+    // stride[1]=17 is not 2-aligned for U16
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, MakeStridedTensor(
+                                               nvcv::TensorShape{
+                                                   {2, 4, 8, 1},
+                                                   "NHWC"
+    },
+                                               nvcv::TYPE_U16, {136, 17, 2, 2}));
+}
+
+// U32 NCHW: sample stride not 4-aligned.
+TEST(TensorStrideAlignment_Negative, u32_nchw_misaligned_sample_stride)
+{
+    // shape {3,1,4,8}, NCHW: only W is packed. C is skipped because shape[1] == 1.
+    // minPitch(N)=128. stride[0]=130 is >= minPitch and not 4-aligned.
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, MakeStridedTensor(
+                                               nvcv::TensorShape{
+                                                   {3, 1, 4, 8},
+                                                   "NCHW"
+    },
+                                               nvcv::TYPE_U32, {130, 32, 32, 4}));
+}
+
+// F32 NHW: sample stride not 4-aligned.
+TEST(TensorStrideAlignment_Negative, f32_nhw_misaligned_sample_stride)
+{
+    // minPitch(N)=128. stride[0]=130 is >= minPitch and not 4-aligned.
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, MakeStridedTensor(
+                                               nvcv::TensorShape{
+                                                   {3, 4, 8},
+                                                   "NHW"
+    },
+                                               nvcv::TYPE_F32, {130, 32, 4}));
+}
+
+// F16 NHW: sample stride not 2-aligned.
+TEST(TensorStrideAlignment_Negative, f16_nhw_misaligned_sample_stride)
+{
+    // minPitch(N)=64. stride[0]=65 is >= minPitch and not 2-aligned.
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, MakeStridedTensor(
+                                               nvcv::TensorShape{
+                                                   {3, 4, 8},
+                                                   "NHW"
+    },
+                                               nvcv::TYPE_F16, {65, 16, 2}));
+}
+
+// F16 NHW: row stride not 2-aligned.
+TEST(TensorStrideAlignment_Negative, f16_nhw_misaligned_row_stride)
+{
+    // stride[1]=17 is not 2-aligned
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, MakeStridedTensor(
+                                               nvcv::TensorShape{
+                                                   {3, 4, 8},
+                                                   "NHW"
+    },
+                                               nvcv::TYPE_F16, {68, 17, 2}));
+}
+
+// NHWC float4 (4F32): sample stride not 4-aligned.
+TEST(TensorStrideAlignment_Negative, float4_nhwc_misaligned_sample_stride)
+{
+    // TYPE_4F32 has strideBytes=16, alignment=4; minPitch(N)=128 and stride[0]=130 is not 4-aligned.
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, MakeStridedTensor(
+                                               nvcv::TensorShape{
+                                                   {2, 2, 4, 4},
+                                                   "NHWC"
+    },
+                                               nvcv::TYPE_4F32, {130, 64, 16, 4}));
+}
+
+// RGBA8 (4U8): alignment=1, but check that a stride of 1 is still rejected when minPitch fails.
+// (Existing minPitch logic; alignment check must not mask it.)
+TEST(TensorStrideAlignment_Negative, rgba8_nhwc_row_stride_below_minpitch)
+{
+    // A three-byte row cannot hold four four-byte pixels.
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, MakeStridedTensor(
+                                               nvcv::TensorShape{
+                                                   {2, 4, 4, 4},
+                                                   "NHWC"
+    },
+                                               nvcv::TYPE_4U8, {48, 3, 16, 4}));
+}
+
+// ----- Boundary: stride exactly at alignment boundary is accepted -----
+
+// U16 NHWC: sample stride exactly 2-aligned (should succeed).
+TEST(TensorStrideAlignment_Positive, u16_nhwc_aligned_sample_stride_exact)
+{
+    EXPECT_EQ(NVCV_SUCCESS, MakeStridedTensor(
+                                nvcv::TensorShape{
+                                    {2, 2, 8, 1},
+                                    "NHWC"
+    },
+                                nvcv::TYPE_U16, {32, 16, 2, 2}));
+}
+
+// U16 NHWC: sample stride 34 (next even number above minPitch=32), should succeed.
+TEST(TensorStrideAlignment_Positive, u16_nhwc_aligned_sample_stride_padded)
+{
+    EXPECT_EQ(NVCV_SUCCESS, MakeStridedTensor(
+                                nvcv::TensorShape{
+                                    {2, 2, 8, 1},
+                                    "NHWC"
+    },
+                                nvcv::TYPE_U16, {34, 16, 2, 2}));
+}
+
+// ----- Positive: legitimate tensors must still be accepted -----
+
+// RGB8 (3U8, uchar3): alignment=1, so any positive stride works for non-packed dims,
+// including odd ones.  For HWC rank=3, firstPacked=1: W (dim 1) and C (dim 2) are packed;
+// H (dim 0) is non-packed — any stride >= minPitch is accepted regardless of parity.
+TEST(TensorStrideAlignment_Positive, rgb8_hwc_odd_row_stride_accepted)
+{
+    // shape {4,5,3} HWC: C stride=3 (packed), W stride=9 (packed, 3*3=9).
+    // minPitch(H) = 9*5 = 45.  H stride=45 is odd but 1-aligned — accepted.
+    EXPECT_EQ(NVCV_SUCCESS, MakeStridedTensor(
+                                nvcv::TensorShape{
+                                    {4, 5, 3},
+                                    "HWC"
+    },
+                                nvcv::TYPE_3U8, {47, 9, 3}));
+}
+
+// NHWC RGB8: batch and row non-packed dims both with odd strides — alignment=1, accepted.
+TEST(TensorStrideAlignment_Positive, rgb8_nhwc_odd_strides_accepted)
+{
+    // shape {3,4,5,3}: C stride=3, W stride=9 (packed).
+    // minPitch(H) = 9*5 = 45.  H stride=45 is odd, 1-aligned ✓.
+    // minPitch(N) = 45*4 = 180.  N stride=181 is odd, 1-aligned ✓.
+    EXPECT_EQ(NVCV_SUCCESS, MakeStridedTensor(
+                                nvcv::TensorShape{
+                                    {3, 4, 5, 3},
+                                    "NHWC"
+    },
+                                nvcv::TYPE_3U8, {181, 45, 9, 3}));
+}
+
+// RGBA8 (4U8): alignment=1, odd row and sample strides accepted.
+TEST(TensorStrideAlignment_Positive, rgba8_nhwc_odd_strides_accepted)
+{
+    // shape {2,3,4,4}: C stride=4, W stride=16 (packed, 4*4=16).
+    // minPitch(H) = 16*4 = 64.  H stride=65 is odd, 1-aligned ✓.
+    // minPitch(N) = 65*3 = 195.  N stride=195 is odd, 1-aligned ✓.
+    EXPECT_EQ(NVCV_SUCCESS, MakeStridedTensor(
+                                nvcv::TensorShape{
+                                    {2, 3, 4, 4},
+                                    "NHWC"
+    },
+                                nvcv::TYPE_4U8, {195, 65, 16, 4}));
+}
+
+// U8 (1-byte): alignment=1 so odd strides are fine for non-packed dims.
+TEST(TensorStrideAlignment_Positive, u8_nhw_odd_strides_accepted)
+{
+    // W stride=1 (packed).  H stride=9 (≥8, 1-aligned).  N stride=37 (≥9*4=36, 1-aligned).
+    EXPECT_EQ(NVCV_SUCCESS, MakeStridedTensor(
+                                nvcv::TensorShape{
+                                    {3, 4, 8},
+                                    "NHW"
+    },
+                                nvcv::TYPE_U8, {37, 9, 1}));
+}
+
+// F32 NHWC: all strides 4-aligned, accepted.
+TEST(TensorStrideAlignment_Positive, f32_nhwc_aligned_strides)
+{
+    EXPECT_EQ(NVCV_SUCCESS, MakeStridedTensor(
+                                nvcv::TensorShape{
+                                    {2, 3, 4, 1},
+                                    "NHWC"
+    },
+                                nvcv::TYPE_F32, {48, 16, 4, 4}));
+}
+
+// F16 NHWC: all strides 2-aligned, accepted.
+TEST(TensorStrideAlignment_Positive, f16_nhwc_aligned_strides)
+{
+    EXPECT_EQ(NVCV_SUCCESS, MakeStridedTensor(
+                                nvcv::TensorShape{
+                                    {2, 3, 4, 1},
+                                    "NHWC"
+    },
+                                nvcv::TYPE_F16, {24, 8, 2, 2}));
+}
+
+// NCHW F32: sample and channel strides 4-aligned, accepted.
+TEST(TensorStrideAlignment_Positive, f32_nchw_aligned_strides)
+{
+    // shape {2,3,4,8} NCHW: W is packed (stride=4), H/C/N non-packed.
+    // H stride=32 (≥8*4=32), C stride=128 (≥32*4=128), N stride=384 (≥128*3=384). All 4-aligned.
+    EXPECT_EQ(NVCV_SUCCESS, MakeStridedTensor(
+                                nvcv::TensorShape{
+                                    {2, 3, 4, 8},
+                                    "NCHW"
+    },
+                                nvcv::TYPE_F32, {384, 128, 32, 4}));
+}
+
+// Rank-1: packed only, no non-packed dims — always accepted.
+TEST(TensorStrideAlignment_Positive, rank1_no_nonpacked_dims)
+{
+    EXPECT_EQ(NVCV_SUCCESS, MakeStridedTensor(nvcv::TensorShape{{8}, "W"}, nvcv::TYPE_U16, {2}));
 }

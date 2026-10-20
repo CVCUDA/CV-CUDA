@@ -171,15 +171,15 @@ private:
  * This function tries to rethrow the given exception and based on its type, it sets the appropriate
  * error status for the current thread using the `nvcvSetThreadStatus` function.
  *
- * @param e The captured exception to be rethrown and processed.
+ * @param error The captured exception to be rethrown and processed.
  */
-inline void SetThreadError(std::exception_ptr e)
+inline void SetThreadError(std::exception_ptr error)
 {
     try
     {
-        if (e)
+        if (error)
         {
-            rethrow_exception(e);
+            rethrow_exception(error);
         }
         else
         {

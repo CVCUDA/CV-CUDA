@@ -25,11 +25,19 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <string_view>
 
 namespace {
+
+class ChannelReorderFixtureError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 enum class ChannelReorderLayout
 {
@@ -42,7 +50,8 @@ enum class ChannelReorderLayout
 enum class ChannelOrderPattern
 {
     Rotate,
-    ZeroFill
+    ZeroFill,
+    RotateMisaligned
 };
 
 ChannelReorderLayout GetChannelReorderLayout(nvbench::state &state, std::string_view layout,
@@ -89,6 +98,10 @@ ChannelOrderPattern GetChannelOrderPattern(std::string_view orderPattern)
     if (orderPattern == "zero_fill")
     {
         return ChannelOrderPattern::ZeroFill;
+    }
+    if (orderPattern == "rotate_misaligned")
+    {
+        return ChannelOrderPattern::RotateMisaligned;
     }
 
     throw std::invalid_argument("Invalid orderPattern = " + std::string(orderPattern));
@@ -185,6 +198,45 @@ void RunTensorChannelReorder(nvbench::state &state, cvcuda::ChannelReorder &op, 
     RunNativeTensorChannelReorder<BT, NumChannels>(state, op, shape, IsPlanar(layout), order);
 }
 
+void FillMisalignedChannelReorderBatch(nvcv::ImageBatchVarShape &batch, const int3 &shape, int channels,
+                                       nvcv::ImageFormat format, bool input)
+{
+    const int    rowPitch   = shape.z * channels + 1;
+    const size_t imageBytes = static_cast<size_t>(rowPitch) * shape.y;
+    for (int imageIndex = 0; imageIndex < shape.x; ++imageIndex)
+    {
+        unsigned char *allocation{};
+        CUDA_CHECK_ERROR(cudaMalloc(&allocation, imageBytes + 1));
+        const std::shared_ptr<unsigned char> owner(allocation, [](unsigned char *ptr) { cudaFree(ptr); });
+        auto                                *imageData = reinterpret_cast<NVCVByte *>(allocation + 1);
+        CUDA_CHECK_ERROR(cudaMemset(allocation, 0, imageBytes + 1));
+        if (input)
+        {
+            benchutils::launchCheckerboardImageTyped<unsigned char>(allocation + 1, imageBytes, rowPitch, channels, 255,
+                                                                    0, nullptr);
+        }
+        nvcv::ImageDataStridedCuda::Buffer buffer{};
+        buffer.numPlanes           = 1;
+        buffer.planes[0].width     = shape.z;
+        buffer.planes[0].height    = shape.y;
+        buffer.planes[0].rowStride = rowPitch;
+        buffer.planes[0].basePtr   = imageData;
+        auto       image           = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{format, buffer},
+                                                         nvcv::ImageDataCleanupCallback{[owner](const nvcv::ImageData &)
+                                                                        {
+                                                                            // The captured owner releases the allocation when this callback is destroyed.
+                                                                        }});
+        const auto data            = image.exportData<nvcv::ImageDataStridedCuda>();
+        CVCUDA_CHECK_DATA(data);
+        if (data->plane(0).basePtr != imageData || data->plane(0).rowStride != rowPitch)
+        {
+            throw ChannelReorderFixtureError("ChannelReorder misaligned fixture changed offset or row pitch");
+        }
+        batch.pushBack(image);
+    }
+    CUDA_CHECK_ERROR(cudaStreamSynchronize(nullptr));
+}
+
 template<typename T>
 void RunVarShapeChannelReorder(nvbench::state &state, cvcuda::ChannelReorder &op, const int3 &shape, bool planar,
                                ChannelOrderPattern pattern)
@@ -196,7 +248,7 @@ void RunVarShapeChannelReorder(nvbench::state &state, cvcuda::ChannelReorder &op
              "NC"
     },
          nvcv::TYPE_S32);
-    if (pattern == ChannelOrderPattern::Rotate)
+    if (pattern == ChannelOrderPattern::Rotate || pattern == ChannelOrderPattern::RotateMisaligned)
     {
         benchutils::FillTensor<int>(orders,
                                     [](const long4_16a &coord) { return (int)((coord.x + coord.y) % NumChannels); });
@@ -209,7 +261,12 @@ void RunVarShapeChannelReorder(nvbench::state &state, cvcuda::ChannelReorder &op
 
     nvcv::ImageBatchVarShape src(shape.x);
     nvcv::ImageBatchVarShape dst(shape.x);
-    if (planar)
+    if (pattern == ChannelOrderPattern::RotateMisaligned)
+    {
+        FillMisalignedChannelReorderBatch(src, shape, NumChannels, benchutils::GetFormat<T>(), true);
+        FillMisalignedChannelReorderBatch(dst, shape, NumChannels, benchutils::GetFormat<T>(), false);
+    }
+    else if (planar)
     {
         benchutils::FillPlanarImageBatch<T>(src, long2{shape.z, shape.y}, long2{0, 0});
         benchutils::FillPlanarImageBatchLike<T>(dst, src);
@@ -239,6 +296,14 @@ try
         return;
     }
     const auto pattern = GetChannelOrderPattern(state.get_string("orderPattern"));
+    if (pattern == ChannelOrderPattern::RotateMisaligned
+        && (inputKind != benchutils::InputKind::VarShape || layout != ChannelReorderLayout::NHWC
+            || !std::is_same_v<nvcv::cuda::BaseType<T>,
+                               unsigned char> || (nvcv::cuda::NumElements<T> != 3 && nvcv::cuda::NumElements<T> != 4)))
+    {
+        state.skip("rotate_misaligned requires NHWC VarShape RGB8 or RGBA8");
+        return;
+    }
 
     const long bytes = static_cast<long>(shape.x) * shape.y * shape.z * sizeof(T);
     AddChannelReorderMemoryTraffic(state, bytes, layout);

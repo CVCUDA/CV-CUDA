@@ -17,6 +17,7 @@
 
 #include "priv/OpGammaContrast.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -96,6 +97,7 @@ CVCUDA_DEFINE_API(0, 17, NVCVStatus, cvcudaGammaContrastScalarSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &gamma, &gain, &roundMode, &handle, &stream]
         {
+            priv::CheckEnumArg(roundMode, NVCV_ROUND_TRUNCATE_WRAP, "round mode");
             nvcv::TensorWrapHandle inWrap(in);
             nvcv::TensorWrapHandle outWrap(out);
             priv::ToDynamicRef<priv::GammaContrast>(handle)(stream, inWrap.resource(), outWrap.resource(), gamma, gain,

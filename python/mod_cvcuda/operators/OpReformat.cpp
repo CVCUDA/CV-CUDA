@@ -15,50 +15,54 @@
  * limitations under the License.
  */
 
+#include "../nvcv/Tensor.hpp"
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpReformat.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
+
+#include <optional>
 
 namespace cvcudapy {
 
 namespace {
-Tensor ReformatInto(Tensor &output, Tensor &input, std::optional<Stream> pstream)
+nvcvpy::priv::Tensor &ReformatInto(nvcvpy::priv::Tensor &output, nvcvpy::priv::Tensor &input,
+                                   std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    nvcvpy::priv::Stream &stream = pstream && *pstream ? **pstream : nvcvpy::priv::Stream::Current();
 
     auto reformat = CreateOperator<cvcuda::Reformat>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*reformat});
 
-    guard.run([&reformat, &pstream, &input, &output]() { reformat->submit(pstream->cudaHandle(), input, output); });
+    guard.run([&reformat, &stream, &input, &output]()
+              { reformat->submit(stream.handle(), input.impl(), output.impl()); });
 
-    return std::move(output);
+    return output;
 }
 
-Tensor Reformat(Tensor &input, const nvcv::TensorLayout &out_layout, std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::Tensor> Reformat(nvcvpy::priv::Tensor &input, const nvcv::TensorLayout &out_layout,
+                                               std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    nvcv::TensorShape out_shape = Permute(input.shape(), out_layout);
+    nvcv::TensorShape out_shape = Permute(input.impl().shape(), out_layout);
 
-    Tensor output = Tensor::Create(out_shape, input.dtype());
+    auto stream = native::GetStream(pstream).sharedStream();
+    auto output
+        = nvcvpy::priv::Tensor::CreateFromReqs(nvcv::Tensor::CalcRequirements(out_shape, input.dtype()), stream.get());
 
-    return ReformatInto(output, input, pstream);
+    ReformatInto(*output, input, stream.get());
+    return output;
 }
 
 } // namespace
 
-void ExportOpReformat(py::module &m)
+void ExportOpReformat(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("reformat", NvtxTrace("cvcuda.reformat", &Reformat), "src"_a, "layout"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
@@ -76,7 +80,7 @@ void ExportOpReformat(py::module &m)
     )pbdoc");
 
     m.def("reformat_into", NvtxTrace("cvcuda.reformat_into", &ReformatInto), "dst"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Reformat operation on the given cuda stream.
 
 

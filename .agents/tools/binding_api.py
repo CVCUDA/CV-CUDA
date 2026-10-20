@@ -212,7 +212,7 @@ def binding_api_snapshot(source, op):
         return None
 
     export = re.search(
-        rf"(?ms)^void\s+ExportOp{re.escape(op)}\s*\(\s*py::module\s*&\s*m\s*\)\s*"
+        rf"(?ms)^void\s+ExportOp{re.escape(op)}\s*\(\s*py::module_?\s*&\s*m\s*\)\s*"
         rf"\{{(?P<body>.*?)^\}}\s*// namespace cvcudapy\s*$",
         source,
     )

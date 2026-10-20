@@ -23,6 +23,7 @@
 #include "TensorShape.hpp"
 
 #include <cassert>
+#include <limits>
 
 namespace nvcv {
 
@@ -40,6 +41,15 @@ namespace nvcv {
 // use the tensor layout info object of the new object, not the old.
 
 namespace detail {
+
+inline int32_t CheckedInt32Dim(TensorShape::DimType value)
+{
+    if (value < std::numeric_limits<int32_t>::min() || value > std::numeric_limits<int32_t>::max())
+    {
+        throw Exception(Status::ERROR_OVERFLOW, "Tensor dimension exceeds 32-bit range");
+    }
+    return static_cast<int32_t>(value);
+}
 
 /**
  * @class TensorShapeInfoImpl
@@ -73,7 +83,7 @@ public:
         int idx = m_infoLayout.idxSample();
         if (idx >= 0)
         {
-            m_cacheNumSamples = static_cast<int>(m_shape[idx]);
+            m_cacheNumSamples = CheckedInt32Dim(m_shape[idx]);
         }
         else if (m_shape.layout() != TENSOR_NONE)
         {
@@ -187,6 +197,7 @@ public:
      * @param tshape The tensor shape to create the `TensorShapeInfo` for.
      *
      * @return A `TensorShapeInfo` object for the provided tensor shape.
+     * @throws nvcv::Exception ERROR_OVERFLOW if a cached dimension is outside the int32 range.
      */
     static Optional<TensorShapeInfo> Create(const TensorShape &tshape)
     {
@@ -237,6 +248,7 @@ public:
      * @param tshape The tensor shape to create the `TensorShapeInfoImage` for.
      *
      * @return A `TensorShapeInfoImage` object for the provided tensor shape if it is compatible, NullOpt otherwise.
+     * @throws nvcv::Exception ERROR_OVERFLOW if a cached dimension is outside the int32 range.
      */
     static Optional<TensorShapeInfoImage> Create(const TensorShape &tshape)
     {
@@ -298,7 +310,7 @@ protected:
         int idx = this->infoLayout().idxChannel();
         if (idx >= 0)
         {
-            m_cacheNumChannels = static_cast<int>(this->shape()[idx]);
+            m_cacheNumChannels = detail::CheckedInt32Dim(this->shape()[idx]);
         }
         else
         {
@@ -311,13 +323,13 @@ protected:
         {
             throw Exception(Status::ERROR_INVALID_ARGUMENT, "Image shape must have a Width dimension");
         }
-        m_cacheSize.w = static_cast<int32_t>(this->shape()[idx]);
+        m_cacheSize.w = detail::CheckedInt32Dim(this->shape()[idx]);
 
         // idxHeight
         idx = this->infoLayout().idxHeight();
         if (idx >= 0)
         {
-            m_cacheSize.h = static_cast<int32_t>(this->shape()[idx]);
+            m_cacheSize.h = detail::CheckedInt32Dim(this->shape()[idx]);
         }
         else
         {
@@ -389,6 +401,7 @@ public:
      * @param tshape The tensor shape to create the `TensorShapeInfoImagePlanar` for.
      *
      * @return A `TensorShapeInfoImagePlanar` object for the provided tensor shape if it is compatible, NullOpt otherwise.
+     * @throws nvcv::Exception ERROR_OVERFLOW if a cached dimension is outside the int32 range.
      */
     static Optional<TensorShapeInfoImagePlanar> Create(const TensorShape &tshape)
     {
@@ -428,7 +441,7 @@ private:
             int ichannel = this->infoLayout().idxChannel();
             if (ichannel >= 0)
             {
-                m_cacheNumPlanes = static_cast<int>(this->shape()[ichannel]);
+                m_cacheNumPlanes = detail::CheckedInt32Dim(this->shape()[ichannel]);
             }
             else
             {

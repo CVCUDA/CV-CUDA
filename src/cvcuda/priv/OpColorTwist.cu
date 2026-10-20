@@ -17,6 +17,7 @@
 
 #include "Nvtx.hpp"
 #include "OpColorTwist.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cvcuda/cuda_tools/Compat.hpp>
 #include <cvcuda/cuda_tools/DropCast.hpp>
@@ -586,34 +587,16 @@ inline void RunSrcTypeSwitch(int numChannels, nvcv::DataType srcType, nvcv::Data
 
 // Argument validation helpers ----------------------------------------------------
 
+// The Optional data arguments must be engaged: obtain them via RequireCudaTensor / RequireCudaVarShape.
+
 inline bool validateSrcDstTensors(int &numSamples, int &numChannels, nvcv::DataType &srcDstDtype,
                                   const nvcv::Optional<nvcv::TensorDataStridedCuda> &srcData,
                                   const nvcv::Optional<nvcv::TensorDataStridedCuda> &dstData)
 {
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-
+    cvcuda::priv::RequireSameDtype(*srcData, *dstData);
     srcDstDtype = srcData->dtype();
 
-    if (srcDstDtype != dstData->dtype())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input and output data type are different, but must be the same.");
-    }
-
-    if (srcData->layout() != dstData->layout())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
-    }
+    cvcuda::priv::RequireSameLayout(*srcData, *dstData);
 
     const bool isPlanar = IsPlanar(srcData->layout());
     if (srcData->layout() != nvcv::TENSOR_HWC && srcData->layout() != nvcv::TENSOR_NHWC && !isPlanar)
@@ -653,18 +636,6 @@ inline bool validateSrcDstVarBatch(int &numSamples, int &numChannels, nvcv::Data
                                    const nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda> &srcData,
                                    const nvcv::Optional<nvcv::ImageBatchVarShapeDataStridedCuda> &dstData)
 {
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
     numSamples = srcData->numImages();
     if (numSamples != dstData->numImages())
     {
@@ -698,12 +669,6 @@ inline bool validateSrcDstVarBatch(int &numSamples, int &numChannels, nvcv::Data
 inline void validateTwistTensor(bool &hasPerSampleTwist, nvcv::DataType &twistDtype, int numImages,
                                 const nvcv::Optional<nvcv::TensorDataStridedCuda> &twistData)
 {
-    if (!twistData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "The twist argument must be cuda-accessible, pitch-linear tensor");
-    }
-
     twistDtype = twistData->dtype();
 
     if (twistDtype.numChannels() != 1 && twistDtype.numChannels() != 4)
@@ -763,13 +728,13 @@ void ColorTwist::operator()(cudaStream_t stream, const nvcv::Tensor &src, const 
     int            numSamples;
     int            numChannels;
     nvcv::DataType srcDstDtype;
-    auto           srcData  = src.exportData<nvcv::TensorDataStridedCuda>();
-    auto           dstData  = dst.exportData<nvcv::TensorDataStridedCuda>();
+    auto           srcData  = cvcuda::priv::RequireCudaTensor(src, "Input");
+    auto           dstData  = cvcuda::priv::RequireCudaTensor(dst, "Output");
     bool           isPlanar = validateSrcDstTensors(numSamples, numChannels, srcDstDtype, srcData, dstData);
 
     bool           hasPerSampleTwist;
     nvcv::DataType twistDtype;
-    auto           twistData = twist.exportData<nvcv::TensorDataStridedCuda>();
+    auto           twistData = cvcuda::priv::RequireCudaTensor(twist, "The twist argument");
     validateTwistTensor(hasPerSampleTwist, twistDtype, numSamples, twistData);
 
     RunSrcTypeSwitch(numChannels, srcDstDtype, twistDtype,
@@ -791,13 +756,13 @@ void ColorTwist::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape 
     int            numSamples;
     int            numChannels;
     nvcv::DataType srcDstDtype;
-    auto           srcData  = src.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    auto           dstData  = dst.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+    auto           srcData  = cvcuda::priv::RequireCudaVarShape(src, stream, "Input");
+    auto           dstData  = cvcuda::priv::RequireCudaVarShape(dst, stream, "Output");
     bool           isPlanar = validateSrcDstVarBatch(numSamples, numChannels, srcDstDtype, srcData, dstData);
 
     bool           hasPerSampleTwist;
     nvcv::DataType twistDtype;
-    auto           twistData = twist.exportData<nvcv::TensorDataStridedCuda>();
+    auto           twistData = cvcuda::priv::RequireCudaTensor(twist, "The twist argument");
     validateTwistTensor(hasPerSampleTwist, twistDtype, numSamples, twistData);
 
     RunSrcTypeSwitch(numChannels, srcDstDtype, twistDtype,

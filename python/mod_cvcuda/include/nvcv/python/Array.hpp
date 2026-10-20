@@ -24,15 +24,14 @@
 #include "Shape.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <nvcv/Array.hpp>
-#include <pybind11/pytypes.h>
-#include <pybind11/stl.h>
 
 #include <cassert>
 
 namespace nvcvpy {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 class Array
     : public Resource
@@ -41,7 +40,8 @@ class Array
 public:
     static Array Create(int64_t length, nvcv::DataType dtype)
     {
-        PyObject *oarray = capi().Array_Create(length, static_cast<NVCVDataType>(dtype));
+        // reinterpret_steal below takes a non-const PyObject *.
+        PyObject *oarray = capi().Array_Create(length, static_cast<NVCVDataType>(dtype)); // NOSONAR
         CheckCAPIError();
         NVCV_ASSERT(oarray == nullptr);
         py::object pyarray = py::reinterpret_steal<py::object>(oarray);
@@ -67,36 +67,31 @@ private:
 
 } // namespace nvcvpy
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 namespace cvpy = nvcvpy;
 
 template<>
-struct type_caster<cvpy::Array> : type_caster_base<cvpy::Array>
+struct type_caster<cvpy::Array>
 {
-    PYBIND11_TYPE_CASTER(cvpy::Array, const_name("cvcuda.Array"));
+    NB_TYPE_CASTER(cvpy::Array, const_name("cvcuda.Array"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *)
     {
-        // Does it have the correct object type?
-        const PyTypeObject *srctype = Py_TYPE(src.ptr());
-        if (strcmp(name.text, srctype->tp_name) == 0)
+        if (cvpy::IsFacadeInstance<cvpy::FacadeType::ARRAY>(src.ptr()))
         {
             value = cvpy::Array(reinterpret_borrow<object>(src));
             return true;
         }
-        else
-        {
-            return false;
-        }
+        return false;
     }
 
-    static handle cast(cvpy::Array array, return_value_policy /* policy */, handle /*parent */)
+    static handle from_cpp(cvpy::Array array, rv_policy, cleanup_list *) noexcept
     {
         return static_cast<object &>(array).release();
     }
 };
 
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_ARRAY_HPP

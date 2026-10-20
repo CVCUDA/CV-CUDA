@@ -15,86 +15,84 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
-#include <common/String.hpp>
 #include <cvcuda/OpChannelReorder.hpp>
 #include <cvcuda/Types.h>
-#include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/Image.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
+
+#include <memory>
+#include <vector>
 
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
-Tensor ChannelReorderTensorInto(Tensor &output, Tensor &input, const std::vector<int32_t> &order,
-                                std::optional<Stream> pstream)
+Tensor &ChannelReorderTensorInto(Tensor &output, Tensor &input, const std::vector<int32_t> &order,
+                                 std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto          channelReorder = CreateOperator<cvcuda::ChannelReorder>();
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*channelReorder});
     guard.run(
-        [&channelReorder, &pstream, &input, &output, &order] {
-            channelReorder->submit(pstream->cudaHandle(), input, output, order.data(),
+        [&channelReorder, &stream, &input, &output, &order]
+        {
+            channelReorder->submit(stream.handle(), input.impl(), output.impl(), order.data(),
                                    static_cast<int32_t>(order.size()));
         });
     return output;
 }
 
-Tensor ChannelReorderTensor(Tensor &input, const std::vector<int32_t> &order, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> ChannelReorderTensor(Tensor &input, const std::vector<int32_t> &order,
+                                             std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
-    return ChannelReorderTensorInto(output, input, order, pstream);
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
+    ChannelReorderTensorInto(*output, input, order, pstream);
+    return output;
 }
 
-ImageBatchVarShape ChannelReorderVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &orders,
-                                              std::optional<Stream> pstream)
+ImageBatchVarShape &ChannelReorderVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &orders,
+                                               std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto chReorder = CreateOperator<cvcuda::ChannelReorder>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, orders});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*chReorder});
 
-    guard.run([&chReorder, &pstream, &input, &output, &orders]()
-              { chReorder->submit(pstream->cudaHandle(), input, output, orders); });
+    guard.run([&chReorder, &stream, &input, &output, &orders]()
+              { chReorder->submit(stream.handle(), input.impl(), output.impl(), orders.impl()); });
 
     return output;
 }
 
-ImageBatchVarShape ChannelReorderVarShape(ImageBatchVarShape &input, Tensor &orders,
-                                          std::optional<nvcv::ImageFormat> fmt, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> ChannelReorderVarShape(ImageBatchVarShape &input, Tensor &orders,
+                                                           std::optional<nvcv::ImageFormat> fmt,
+                                                           std::optional<Stream *>          pstream)
 {
-    ImageBatchVarShape output = fmt ? CreateSameShapeImageBatch(input, *fmt) : CreateSameShapeImageBatch(input);
+    auto output = fmt ? CreateSameShapeImageBatch(input, *fmt, input.capacity()) : CreateSameShapeImageBatch(input);
 
-    return ChannelReorderVarShapeInto(output, input, orders, pstream);
+    ChannelReorderVarShapeInto(*output, input, orders, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpChannelReorder(py::module &m)
+void ExportOpChannelReorder(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("channelreorder", NvtxTrace("cvcuda.channelreorder", &ChannelReorderTensor), "src"_a, "order"_a,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -114,7 +112,7 @@ void ExportOpChannelReorder(py::module &m)
     )pbdoc");
 
     m.def("channelreorder_into", NvtxTrace("cvcuda.channelreorder_into", &ChannelReorderTensorInto), "dst"_a, "src"_a,
-          "order"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "order"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Reorders tensor channels into a caller-provided output tensor.
 
         Args:
@@ -146,14 +144,14 @@ void ExportOpChannelReorder(py::module &m)
     )pbdoc");
 
     m.def("channelreorder_into", NvtxTrace("cvcuda.channelreorder_into", &ChannelReorderVarShapeInto), "dst"_a, "src"_a,
-          "orders"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "orders"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Channel Reorder operation on the given cuda stream.
 
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output tensor to store the result of the operation.
             src (cvcuda.ImageBatchVarShape): Input tensor containing one or more images.
-            order (cvcuda.Tensor): 2D tensor with layout "NC" which specifies, for each output image sample in the batch,
+            orders (cvcuda.Tensor): 2D tensor with layout "NC" which specifies, for each output image sample in the batch,
                            the index of the input channel to copy to the output channel.
             format (cvcuda.Format): Format of the destination image.
 

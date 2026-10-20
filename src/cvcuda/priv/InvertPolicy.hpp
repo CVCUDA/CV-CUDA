@@ -18,19 +18,20 @@
 #ifndef CVCUDA_PRIV_INVERT_POLICY_HPP
 #define CVCUDA_PRIV_INVERT_POLICY_HPP
 
-#include <string_view>
+#include "CudaDeviceUtils.hpp"
 
 namespace cvcuda::priv {
 
-constexpr bool UsePackedU8C3VarShapeKernelForDevice(int sm, std::string_view deviceName)
+// The packed RGB8 var-shape kernel loses to the scalar kernel on Ada by 0.7-4.5% across batch
+// sizes, on both L4 and L40S.  It stays the default elsewhere.
+constexpr bool UsePackedU8C3VarShapeKernelForDevice(int sm)
 {
-    return sm != 89 || deviceName != "NVIDIA L4";
+    return !IsAdaDevice(sm);
 }
 
-static_assert(!UsePackedU8C3VarShapeKernelForDevice(89, "NVIDIA L4"));
-static_assert(UsePackedU8C3VarShapeKernelForDevice(89, "NVIDIA L40"));
-static_assert(UsePackedU8C3VarShapeKernelForDevice(80, "NVIDIA A100-PCIE-40GB"));
-static_assert(UsePackedU8C3VarShapeKernelForDevice(90, "NVIDIA H100 PCIe"));
+static_assert(!UsePackedU8C3VarShapeKernelForDevice(89));
+static_assert(UsePackedU8C3VarShapeKernelForDevice(80));
+static_assert(UsePackedU8C3VarShapeKernelForDevice(90));
 
 } // namespace cvcuda::priv
 

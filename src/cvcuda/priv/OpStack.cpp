@@ -19,6 +19,7 @@
 
 #include "Nvtx.hpp"
 #include "OpStackKernels.hpp"
+#include "TensorAccessValidation.hpp"
 #include "nvcv/TensorDataAccess.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -72,12 +73,7 @@ void ValidateStackTensor(const nvcv::Tensor &in, uint32_t copyIndex, uint32_t ou
 void Stack::operator()(cudaStream_t stream, const nvcv::TensorBatch &in, const nvcv::Tensor &out) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::Stack::operator()[TensorBatch]");
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
+    auto outData = RequireCudaTensor(out, "Output");
 
     // read out data N, H, W and C
     if (out.rank() != 4)
@@ -97,48 +93,50 @@ void Stack::operator()(cudaStream_t stream, const nvcv::TensorBatch &in, const n
     auto outW = static_cast<uint32_t>(out.shape()[2]);
     auto outC = static_cast<uint32_t>(out.shape()[3]);
 
-    // A rank-3 batch maps one input tensor to one output sample, so the device descriptor index is the output index.
-    // Rank-4 or conversion-like inputs need the existing copy path to preserve their sample and layout semantics.
-    const bool useKernel = CanRunTensorBatchKernel(stream, in, out);
-    uint32_t   copyIndex = 0;
-    for (auto it = in.begin(); it != in.end(); ++it)
+    // TensorBatch guarantees a common rank, dtype, and layout, so only each tensor's shape needs validation.
+    if (CanRunTensorBatchKernel(stream, in, out))
     {
-        ValidateStackTensor(*it, copyIndex, outN, outH, outW, outC);
-
-        auto inData = it->exportData<nvcv::TensorDataStridedCuda>();
-        if (inData == nullptr)
+        const int32_t numTensors = in.numTensors();
+        for (int32_t i = 0; i < numTensors; ++i)
         {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Input must be cuda-accessible, pitch-linear tensor");
+            if (static_cast<uint32_t>(i) >= outN)
+            {
+                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                      "Output tensor is not large enough to hold all input tensors");
+            }
+
+            auto tensorData = in[i].exportData();
+            if (outH != tensorData.shape(0) || outW != tensorData.shape(1) || outC != tensorData.shape(2))
+            {
+                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                      "Input tensors must have the same H, W, and C as output Tensor");
+            }
         }
 
-        if (useKernel)
-        {
-            auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
-            NVCV_ASSERT(inAccess);
-            copyIndex += inAccess->numSamples();
-        }
-        else
-        {
-            copyIndex = copyTensorToNTensor(*outData, *inData, copyIndex, stream);
-        }
-    }
-
-    if (useKernel)
-    {
         if (auto inBatchData = in.exportData(stream).cast<nvcv::TensorBatchDataStridedCuda>();
             inBatchData && RunStackTensorBatchKernel(stream, *inBatchData, *outData))
         {
             return;
         }
 
-        copyIndex = 0;
+        uint32_t copyIndex = 0;
         for (auto it = in.begin(); it != in.end(); ++it)
         {
             auto inData = it->exportData<nvcv::TensorDataStridedCuda>();
             NVCV_ASSERT(inData);
             copyIndex = copyTensorToNTensor(*outData, *inData, copyIndex, stream);
         }
+        return;
+    }
+
+    uint32_t copyIndex = 0;
+    for (auto it = in.begin(); it != in.end(); ++it)
+    {
+        ValidateStackTensor(*it, copyIndex, outN, outH, outW, outC);
+
+        auto inData = RequireCudaTensor(*it, "Input");
+
+        copyIndex = copyTensorToNTensor(*outData, *inData, copyIndex, stream);
     }
 }
 
@@ -169,12 +167,7 @@ int Stack::copyTensorToNTensor(const nvcv::TensorDataStridedCuda &outData, const
 void Stack::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::Stack::operator()[ImageBatchVarShape]");
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
+    auto outData = RequireCudaTensor(out, "Output");
 
     // read out data N, H, W and C
     if (out.rank() != 4)

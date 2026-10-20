@@ -17,6 +17,7 @@ import cvcuda
 
 import pytest
 import numpy as np
+import cupy
 import cvcuda_types as cv_types
 import cvcuda_tools as cv_tools
 import cvcuda_util as util
@@ -33,6 +34,134 @@ _LAB_CODES = (
     cvcuda.ColorConversion.Lab2LBGR,
     cvcuda.ColorConversion.Lab2LRGB,
 )
+
+
+def _torchvision_gray_numpy(r, g, b, dtype):
+    a = (r.astype(np.float32) * np.float32(0.2989)).astype(
+        dtype if dtype == np.float16 else np.float32
+    )
+    for channel, weight in ((g, 0.587), (b, 0.114)):
+        a = (
+            channel.astype(np.float64) * float(np.float32(weight))
+            + a.astype(np.float64)
+        ).astype(dtype if dtype == np.float16 else np.float32)
+    return a.astype(dtype)
+
+
+@pytest.mark.parametrize(
+    "code, channels, bgr",
+    [
+        (cvcuda.ColorConversion.RGB2GRAY_TV, 3, False),
+        (cvcuda.ColorConversion.BGR2GRAY_TV, 3, True),
+        (cvcuda.ColorConversion.RGBA2GRAY_TV, 4, False),
+        (cvcuda.ColorConversion.BGRA2GRAY_TV, 4, True),
+    ],
+)
+def test_op_cvtcolor_torchvision_gray_exact(code, channels, bgr):
+    # One smoke case per code: the full dtype x layout matrix is covered by the C++ gold test
+    # and by test_op_cvtcolor_torchvision_cuda_bitexact.
+    dtype, layout = np.float16, "NHWC"
+    shape = (3, 9, 13, channels)
+    data = ((np.arange(np.prod(shape)).reshape(shape) * 37) % 251).astype(dtype)
+    if dtype in (np.float16, np.float32):
+        data /= 251
+    if layout in ("CHW", "NCHW"):
+        data = np.transpose(data, (0, 3, 1, 2)).copy()
+    if layout in ("CHW", "HWC"):
+        data = data[0]
+    src = util.to_cvcuda_tensor(data, layout)
+    out_shape = list(data.shape)
+    out_shape[layout.index("C")] = 1
+    dst = cvcuda.Tensor(tuple(out_shape), dtype, layout)
+    cvcuda.cvtcolor_into(src=src, dst=dst, code=code)
+    actual = util.to_cpu_numpy_buffer(dst.cuda())
+    axis = layout.index("C")
+    r = np.take(data, 2 if bgr else 0, axis=axis).astype(np.float32)
+    g = np.take(data, 1, axis=axis).astype(np.float32)
+    b = np.take(data, 0 if bgr else 2, axis=axis).astype(np.float32)
+    expected = _torchvision_gray_numpy(r, g, b, dtype)
+    np.testing.assert_array_equal(actual, np.expand_dims(expected, axis))
+
+
+@pytest.mark.parametrize(
+    "code, channels, bgr",
+    [
+        (cvcuda.ColorConversion.RGB2GRAY_TV, 3, False),
+        (cvcuda.ColorConversion.BGR2GRAY_TV, 3, True),
+        (cvcuda.ColorConversion.RGBA2GRAY_TV, 4, False),
+        (cvcuda.ColorConversion.BGRA2GRAY_TV, 4, True),
+    ],
+)
+@pytest.mark.parametrize("dtype", [np.uint8, np.uint16, np.float16, np.float32])
+@pytest.mark.parametrize("layout", ["HWC", "NHWC", "CHW", "NCHW"])
+def test_op_cvtcolor_torchvision_cuda_bitexact(code, channels, bgr, dtype, layout):
+    torch = pytest.importorskip("torch")
+    functional = pytest.importorskip("torchvision.transforms.v2.functional")
+    if dtype == np.uint16 and not hasattr(torch, "uint16"):
+        pytest.skip("this torch has no uint16 tensors to build the reference from")
+    rng = np.random.default_rng(42)
+    shape = (2, 39, 53, channels)
+    if dtype in (np.uint8, np.uint16):
+        data = rng.integers(0, np.iinfo(dtype).max + 1, size=shape, dtype=dtype)
+    else:
+        data = rng.random(shape).astype(dtype)
+    if layout in ("CHW", "NCHW"):
+        data = np.transpose(data, (0, 3, 1, 2)).copy()
+    if layout in ("CHW", "HWC"):
+        data = data[0]
+    axis = layout.index("C")
+    src = util.to_cvcuda_tensor(data, layout)
+    out_shape = list(data.shape)
+    out_shape[axis] = 1
+    dst = cvcuda.Tensor(tuple(out_shape), dtype, layout)
+    cvcuda.cvtcolor_into(src=src, dst=dst, code=code)
+    actual = util.to_cpu_numpy_buffer(dst.cuda())
+
+    rgb = np.take(data, [2, 1, 0] if bgr else [0, 1, 2], axis=axis)
+    rgb = np.ascontiguousarray(np.moveaxis(rgb, axis, -3))
+    reference = functional.rgb_to_grayscale(torch.from_numpy(rgb).cuda())
+    expected = np.moveaxis(reference.cpu().numpy(), -3, axis)
+    if dtype == np.float16:
+        np.testing.assert_array_equal(actual.view(np.uint16), expected.view(np.uint16))
+    elif dtype == np.float32:
+        np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+    else:
+        np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "fmt, code",
+    [
+        (cvcuda.Format.RGB8, cvcuda.ColorConversion.RGB2GRAY_TV),
+        (cvcuda.Format.BGR8, cvcuda.ColorConversion.BGR2GRAY_TV),
+        (cvcuda.Format.RGBA8, cvcuda.ColorConversion.RGBA2GRAY_TV),
+        (cvcuda.Format.BGRA8, cvcuda.ColorConversion.BGRA2GRAY_TV),
+    ],
+)
+def test_op_cvtcolor_torchvision_gray_varshape(fmt, code):
+    data = RNG.integers(0, 256, size=(9, 13, fmt.channels), dtype=np.uint8)
+    batch = cvcuda.ImageBatchVarShape(2)
+    batch.pushback(util.to_cvcuda_image(data))
+    batch.pushback(util.to_cvcuda_image(data[:5, :7].copy()))
+    result = cvcuda.cvtcolor(batch, code)
+    assert result.uniqueformat == cvcuda.Format.Y8_ER
+    assert len(result) == 2
+    for src, dst in zip(batch, result):
+        rgb = util.to_cpu_numpy_buffer(cupy.from_dlpack(src.cuda())).astype(np.float32)
+        if code in (
+            cvcuda.ColorConversion.BGR2GRAY_TV,
+            cvcuda.ColorConversion.BGRA2GRAY_TV,
+        ):
+            rgb = rgb[..., [2, 1, 0]]
+        expected = _torchvision_gray_numpy(
+            rgb[..., 0], rgb[..., 1], rgb[..., 2], np.uint8
+        )
+        np.testing.assert_array_equal(
+            util.to_cpu_numpy_buffer(cupy.from_dlpack(dst.cuda())).reshape(
+                expected.shape
+            ),
+            expected,
+        )
 
 
 def _create_test_image_batch(num_images, img_format, size, max_pixel):

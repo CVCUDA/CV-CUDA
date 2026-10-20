@@ -30,4 +30,4 @@ onnxslim==${onnxslim}
 
 # Interop dependencies
 pycuda==${pycuda}
-PyNvVideoCodec==${pynvvideocodec}; (platform_machine == "x86_64" or platform_machine == "amd64") and python_version>="3.10" and python_version<="3.12"
+PyNvVideoCodec==${pynvvideocodec}; (platform_machine == "x86_64" or platform_machine == "amd64" or platform_machine == "aarch64") and python_version>="3.10" and python_version<="3.14"

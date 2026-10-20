@@ -29,7 +29,7 @@
 
 namespace nvcvpy {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 class ImageBatchVarShape
     : public Resource
@@ -44,7 +44,8 @@ public:
 
     static ImageBatchVarShape Create(int capacity)
     {
-        PyObject *ovarshape = capi().ImageBatchVarShape_Create(capacity);
+        // reinterpret_steal below takes a non-const PyObject *.
+        PyObject *ovarshape = capi().ImageBatchVarShape_Create(capacity); // NOSONAR
         CheckCAPIError();
         NVCV_ASSERT(ovarshape != nullptr);
         py::object pyvarshape = py::reinterpret_steal<py::object>(ovarshape);
@@ -54,19 +55,19 @@ public:
 
     // Python image wrappers must go through CAPI so the backing Python objects
     // stay alive for as long as the batch references them.
-    void pushBackImage(Image img)
+    void pushBackImage(const Image &img) // NOSONAR: mutates state through the wrapped C handle.
     {
         capi().ImageBatchVarShape_PushBack(this->ptr(), img.ptr());
         CheckCAPIError();
     }
 
-    void popBackImages(int cnt)
+    void popBackImages(int cnt) // NOSONAR: mutates state through the wrapped C handle.
     {
         capi().ImageBatchVarShape_PopBack(this->ptr(), cnt);
         CheckCAPIError();
     }
 
-    void clearImages()
+    void clearImages() // NOSONAR: mutates state through the wrapped C handle.
     {
         capi().ImageBatchVarShape_Clear(this->ptr());
         CheckCAPIError();
@@ -93,36 +94,31 @@ private:
 
 } // namespace nvcvpy
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 namespace cvpy = nvcvpy;
 
 template<>
-struct type_caster<cvpy::ImageBatchVarShape> : type_caster_base<cvpy::ImageBatchVarShape>
+struct type_caster<cvpy::ImageBatchVarShape>
 {
-    PYBIND11_TYPE_CASTER(cvpy::ImageBatchVarShape, const_name("cvcuda.ImageBatchVarShape"));
+    NB_TYPE_CASTER(cvpy::ImageBatchVarShape, const_name("cvcuda.ImageBatchVarShape"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *)
     {
-        // Does it have the correct object type?
-        const PyTypeObject *srctype = Py_TYPE(src.ptr());
-        if (strcmp(name.text, srctype->tp_name) == 0)
+        if (cvpy::IsFacadeInstance<cvpy::FacadeType::IMAGE_BATCH_VAR_SHAPE>(src.ptr()))
         {
             value = cvpy::ImageBatchVarShape(reinterpret_borrow<object>(src));
             return true;
         }
-        else
-        {
-            return false;
-        }
+        return false;
     }
 
-    static handle cast(cvpy::ImageBatchVarShape tensor, return_value_policy /* policy */, handle /*parent */)
+    static handle from_cpp(cvpy::ImageBatchVarShape tensor, rv_policy, cleanup_list *) noexcept
     {
         return static_cast<object &>(tensor).release();
     }
 };
 
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_IMAGEBATCHVARSHAPE_HPP

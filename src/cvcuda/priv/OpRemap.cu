@@ -18,6 +18,9 @@
 #include "Nvtx.hpp"
 #include "OpRemap.hpp"
 #include "PlanarTensorView.hpp"
+#include "TensorAccessValidation.hpp"
+
+#include "WarpSampleCommon.cuh"
 
 #include <cvcuda/cuda_tools/DropCast.hpp>
 #include <cvcuda/cuda_tools/InterpolationVarShapeWrap.hpp>
@@ -32,6 +35,8 @@
 #include <nvcv/util/Assert.h>
 #include <nvcv/util/CheckError.hpp>
 #include <nvcv/util/Math.hpp>
+
+#include <type_traits>
 
 namespace cuda = nvcv::cuda;
 namespace util = nvcv::util;
@@ -96,17 +101,52 @@ inline NVCVRemapParams __host__ __device__ GetRemapParams(const int2 &srcSize, c
 // plus the map value (relative distance or absolute position, normalized or not) times the value
 // scale, offset by the source offset. Shared by the interleaved and planar paths so the math has a
 // single definition.
-template<class MapWrapper>
+//
+// UnitMapGrid selects the map lookup for the case where the map grid coincides 1:1 with the
+// destination grid (map scale 1, no destination offset, equal extents -- see IsUnitMapGrid). The
+// generic lookup then reduces to reading map[mapSample][y][x], and computing it as such removes the
+// integer -> float scale, the +0.5 nearest rounding, the interpolation-overflow clamp and the
+// replicate-border clamp on both axes. Output is identical, not merely equivalent: see
+// IsUnitMapGrid for the exact argument.
+template<bool UnitMapGrid, class MapWrapper>
 inline float2 __device__ ComputeRemapSrcCoord(int x, int y, const MapWrapper &map, int mapSample,
                                               const NVCVRemapParams &params)
 {
-    float3 mapCoord{(x + params.dstOffset) * params.mapScale.x, (y + params.dstOffset) * params.mapScale.y,
-                    static_cast<float>(mapSample)};
+    float2 mapValue;
 
-    float2 mapValue = map[mapCoord];
+    if constexpr (UnitMapGrid)
+    {
+        mapValue = *map.borderWrap().tensorWrap().ptr(mapSample, y, x);
+    }
+    else
+    {
+        float3 mapCoord{(x + params.dstOffset) * params.mapScale.x, (y + params.dstOffset) * params.mapScale.y,
+                        static_cast<float>(mapSample)};
+
+        mapValue = map[mapCoord];
+    }
 
     return float2{x * params.srcScale.x + mapValue.x * params.valScale.x + params.srcOffset.x,
                   y * params.srcScale.y + mapValue.y * params.valScale.y + params.srcOffset.y};
+}
+
+// True when the generic nearest-neighbour map lookup provably reduces to map[mapSample][y][x] for
+// every destination pixel, so ComputeRemapSrcCoord<true> returns bit-identical values.
+//
+// With mapScale == 1 and dstOffset == 0 the map coordinate is (float)x, exact for |x| < 2^24. The
+// nearest map wrap then evaluates floor((float)x + 0.5f); (float)x + 0.5f needs one mantissa bit
+// beyond x, so it is exact -- and therefore floors back to x -- for x < 2^23, which the extent
+// bound below enforces. The map wrap's replicate border finally clamps to [0, mapExtent), a no-op
+// because equal extents put x in [0, dstExtent) == [0, mapExtent). The same holds on y.
+//
+// Only nearest map interpolation qualifies; linear and cubic read a neighbourhood even on an
+// aligned grid. Var-shape batches are excluded because each image carries its own destination size.
+inline bool __host__ IsUnitMapGrid(const int2 &dstSize, const int2 &mapSize, const NVCVRemapParams &params)
+{
+    constexpr int kExactFloatIndexMax = 1 << 23;
+
+    return params.mapScale.x == 1.f && params.mapScale.y == 1.f && params.dstOffset == 0.f && dstSize.x == mapSize.x
+        && dstSize.y == mapSize.y && dstSize.x <= kExactFloatIndexMax && dstSize.y <= kExactFloatIndexMax;
 }
 
 // Number of output pixels each thread processes along x for the latency-bound
@@ -117,13 +157,15 @@ inline float2 __device__ ComputeRemapSrcCoord(int x, int y, const MapWrapper &ma
 // occupancy, where the extra per-thread state only hurts, so it uses NIX == 1.
 constexpr int kRemapNIX = 4;
 
-template<int NIX, class SrcWrapper, class DstWrapper, class MapWrapper>
+template<int NIX, bool UnitMapGrid, class SrcWrapper, class DstWrapper, class MapWrapper>
 inline void __device__ DoRemap(SrcWrapper src, DstWrapper dst, MapWrapper map, const int2 &dstSize,
-                               const int &mapNumSamples, const NVCVRemapParams &params, int channels = 1)
+                               const int &mapNumSamples, const NVCVRemapParams &params)
 {
-    // For planar (NCHW/CHW) tensors the C channel planes are flattened into grid-z as N*C
-    // single-channel samples, so the per-(x,y) map sample is the original image index
-    // z / channels. For interleaved data channels == 1, so this is just z.
+    // Keep the identity divisor: nvcc 12.9/sm80 shares the map-sample conversions
+    // with it, but repeats them when the division is removed. Planar paths have
+    // separate kernels, so grid-z already indexes images here.
+    int channels = 1;
+
     if constexpr (NIX == 1)
     {
         // Compute-bound (CUBIC) path: one pixel per thread, unchanged from the
@@ -136,7 +178,7 @@ inline void __device__ DoRemap(SrcWrapper src, DstWrapper dst, MapWrapper map, c
         }
 
         int    mapSample = (mapNumSamples == 1) ? 0 : dstCoord.z / channels;
-        float2 sc        = ComputeRemapSrcCoord(dstCoord.x, dstCoord.y, map, mapSample, params);
+        float2 sc        = ComputeRemapSrcCoord<UnitMapGrid>(dstCoord.x, dstCoord.y, map, mapSample, params);
 
         dst[dstCoord] = src[float3{sc.x, sc.y, static_cast<float>(dstCoord.z)}];
     }
@@ -163,7 +205,7 @@ inline void __device__ DoRemap(SrcWrapper src, DstWrapper dst, MapWrapper map, c
                 continue;
             }
 
-            float2 sc = ComputeRemapSrcCoord(x, y, map, mapSample, params);
+            float2 sc = ComputeRemapSrcCoord<UnitMapGrid>(x, y, map, mapSample, params);
 
             dst[int3{x, y, z}] = src[float3{sc.x, sc.y, static_cast<float>(z)}];
         }
@@ -172,11 +214,11 @@ inline void __device__ DoRemap(SrcWrapper src, DstWrapper dst, MapWrapper map, c
 
 // Remap with tensors kernel ---------------------------------------------------
 
-template<int NIX, class SrcWrapper, class DstWrapper, class MapWrapper>
+template<int NIX, bool UnitMapGrid, class SrcWrapper, class DstWrapper, class MapWrapper>
 __global__ void Remap(SrcWrapper src, DstWrapper dst, MapWrapper map, int2 dstSize, int mapNumSamples,
-                      NVCVRemapParams params, int channels = 1)
+                      NVCVRemapParams params)
 {
-    DoRemap<NIX>(src, dst, map, dstSize, mapNumSamples, params, channels);
+    DoRemap<NIX, UnitMapGrid>(src, dst, map, dstSize, mapNumSamples, params);
 }
 
 // Remap with planar (NCHW) tensor kernel --------------------------------------
@@ -188,9 +230,9 @@ __global__ void Remap(SrcWrapper src, DstWrapper dst, MapWrapper map, int2 dstSi
 // flattened (N*C,H,W) single-channel view, so plane p of image i is sample
 // i*channels + p. Output is identical to the per-plane path (the coordinate does
 // not depend on the plane).
-template<int NIX, class SrcWrapper, class DstWrapper, class MapWrapper>
+template<int NIX, bool UnitMapGrid, bool PerChannelBorder, class SrcWrapper, class DstWrapper, class MapWrapper>
 __global__ void RemapPlanarTensor(SrcWrapper src, DstWrapper dst, MapWrapper map, int2 dstSize, int mapNumSamples,
-                                  NVCVRemapParams params, int channels)
+                                  NVCVRemapParams params, int channels, float4 borderValue)
 {
     int baseX = (blockIdx.x * blockDim.x) * NIX + threadIdx.x;
     int y     = blockIdx.y * blockDim.y + threadIdx.y;
@@ -212,13 +254,31 @@ __global__ void RemapPlanarTensor(SrcWrapper src, DstWrapper dst, MapWrapper map
             continue;
         }
 
-        float2 sc = ComputeRemapSrcCoord(x, y, map, mapSample, params);
+        float2 sc = ComputeRemapSrcCoord<UnitMapGrid>(x, y, map, mapSample, params);
 
         for (int plane = 0; plane < channels; ++plane)
         {
             int z = image * channels + plane;
 
-            dst[int3{x, y, z}] = src[float3{sc.x, sc.y, static_cast<float>(z)}];
+            if constexpr (PerChannelBorder)
+            {
+                constexpr auto B                         = SrcWrapper::BorderWrapper::kBorderType;
+                using T                                  = std::remove_const_t<typename SrcWrapper::ValueType>;
+                const auto                        &bw    = src.borderWrap();
+                auto                               shape = bw.tensorShape();
+                typename SrcWrapper::BorderWrapper planeBorder(
+                    bw.tensorWrap(),
+                    cuda::SetAll<cuda::BorderValueType<T, B>>(
+                        cuda::StaticCast<cuda::BaseType<cuda::BorderValueType<T, B>>>(
+                            cuda::GetElement(borderValue, plane))),
+                    shape[0], shape[1]);
+                SrcWrapper planeSrc(planeBorder);
+                dst[int3{x, y, z}] = planeSrc[float3{sc.x, sc.y, static_cast<float>(z)}];
+            }
+            else
+            {
+                dst[int3{x, y, z}] = src[float3{sc.x, sc.y, static_cast<float>(z)}];
+            }
         }
     }
 }
@@ -236,7 +296,7 @@ __global__ void Remap(SrcWrapper src, DstWrapper dst, MapWrapper map, int2 mapSi
 
     NVCVRemapParams params = GetRemapParams(srcSize, dstSize, mapSize, alignCorners, mapValueType);
 
-    DoRemap<NIX>(src, dst, map, dstSize, mapNumSamples, params);
+    DoRemap<NIX, false>(src, dst, map, dstSize, mapNumSamples, params);
 }
 
 // Remap with planar (CHW) varshape kernel -------------------------------------
@@ -247,9 +307,10 @@ __global__ void Remap(SrcWrapper src, DstWrapper dst, MapWrapper map, int2 mapSi
 // math across channels. Each plane is sampled via the 4D (sample, plane, y, x)
 // coordinate the var-shape wraps accept. Remap treats channels independently, so this
 // matches the interleaved result plane-for-plane.
-template<int NIX, class SrcWrapper, class DstWrapper, class MapWrapper>
+template<int NIX, bool PerChannelBorder, class SrcWrapper, class DstWrapper, class MapWrapper>
 __global__ void RemapPlanarVarShape(SrcWrapper src, DstWrapper dst, MapWrapper map, int2 mapSize, int mapNumSamples,
-                                    bool alignCorners, NVCVRemapMapValueType mapValueType, int channels)
+                                    bool alignCorners, NVCVRemapMapValueType mapValueType, int channels,
+                                    float4 borderValue)
 {
     int image = blockIdx.z;
 
@@ -277,12 +338,25 @@ __global__ void RemapPlanarVarShape(SrcWrapper src, DstWrapper dst, MapWrapper m
             continue;
         }
 
-        float2 sc = ComputeRemapSrcCoord(x, y, map, mapSample, params);
+        float2 sc = ComputeRemapSrcCoord<false>(x, y, map, mapSample, params);
 
         for (int plane = 0; plane < channels; ++plane)
         {
-            *dst.ptr(image, plane, y, x)
-                = src[float4{sc.x, sc.y, static_cast<float>(plane), static_cast<float>(image)}];
+            if constexpr (PerChannelBorder)
+            {
+                using T = std::remove_const_t<typename SrcWrapper::ValueType>;
+                typename SrcWrapper::BorderWrapper planeBorder(
+                    src.borderWrap().imageBatchWrap(),
+                    cuda::SetAll<T>(cuda::StaticCast<cuda::BaseType<T>>(cuda::GetElement(borderValue, plane))));
+                SrcWrapper planeSrc(planeBorder);
+                *dst.ptr(image, plane, y, x)
+                    = planeSrc[float4{sc.x, sc.y, static_cast<float>(plane), static_cast<float>(image)}];
+            }
+            else
+            {
+                *dst.ptr(image, plane, y, x)
+                    = src[float4{sc.x, sc.y, static_cast<float>(plane), static_cast<float>(image)}];
+            }
         }
     }
 }
@@ -291,8 +365,9 @@ __global__ void RemapPlanarVarShape(SrcWrapper src, DstWrapper dst, MapWrapper m
 
 template<typename T, NVCVBorderType B, NVCVInterpolationType SI, class DataStridedCuda, typename MapWrapper>
 void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStridedCuda &dstData,
-              const MapWrapper &mapWrap, NVCVRemapMapValueType mapValueType, bool alignCorners, const T &borderValue,
-              int2 mapSize, int mapNumSamples, int channels = 1)
+              const MapWrapper &mapWrap, NVCVRemapMapValueType mapValueType, bool alignCorners,
+              const cuda::BorderValueType<T, B> &borderValue, int2 mapSize, int mapNumSamples, int channels = 1,
+              float4 planarBorderValue = {}, bool uniformBorder = true)
 {
     dim3 block(32, 4, 1);
 
@@ -317,19 +392,52 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
         int64_t dstMaxStride = dstAccess->sampleStride() * dstAccess->numSamples();
         if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
         {
-            auto src = cuda::CreateInterpolationWrapNHW<const T, B, SI, int32_t>(srcData, borderValue);
+            auto src = cuda::CreateInterpolationWrapNHW<const T, B, SI, int32_t, true>(srcData, borderValue);
             auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(dstData);
 
-            if (channels > 1)
+            dim3 planarGrid(util::DivUp(dstSize.x, block.x * NIX), util::DivUp(dstSize.y, block.y),
+                            dstAccess->numSamples() / (channels > 1 ? channels : 1));
+
+            // The direct map lookup only exists for nearest map interpolation, so the extra pair of
+            // kernel instantiations is confined to that third of the map-interpolation axis.
+            auto launch = [&](auto unitMapGrid)
             {
-                dim3 planarGrid(util::DivUp(dstSize.x, block.x * NIX), util::DivUp(dstSize.y, block.y),
-                                dstAccess->numSamples() / channels);
-                RemapPlanarTensor<NIX>
-                    <<<planarGrid, block, 0, stream>>>(src, dst, mapWrap, dstSize, mapNumSamples, params, channels);
+                constexpr bool kUnit = decltype(unitMapGrid)::value;
+
+                if (channels > 1)
+                {
+                    if constexpr (B == NVCV_BORDER_CONSTANT || B == NVCV_BORDER_CONSTANT_COVERAGE)
+                    {
+                        if (!uniformBorder)
+                        {
+                            RemapPlanarTensor<NIX, kUnit, true><<<planarGrid, block, 0, stream>>>(
+                                src, dst, mapWrap, dstSize, mapNumSamples, params, channels, planarBorderValue);
+                            return;
+                        }
+                    }
+                    RemapPlanarTensor<NIX, kUnit, false><<<planarGrid, block, 0, stream>>>(
+                        src, dst, mapWrap, dstSize, mapNumSamples, params, channels, planarBorderValue);
+                }
+                else
+                {
+                    Remap<NIX, kUnit><<<grid, block, 0, stream>>>(src, dst, mapWrap, dstSize, mapNumSamples, params);
+                }
+            };
+
+            if constexpr (MapWrapper::kInterpolationType == NVCV_INTERP_NEAREST)
+            {
+                if (IsUnitMapGrid(dstSize, mapSize, params))
+                {
+                    launch(std::true_type{});
+                }
+                else
+                {
+                    launch(std::false_type{});
+                }
             }
             else
             {
-                Remap<NIX><<<grid, block, 0, stream>>>(src, dst, mapWrap, dstSize, mapNumSamples, params, channels);
+                launch(std::false_type{});
             }
         }
         else
@@ -344,8 +452,8 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
 
         int3 dstMaxSize{dstData.maxSize().w, dstData.maxSize().h, dstData.numImages()};
 
-        cuda::InterpolationVarShapeWrap<const T, B, SI> src(srcData, borderValue);
-        cuda::ImageBatchVarShapeWrap<T>                 dst(dstData);
+        cuda::InterpolationVarShapeWrap<const T, B, SI, true> src(srcData, borderValue);
+        cuda::ImageBatchVarShapeWrap<T>                       dst(dstData);
 
         // A valid multi-plane format has at most four channels in total, so a four-channel first plane
         // cannot have another plane. Avoid instantiating that unreachable planar uchar4 kernel family.
@@ -356,8 +464,23 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
                 // Planar (CHW) var-shape: grid-z spans numImages; each thread amortizes the source
                 // coordinate across all channel planes via 4D var-shape coordinates.
                 dim3 grid(util::DivUp(dstMaxSize.x, block.x * NIX), util::DivUp(dstMaxSize.y, block.y), dstMaxSize.z);
-                RemapPlanarVarShape<NIX><<<grid, block, 0, stream>>>(src, dst, mapWrap, mapSize, mapNumSamples,
-                                                                     alignCorners, mapValueType, channels);
+                bool launched = false;
+                if constexpr (B == NVCV_BORDER_CONSTANT || B == NVCV_BORDER_CONSTANT_COVERAGE)
+                {
+                    if (!uniformBorder)
+                    {
+                        RemapPlanarVarShape<NIX, true>
+                            <<<grid, block, 0, stream>>>(src, dst, mapWrap, mapSize, mapNumSamples, alignCorners,
+                                                         mapValueType, channels, planarBorderValue);
+                        launched = true;
+                    }
+                }
+                if (!launched)
+                {
+                    RemapPlanarVarShape<NIX, false>
+                        <<<grid, block, 0, stream>>>(src, dst, mapWrap, mapSize, mapNumSamples, alignCorners,
+                                                     mapValueType, channels, planarBorderValue);
+                }
                 NVCV_CHECK_THROW(cudaGetLastError());
                 return;
             }
@@ -374,7 +497,8 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
 template<typename T, NVCVBorderType B, NVCVInterpolationType MI, NVCVInterpolationType SI, class DataStridedCuda>
 void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStridedCuda &dstData,
               const nvcv::TensorDataStridedCuda &mapData, NVCVRemapMapValueType mapValueType, bool alignCorners,
-              const T &borderValue, int channels = 1)
+              const cuda::BorderValueType<T, B> &borderValue, int channels = 1, float4 planarBorderValue = {},
+              bool uniformBorder = true)
 {
     auto mapAccess     = nvcv::TensorDataAccessStridedImagePlanar::Create(mapData);
     int2 mapSize       = cuda::StaticCast<int>(long2{mapAccess->numCols(), mapAccess->numRows()});
@@ -384,7 +508,7 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
     {
         auto map = cuda::CreateInterpolationWrapNHW<const float2, kMapBorderType, MI, int32_t>(mapData);
         RunRemap<T, B, SI>(stream, srcData, dstData, map, mapValueType, alignCorners, borderValue, mapSize,
-                           mapNumSamples, channels);
+                           mapNumSamples, channels, planarBorderValue, uniformBorder);
     }
     else
     {
@@ -396,12 +520,13 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
 template<typename T, NVCVBorderType B, NVCVInterpolationType MI, class DataStridedCuda>
 void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStridedCuda &dstData,
               const nvcv::TensorDataStridedCuda &mapData, NVCVInterpolationType srcInterp,
-              NVCVRemapMapValueType mapValueType, bool alignCorners, const T &borderValue, int channels = 1)
+              NVCVRemapMapValueType mapValueType, bool alignCorners, const cuda::BorderValueType<T, B> &borderValue,
+              int channels = 1, float4 planarBorderValue = {}, bool uniformBorder = true)
 {
 #define NVCV_RUN_REMAP(INTERP_TYPE)                                                                                  \
     case NVCV_INTERP_##INTERP_TYPE:                                                                                  \
         RunRemap<T, B, MI, NVCV_INTERP_##INTERP_TYPE>(stream, srcData, dstData, mapData, mapValueType, alignCorners, \
-                                                      borderValue, channels);                                        \
+                                                      borderValue, channels, planarBorderValue, uniformBorder);      \
         break
 
     switch (srcInterp)
@@ -420,12 +545,14 @@ template<typename T, NVCVBorderType B, class DataStridedCuda>
 void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStridedCuda &dstData,
               const nvcv::TensorDataStridedCuda &mapData, NVCVInterpolationType srcInterp,
               NVCVInterpolationType mapInterp, NVCVRemapMapValueType mapValueType, bool alignCorners,
-              const T &borderValue, int channels = 1)
+              const cuda::BorderValueType<T, B> &borderValue, int channels = 1, float4 planarBorderValue = {},
+              bool uniformBorder = true)
 {
 #define NVCV_RUN_REMAP(INTERP_TYPE)                                                                           \
     case NVCV_INTERP_##INTERP_TYPE:                                                                           \
         RunRemap<T, B, NVCV_INTERP_##INTERP_TYPE>(stream, srcData, dstData, mapData, srcInterp, mapValueType, \
-                                                  alignCorners, borderValue, channels);                       \
+                                                  alignCorners, borderValue, channels, planarBorderValue,     \
+                                                  uniformBorder);                                             \
         break
 
     switch (mapInterp)
@@ -446,12 +573,36 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
               NVCVInterpolationType mapInterp, NVCVRemapMapValueType mapValueType, bool alignCorners,
               NVCVBorderType border, const float4 &borderValue, int channels = 1)
 {
-    const T bvalue = cuda::DropCast<cuda::NumElements<T>>(cuda::StaticCast<cuda::BaseType<T>>(borderValue));
+    bool uniformBorder = true;
+    if (border == NVCV_BORDER_CONSTANT || border == NVCV_BORDER_CONSTANT_COVERAGE)
+    {
+        const float *values = &borderValue.x;
+        for (int plane = 1; plane < std::min(channels, 4); ++plane)
+        {
+            uniformBorder &= values[plane] == values[0];
+        }
+        if (channels > 4 && !uniformBorder)
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Planar remap with more than four channels requires a uniform border value");
+        }
+    }
 
-#define NVCV_RUN_REMAP(BORDER_TYPE)                                                                                   \
-    case NVCV_BORDER_##BORDER_TYPE:                                                                                   \
-        RunRemap<T, NVCV_BORDER_##BORDER_TYPE>(stream, srcData, dstData, mapData, srcInterp, mapInterp, mapValueType, \
-                                               alignCorners, bvalue, channels);                                       \
+    // Var-shape operator rejects this mode; false prevents instantiating a var-shape wrap that
+    // would read out of bounds.
+    //
+    //
+    constexpr bool kAllowCoverage = std::is_same_v<DataStridedCuda, nvcv::TensorDataStridedCuda>;
+
+    // Coverage mode requires the fill in float; conversion must happen after mode dispatch
+    // to avoid early rounding.
+    //
+#define NVCV_RUN_REMAP(BORDER_TYPE)                                                                                \
+    case NVCV_BORDER_##BORDER_TYPE:                                                                                \
+        RunRemap<T, NVCV_BORDER_##BORDER_TYPE>(                                                                    \
+            stream, srcData, dstData, mapData, srcInterp, mapInterp, mapValueType, alignCorners,                   \
+            cvcuda::priv::warp::WrapBorderValue<T, NVCV_BORDER_##BORDER_TYPE>(borderValue), channels, borderValue, \
+            uniformBorder);                                                                                        \
         break
 
     switch (border)
@@ -461,6 +612,17 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
         NVCV_RUN_REMAP(REFLECT);
         NVCV_RUN_REMAP(WRAP);
         NVCV_RUN_REMAP(REFLECT101);
+    case NVCV_BORDER_CONSTANT_COVERAGE:
+        if constexpr (kAllowCoverage)
+        {
+            RunRemap<T, NVCV_BORDER_CONSTANT_COVERAGE>(
+                stream, srcData, dstData, mapData, srcInterp, mapInterp, mapValueType, alignCorners,
+                cvcuda::priv::warp::WrapBorderValue<T, NVCV_BORDER_CONSTANT_COVERAGE>(borderValue), channels,
+                borderValue, uniformBorder);
+            break;
+        }
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "NVCV_BORDER_CONSTANT_COVERAGE is only supported on tensor input");
     default:
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid border type");
     }
@@ -495,9 +657,11 @@ inline void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const 
     else if NVCV_RUN_REMAP(U8, 3U8, uchar3);
     else if NVCV_RUN_REMAP(U8, 4U8, uchar4);
     else if NVCV_RUN_REMAP(F32, F32, float1);
-    // F16 mirrors F32: single-channel only. InterpolationWrap accumulates in float and
-    // SaturateCast rounds once to half at the store.
+    else if NVCV_RUN_REMAP(F32, 3F32, float3);
+    else if NVCV_RUN_REMAP(F32, 4F32, float4);
     else if NVCV_RUN_REMAP(F16, F16, half1);
+    else if NVCV_RUN_REMAP(F16, 3F16, half3);
+    else if NVCV_RUN_REMAP(F16, 4F16, half4);
     else
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid data type in input/output");
@@ -506,29 +670,6 @@ inline void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const 
 #undef NVCV_RUN_REMAP
 
     // clang-format on
-}
-
-// The planar path flattens the C channel planes into single-channel samples that all share one
-// border scalar (borderValue.x). The interleaved path applies borderValue componentwise, so for
-// NVCV_BORDER_CONSTANT the two only agree when the first `channels` border components are equal.
-// Reject the non-uniform case rather than silently producing a different result for out-of-bounds
-// samples (other border modes ignore borderValue, so they are always fine).
-inline void RequireUniformConstantBorderForPlanar(NVCVBorderType border, const float4 &borderValue, int channels)
-{
-    if (border != NVCV_BORDER_CONSTANT)
-    {
-        return;
-    }
-    const float *bv = &borderValue.x;
-    for (int c = 1; c < channels; ++c)
-    {
-        if (bv[c] != bv[0])
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Planar remap with NVCV_BORDER_CONSTANT requires a uniform border value across "
-                                  "channels");
-        }
-    }
 }
 
 } // anonymous namespace
@@ -547,26 +688,9 @@ void Remap::operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv:
                        float4 borderValue) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::Remap::operator()[Tensor]");
-    auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto mapData = map.exportData<nvcv::TensorDataStridedCuda>();
-    if (!mapData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Remap map input must be cuda-accessible, pitch-linear tensor");
-    }
+    auto srcData = RequireCudaTensor(src, "Input");
+    auto dstData = RequireCudaTensor(dst, "Output");
+    auto mapData = RequireCudaTensor(map, "Remap map input");
 
     auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
     auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
@@ -594,10 +718,7 @@ void Remap::operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv:
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Remap map input must have 2F32 data type");
     }
 
-    if (srcData->dtype() != dstData->dtype())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output data type are different");
-    }
+    RequireSameDtype(*srcData, *dstData);
 
     const bool srcPlanar      = (srcData->layout() == nvcv::TENSOR_NCHW || srcData->layout() == nvcv::TENSOR_CHW);
     const bool dstPlanar      = (dstData->layout() == nvcv::TENSOR_NCHW || dstData->layout() == nvcv::TENSOR_CHW);
@@ -626,7 +747,6 @@ void Remap::operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv:
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                                   "Planar remap requires numSamples * numChannels <= 65535 (CUDA grid-z limit)");
         }
-        RequireUniformConstantBorderForPlanar(border, borderValue, channels);
 
         auto srcView = PlanarAsSingleChannelView(*srcData, *srcAccess);
         auto dstView = PlanarAsSingleChannelView(*dstData, *dstAccess);
@@ -647,34 +767,16 @@ void Remap::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
                        float4 borderValue) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::Remap::operator()[ImageBatchVarShape]");
-    auto srcData = src.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    if (!srcData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    auto dstData = dst.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    if (!dstData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    auto mapData = map.exportData<nvcv::TensorDataStridedCuda>();
-    if (!mapData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Remap map input must be cuda-accessible, pitch-linear tensor");
-    }
+    auto srcData = RequireCudaVarShape(src, stream, "Input");
+    auto dstData = RequireCudaVarShape(dst, stream, "Output");
+    auto mapData = RequireCudaTensor(map, "Remap map input");
 
     auto mapAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*mapData);
     NVCV_ASSERT(mapAccess);
 
-    if (srcData->numImages() != dstData->numImages())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of samples");
-    }
+    RequireSameNumImages(*srcData, *dstData);
+    RequireUniqueFormat(*srcData, "Input");
+    RequireUniqueFormat(*dstData, "Output");
 
     if (mapAccess->numSamples() != srcData->numImages() && mapAccess->numSamples() != 1)
     {
@@ -687,10 +789,7 @@ void Remap::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Remap map input must have 2F32 data type");
     }
 
-    if (srcData->uniqueFormat() != dstData->uniqueFormat())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output formats are different");
-    }
+    RequireSameFormat(*srcData, *dstData);
 
     const int numPlanes = srcData->uniqueFormat().numPlanes();
 
@@ -704,7 +803,6 @@ void Remap::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                                   "Planar remap requires numImages * numChannels <= 65535 (CUDA grid-z limit)");
         }
-        RequireUniformConstantBorderForPlanar(border, borderValue, numPlanes);
 
         RunRemap(stream, *srcData, *dstData, *mapData, srcInterp, mapInterp, mapValueType, alignCorners, border,
                  borderValue, srcData->uniqueFormat().planeDataType(0), /*numChannels=*/1,

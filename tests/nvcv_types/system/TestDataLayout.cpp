@@ -45,7 +45,8 @@ INSTANTIATE_TEST_SUITE_P(
               MAKE_SWIZZLE(Y, 0, 0, 0), MAKE_SWIZZLE(0, Y, 0, 0), MAKE_SWIZZLE(0, 0, Y, 0), MAKE_SWIZZLE(0, 0, 0, Y),
               MAKE_SWIZZLE(0, X, Y, 0), MAKE_SWIZZLE(X, X, X, Y), MAKE_SWIZZLE(Y, Y, Y, X), MAKE_SWIZZLE(0, Y, X, 0),
               MAKE_SWIZZLE(X, 0, 0, Y), MAKE_SWIZZLE(Y, 0, 0, X), MAKE_SWIZZLE(X, 0, 0, 1), MAKE_SWIZZLE(X, Y, 0, 1),
-              MAKE_SWIZZLE(X, Y, 0, 0), MAKE_SWIZZLE(0, X, Z, 0), MAKE_SWIZZLE(0, Z, X, 0), MAKE_SWIZZLE(0, Y, X, 1)));
+              MAKE_SWIZZLE(X, Y, 0, 0), MAKE_SWIZZLE(0, X, Z, 0), MAKE_SWIZZLE(0, Z, X, 0), MAKE_SWIZZLE(0, Y, X, 1),
+              MAKE_SWIZZLE(0, 0, 0, 0), MAKE_SWIZZLE(0, Z, X, Y)));
 
 TEST_P(SwizzleTests, make_sizzle_function_works)
 {
@@ -734,6 +735,21 @@ TEST(SwizzleTests_Negative, Invalid_parameter)
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeSwizzle(nullptr, NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_W));
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvSwizzleGetChannels(NVCV_SWIZZLE_0000, nullptr));
+}
+
+TEST(SwizzleTests_Negative, unsupported_channels)
+{
+    for (NVCVSwizzle swizzle : {static_cast<NVCVSwizzle>(NVCV_MAX_SWIZZLE_COUNT), NVCV_SWIZZLE_UNSUPPORTED})
+    {
+        SCOPED_TRACE(static_cast<int>(swizzle));
+        std::array<NVCVChannel, 4> channels;
+        ASSERT_EQ(NVCV_SUCCESS, nvcvSwizzleGetChannels(swizzle, channels.data()));
+        for (NVCVChannel channel : channels) EXPECT_EQ(static_cast<NVCVChannel>(7), channel);
+
+        int count = -1;
+        ASSERT_EQ(NVCV_SUCCESS, nvcvSwizzleGetNumChannels(swizzle, &count));
+        EXPECT_EQ(0, count);
+    }
 }
 
 TEST(SwizzleChannelTests, get_name)

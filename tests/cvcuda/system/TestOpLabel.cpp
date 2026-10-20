@@ -614,7 +614,9 @@ NVCV_TYPED_TEST_SUITE(OpLabel, type::Types<
     NVCV_TEST_ROW(NVCV_SHAPE(31, 19, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, false, false, 0, false),
     NVCV_TEST_ROW(NVCV_SHAPE(30, 21, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, true, false, 0, false),
     NVCV_TEST_ROW(NVCV_SHAPE(29, 23, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, false, true, 0, false),
-    NVCV_TEST_ROW(NVCV_SHAPE(28, 25, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 0, false)
+    NVCV_TEST_ROW(NVCV_SHAPE(28, 25, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 0, false),
+    // Exercise the batched S16 2D path through statistics, island removal, and sequential relabeling.
+    NVCV_TEST_ROW(NVCV_SHAPE(37, 11, 1, 2), NVCV_DATA_TYPE_S16, int16_t, true, true, false, 3, true)
 >);
 
 // clang-format on
@@ -1008,6 +1010,595 @@ template<typename T>
         return ::testing::AssertionFailure() << "sample " << sample << ": " << e.what();
     }
     return ::testing::AssertionSuccess();
+}
+
+TEST(OpLabelCoverage, three_dimensional_single_sample_masked_relabel)
+{
+    constexpr int width     = 5;
+    constexpr int height    = 3;
+    constexpr int depth     = 2;
+    constexpr int maxLabels = 4;
+
+    const long4_16a shape{1, depth, height, width};
+
+    nvcv::Tensor srcTensor(
+        {
+            {depth, height, width},
+            "DHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstTensor(srcTensor.shape(), nvcv::TYPE_U32);
+    nvcv::Tensor bglTensor({{1}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor mszTensor({{1}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor cntTensor({{1}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor staTensor(
+        {
+            {1, maxLabels, 9},
+            "NMA"
+    },
+        nvcv::TYPE_U32);
+    nvcv::Tensor mskTensor(
+        {
+            {1, depth, height, width},
+            "NDHW"
+    },
+        nvcv::TYPE_U8);
+
+    auto srcData = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto bglData = bglTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto mszData = mszTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto cntData = cntTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto staData = staTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto mskData = mskTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData);
+    ASSERT_TRUE(dstData);
+    ASSERT_TRUE(bglData);
+    ASSERT_TRUE(mszData);
+    ASSERT_TRUE(cntData);
+    ASSERT_TRUE(staData);
+    ASSERT_TRUE(mskData);
+
+    long4_16a srcStrides{srcData->stride(0) * depth, srcData->stride(0), srcData->stride(1), srcData->stride(2)};
+    long4_16a dstStrides{dstData->stride(0) * depth, dstData->stride(0), dstData->stride(1), dstData->stride(2)};
+    long4_16a mskStrides{mskData->stride(0), mskData->stride(1), mskData->stride(2), mskData->stride(3)};
+    long1     bglStrides{bglData->stride(0)};
+    long1     mszStrides{mszData->stride(0)};
+    long1     cntStrides{cntData->stride(0)};
+    long3     staStrides{staData->stride(0), staData->stride(1), staData->stride(2)};
+
+    RawBufferType srcVec(srcStrides.x * shape.x, 5);
+    RawBufferType dstVec(dstStrides.x * shape.x, 0);
+    RawBufferType bglVec(bglStrides.x * shape.x, 0);
+    RawBufferType mszVec(mszStrides.x * shape.x, 0);
+    RawBufferType cntVec(cntStrides.x * shape.x, 0);
+    RawBufferType staVec(staStrides.x * shape.x, 0);
+    RawBufferType mskVec(mskStrides.x * shape.x, 0);
+
+    util::ValueAt<uint8_t>(bglVec, bglStrides, long1{0})  = 5;
+    util::ValueAt<uint32_t>(mszVec, mszStrides, long1{0}) = 3;
+
+    auto setForeground = [&srcVec, &srcStrides](int d, int h, int w)
+    {
+        util::ValueAt<uint8_t>(srcVec, srcStrides, long4_16a{0, d, h, w}) = 1;
+    };
+    auto setInsideMask = [&mskVec, &mskStrides](int d, int h, int w)
+    {
+        util::ValueAt<uint8_t>(mskVec, mskStrides, long4_16a{0, d, h, w}) = 1;
+    };
+
+    // The first two voxels form a retained component inside the mask. The last two form an outside-mask island.
+    setForeground(0, 0, 0);
+    setForeground(0, 0, 1);
+    setInsideMask(0, 0, 0);
+    setInsideMask(0, 0, 1);
+    setForeground(1, 2, 3);
+    setForeground(1, 2, 4);
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), srcVec.data(), srcVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstData->basePtr(), dstVec.data(), dstVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(bglData->basePtr(), bglVec.data(), bglVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(mszData->basePtr(), mszVec.data(), mszVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(cntData->basePtr(), cntVec.data(), cntVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(staData->basePtr(), staVec.data(), staVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(mskData->basePtr(), mskVec.data(), mskVec.size(), cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Label op;
+    ASSERT_NO_THROW(op(stream, srcTensor, dstTensor, bglTensor, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, mszTensor,
+                       cntTensor, staTensor, mskTensor, NVCV_CONNECTIVITY_6_3D, NVCV_LABEL_SEQUENTIAL,
+                       NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    RawBufferType labTestVec(dstVec.size(), 0);
+    RawBufferType cntTestVec(cntVec.size(), 0);
+    RawBufferType staTestVec(staVec.size(), 0);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(labTestVec.data(), dstData->basePtr(), labTestVec.size(), cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(cntTestVec.data(), cntData->basePtr(), cntTestVec.size(), cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(staTestVec.data(), staData->basePtr(), staTestVec.size(), cudaMemcpyDeviceToHost));
+
+    RawBufferType                                   labGoldVec(dstVec.size(), 0);
+    RawBufferType                                   cntGoldVec(cntVec.size(), 0);
+    std::vector<std::set<uint32_t>>                 testLabels(shape.x);
+    std::vector<std::set<uint32_t>>                 goldLabels(shape.x);
+    std::vector<std::vector<std::vector<uint32_t>>> testStats(shape.x);
+    std::vector<std::vector<std::vector<uint32_t>>> goldStats(shape.x);
+
+    ref::Label<uint8_t, uint32_t>(labGoldVec, srcVec, dstStrides, srcStrides, shape);
+    ref::ReplaceBgLabels<uint8_t, uint32_t>(labGoldVec, srcVec, bglVec, dstStrides, srcStrides, bglStrides, shape);
+    ref::GetLabels<uint8_t, uint32_t>(goldLabels, labGoldVec, bglVec, dstStrides, bglStrides, shape);
+    ref::CountLabels<uint32_t>(cntGoldVec, cntStrides, goldLabels, shape.x);
+    EXPECT_EQ(cntTestVec, cntGoldVec);
+
+    long3 staShape{shape.x, maxLabels, 9};
+    ref::ComputeStats<uint8_t, uint32_t, uint8_t>(goldStats, labGoldVec, mskVec, bglVec, dstStrides, mskStrides,
+                                                  bglStrides, goldLabels, shape, 1, 9);
+    ref::GetLabels<uint32_t>(testLabels, cntTestVec, staTestVec, cntStrides, staStrides, shape.x);
+    EXPECT_EQ(testLabels, goldLabels);
+
+    ref::RemoveIslands<uint8_t, uint32_t>(goldLabels, labGoldVec, bglVec, mszVec, dstStrides, bglStrides, mszStrides,
+                                          goldStats, shape, 9);
+    ref::Relabel<uint8_t, uint32_t>(labGoldVec, bglVec, staTestVec, cntTestVec, dstStrides, bglStrides, staStrides,
+                                    cntStrides, shape);
+    ref::SortStats<uint32_t>(testStats, testLabels, staTestVec, staStrides, staShape);
+
+    EXPECT_EQ(testStats, goldStats);
+    EXPECT_EQ(labTestVec, labGoldVec);
+}
+
+TEST(OpLabelCoverage, three_dimensional_batched_masked_relabel)
+{
+    constexpr int numSamples = 2;
+    constexpr int width      = 5;
+    constexpr int height     = 3;
+    constexpr int depth      = 2;
+    constexpr int maxLabels  = 4;
+
+    const long4_16a shape{numSamples, depth, height, width};
+
+    nvcv::Tensor srcTensor(
+        {
+            {numSamples, depth, height, width},
+            "NDHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstTensor(srcTensor.shape(), nvcv::TYPE_U32);
+    nvcv::Tensor bglTensor({{numSamples}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor mszTensor({{numSamples}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor cntTensor({{numSamples}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor staTensor(
+        {
+            {numSamples, maxLabels, 9},
+            "NMA"
+    },
+        nvcv::TYPE_U32);
+    nvcv::Tensor mskTensor(
+        {
+            {numSamples, depth, height, width},
+            "NDHW"
+    },
+        nvcv::TYPE_U8);
+
+    auto srcData = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto bglData = bglTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto mszData = mszTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto cntData = cntTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto staData = staTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto mskData = mskTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData);
+    ASSERT_TRUE(dstData);
+    ASSERT_TRUE(bglData);
+    ASSERT_TRUE(mszData);
+    ASSERT_TRUE(cntData);
+    ASSERT_TRUE(staData);
+    ASSERT_TRUE(mskData);
+
+    long4_16a srcStrides{srcData->stride(0), srcData->stride(1), srcData->stride(2), srcData->stride(3)};
+    long4_16a dstStrides{dstData->stride(0), dstData->stride(1), dstData->stride(2), dstData->stride(3)};
+    long4_16a mskStrides{mskData->stride(0), mskData->stride(1), mskData->stride(2), mskData->stride(3)};
+    long1     bglStrides{bglData->stride(0)};
+    long1     mszStrides{mszData->stride(0)};
+    long1     cntStrides{cntData->stride(0)};
+    long3     staStrides{staData->stride(0), staData->stride(1), staData->stride(2)};
+
+    RawBufferType srcVec(srcStrides.x * shape.x, 5);
+    RawBufferType dstVec(dstStrides.x * shape.x, 0);
+    RawBufferType bglVec(bglStrides.x * shape.x, 0);
+    RawBufferType mszVec(mszStrides.x * shape.x, 0);
+    RawBufferType cntVec(cntStrides.x * shape.x, 0);
+    RawBufferType staVec(staStrides.x * shape.x, 0);
+    RawBufferType mskVec(mskStrides.x * shape.x, 0);
+
+    for (int n = 0; n < numSamples; ++n)
+    {
+        util::ValueAt<uint8_t>(bglVec, bglStrides, long1{n})  = 5;
+        util::ValueAt<uint32_t>(mszVec, mszStrides, long1{n}) = 3;
+    }
+
+    auto setForeground = [&srcVec, &srcStrides](int n, int d, int h, int w)
+    {
+        util::ValueAt<uint8_t>(srcVec, srcStrides, long4_16a{n, d, h, w}) = 1;
+    };
+    auto setInsideMask = [&mskVec, &mskStrides](int n, int d, int h, int w)
+    {
+        util::ValueAt<uint8_t>(mskVec, mskStrides, long4_16a{n, d, h, w}) = 1;
+    };
+
+    // Each sample has one two-voxel island inside its own mask and one outside it; the per-sample masks exercise
+    // the batched 3D mask-coordinate path while the minimum size keeps only the masked island.
+    setForeground(0, 0, 0, 0);
+    setForeground(0, 0, 0, 1);
+    setInsideMask(0, 0, 0, 0);
+    setInsideMask(0, 0, 0, 1);
+    setForeground(0, 1, 2, 3);
+    setForeground(0, 1, 2, 4);
+
+    setForeground(1, 0, 0, 0);
+    setForeground(1, 0, 0, 1);
+    setForeground(1, 1, 2, 3);
+    setForeground(1, 1, 2, 4);
+    setInsideMask(1, 1, 2, 3);
+    setInsideMask(1, 1, 2, 4);
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), srcVec.data(), srcVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstData->basePtr(), dstVec.data(), dstVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(bglData->basePtr(), bglVec.data(), bglVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(mszData->basePtr(), mszVec.data(), mszVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(cntData->basePtr(), cntVec.data(), cntVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(staData->basePtr(), staVec.data(), staVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(mskData->basePtr(), mskVec.data(), mskVec.size(), cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Label op;
+    ASSERT_NO_THROW(op(stream, srcTensor, dstTensor, bglTensor, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, mszTensor,
+                       cntTensor, staTensor, mskTensor, NVCV_CONNECTIVITY_6_3D, NVCV_LABEL_SEQUENTIAL,
+                       NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    RawBufferType labTestVec(dstVec.size(), 0);
+    RawBufferType cntTestVec(cntVec.size(), 0);
+    RawBufferType staTestVec(staVec.size(), 0);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(labTestVec.data(), dstData->basePtr(), labTestVec.size(), cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(cntTestVec.data(), cntData->basePtr(), cntTestVec.size(), cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(staTestVec.data(), staData->basePtr(), staTestVec.size(), cudaMemcpyDeviceToHost));
+
+    RawBufferType                                   labGoldVec(dstVec.size(), 0);
+    RawBufferType                                   cntGoldVec(cntVec.size(), 0);
+    std::vector<std::set<uint32_t>>                 testLabels(shape.x);
+    std::vector<std::set<uint32_t>>                 goldLabels(shape.x);
+    std::vector<std::vector<std::vector<uint32_t>>> testStats(shape.x);
+    std::vector<std::vector<std::vector<uint32_t>>> goldStats(shape.x);
+
+    ref::Label<uint8_t, uint32_t>(labGoldVec, srcVec, dstStrides, srcStrides, shape);
+    ref::ReplaceBgLabels<uint8_t, uint32_t>(labGoldVec, srcVec, bglVec, dstStrides, srcStrides, bglStrides, shape);
+    ref::GetLabels<uint8_t, uint32_t>(goldLabels, labGoldVec, bglVec, dstStrides, bglStrides, shape);
+    ref::CountLabels<uint32_t>(cntGoldVec, cntStrides, goldLabels, shape.x);
+    EXPECT_EQ(cntTestVec, cntGoldVec);
+
+    long3 staShape{shape.x, maxLabels, 9};
+    ref::ComputeStats<uint8_t, uint32_t, uint8_t>(goldStats, labGoldVec, mskVec, bglVec, dstStrides, mskStrides,
+                                                  bglStrides, goldLabels, shape, numSamples, 9);
+    ref::GetLabels<uint32_t>(testLabels, cntTestVec, staTestVec, cntStrides, staStrides, shape.x);
+    EXPECT_EQ(testLabels, goldLabels);
+
+    ref::RemoveIslands<uint8_t, uint32_t>(goldLabels, labGoldVec, bglVec, mszVec, dstStrides, bglStrides, mszStrides,
+                                          goldStats, shape, 9);
+    ref::Relabel<uint8_t, uint32_t>(labGoldVec, bglVec, staTestVec, cntTestVec, dstStrides, bglStrides, staStrides,
+                                    cntStrides, shape);
+    ref::SortStats<uint32_t>(testStats, testLabels, staTestVec, staStrides, staShape);
+
+    EXPECT_EQ(testStats, goldStats);
+    EXPECT_EQ(labTestVec, labGoldVec);
+}
+
+TEST(OpLabelCoverage, two_dimensional_single_sample_mask_without_n_dimension)
+{
+    constexpr int width     = 5;
+    constexpr int height    = 3;
+    constexpr int maxLabels = 4;
+
+    nvcv::Tensor srcTensor(
+        {
+            {height, width},
+            "HW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstTensor(srcTensor.shape(), nvcv::TYPE_U32);
+    nvcv::Tensor bglTensor({{1}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor mszTensor({{1}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor cntTensor({{1}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor staTensor(
+        {
+            {1, maxLabels, 7},
+            "NMA"
+    },
+        nvcv::TYPE_U32);
+    nvcv::Tensor mskTensor(
+        {
+            {height, width},
+            "HW"
+    },
+        nvcv::TYPE_U8);
+
+    auto srcData = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto bglData = bglTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto mszData = mszTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto cntData = cntTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto staData = staTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto mskData = mskTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData);
+    ASSERT_TRUE(dstData);
+    ASSERT_TRUE(bglData);
+    ASSERT_TRUE(mszData);
+    ASSERT_TRUE(cntData);
+    ASSERT_TRUE(staData);
+    ASSERT_TRUE(mskData);
+
+    int4 ids{srcTensor.layout().find('N'), srcTensor.layout().find('D'), srcTensor.layout().find('H'),
+             srcTensor.layout().find('W')};
+
+    long4_16a srcShape{1, 1, height, width};
+    long4_16a srcStrides{0, 0, srcData->stride(ids.z), srcData->stride(ids.w)};
+    long4_16a dstStrides{0, 0, dstData->stride(ids.z), dstData->stride(ids.w)};
+    srcStrides.y = ids.y == -1 ? srcStrides.z * srcShape.z : srcData->stride(ids.y);
+    srcStrides.x = ids.x == -1 ? srcStrides.y * srcShape.y : srcData->stride(ids.x);
+    dstStrides.y = ids.y == -1 ? dstStrides.z * srcShape.z : dstData->stride(ids.y);
+    dstStrides.x = ids.x == -1 ? dstStrides.y * srcShape.y : dstData->stride(ids.x);
+
+    long4_16a mskStrides{mskData->stride(0) * height, 0, mskData->stride(0), mskData->stride(1)};
+    long1     bglStrides{bglData->stride(0)};
+    long1     mszStrides{mszData->stride(0)};
+    long1     cntStrides{cntData->stride(0)};
+    long3     staStrides{staData->stride(0), staData->stride(1), staData->stride(2)};
+
+    RawBufferType srcVec(srcStrides.x * srcShape.x, 0);
+    RawBufferType dstVec(dstStrides.x * srcShape.x, 0);
+    RawBufferType bglVec(bglStrides.x * srcShape.x, 0);
+    RawBufferType mszVec(mszStrides.x * srcShape.x, 0);
+    RawBufferType cntVec(cntStrides.x * srcShape.x, 0);
+    RawBufferType staVec(staStrides.x * srcShape.x, 0);
+    RawBufferType mskVec(mskStrides.x * srcShape.x, 0);
+
+    util::ValueAt<uint8_t>(bglVec, bglStrides, long1{0})  = 0;
+    util::ValueAt<uint32_t>(mszVec, mszStrides, long1{0}) = 3;
+
+    auto setForeground = [&srcVec, &srcStrides](int h, int w)
+    {
+        util::ValueAt<uint8_t>(srcVec, srcStrides, long4_16a{0, 0, h, w}) = 1;
+    };
+    auto setInsideMask = [&mskVec, &mskStrides](int h, int w)
+    {
+        util::ValueAt<uint8_t>(mskVec, mskStrides, long4_16a{0, 0, h, w}) = 1;
+    };
+
+    setForeground(0, 1);
+    setForeground(1, 1);
+    setForeground(0, 3);
+    setForeground(0, 4);
+    setInsideMask(0, 1);
+    setInsideMask(1, 1);
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), srcVec.data(), srcVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstData->basePtr(), dstVec.data(), dstVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(bglData->basePtr(), bglVec.data(), bglVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(mszData->basePtr(), mszVec.data(), mszVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(cntData->basePtr(), cntVec.data(), cntVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(staData->basePtr(), staVec.data(), staVec.size(), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(mskData->basePtr(), mskVec.data(), mskVec.size(), cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Label op;
+    ASSERT_NO_THROW(op(stream, srcTensor, dstTensor, bglTensor, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, mszTensor,
+                       cntTensor, staTensor, mskTensor, NVCV_CONNECTIVITY_4_2D, NVCV_LABEL_SEQUENTIAL,
+                       NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    RawBufferType labTestVec(dstVec.size(), 0);
+    RawBufferType cntTestVec(cntVec.size(), 0);
+    RawBufferType staTestVec(staVec.size(), 0);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(labTestVec.data(), dstData->basePtr(), labTestVec.size(), cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(cntTestVec.data(), cntData->basePtr(), cntTestVec.size(), cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(staTestVec.data(), staData->basePtr(), staTestVec.size(), cudaMemcpyDeviceToHost));
+
+    RawBufferType                                   labGoldVec(dstVec.size(), 0);
+    RawBufferType                                   cntGoldVec(cntVec.size(), 0);
+    std::vector<std::set<uint32_t>>                 testLabels(srcShape.x);
+    std::vector<std::set<uint32_t>>                 goldLabels(srcShape.x);
+    std::vector<std::vector<std::vector<uint32_t>>> testStats(srcShape.x);
+    std::vector<std::vector<std::vector<uint32_t>>> goldStats(srcShape.x);
+
+    ref::Label<uint8_t, uint32_t>(labGoldVec, srcVec, dstStrides, srcStrides, srcShape);
+    ref::ReplaceBgLabels<uint8_t, uint32_t>(labGoldVec, srcVec, bglVec, dstStrides, srcStrides, bglStrides, srcShape);
+    ref::GetLabels<uint8_t, uint32_t>(goldLabels, labGoldVec, bglVec, dstStrides, bglStrides, srcShape);
+    ref::CountLabels<uint32_t>(cntGoldVec, cntStrides, goldLabels, srcShape.x);
+    EXPECT_EQ(cntTestVec, cntGoldVec);
+
+    long3 staShape{srcShape.x, maxLabels, 7};
+    ref::ComputeStats<uint8_t, uint32_t, uint8_t>(goldStats, labGoldVec, mskVec, bglVec, dstStrides, mskStrides,
+                                                  bglStrides, goldLabels, srcShape, 1, 7);
+    ref::GetLabels<uint32_t>(testLabels, cntTestVec, staTestVec, cntStrides, staStrides, srcShape.x);
+    EXPECT_EQ(testLabels, goldLabels);
+
+    ref::RemoveIslands<uint8_t, uint32_t>(goldLabels, labGoldVec, bglVec, mszVec, dstStrides, bglStrides, mszStrides,
+                                          goldStats, srcShape, 7);
+    ref::Relabel<uint8_t, uint32_t>(labGoldVec, bglVec, staTestVec, cntTestVec, dstStrides, bglStrides, staStrides,
+                                    cntStrides, srcShape);
+    ref::SortStats<uint32_t>(testStats, testLabels, staTestVec, staStrides, staShape);
+
+    EXPECT_EQ(testStats, goldStats);
+    EXPECT_EQ(labTestVec, labGoldVec);
+}
+
+TEST(OpLabelCoverage, two_dimensional_masked_max_threshold_statistics)
+{
+    constexpr int numSamples = 2;
+    constexpr int width      = 65;
+    constexpr int height     = 5;
+    constexpr int maxLabels  = 4;
+
+    nvcv::Tensor srcTensor(
+        {
+            {numSamples, height, width, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstTensor(srcTensor.shape(), nvcv::TYPE_U32);
+    nvcv::Tensor bgTensor({{numSamples}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor maxTensor({{numSamples}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor minSizeTensor({{numSamples}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor countTensor({{numSamples}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor statsTensor(
+        {
+            {numSamples, maxLabels, 7},
+            "NMA"
+    },
+        nvcv::TYPE_U32);
+    nvcv::Tensor maskTensor(srcTensor.shape(), nvcv::TYPE_U8);
+
+    std::vector<std::vector<uint8_t>> srcValues(numSamples, std::vector<uint8_t>(width * height, 3));
+    std::vector<std::vector<uint8_t>> maskValues(numSamples, std::vector<uint8_t>(width * height, 0));
+    auto                              uploadSample = [&](int sample)
+    {
+        auto &src  = srcValues[sample];
+        auto &mask = maskValues[sample];
+
+        // The first component crosses the 32-pixel X-reduction boundary; the other three exercise island filtering.
+        src[31]              = 1;
+        src[32]              = 1;
+        src[2 * width + 10]  = 1;
+        src[4 * width + 5]   = 1;
+        src[4 * width + 60]  = 1;
+        mask[2 * width + 10] = 1;
+        if (sample == 0)
+        {
+            mask[31] = 1;
+            mask[32] = 1;
+        }
+
+        ASSERT_NO_THROW(util::SetImageTensorFromVector<uint8_t>(srcTensor.exportData(), src, sample));
+        ASSERT_NO_THROW(util::SetImageTensorFromVector<uint8_t>(maskTensor.exportData(), mask, sample));
+    };
+
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        ASSERT_NO_FATAL_FAILURE(uploadSample(sample));
+    }
+
+    UploadVectorTensor(bgTensor, std::vector<uint8_t>(numSamples, 0));
+    UploadVectorTensor(maxTensor, std::vector<uint8_t>(numSamples, 1));
+    UploadVectorTensor(minSizeTensor, std::vector<uint32_t>(numSamples, 2));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Label op;
+    ASSERT_NO_THROW(op(stream, srcTensor, dstTensor, bgTensor, nvcv::Tensor{nullptr}, maxTensor, minSizeTensor,
+                       countTensor, statsTensor, maskTensor, NVCV_CONNECTIVITY_4_2D, NVCV_LABEL_FAST,
+                       NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    auto srcData = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto bglData = bgTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto maxData = maxTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto mszData = minSizeTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto cntData = countTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto staData = statsTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto mskData = maskTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcData && dstData && bglData && maxData && mszData && cntData && staData && mskData);
+
+    const long4_16a shape{numSamples, 1, height, width};
+    const long4_16a srcStrides{srcData->stride(0), srcData->stride(3), srcData->stride(1), srcData->stride(2)};
+    const long4_16a dstStrides{dstData->stride(0), dstData->stride(3), dstData->stride(1), dstData->stride(2)};
+    const long4_16a mskStrides{mskData->stride(0), mskData->stride(3), mskData->stride(1), mskData->stride(2)};
+    const long1     bglStrides{bglData->stride(0)};
+    const long1     minStrides{0};
+    const long1     maxStrides{maxData->stride(0)};
+    const long1     mszStrides{mszData->stride(0)};
+    const long1     cntStrides{cntData->stride(0)};
+    const long3     staStrides{staData->stride(0), staData->stride(1), staData->stride(2)};
+
+    RawBufferType srcVec(static_cast<size_t>(srcStrides.x * shape.x), 0);
+    RawBufferType maxVec(static_cast<size_t>(maxStrides.x * shape.x), 0);
+    RawBufferType bglVec(static_cast<size_t>(bglStrides.x * shape.x), 0);
+    RawBufferType mszVec(static_cast<size_t>(mszStrides.x * shape.x), 0);
+    RawBufferType mskVec(static_cast<size_t>(mskStrides.x * shape.x), 0);
+    RawBufferType labTestVec(static_cast<size_t>(dstStrides.x * shape.x), 0);
+    RawBufferType labGoldVec(static_cast<size_t>(dstStrides.x * shape.x), 0);
+    RawBufferType cntTestVec(static_cast<size_t>(cntStrides.x * shape.x), 0);
+    RawBufferType cntGoldVec(static_cast<size_t>(cntStrides.x * shape.x), 0);
+    RawBufferType staTestVec(static_cast<size_t>(staStrides.x * shape.x), 0);
+
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        util::ValueAt<uint8_t>(bglVec, bglStrides, long1{sample})  = 0;
+        util::ValueAt<uint8_t>(maxVec, maxStrides, long1{sample})  = 1;
+        util::ValueAt<uint32_t>(mszVec, mszStrides, long1{sample}) = 2;
+        for (int y = 0; y < height; ++y)
+        {
+            for (int x = 0; x < width; ++x)
+            {
+                const long4_16a coord{sample, 0, y, x};
+                util::ValueAt<uint8_t>(srcVec, srcStrides, coord) = srcValues[sample][y * width + x];
+                util::ValueAt<uint8_t>(mskVec, mskStrides, coord) = maskValues[sample][y * width + x];
+            }
+        }
+    }
+
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(labTestVec.data(), dstData->basePtr(), labTestVec.size(), cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(cntTestVec.data(), cntData->basePtr(), cntTestVec.size(), cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(staTestVec.data(), staData->basePtr(), staTestVec.size(), cudaMemcpyDeviceToHost));
+
+    std::vector<std::set<uint32_t>>                 goldLabels(numSamples);
+    std::vector<std::set<uint32_t>>                 testLabels(numSamples);
+    std::vector<std::vector<std::vector<uint32_t>>> goldStats(numSamples);
+    std::vector<std::vector<std::vector<uint32_t>>> testStats(numSamples);
+
+    ref::Binarize<uint8_t>(srcVec, RawBufferType{}, maxVec, srcStrides, minStrides, maxStrides, shape);
+    ref::Label<uint8_t, uint32_t>(labGoldVec, srcVec, dstStrides, srcStrides, shape);
+    ref::ReplaceBgLabels<uint8_t, uint32_t>(labGoldVec, srcVec, bglVec, dstStrides, srcStrides, bglStrides, shape);
+    ref::GetLabels<uint8_t, uint32_t>(goldLabels, labGoldVec, bglVec, dstStrides, bglStrides, shape);
+    ref::CountLabels<uint32_t>(cntGoldVec, cntStrides, goldLabels, numSamples);
+    ref::ComputeStats<uint8_t, uint32_t, uint8_t>(goldStats, labGoldVec, mskVec, bglVec, dstStrides, mskStrides,
+                                                  bglStrides, goldLabels, shape, numSamples, 7);
+    ref::GetLabels<uint32_t>(testLabels, cntTestVec, staTestVec, cntStrides, staStrides, numSamples);
+    ref::SortStats<uint32_t>(testStats, testLabels, staTestVec, staStrides, long3{numSamples, maxLabels, 7});
+
+    EXPECT_EQ(cntTestVec, cntGoldVec);
+    EXPECT_EQ(testLabels, goldLabels);
+
+    ref::RemoveIslands<uint8_t, uint32_t>(goldLabels, labGoldVec, bglVec, mszVec, dstStrides, bglStrides, mszStrides,
+                                          goldStats, shape, 7);
+    EXPECT_EQ(labTestVec, labGoldVec);
+    EXPECT_EQ(testStats, goldStats);
 }
 
 static std::vector<uint8_t> MakeLabelParityInput(int width, int height)

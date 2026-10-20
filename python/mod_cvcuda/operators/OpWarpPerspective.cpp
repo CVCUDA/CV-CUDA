@@ -15,19 +15,16 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpWarpPerspective.hpp>
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 #include <stdexcept>
 
@@ -35,19 +32,21 @@ namespace cvcudapy {
 
 namespace {
 
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
 class WarpPerspectiveError : public std::runtime_error
 {
 public:
     using std::runtime_error::runtime_error;
 };
 
-Tensor WarpPerspectiveInto(Tensor &output, Tensor &input, const pyarray &xform, const int32_t flags,
-                           const NVCVBorderType borderMode, const pyarray &borderValue, std::optional<Stream> pstream)
+Tensor &WarpPerspectiveInto(Tensor &output, Tensor &input, const pyarray &xform, const int32_t flags,
+                            const NVCVBorderType borderMode, const pyarray &borderValue,
+                            std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     float4 bValue = GetFloat4FromPyArray(borderValue);
 
@@ -63,85 +62,91 @@ Tensor WarpPerspectiveInto(Tensor &output, Tensor &input, const pyarray &xform, 
     {
         for (size_t j = 0; j < 3; j++)
         {
-            xformOutput[i * 3 + j] = *xform.data(i, j);
+            xformOutput[i * 3 + j] = xform.data()[i * 3 + j];
         }
     }
 
     auto warpPerspective = CreateOperator<cvcuda::WarpPerspective>(0);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*warpPerspective});
 
     guard.run(
-        [&warpPerspective, &pstream, &input, &output, &xformOutput, &flags, &borderMode, &bValue]()
-        { warpPerspective->submit(pstream->cudaHandle(), input, output, xformOutput, flags, borderMode, bValue); });
+        [&warpPerspective, &stream, &input, &output, &xformOutput, &flags, &borderMode, &bValue]() {
+            warpPerspective->submit(stream.handle(), input.impl(), output.impl(), xformOutput, flags, borderMode,
+                                    bValue);
+        });
 
     return output;
 }
 
-Tensor WarpPerspective(Tensor &input, const pyarray &xform, const int32_t flags, const NVCVBorderType borderMode,
-                       const pyarray &borderValue, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> WarpPerspective(Tensor &input, const pyarray &xform, const int32_t flags,
+                                        const NVCVBorderType borderMode, const pyarray &borderValue,
+                                        std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return WarpPerspectiveInto(output, input, xform, flags, borderMode, borderValue, pstream);
+    WarpPerspectiveInto(*output, input, xform, flags, borderMode, borderValue, pstream);
+    return output;
 }
 
-ImageBatchVarShape WarpPerspectiveVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &xform,
-                                               const int32_t flags, const NVCVBorderType borderMode,
-                                               const pyarray &borderValue, std::optional<Stream> pstream)
+ImageBatchVarShape &WarpPerspectiveVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &xform,
+                                                const int32_t flags, const NVCVBorderType borderMode,
+                                                const pyarray &borderValue, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     size_t bValueSize = borderValue.size();
     if (size_t bValueDims = borderValue.ndim(); bValueSize > 4 || bValueDims != 1)
     {
-        throw py::value_error(
-            util::ConcatString("Channels of borderValue should <= 4 and dimension should be 2, current is '",
-                               bValueSize, "', '", bValueDims, "' respectively"));
+        const std::string message
+            = util::ConcatString("Channels of borderValue should <= 4 and dimension should be 1, current is '",
+                                 bValueSize, "', '", bValueDims, "' respectively");
+        throw py::value_error(message.c_str());
     }
     float4 bValue;
     for (int i = 0; i < 4; i++)
     {
         const auto valueIdx               = static_cast<size_t>(i);
-        nvcv::cuda::GetElement(bValue, i) = bValueSize > valueIdx ? *borderValue.data(valueIdx) : 0.f;
+        nvcv::cuda::GetElement(bValue, i) = bValueSize > valueIdx ? borderValue.data()[valueIdx] : 0.f;
     }
 
     auto warpPerspective = CreateOperator<cvcuda::WarpPerspective>(input.capacity());
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, xform});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*warpPerspective});
 
-    guard.run([&warpPerspective, &pstream, &input, &output, &xform, &flags, &borderMode, &bValue]()
-              { warpPerspective->submit(pstream->cudaHandle(), input, output, xform, flags, borderMode, bValue); });
+    guard.run(
+        [&warpPerspective, &stream, &input, &output, &xform, &flags, &borderMode, &bValue]() {
+            warpPerspective->submit(stream.handle(), input.impl(), output.impl(), xform.impl(), flags, borderMode,
+                                    bValue);
+        });
 
     return output;
 }
 
-ImageBatchVarShape WarpPerspectiveVarShape(ImageBatchVarShape &input, Tensor &xform, const int32_t flags,
-                                           const NVCVBorderType borderMode, const pyarray &borderValue,
-                                           std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> WarpPerspectiveVarShape(ImageBatchVarShape &input, Tensor &xform,
+                                                            const int32_t flags, const NVCVBorderType borderMode,
+                                                            const pyarray &borderValue, std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return WarpPerspectiveVarShapeInto(output, input, xform, flags, borderMode, borderValue, pstream);
+    WarpPerspectiveVarShapeInto(*output, input, xform, flags, borderMode, borderValue, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpWarpPerspective(py::module &m)
+void ExportOpWarpPerspective(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
-    m.def("warp_perspective", NvtxTrace("cvcuda.warp_perspective", &WarpPerspective), "src"_a, "xform"_a, "flags"_a,
-          py::kw_only(), "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
+    m.def("warp_perspective", NvtxTrace("cvcuda.warp_perspective", &WarpPerspective), "src"_a, "xform"_a.none(),
+          "flags"_a, py::kw_only(), "border_mode"_a, "border_value"_a.none(), "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
 
@@ -150,8 +155,8 @@ void ExportOpWarpPerspective(py::module &m)
             xform (numpy.ndarray: 3x3 perspective transformation matrix.
             flags (int): Combination of interpolation methods(cvcuda.Interp.NEAREST, cvcuda.Interp.LINEAR or cvcuda.Interp.CUBIC)
                 and the optional flag cvcuda.Interp.WARP_INVERSE_MAP, that sets trans_matrix as the inverse transformation.
-            border_mode (cvcuda.Border): pixel extrapolation method (cvcuda.Border.CONSTANT or
-                cvcuda.Border.REPLICATE).
+            border_mode (cvcuda.Border): pixel extrapolation method (cvcuda.Border.CONSTANT,
+                cvcuda.Border.REPLICATE, or cvcuda.Border.CONSTANT_COVERAGE).
             border_value (numpy.ndarray): Used to specify values for a constant border, should be a size <= 4 and dim of 1,
                 where the values specify the border color for each color channel.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
@@ -162,7 +167,8 @@ void ExportOpWarpPerspective(py::module &m)
     )pbdoc");
 
     m.def("warp_perspective_into", NvtxTrace("cvcuda.warp_perspective_into", &WarpPerspectiveInto), "dst"_a, "src"_a,
-          "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
+          "xform"_a.none(), "flags"_a, py::kw_only(), "border_mode"_a, "border_value"_a.none(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
 
@@ -172,8 +178,8 @@ void ExportOpWarpPerspective(py::module &m)
             xform (numpy.ndarray: 3x3 perspective transformation matrix.
             flags (int): Combination of interpolation methods(cvcuda.Interp.NEAREST, cvcuda.Interp.LINEAR or cvcuda.Interp.CUBIC)
                 and the optional flag cvcuda.Interp.WARP_INVERSE_MAP, that sets trans_matrix as the inverse transformation.
-            border_mode (cvcuda.Border): pixel extrapolation method (cvcuda.Border.CONSTANT or
-                cvcuda.Border.REPLICATE).
+            border_mode (cvcuda.Border): pixel extrapolation method (cvcuda.Border.CONSTANT,
+                cvcuda.Border.REPLICATE, or cvcuda.Border.CONSTANT_COVERAGE).
             border_value (numpy.ndarray): Used to specify values for a constant border, should be a size <= 4 and dim of 1,
                 where the values specify the border color for each color channel.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
@@ -183,7 +189,7 @@ void ExportOpWarpPerspective(py::module &m)
     )pbdoc");
 
     m.def("warp_perspective", NvtxTrace("cvcuda.warp_perspective", &WarpPerspectiveVarShape), "src"_a, "xform"_a,
-          "flags"_a, py::kw_only(), "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
+          "flags"_a, py::kw_only(), "border_mode"_a, "border_value"_a.none(), "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
 
@@ -193,7 +199,7 @@ void ExportOpWarpPerspective(py::module &m)
             flags (int): Combination of interpolation methods(cvcuda.Interp.NEAREST, cvcuda.Interp.LINEAR or cvcuda.Interp.CUBIC)
                 and the optional flag cvcuda.Interp.WARP_INVERSE_MAP, that sets trans_matrix as the inverse transformation.
             border_mode (cvcuda.Border): pixel extrapolation method (cvcuda.Border.CONSTANT or
-                cvcuda.Border.REPLICATE).
+                cvcuda.Border.REPLICATE). cvcuda.Border.CONSTANT_COVERAGE is not supported for variable-shape batches.
             border_value (numpy.ndarray): Used to specify values for a constant border, must be a size <= 4 and dim of 1,
                 where the values specify the border color for each color channel.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
@@ -204,8 +210,8 @@ void ExportOpWarpPerspective(py::module &m)
     )pbdoc");
 
     m.def("warp_perspective_into", NvtxTrace("cvcuda.warp_perspective_into", &WarpPerspectiveVarShapeInto), "dst"_a,
-          "src"_a, "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a, "border_value"_a, "stream"_a = nullptr,
-          R"pbdoc(
+          "src"_a, "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a, "border_value"_a.none(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
 
@@ -216,7 +222,7 @@ void ExportOpWarpPerspective(py::module &m)
             flags (int): Combination of interpolation methods(cvcuda.Interp.NEAREST, cvcuda.Interp.LINEAR or cvcuda.Interp.CUBIC)
                 and the optional flag cvcuda.Interp.WARP_INVERSE_MAP, that sets trans_matrix as the inverse transformation.
             border_mode (cvcuda.Border): pixel extrapolation method (cvcuda.Border.CONSTANT or
-                cvcuda.Border.REPLICATE).
+                cvcuda.Border.REPLICATE). cvcuda.Border.CONSTANT_COVERAGE is not supported for variable-shape batches.
             border_value (numpy.ndarray): Used to specify values for a constant border, must be a size <= 4 and dim of 1,
                 where the values specify the border color for each color channel.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.

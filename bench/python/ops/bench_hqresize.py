@@ -16,14 +16,17 @@
 
 """CV-CUDA HQResize operator benchmark - Python equivalent of BenchHQResize.cpp"""
 
+import math
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import numpy as np  # noqa: E402
 import cvcuda  # noqa: E402
 from python_bench_utils import (  # noqa: E402
     parse_shape,
+    get_positive_square_or_shape,
     get_dtype,
     get_dtype_size,
     get_resize_output_shape,
@@ -36,6 +39,27 @@ from python_bench_utils import (  # noqa: E402
 )
 
 
+def _vlm_center_crop_roi(input_h, input_w, output_h, output_w):
+    """Return the resize-to-cover source ROI shared with the C++ benchmark."""
+    resize_scale = max(output_h / input_h, output_w / input_w)
+    scaled_h = input_h * resize_scale + 0.5
+    scaled_w = input_w * resize_scale + 0.5
+    if max(scaled_h, scaled_w) > (1 << 31) - 1:
+        return None
+    resize_h = math.floor(scaled_h)
+    resize_w = math.floor(scaled_w)
+    crop_y = (resize_h - output_h) // 2
+    crop_x = (resize_w - output_w) // 2
+    scale_y = np.float32(input_h) / np.float32(resize_h)
+    scale_x = np.float32(input_w) / np.float32(resize_w)
+    return (
+        float(np.float32(crop_y) * scale_y),
+        float(np.float32(crop_x) * scale_x),
+        float(np.float32(crop_y + output_h) * scale_y),
+        float(np.float32(crop_x + output_w) * scale_x),
+    )
+
+
 def hqresize(state):
     """HQResize operator benchmark matching C++ BenchHQResize.cpp"""
 
@@ -43,7 +67,8 @@ def hqresize(state):
     dtype_str = state.get_string("InOutDataType")
     dtype = get_dtype(dtype_str)
     resize_type = state.get_string("resizeType")
-    interp = get_interpolation_type(state.get_string("interpolation"))
+    interpolation = state.get_string("interpolation")
+    interp = get_interpolation_type(interpolation)
     antialias = bool(state.get_int64("antialias"))
     input_kind = state.get_string("inputKind")
     device_id = state.get_device()
@@ -74,16 +99,70 @@ def hqresize(state):
         state.skip("Fake-planar (NCHW_FAKE) HQResize benchmark is tensor-only")
         return None
 
-    try:
-        _, dst_h, dst_w = get_resize_output_shape((N, H, W), resize_type)
-    except ValueError as error:
-        state.skip(str(error))
-        return None
-    if dst_h >= H and dst_w >= W and (dst_h > H or dst_w > W) and antialias:
+    roi = None
+    effective_input_h = H
+    effective_input_w = W
+    dtype_size = get_dtype_size(dtype)
+    source_bytes = N * H * W * channels * dtype_size
+    vlm_prefix = "VLM_CENTER_CROP_"
+    if resize_type.startswith(vlm_prefix):
+        output = get_positive_square_or_shape(resize_type.removeprefix(vlm_prefix))
+        if output is None:
+            state.skip("VLM center-crop output must be a positive HxW or square value")
+            return None
+        if input_kind != "VarShape":
+            state.skip("VLM center crop requires inputKind=VarShape")
+            return None
+        if layout != "NHWC":
+            state.skip("VLM center crop requires layout=NHWC")
+            return None
+        if H <= 0:
+            state.skip("VLM center crop requires a positive input height")
+            return None
+        if W < H:
+            state.skip("VLM center crop requires landscape input (width >= height)")
+            return None
+        if dtype_str != "uint8":
+            state.skip("VLM center crop requires InOutDataType=uint8")
+            return None
+        if channels != 3:
+            state.skip("VLM center crop requires numChannels=3")
+            return None
+        if interpolation != "CUBIC":
+            state.skip("VLM center crop requires interpolation=CUBIC")
+            return None
+        dst_h, dst_w = output
+
+        sample_roi = _vlm_center_crop_roi(H, W, dst_h, dst_w)
+        if sample_roi is None:
+            state.skip(
+                "VLM center-crop intermediate dimensions exceed the supported range"
+            )
+            return None
+        roi = [sample_roi] * N
+        effective_input_h = float(np.float32(sample_roi[2]) - np.float32(sample_roi[0]))
+        effective_input_w = float(np.float32(sample_roi[3]) - np.float32(sample_roi[1]))
+        read_h = min(H, max(0, math.ceil(sample_roi[2]))) - min(
+            H, max(0, math.floor(sample_roi[0]))
+        )
+        read_w = min(W, max(0, math.ceil(sample_roi[3]))) - min(
+            W, max(0, math.floor(sample_roi[1]))
+        )
+        source_bytes = N * read_h * read_w * channels * dtype_size
+    else:
+        try:
+            _, dst_h, dst_w = get_resize_output_shape((N, H, W), resize_type)
+        except ValueError as error:
+            state.skip(str(error))
+            return None
+    if (
+        dst_h >= effective_input_h
+        and dst_w >= effective_input_w
+        and (dst_h > effective_input_h or dst_w > effective_input_w)
+        and antialias
+    ):
         state.skip("Antialias is no-op for expanding")
         return None
-
-    dtype_size = get_dtype_size(dtype)
 
     get_stream = create_stream_cache()
 
@@ -126,7 +205,7 @@ def hqresize(state):
         return run_fake
 
     if input_kind == "Tensor":
-        state.add_global_memory_reads(N * H * W * channels * dtype_size)
+        state.add_global_memory_reads(source_bytes)
         state.add_global_memory_writes(N * dst_h * dst_w * channels * dtype_size)
 
         src_shape = (N, channels, H, W) if planar else (N, H, W, channels)
@@ -156,7 +235,7 @@ def hqresize(state):
             )
             return None
 
-        state.add_global_memory_reads(N * H * W * channels * dtype_size)
+        state.add_global_memory_reads(source_bytes)
         state.add_global_memory_writes(N * dst_h * dst_w * channels * dtype_size)
 
         img_format = get_format_from_dtype(dtype_str, channels, planar=planar)
@@ -185,6 +264,7 @@ def hqresize(state):
                 mag_interpolation=interp,
                 antialias=antialias,
                 stream=get_stream(launch),
+                roi=roi,
             )
 
         return run_varshape

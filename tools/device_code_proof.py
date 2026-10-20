@@ -61,6 +61,10 @@ delta.
 
 Exit codes: 0 `MATCH`, 1 real delta or compile failure, 2 usage error, 3 `NEEDS-JUDGEMENT`
 (signature-only / schedule-only deltas that a human must interpret).
+
+`--stage resources` instead compares per-kernel static allocation and spill diagnostics:
+0 RESOURCE-REPORT, 1 RESOURCE-INCREASE or compile/dump failure, 3 RESOURCE-DATA-MISSING.
+These statuses are neither an identity proof nor a runtime performance verdict.
 """
 
 import argparse
@@ -375,6 +379,183 @@ def parse_sass(text):
 
 PARSERS = {"ptx": parse_ptx, "sass": parse_sass}
 
+RESOURCE_FIELDS = (
+    "registers",
+    "stack_bytes",
+    "spill_store_bytes",
+    "spill_load_bytes",
+    "local_bytes",
+    "shared_bytes",
+    "static_ldl",
+    "static_stl",
+)
+RESOURCE_REPORT = "RESOURCE-REPORT"
+RESOURCE_INCREASE = "RESOURCE-INCREASE"
+RESOURCE_MISSING = "RESOURCE-DATA-MISSING"
+EXIT.update({RESOURCE_REPORT: 0, RESOURCE_INCREASE: 1, RESOURCE_MISSING: 3})
+
+
+def _parse_resource_line(current, line):
+    remaining, counts = line, []
+    for marker in (
+        " bytes stack frame, ",
+        " bytes spill stores, ",
+        " bytes spill loads",
+    ):
+        count, found, remaining = remaining.partition(marker)
+        if not found:
+            break
+        counts.append(count)
+    else:
+        prefix = counts[0].rsplit(None, 1)
+        counts[0] = prefix[-1] if prefix else ""
+        # Resource counters fit in 64 bits; cap conversion before calling int.
+        if all(0 < len(count) <= 20 and count.isdecimal() for count in counts):
+            current.update(
+                zip(
+                    ("stack_bytes", "spill_store_bytes", "spill_load_bytes"),
+                    map(int, counts),
+                )
+            )
+    if re.match(r"\s*REG:", line):
+        for key, metric in (
+            ("REG", "registers"),
+            ("STACK", "stack_bytes"),
+            ("LOCAL", "local_bytes"),
+            ("SHARED", "shared_bytes"),
+        ):
+            found = re.search(r"\b%s:(\d+)" % key, line)
+            if found:
+                current[metric] = int(found.group(1))
+
+
+def parse_resources(text):
+    """Read ptxas -v and cuobjdump -res-usage/-sass; absent fields stay unknown."""
+    resources = {}
+
+    def kernel(name):
+        return resources.setdefault(
+            canonical_symbol(name), dict.fromkeys(RESOURCE_FIELDS)
+        )
+
+    current = None
+    for line in text.splitlines():
+        found = re.search(r"Function properties for (\S+)", line)
+        if found:
+            current = kernel(found.group(1))
+            continue
+        found = re.match(r"\s*Function (\S+):\s*$", line)
+        if found:
+            current = kernel(found.group(1))
+            continue
+        if current is not None:
+            _parse_resource_line(current, line)
+    _, units = parse_sass(text)
+    for unit in units:
+        entry = kernel(unit.name)
+        if unit.lines:
+            for opcode in ("LDL", "STL"):
+                entry["static_" + opcode.lower()] = len(
+                    re.findall(
+                        r"(?:^|\s)%s(?:\.|\s)" % opcode, unit.loose, re.MULTILINE
+                    )
+                )
+    return resources
+
+
+def resource_delta(base_text, head_text):
+    before, after = parse_resources(base_text), parse_resources(head_text)
+    names = demangle(sorted(before.keys() | after.keys()))
+    rows = []
+    for symbol in sorted(before.keys() | after.keys()):
+        base, head = before.get(symbol, {}), after.get(symbol, {})
+        delta = {
+            key: (
+                head[key] - base[key]
+                if base.get(key) is not None and head.get(key) is not None
+                else None
+            )
+            for key in RESOURCE_FIELDS
+        }
+        increased = [
+            key for key, value in delta.items() if value is not None and value > 0
+        ]
+        rows.append(
+            {
+                "name": names.get(symbol, symbol),
+                "mangled": symbol,
+                "base": base,
+                "head": head,
+                "delta": delta,
+                "increased": increased,
+                "missing": [key for key, value in delta.items() if value is None],
+            }
+        )
+    return rows
+
+
+def resource_verdict(results):
+    if any(r.get("error") for r in results):
+        return FAILED
+    rows = [u for r in results for u in r["units"]]
+    if (
+        not rows
+        or any(not r["units"] for r in results)
+        or any(u["missing"] for u in rows)
+    ):
+        return RESOURCE_MISSING
+    return RESOURCE_INCREASE if any(u["increased"] for u in rows) else RESOURCE_REPORT
+
+
+def _resource_value(unit, key):
+    old, new, delta = unit["base"].get(key), unit["head"].get(key), unit["delta"][key]
+    return "%s -> %s (%s)" % (
+        "?" if old is None else old,
+        "?" if new is None else new,
+        "?" if delta is None else "%+d" % delta,
+    )
+
+
+def render_resources(payload):
+    lines = [
+        "# device-code-proof: resource comparison",
+        "",
+        "- base: `%s` -> head: `%s`" % (payload["base"], payload["head"]),
+        "- flags: %s" % payload["flag_source"],
+        "- arches: %s" % ", ".join(payload["arches"]),
+        "",
+        "Values are base -> head (signed delta); ? means unavailable.",
+    ]
+    for result in payload["results"]:
+        lines += ["", "## `%s` @ %s" % (result["tu"], result["arch"]), ""]
+        if result.get("error"):
+            lines += [result["error"]]
+            continue
+        lines += [
+            "| kernel | " + " | ".join(RESOURCE_FIELDS) + " | flags |",
+            "|---|" + "---|" * (len(RESOURCE_FIELDS) + 1),
+        ]
+        for unit in result["units"]:
+            values = [_resource_value(unit, key) for key in RESOURCE_FIELDS]
+            flags = (
+                ["increased: " + ", ".join(unit["increased"])]
+                if unit["increased"]
+                else []
+            )
+            if unit["missing"]:
+                flags.append("missing: " + ", ".join(unit["missing"]))
+            lines.append(
+                "| `%s` | %s | %s |"
+                % (
+                    _md_cell(unit["name"]),
+                    " | ".join(values),
+                    "; ".join(flags),
+                )
+            )
+    lines += ["", "**%s**" % payload["verdict"], ""]
+    lines += ["- " + item for item in payload["limits"]]
+    return "\n".join(lines)
+
 
 # --------------------------------------------------------------------------- classification
 def demangle(names):
@@ -662,10 +843,11 @@ def compile_flags(entry, tu: Path, build_dir: Path):
 
 
 def emit_device_code(argv, source, arch, stage, out_path: Path, cwd):
-    """Compile one TU and return its device code as text, for `stage` in {ptx, sass}."""
+    """Compile one TU and return PTX, SASS, or compiler resource diagnostics."""
     phase = "-ptx" if stage == "ptx" else "-cubin"
+    verbose = ["-Xptxas", "-v"] if stage == "resources" else []
     proc = subprocess.run(
-        [*argv, phase, "-arch=%s" % arch, source, "-o", str(out_path)],
+        [*argv, *verbose, phase, "-arch=%s" % arch, source, "-o", str(out_path)],
         cwd=str(cwd),
         capture_output=True,
         text=True,
@@ -674,16 +856,34 @@ def emit_device_code(argv, source, arch, stage, out_path: Path, cwd):
         return None, "\n".join((proc.stderr or proc.stdout).strip().splitlines()[-6:])
     if stage == "ptx":
         return out_path.read_text(encoding="utf-8", errors="replace"), None
+    dump_flags = ["-res-usage", "-sass"] if stage == "resources" else ["-sass"]
     dump = subprocess.run(
-        ["cuobjdump", "-sass", str(out_path)], capture_output=True, text=True
+        ["cuobjdump", *dump_flags, str(out_path)], capture_output=True, text=True
     )
     if dump.returncode != 0:
         return None, (dump.stderr or dump.stdout).strip()[:400]
+    if stage == "resources":
+        # ptxas -v is the only source of spill byte counts; the cubin records just the frame.
+        return proc.stderr + "\n" + dump.stdout, None
     return dump.stdout, None
 
 
 # --------------------------------------------------------------------------- reporting
 def limits(stage):
+    if stage == "resources":
+        return [
+            "Static compiler evidence for these TUs, flags and architectures only; not a "
+            "correctness proof or a performance PASS. RESOURCE-INCREASE is a diagnostic, "
+            "not a measured regression; RESOURCE-DATA-MISSING takes precedence over increases.",
+            "ptxas spill bytes and static LDL/STL instruction counts are not executed traffic. "
+            "Local memory also holds address-taken arrays and call frames. Stack size is not "
+            "the live local working set and cannot establish bandwidth or cache pressure.",
+            "Occupancy is unknown: registers/shared-memory increases may limit residency, but "
+            "block size, dynamic shared memory, device limits and allocation granularity are "
+            "required. Check launch bounds/register caps and measure with Nsight Compute.",
+            "Missing fields and unmatched symbols are unknown, never zero. No runtime counters "
+            "or timing collected; validate the measured binary's build/ref provenance separately.",
+        ]
     common = [
         "**Proves:** device code for the arch(es) compiled above, for these translation units "
         "only — nothing about any arch that was not compiled.",
@@ -845,6 +1045,48 @@ def run_side(ref, scratch: Path, plan, arches, stage, stub_inc: Path, tops, reve
     return out
 
 
+def compare_device_code(base_text, head_text, stage):
+    base_hdr, base_units = PARSERS[stage](base_text)
+    head_hdr, head_units = PARSERS[stage](head_text)
+    if base_hdr != head_hdr:
+        return {
+            "error": "module headers differ (%s vs %s) — the two sides are not comparable"
+            % (base_hdr, head_hdr)
+        }
+    names = demangle([u.name for u in base_units + head_units])
+    pairs, only_base, only_head = match_units(base_units, head_units, names)
+    units = []
+    for old, new in pairs:
+        klass, detail = classify(old, new)
+        units.append(
+            {
+                "name": _base_name(names.get(new.name, new.name)),
+                "mangled": new.name,
+                "kind": new.kind,
+                "class": klass,
+                "detail": detail,
+            }
+        )
+    for unit, klass in [(u, REMOVED) for u in only_base] + [
+        (u, ADDED) for u in only_head
+    ]:
+        units.append(
+            {
+                "name": _base_name(names.get(unit.name, unit.name)),
+                "mangled": unit.name,
+                "kind": unit.kind,
+                "class": klass,
+                "detail": "%s only on the %s side"
+                % (unit.kind, "base" if klass == REMOVED else "head"),
+            }
+        )
+    units.sort(key=lambda u: (u["class"] == IDENTICAL, u["mangled"]))
+    counts = {}
+    for unit in units:
+        counts[unit["class"]] = counts.get(unit["class"], 0) + 1
+    return {"units": units, "counts": counts}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Device-code identity proof for a CV-CUDA refactor: VER-6 evidence "
@@ -877,8 +1119,8 @@ def main(argv=None):
     parser.add_argument(
         "--stage",
         default="sass",
-        choices=["sass", "ptx"],
-        help="device-code form to compare; sass is stronger and costs the same (default sass)",
+        choices=["sass", "ptx", "resources"],
+        help="sass (default) or ptx identity; resources compares static allocation and spills",
     )
     parser.add_argument(
         "--build-dir",
@@ -907,7 +1149,43 @@ def main(argv=None):
     parser.add_argument("--out", metavar="PATH", help="write the report to a file")
     parser.add_argument("--format", default="md", choices=["md", "json"])
     args = parser.parse_args(argv)
+    sources = validate_inputs(args, parser)
+    plan, arches, skipped, reverted, tops = comparison_plan(args, parser, sources)
+    before, after = compile_sides(args, parser, plan, arches, reverted, tops)
+    results = comparison_results(plan, arches, before, after, args.stage)
 
+    verdict = (
+        resource_verdict(results) if args.stage == "resources" else verdict_of(results)
+    )
+    if verdict == NEEDS_JUDGEMENT and args.accept_signature_change:
+        verdict = MATCH
+    payload = {
+        "operator": args.operator,
+        "base": args.base,
+        "head": args.head or "<working tree>",
+        "stage": args.stage,
+        "arches": list(arches),
+        "flag_source": "; ".join(dict.fromkeys(label for _tu, _flags, label in plan)),
+        "reverted": reverted,
+        "skipped": skipped,
+        "results": results,
+        "verdict": verdict,
+        "signature_change_accepted": bool(args.accept_signature_change),
+        "limits": limits(args.stage),
+    }
+    if args.format == "json":
+        report = json.dumps(payload, indent=2, sort_keys=True)
+    elif args.stage == "resources":
+        report = render_resources(payload)
+    else:
+        report = render_md(payload)
+    print(report)
+    if args.out:
+        Path(args.out).write_text(report + "\n", encoding="utf-8")
+    return EXIT[verdict]
+
+
+def validate_inputs(args, parser):
     if not args.operator and not args.file:
         parser.error("give an operator name or at least one --file")
     # Validate --file arguments before expensive checks: a path that escapes the
@@ -935,9 +1213,13 @@ def main(argv=None):
         parser.error(
             "nvcc not found on PATH; this proof needs the CUDA toolkit (no GPU required)"
         )
-    if args.stage == "sass" and not shutil.which("cuobjdump"):
+    if args.stage != "ptx" and not shutil.which("cuobjdump"):
         parser.error("cuobjdump not found on PATH; re-run with --stage ptx")
 
+    return sources
+
+
+def comparison_plan(args, parser, sources):
     build_dir = Path(args.build_dir)
     if not build_dir.is_absolute():
         build_dir = REPO / build_dir
@@ -978,6 +1260,10 @@ def main(argv=None):
         except ValueError:
             parser.error("--revert must point inside the repository: %s" % raw)
 
+    return plan, arches, skipped, reverted, tops
+
+
+def compile_sides(args, parser, plan, arches, reverted, tops):
     with tempfile.TemporaryDirectory(prefix="device_code_proof_") as td:
         root = Path(td)
         stub_inc = root / "generated"
@@ -1000,14 +1286,21 @@ def main(argv=None):
         except RuntimeError as exc:
             parser.exit(1, "error: %s\n" % exc)
         if args.keep:
-            keep = Path(args.keep)
-            keep.mkdir(parents=True, exist_ok=True)
-            for label, side in (("base", before), ("head", after)):
-                for (tu, arch), (text, _err) in side.items():
-                    if text:
-                        name = "%s.%s.%s.%s" % (Path(tu).name, arch, label, args.stage)
-                        (keep / name).write_text(text, encoding="utf-8")
+            keep_device_code(args.keep, args.stage, before, after)
+    return before, after
 
+
+def keep_device_code(directory, stage, before, after):
+    keep = Path(directory)
+    keep.mkdir(parents=True, exist_ok=True)
+    for label, side in (("base", before), ("head", after)):
+        for (tu, arch), (text, _err) in side.items():
+            if text:
+                name = "%s.%s.%s.%s" % (Path(tu).name, arch, label, stage)
+                (keep / name).write_text(text, encoding="utf-8")
+
+
+def comparison_results(plan, arches, before, after, stage):
     results = []
     for tu, _flags, _label in plan:
         for arch in arches:
@@ -1021,74 +1314,13 @@ def main(argv=None):
                 )
                 results.append(record)
                 continue
-            base_hdr, base_units = PARSERS[args.stage](base_text)
-            head_hdr, head_units = PARSERS[args.stage](head_text)
-            if base_hdr != head_hdr:
-                record["error"] = (
-                    "module headers differ (%s vs %s) — the two sides are not comparable"
-                    % (base_hdr, head_hdr)
-                )
+            if stage == "resources":
+                record["units"] = resource_delta(base_text, head_text)
                 results.append(record)
                 continue
-            names = demangle([u.name for u in base_units + head_units])
-            pairs, only_base, only_head = match_units(base_units, head_units, names)
-            for old, new in pairs:
-                klass, detail = classify(old, new)
-                record["units"].append(
-                    {
-                        "name": _base_name(names.get(new.name, new.name)),
-                        "mangled": new.name,
-                        "kind": new.kind,
-                        "class": klass,
-                        "detail": detail,
-                    }
-                )
-            for unit, klass in [(u, REMOVED) for u in only_base] + [
-                (u, ADDED) for u in only_head
-            ]:
-                record["units"].append(
-                    {
-                        "name": _base_name(names.get(unit.name, unit.name)),
-                        "mangled": unit.name,
-                        "kind": unit.kind,
-                        "class": klass,
-                        "detail": "%s only on the %s side"
-                        % (unit.kind, "base" if klass == REMOVED else "head"),
-                    }
-                )
-            record["units"].sort(key=lambda u: (u["class"] == IDENTICAL, u["mangled"]))
-            for unit in record["units"]:
-                record["counts"][unit["class"]] = (
-                    record["counts"].get(unit["class"], 0) + 1
-                )
+            record.update(compare_device_code(base_text, head_text, stage))
             results.append(record)
-
-    verdict = verdict_of(results)
-    if verdict == NEEDS_JUDGEMENT and args.accept_signature_change:
-        verdict = MATCH
-    payload = {
-        "operator": args.operator,
-        "base": args.base,
-        "head": args.head or "<working tree>",
-        "stage": args.stage,
-        "arches": list(arches),
-        "flag_source": "; ".join(dict.fromkeys(label for _tu, _flags, label in plan)),
-        "reverted": reverted,
-        "skipped": skipped,
-        "results": results,
-        "verdict": verdict,
-        "signature_change_accepted": bool(args.accept_signature_change),
-        "limits": limits(args.stage),
-    }
-    report = (
-        json.dumps(payload, indent=2, sort_keys=True)
-        if args.format == "json"
-        else render_md(payload)
-    )
-    print(report)
-    if args.out:
-        Path(args.out).write_text(report + "\n", encoding="utf-8")
-    return EXIT[verdict]
+    return results
 
 
 if __name__ == "__main__":

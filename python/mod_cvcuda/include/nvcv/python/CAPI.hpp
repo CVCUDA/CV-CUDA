@@ -18,25 +18,35 @@
 #ifndef NVCV_PYTHON_CAPI_HPP
 #define NVCV_PYTHON_CAPI_HPP
 
+#include <common/Binding.hpp>
 #include <cuda_runtime.h>
 #include <nvcv/Array.h>
 #include <nvcv/DataType.hpp>
 #include <nvcv/ImageBatch.h>
 #include <nvcv/Tensor.h>
-#include <pybind11/pybind11.h>
 
 #include <stdexcept>
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 // to force inclusion of "DataType.hpp" if needed
 struct type_caster<nvcv::DataType>;
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 namespace nvcvpy {
 
 class ICacheItem;
 class IKey;
 class Container;
+
+enum class FacadeType
+{
+    TENSOR,
+    IMAGE,
+    ARRAY,
+    TENSOR_BATCH,
+    IMAGE_BATCH_VAR_SHAPE,
+    STREAM,
+};
 
 class CAPIError : public std::runtime_error
 {
@@ -96,7 +106,7 @@ struct CAPI // NOSONAR: Python extension ABI table must keep one slot per export
     // Batched sync-and-hold: takes the full resource list (same shape as
     // Stream_HoldResources expects — list of (lockmode_str, resource) tuples)
     // and runs the per-resource submitSync inside C++, then holdResources,
-    // in one C-ABI round trip. Avoids N pybind11 boundary crossings for ops
+    // in one C-ABI round trip. Avoids N binding-boundary crossings for ops
     // with many tracked resources (erase, threshold, normalize, ...). Use
     // this from ResourceGuard::commit() in lieu of N×Resource_SubmitSync +
     // 1×Stream_HoldResources.
@@ -111,17 +121,37 @@ struct CAPI // NOSONAR: Python extension ABI table must keep one slot per export
     // `ResourceGuard::run()` which handles both halves correctly).
     void (*Resources_SubmitSyncOnly)(PyObject *stream, PyObject *resourceList);
 
+    // Flat-array forms of the two calls above. Semantically identical, but the
+    // resource set arrives as a plain C array instead of a Python list of
+    // (lockmode_str, resource) tuples, which removes a list, one tuple per
+    // resource, and two full re-parses of that list from every op call.
+    // ResourceGuard uses these; the PyObject* forms stay for out-of-tree
+    // consumers compiled against an older header.
+    void (*Resources_SubmitSyncOnlyRaw)(PyObject *stream, PyObject *const *resources, size_t count);
+    void (*Stream_HoldResourcesRaw)(PyObject *stream, PyObject *const *resources, size_t count);
+
+    PyTypeObject *(*Facade_GetType)(FacadeType type);
+
     // always add new functions at the end, and never change the function prototypes above.
 };
 
 inline const CAPI &capi()
 {
-    static const auto *capi = reinterpret_cast<const CAPI *>(PyCapsule_Import("cvcuda._C_API", 0));
-    if (capi == nullptr)
+#ifdef Py_GIL_DISABLED
+    static thread_local const CAPI *cachedCAPI = nullptr;
+#else
+    static const CAPI   *cachedCAPI = nullptr;
+#endif
+    if (cachedCAPI == nullptr)
     {
-        throw CAPIError("Can't load cvcuda C API");
+        const auto *resolvedCAPI = reinterpret_cast<const CAPI *>(PyCapsule_Import("cvcuda._C_API", 0));
+        if (resolvedCAPI == nullptr)
+        {
+            throw CAPIError("Can't load cvcuda C API");
+        }
+        cachedCAPI = resolvedCAPI;
     }
-    return *capi;
+    return *cachedCAPI;
 }
 
 /* Check for an error inside the CAPI, since exceptions cannot cross the C api
@@ -133,9 +163,60 @@ inline void CheckCAPIError()
     if (PyErr_Occurred())
     {
         // Propagate the exception to Python
-        throw pybind11::error_already_set();
+        throw nanobind::error_already_set();
     }
 };
+
+#ifdef Py_GIL_DISABLED
+struct SubmissionCAPI
+{
+    void *(*Begin)(PyObject *stream, PyObject *const *resources, const uint8_t *modes, size_t count);
+    void (*End)(void *submission);
+};
+
+inline const SubmissionCAPI &submissionCapi()
+{
+    static thread_local const SubmissionCAPI *api = nullptr;
+    if (!api)
+    {
+        auto capsule = nanobind::module_::import_("cvcuda._cvcuda").attr("_C_API_submission");
+        api          = static_cast<const SubmissionCAPI *>(
+            PyCapsule_GetPointer(capsule.ptr(), "cvcuda._cvcuda._C_API_submission"));
+        if (!api)
+            throw nanobind::error_already_set();
+    }
+    return *api;
+}
+#endif
+
+template<FacadeType Type>
+inline bool IsFacadeInstance(PyObject *obj) noexcept
+{
+#ifdef Py_GIL_DISABLED
+    static thread_local PyTypeObject *pythonType = nullptr;
+#else
+    static PyTypeObject *pythonType = nullptr;
+#endif
+    if (pythonType == nullptr)
+    {
+        try
+        {
+            PyTypeObject *resolvedType = capi().Facade_GetType(Type);
+            if (resolvedType == nullptr)
+            {
+                PyErr_Clear();
+                return false;
+            }
+            pythonType = resolvedType;
+        }
+        catch (...)
+        {
+            PyErr_Clear();
+            return false;
+        }
+    }
+    return pythonType != nullptr && PyObject_TypeCheck(obj, pythonType);
+}
 
 template<class T>
 decltype(auto) CheckCAPIError(T &&arg)

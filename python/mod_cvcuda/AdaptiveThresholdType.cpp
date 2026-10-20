@@ -21,10 +21,10 @@
 
 namespace cvcudapy {
 
-void ExportAdaptiveThresholdType(py::module &m)
+void ExportAdaptiveThresholdType(py::module_ &m)
 {
-    py::enum_<NVCVAdaptiveThresholdType>(m, "AdaptiveThresholdType", "Adaptive threshold computation methods.",
-                                         py::arithmetic())
+    py::enum_compat<NVCVAdaptiveThresholdType>(m, "AdaptiveThresholdType", "Adaptive threshold computation methods.",
+                                               py::is_arithmetic())
         .value("MEAN_C", NVCV_ADAPTIVE_THRESH_MEAN_C, "Threshold is the mean of the neighbourhood area minus C.")
         .value("GAUSSIAN_C", NVCV_ADAPTIVE_THRESH_GAUSSIAN_C,
                "Threshold is the Gaussian-weighted sum of the neighbourhood area minus C.");

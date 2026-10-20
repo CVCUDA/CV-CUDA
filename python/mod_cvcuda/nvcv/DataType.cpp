@@ -18,15 +18,16 @@
 #include "DataType.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <common/String.hpp>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/DataType.hpp>
-#include <pybind11/numpy.h>
-#include <pybind11/operators.h>
 
 #include <complex>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
+#include <vector>
 
 // DataType is implicitly convertible from/to numpy types such as
 // numpy.int8, numpy.complex64, numpy.dtype, etc.
@@ -62,14 +63,14 @@ struct Float16Tag
 template<class T>
 struct DTypeTraits
 {
-    static bool matches(const py::dtype &dtbase)
+    static bool matches(const py::numpy_dtype &dtbase)
     {
-        return dtbase.equal(py::dtype::of<T>());
+        return dtbase.equal(py::numpy_dtype::of<T>());
     }
 
-    static py::dtype create()
+    static py::numpy_dtype create()
     {
-        return py::dtype::of<T>();
+        return py::numpy_dtype::of<T>();
     }
 
     static constexpr int itemsize()
@@ -103,14 +104,14 @@ struct DTypeTraits
 template<>
 struct DTypeTraits<Float16Tag>
 {
-    static bool matches(const py::dtype &dtbase)
+    static bool matches(const py::numpy_dtype &dtbase)
     {
-        return dtbase.itemsize() == 2 && dtbase.kind() == 'f';
+        return dtbase.equal(create());
     }
 
-    static py::dtype create()
+    static py::numpy_dtype create()
     {
-        return py::dtype("e");
+        return py::numpy_dtype("e");
     }
 
     static constexpr int itemsize()
@@ -129,47 +130,27 @@ struct DTypeTraits<Float16Tag>
     }
 };
 
-// Canonical DataType for `nchannels` components of base type T, each
-// `itemsize` bytes wide. Shared by the numpy-dtype lookup and the direct
-// normalization below so both produce byte-identical results.
 template<class T>
-nvcv::DataType MakeSupportedDataType(int nchannels, int itemsize)
+bool CreateDataType(int itemSize, int numChannels, nvcv::DataType *dtype)
 {
-    nvcv::PackingParams pp = {};
-    pp.byteOrder           = nvcv::ByteOrder::MSB;
-
-    switch (nchannels)
+    if (numChannels < 1 || numChannels > 4)
     {
-    case 1:
-        pp.swizzle = nvcv::Swizzle::S_X000;
-        break;
-    case 2:
-        pp.swizzle = nvcv::Swizzle::S_XY00;
-        break;
-    case 3:
-        pp.swizzle = nvcv::Swizzle::S_XYZ0;
-        break;
-    case 4:
-        pp.swizzle = nvcv::Swizzle::S_XYZW;
-        break;
-    default:
-        NVCV_ASSERT(!"Invalid number of channels");
+        return false;
     }
 
-    // Use traits to get bits per component
-    for (int i = 0; i < nchannels; ++i)
-    {
-        pp.bits[i] = DTypeTraits<T>::bits_per_component(itemsize);
-    }
+    auto          dataKind = DTypeTraits<T>::infer_kind();
+    nvcv::Packing packing  = MakeHomogeneousPacking(DTypeTraits<T>::bits_per_component(itemSize), numChannels);
 
-    return nvcv::DataType{DTypeTraits<T>::infer_kind(), MakePacking(pp)};
+    NVCV_ASSERT(dtype != nullptr);
+    *dtype = nvcv::DataType{dataKind, packing};
+    return true;
 }
 
 template<class T>
-bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
+bool FindDataType(const py::numpy_dtype &dt, nvcv::DataType *dtype)
 {
-    int       nchannels = 1;
-    py::dtype dtbase    = dt;
+    int             numChannels = 1;
+    py::numpy_dtype baseType    = dt;
     if (hasattr(dt, "subdtype"))
     {
         py::object obj = dt.attr("subdtype");
@@ -181,7 +162,7 @@ bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
                 // Malformed? subdtype tuple must have 2 elements.
                 return false;
             }
-            dtbase = subdt[0];
+            baseType = subdt[0];
 
             // only 1d shape for now
             auto shape = py::cast<py::tuple>(subdt[1]);
@@ -190,22 +171,44 @@ bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
                 return false;
             }
 
-            nchannels = shape.empty() ? 1 : py::cast<int>(shape[0]);
+            numChannels = shape.empty() ? 1 : py::cast<int>(shape[0]);
         }
     }
 
-    auto itemsize = static_cast<int>(dtbase.itemsize());
-
-    // Use traits to check if this type matches
-    if (!DTypeTraits<T>::matches(dtbase))
+    if (!DTypeTraits<T>::matches(baseType))
     {
         return false;
     }
 
-    // Finally, infer the data type
-    NVCV_ASSERT(dtype != nullptr);
-    *dtype = MakeSupportedDataType<T>(nchannels, itemsize);
-    return true;
+    return CreateDataType<T>(static_cast<int>(baseType.itemsize()), numChannels, dtype);
+}
+
+bool KindMatches(char kind, nvcv::DataKind dataKind)
+{
+    switch (dataKind)
+    {
+    case nvcv::DataKind::UNSIGNED:
+        return kind == 'u';
+    case nvcv::DataKind::SIGNED:
+        return kind == 'i';
+    case nvcv::DataKind::FLOAT:
+        return kind == 'f';
+    case nvcv::DataKind::COMPLEX:
+        return kind == 'c';
+    default:
+        return false;
+    }
+}
+
+template<class T>
+bool FindDataType(char kind, int itemSize, nvcv::DataType *dtype)
+{
+    if (DTypeTraits<T>::itemsize() != itemSize || !KindMatches(kind, DTypeTraits<T>::infer_kind()))
+    {
+        return false;
+    }
+
+    return CreateDataType<T>(itemSize, 1, dtype);
 }
 
 // clang-format off
@@ -222,8 +225,71 @@ using SupportedBaseTypes = std::tuple<
 
 // clang-format on
 
+// Raised when a built-in data type cannot be constructed; indicates corrupted
+// tables rather than bad user input, hence a dedicated type.
+class BuiltinDataTypeInitError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+// NumPy interns its built-in scalar dtype objects. Keep one strong reference
+// to each supported scalar so the common cvcuda.Type.* path is a pointer
+// lookup instead of rebuilding and comparing several NumPy dtype objects on
+// every argument conversion. The cache is deliberately immortal: dtype
+// conversion remains reachable during Python module teardown.
+class BuiltinDataTypeCache
+{
+public:
+    template<class... TT>
+    explicit BuiltinDataTypeCache(std::tuple<TT...>)
+    {
+        m_entries.reserve(sizeof...(TT));
+        (add<TT>(), ...);
+    }
+
+    bool find(PyObject *object, nvcv::DataType *result) const noexcept
+    {
+        for (const Entry &entry : m_entries)
+        {
+            if (entry.object.ptr() == object)
+            {
+                *result = entry.value;
+                return true;
+            }
+        }
+        return false;
+    }
+
+private:
+    struct Entry
+    {
+        py::numpy_dtype object;
+        nvcv::DataType  value;
+    };
+
+    template<class T>
+    void add()
+    {
+        nvcv::DataType value;
+        if (!CreateDataType<T>(DTypeTraits<T>::itemsize(), 1, &value))
+        {
+            throw BuiltinDataTypeInitError("Failed to initialize a built-in data type");
+        }
+        m_entries.push_back({DTypeTraits<T>::create(), value});
+    }
+
+    std::vector<Entry> m_entries;
+};
+
+BuiltinDataTypeCache &BuiltinDataTypes()
+{
+    static auto *cache = new BuiltinDataTypeCache(SupportedBaseTypes{}); // NOSONAR: deliberately immortal
+    return *cache;
+}
+
 template<class... TT>
-std::optional<nvcv::DataType> SelectDataType(std::tuple<TT...>, const py::dtype &dt)
+std::optional<nvcv::DataType> SelectDataType(std::tuple<TT...>, const py::numpy_dtype &dt)
 {
     nvcv::DataType dtype;
 
@@ -237,8 +303,23 @@ std::optional<nvcv::DataType> SelectDataType(std::tuple<TT...>, const py::dtype 
     }
 }
 
+template<class... TT>
+std::optional<nvcv::DataType> SelectDataType(std::tuple<TT...>, char kind, int itemSize)
+{
+    nvcv::DataType dtype;
+
+    if ((FindDataType<TT>(kind, itemSize, &dtype) || ...))
+    {
+        return dtype;
+    }
+    else
+    {
+        return std::nullopt;
+    }
+}
+
 template<class T>
-bool FindDType(T *, const nvcv::DataType &dtype, py::dtype *dt)
+bool FindDType(T *, const nvcv::DataType &dtype, py::numpy_dtype *dt)
 {
     int            nchannels = dtype.numChannels();
     int            itemsize  = dtype.bitsPerPixel() / 8;
@@ -259,7 +340,7 @@ bool FindDType(T *, const nvcv::DataType &dtype, py::dtype *dt)
 
     if (nchannels > 1)
     {
-        *dt = py::dtype(util::ConcatString(nchannels, dt->char_()));
+        *dt = py::numpy_dtype(util::ConcatString(nchannels, dt->char_()));
     }
     return true;
 }
@@ -291,9 +372,7 @@ bool FindNormalizedDataType(T *, const nvcv::DataType &dtype, nvcv::DataType *ou
         return false;
     }
 
-    NVCV_ASSERT(out != nullptr);
-    *out = MakeSupportedDataType<T>(nchannels, componentSize);
-    return true;
+    return CreateDataType<T>(componentSize, nchannels, out);
 }
 
 template<class... TT>
@@ -312,9 +391,9 @@ std::optional<nvcv::DataType> SelectNormalizedDataType(std::tuple<TT...>, const 
 }
 
 template<class... TT>
-py::dtype SelectDType(std::tuple<TT...>, const nvcv::DataType &dtype)
+py::numpy_dtype SelectDType(std::tuple<TT...>, const nvcv::DataType &dtype)
 {
-    py::dtype dt;
+    py::numpy_dtype dt;
 
     (FindDType((TT *)nullptr, dtype, &dt) || ...);
 
@@ -325,9 +404,47 @@ py::dtype SelectDType(std::tuple<TT...>, const nvcv::DataType &dtype)
 
 //
 
-std::optional<nvcv::DataType> ToNVCVDataType(const py::dtype &dt)
+nvcv::Packing MakeHomogeneousPacking(int bits, int numChannels)
+{
+    NVCV_ASSERT(numChannels >= 1 && numChannels <= 4);
+    // These are the canonical MSB packings selected by MakePacking with alignment 0.
+    static constexpr nvcv::Packing common[][4] = {
+        { nvcv::Packing::X8,   nvcv::Packing::X8_Y8,    nvcv::Packing::X8_Y8_Z8,     nvcv::Packing::X8_Y8_Z8_W8},
+        {nvcv::Packing::X16, nvcv::Packing::X16_Y16, nvcv::Packing::X16_Y16_Z16, nvcv::Packing::X16_Y16_Z16_W16},
+        {nvcv::Packing::X32, nvcv::Packing::X32_Y32, nvcv::Packing::X32_Y32_Z32, nvcv::Packing::X32_Y32_Z32_W32},
+        {nvcv::Packing::X64, nvcv::Packing::X64_Y64, nvcv::Packing::X64_Y64_Z64, nvcv::Packing::X64_Y64_Z64_W64},
+    };
+    switch (bits)
+    {
+    case 8:
+        return common[0][numChannels - 1];
+    case 16:
+        return common[1][numChannels - 1];
+    case 32:
+        return common[2][numChannels - 1];
+    case 64:
+        return common[3][numChannels - 1];
+    default:
+        break;
+    }
+
+    nvcv::PackingParams pp = {};
+    pp.byteOrder           = nvcv::ByteOrder::MSB;
+    static constexpr nvcv::Swizzle swizzles[]
+        = {nvcv::Swizzle::S_X000, nvcv::Swizzle::S_XY00, nvcv::Swizzle::S_XYZ0, nvcv::Swizzle::S_XYZW};
+    pp.swizzle = swizzles[numChannels - 1];
+    std::fill_n(pp.bits.begin(), numChannels, bits);
+    return nvcv::MakePacking(pp);
+}
+
+std::optional<nvcv::DataType> ToNVCVDataType(const py::numpy_dtype &dt)
 {
     return SelectDataType(SupportedBaseTypes(), dt);
+}
+
+std::optional<nvcv::DataType> ToNVCVDataType(char kind, int itemSize)
+{
+    return SelectDataType(SupportedBaseTypes(), kind, itemSize);
 }
 
 std::optional<nvcv::DataType> NormalizeDataType(const nvcv::DataType &dtype)
@@ -335,7 +452,7 @@ std::optional<nvcv::DataType> NormalizeDataType(const nvcv::DataType &dtype)
     return SelectNormalizedDataType(SupportedBaseTypes(), dtype);
 }
 
-py::dtype ToDType(nvcv::DataType dtype)
+py::numpy_dtype ToDType(nvcv::DataType dtype)
 {
     return SelectDType(SupportedBaseTypes(), dtype);
 }
@@ -375,31 +492,35 @@ static std::string DataTypeToString(nvcv::DataType type)
     return out.str();
 }
 
-void ExportDataType(py::module &m)
+void ExportDataType(py::module_ &m)
 {
-    py::class_<nvcv::DataType> type(m, "Type");
+    // Build this while module initialization can report Python exceptions.
+    // Later caster lookups are allocation-free and noexcept.
+    (void)BuiltinDataTypes();
 
-#define DEF(F)     type.def_readonly_static(#F, &nvcv::TYPE_##F);
+    py::class_<PyDataType> type(m, "Type", py::is_weak_referenceable());
+
+#define DEF(F)     type.def_prop_ro_static(#F, [](py::handle) { return nvcv::TYPE_##F; });
 // for formats that begin with a number, we must prepend it with underscore to make
 // it a valid python identifier
-#define DEF_NUM(F) type.def_readonly_static("_" #F, &nvcv::TYPE_##F);
+#define DEF_NUM(F) type.def_prop_ro_static("_" #F, [](py::handle) { return nvcv::TYPE_##F; });
 
 #include "NVCVPythonDataTypeDefs.inc"
 
 #undef DEF
 #undef DEF_NUM
 
-    type.def_property_readonly("components", &nvcv::DataType::numChannels);
-    type.def(py::init<nvcv::DataType>());
-    type.def(py::init<>());
+    type.def_prop_ro("components", [](const PyDataType &self) { return self.value.numChannels(); });
+    type.def(py::new_([]() { return PyDataType{}; }));
+    type.def(py::new_([](nvcv::DataType value) { return PyDataType{value}; }));
 
-    type.def("__repr__", &DataTypeToString);
+    type.def("__repr__", [](const PyDataType &self) { return DataTypeToString(self.value); });
     type.def(
-        "__eq__", [](const nvcv::DataType &a, const nvcv::DataType &b) { return a == b; }, py::is_operator());
+        "__eq__", [](const PyDataType &a, nvcv::DataType b) { return a.value == b; }, py::is_operator());
     type.def(
-        "__ne__", [](const nvcv::DataType &a, const nvcv::DataType &b) { return a != b; }, py::is_operator());
+        "__ne__", [](const PyDataType &a, nvcv::DataType b) { return a.value != b; }, py::is_operator());
     type.def(
-        "__lt__", [](const nvcv::DataType &a, const nvcv::DataType &b) { return a < b; }, py::is_operator());
+        "__lt__", [](const PyDataType &a, nvcv::DataType b) { return a.value < b; }, py::is_operator());
     // Type values surface to Python as numpy.dtype (see the DataType type_caster
     // below), so a Type constructed via Type(...) must hash identically to the
     // equivalent numpy.dtype to stay consistent with __eq__ across both forms.
@@ -407,74 +528,61 @@ void ExportDataType(py::module &m)
     // dereferences a null object.
     type.def(
         "__hash__",
-        [](const nvcv::DataType &a)
+        [](const PyDataType &a)
         {
-            if (py::dtype dt = ToDType(a))
+            if (py::numpy_dtype dt = ToDType(a.value))
             {
                 return PyObject_Hash(dt.ptr());
             }
-            return static_cast<Py_hash_t>(std::hash<uint64_t>{}(static_cast<uint64_t>(a)));
+            return static_cast<Py_hash_t>(std::hash<uint64_t>{}(static_cast<uint64_t>(a.value)));
         },
         "Return a value-based hash matching the equivalent numpy.dtype, so Type can be used as a dict key.");
-
-    py::implicitly_convertible<py::dtype, nvcv::DataType>();
 }
 
 } // namespace nvcvpy::priv
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 namespace priv = nvcvpy::priv;
 
-bool type_caster<nvcv::DataType>::load(handle src, bool)
+bool type_caster<nvcv::DataType>::from_python(handle src, uint32_t, cleanup_list *) noexcept
 {
-    const type_info *tinfo = get_type_info(typeid(nvcv::DataType));
-    if (Py_TYPE(src.ptr()) == tinfo->type)
+    if (nanobind::isinstance<priv::PyDataType>(src))
     {
-        value_and_holder vh = reinterpret_cast<instance *>(src.ptr())->get_value_and_holder();
-        value               = *vh.template holder<nvcv::DataType *>();
+        value = nanobind::inst_ptr<priv::PyDataType>(src)->value;
         return true;
     }
-    else
-    {
-        PyObject *ptr = nullptr;
-        if (detail::npy_api::get().PyArray_DescrConverter_(src.ptr(), &ptr) == 0 || !ptr)
-        {
-            PyErr_Clear();
-            return false;
-        }
-        dtype dt = dtype::from_args(reinterpret_steal<object>(ptr));
 
-        if (std::optional<nvcv::DataType> _dt = priv::ToNVCVDataType(dt))
+    if (priv::BuiltinDataTypes().find(src.ptr(), &value))
+    {
+        return true;
+    }
+
+    try
+    {
+        numpy_dtype dt = numpy_dtype::from_args(src);
+        if (std::optional<nvcv::DataType> converted = priv::ToNVCVDataType(dt))
         {
-            value = *_dt;
+            value = *converted;
             return true;
         }
-        else
-        {
-            return false;
-        }
     }
-}
-
-handle type_caster<nvcv::DataType>::cast(nvcv::DataType type, return_value_policy /* policy */, handle /*parent */)
-{
-    dtype dt = priv::ToDType(type);
-
-    // without the increfs, we get 6 of these...
-    // *** Reference count error detected: an attempt was made to deallocate the dtype 6 (I) ***
-    // *** Reference count error detected: an attempt was made to deallocate the dtype 3 (h) ***
-    // *** Reference count error detected: an attempt was made to deallocate the dtype 4 (H) ***
-    // *** Reference count error detected: an attempt was made to deallocate the dtype 1 (b) ***
-    // *** Reference count error detected: an attempt was made to deallocate the dtype 2 (B) ***
-    // and also a segfault when using the nvcv struct types in some tests.
-    // It *really* looks like we have to incref here.
-
-    if (dt)
+    catch (const python_error &)
     {
-        Py_INCREF(dt.ptr());
+        PyErr_Clear();
     }
-
-    return dt;
+    return false;
 }
-} // namespace pybind11::detail
+
+handle type_caster<nvcv::DataType>::from_cpp(nvcv::DataType type, rv_policy, cleanup_list *) noexcept
+{
+    try
+    {
+        return priv::ToDType(type).release();
+    }
+    catch (...)
+    {
+        return {};
+    }
+}
+} // namespace nanobind::detail

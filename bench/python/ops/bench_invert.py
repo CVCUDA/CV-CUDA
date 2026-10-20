@@ -104,6 +104,16 @@ def invert(state):
         src = create_tensor(
             shape, dtype, device_id, layout=layout, fill_mode="checkerboard"
         )
+        input_range = state.get_string_or_default("inputRange", "nonnegative")
+        if input_range not in ("nonnegative", "mixed"):
+            raise ValueError(f"Invalid inputRange = {input_range}")
+        if input_range == "mixed":
+            import cupy as cp
+
+            with cp.cuda.Device(device_id):
+                values = cp.asarray(src.cuda())
+                values[values == 0] = -1
+                cp.cuda.get_current_stream().synchronize()
         dst = create_tensor(shape, dtype, device_id, layout=layout, fill_mode=0)
     else:  # ImageBatchVarShape
         img_format = get_format_from_dtype(dtype_str, num_channels, planar=is_planar)

@@ -17,6 +17,7 @@
 
 #include "cvcuda/OpHQResize.h"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/OpHQResize.hpp"
 #include "priv/SymbolVersioning.hpp"
@@ -84,6 +85,8 @@ CVCUDA_DEFINE_API(0, 6, NVCVStatus, cvcudaHQResizeTensorGetWorkspaceRequirements
         [&reqOut, &roi, &handle, &batchSize, &inputShape, &outputShape, &minInterpolation, &magInterpolation,
          &antialias]
         {
+            priv::CheckEnumArg(minInterpolation, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(magInterpolation, NVCV_INTERP_BOX, "interpolation type");
             if (reqOut == nullptr)
             {
                 throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -109,6 +112,8 @@ CVCUDA_DEFINE_API(0, 6, NVCVStatus, cvcudaHQResizeTensorBatchGetWorkspaceRequire
         [&reqOut, &roi, &handle, &batchSize, &inputShapes, &outputShapes, &minInterpolation, &magInterpolation,
          &antialias]
         {
+            priv::CheckEnumArg(minInterpolation, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(magInterpolation, NVCV_INTERP_BOX, "interpolation type");
             if (reqOut == nullptr)
             {
                 throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -150,6 +155,8 @@ CVCUDA_DEFINE_API(0, 6, NVCVStatus, cvcudaHQResizeSubmit,
     return nvcv::ProtectCall(
         [&ws, &roi, &in, &out, &handle, &stream, &minInterpolation, &magInterpolation, &antialias]
         {
+            priv::CheckEnumArg(minInterpolation, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(magInterpolation, NVCV_INTERP_BOX, "interpolation type");
             if (ws == nullptr)
             {
                 throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Pointer to workspace must not be NULL");
@@ -176,6 +183,8 @@ CVCUDA_DEFINE_API(0, 6, NVCVStatus, cvcudaHQResizeImageBatchSubmit,
     return nvcv::ProtectCall(
         [&ws, &roi, &in, &out, &handle, &stream, &minInterpolation, &magInterpolation, &antialias]
         {
+            priv::CheckEnumArg(minInterpolation, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(magInterpolation, NVCV_INTERP_BOX, "interpolation type");
             if (ws == nullptr)
             {
                 throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Pointer to workspace must not be NULL");
@@ -202,6 +211,8 @@ CVCUDA_DEFINE_API(0, 6, NVCVStatus, cvcudaHQResizeTensorBatchSubmit,
     return nvcv::ProtectCall(
         [&ws, &roi, &in, &out, &handle, &stream, &minInterpolation, &magInterpolation, &antialias]
         {
+            priv::CheckEnumArg(minInterpolation, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(magInterpolation, NVCV_INTERP_BOX, "interpolation type");
             if (ws == nullptr)
             {
                 throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Pointer to workspace must not be NULL");

@@ -29,8 +29,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <deque>
 #include <iostream>
+#include <limits>
 #include <string_view>
 #include <type_traits>
 #include <vector>
@@ -747,6 +749,400 @@ TEST(OpEraseVarShapeCopyGold, asymmetric_pitches_copy_visible_bytes_only)
     ASSERT_EQ(cudaSuccess, cudaFree(dstAllocation));
 }
 
+TEST(OpEraseTensorCopyGold, interleaved_sample_stride_gap_uses_row_copy)
+{
+    constexpr int    numImages    = 2;
+    constexpr int    width        = 16;
+    constexpr int    height       = 5;
+    constexpr int    channels     = 3;
+    constexpr size_t rowBytes     = static_cast<size_t>(width) * channels;
+    constexpr size_t sampleBytes  = rowBytes * height;
+    constexpr size_t sampleStride = sampleBytes + 7;
+    constexpr size_t bufferBytes  = sampleStride * numImages;
+
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), bufferBytes));
+    cudaError_t status = cudaMalloc(reinterpret_cast<void **>(&dstAllocation), bufferBytes);
+    if (status != cudaSuccess)
+    {
+        cudaFree(srcAllocation);
+    }
+    ASSERT_EQ(cudaSuccess, status);
+
+    {
+        nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+        srcBuffer.basePtr    = srcAllocation;
+        srcBuffer.strides[0] = sampleStride;
+        srcBuffer.strides[1] = rowBytes;
+        srcBuffer.strides[2] = channels;
+        srcBuffer.strides[3] = 1;
+
+        auto dstBuffer    = srcBuffer;
+        dstBuffer.basePtr = dstAllocation;
+
+        nvcv::TensorShape shape{
+            {numImages, height, width, channels},
+            "NHWC"
+        };
+        nvcv::Tensor src
+            = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, srcBuffer},
+                                   nvcv::TensorDataCleanupCallback{[srcAllocation](const nvcv::TensorData &)
+                                                                   {
+                                                                       cudaFree(srcAllocation);
+                                                                   }});
+        nvcv::Tensor dst
+            = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, dstBuffer},
+                                   nvcv::TensorDataCleanupCallback{[dstAllocation](const nvcv::TensorData &)
+                                                                   {
+                                                                       cudaFree(dstAllocation);
+                                                                   }});
+
+        auto srcAccess
+            = nvcv::TensorDataAccessStridedImagePlanar::Create(*src.exportData<nvcv::TensorDataStridedCuda>());
+        auto dstAccess
+            = nvcv::TensorDataAccessStridedImagePlanar::Create(*dst.exportData<nvcv::TensorDataStridedCuda>());
+        ASSERT_TRUE(srcAccess && dstAccess);
+        ASSERT_EQ(sampleStride, srcAccess->sampleStride());
+        ASSERT_EQ(sampleStride, dstAccess->sampleStride());
+
+        std::vector<std::vector<uint8_t>> expected;
+        ASSERT_EQ(cudaSuccess, cudaMemset(srcAllocation, 0xCC, bufferBytes));
+        ASSERT_EQ(cudaSuccess, cudaMemset(dstAllocation, 0xA5, bufferBytes));
+        for (int image = 0; image < numImages; ++image)
+        {
+            expected.emplace_back(MakeNonzeroU8Image(width, height, channels, image));
+            ASSERT_EQ(cudaSuccess,
+                      cudaMemcpy2D(srcAccess->sampleData(image), srcAccess->rowStride(), expected.back().data(),
+                                   rowBytes, rowBytes, height, cudaMemcpyHostToDevice));
+        }
+
+        const std::vector<int2> anchorVec{
+            {0, 0}
+        };
+        const std::vector<int3> erasingVec{
+            {0, 0, 0}
+        };
+        const std::vector<float> valuesVec(channels, 0.f);
+        const std::vector<int>   imgIdxVec{0};
+        const EraseParamValues   params{anchorVec, erasingVec, valuesVec, imgIdxVec};
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+        ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, src, dst, channels, params));
+
+        std::vector<uint8_t> raw(bufferBytes);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(raw.data(), dstAllocation, bufferBytes, cudaMemcpyDeviceToHost));
+        for (int image = 0; image < numImages; ++image)
+        {
+            SCOPED_TRACE(image);
+            std::vector<uint8_t> actual(sampleBytes);
+            ASSERT_EQ(cudaSuccess, cudaMemcpy2D(actual.data(), rowBytes, dstAccess->sampleData(image),
+                                                dstAccess->rowStride(), rowBytes, height, cudaMemcpyDeviceToHost));
+            EXPECT_EQ(expected[image], actual);
+            EXPECT_TRUE(std::all_of(raw.begin() + image * sampleStride + sampleBytes,
+                                    raw.begin() + (image + 1) * sampleStride,
+                                    [](uint8_t value) { return value == 0xA5; }));
+        }
+
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+}
+
+TEST(OpEraseVarShapeCopyGold, planar_vector_copy_covers_height_and_row_tails)
+{
+    constexpr int                   channels = 3;
+    const std::vector<nvcv::Size2D> sizes{
+        {16, 9},
+        {32, 7}
+    };
+
+    std::vector<nvcv::Image>          srcImages;
+    std::vector<nvcv::Image>          dstImages;
+    std::vector<std::vector<uint8_t>> expected;
+    for (size_t sample = 0; sample < sizes.size(); ++sample)
+    {
+        srcImages.emplace_back(sizes[sample], nvcv::FMT_RGB8p);
+        dstImages.emplace_back(sizes[sample], nvcv::FMT_RGB8p);
+        expected.emplace_back(MakeNonzeroU8Image(sizes[sample].w, sizes[sample].h, channels, static_cast<int>(sample)));
+        UploadU8Image(srcImages.back(), expected.back());
+        UploadU8Image(dstImages.back(), std::vector<uint8_t>(expected.back().size(), 0xA5));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(static_cast<int32_t>(sizes.size()));
+    nvcv::ImageBatchVarShape batchDst(static_cast<int32_t>(sizes.size()));
+    batchSrc.pushBack(srcImages.begin(), srcImages.end());
+    batchDst.pushBack(dstImages.begin(), dstImages.end());
+
+    const std::vector<int2> anchorVec{
+        {0, 0}
+    };
+    const std::vector<int3> erasingVec{
+        {0, 0, 0}
+    };
+    const std::vector<float> valuesVec(channels, 0.f);
+    const std::vector<int>   imgIdxVec{0};
+    const EraseParamValues   params{anchorVec, erasingVec, valuesVec, imgIdxVec};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, batchSrc, batchDst, channels, params));
+
+    for (size_t sample = 0; sample < dstImages.size(); ++sample)
+    {
+        SCOPED_TRACE(sample);
+        std::vector<uint8_t> actual;
+        DownloadU8Image(dstImages[sample], actual);
+        EXPECT_EQ(expected[sample], actual);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpEraseVarShapeCopyGold, planar_wide_vector_copy_exercises_unrolled_offsets)
+{
+    constexpr int                   channels = 3;
+    const std::vector<nvcv::Size2D> sizes{
+        {1552, 9},
+        {1552, 7}
+    };
+
+    std::vector<nvcv::Image>          srcImages;
+    std::vector<nvcv::Image>          dstImages;
+    std::vector<std::vector<uint8_t>> expected;
+    for (size_t sample = 0; sample < sizes.size(); ++sample)
+    {
+        srcImages.emplace_back(sizes[sample], nvcv::FMT_RGB8p);
+        dstImages.emplace_back(sizes[sample], nvcv::FMT_RGB8p);
+        expected.emplace_back(MakeNonzeroU8Image(sizes[sample].w, sizes[sample].h, channels, static_cast<int>(sample)));
+        UploadU8Image(srcImages.back(), expected.back());
+        UploadU8Image(dstImages.back(), std::vector<uint8_t>(expected.back().size(), 0xA5));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(static_cast<int32_t>(sizes.size()));
+    nvcv::ImageBatchVarShape batchDst(static_cast<int32_t>(sizes.size()));
+    batchSrc.pushBack(srcImages.begin(), srcImages.end());
+    batchDst.pushBack(dstImages.begin(), dstImages.end());
+
+    const std::vector<int2> anchorVec{
+        {0, 0}
+    };
+    const std::vector<int3> erasingVec{
+        {0, 0, 0}
+    };
+    const std::vector<float> valuesVec(channels, 0.f);
+    const std::vector<int>   imgIdxVec{0};
+    const EraseParamValues   params{anchorVec, erasingVec, valuesVec, imgIdxVec};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, batchSrc, batchDst, channels, params));
+
+    for (size_t sample = 0; sample < dstImages.size(); ++sample)
+    {
+        SCOPED_TRACE(sample);
+        std::vector<uint8_t> actual;
+        DownloadU8Image(dstImages[sample], actual);
+        EXPECT_EQ(expected[sample], actual);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpEraseVarShapeCopyGold, interleaved_wide_vector_copy_exercises_unrolled_rows)
+{
+    constexpr int                   channels = 3;
+    const std::vector<nvcv::Size2D> sizes{
+        {544, 9},
+        {544, 7}
+    };
+
+    std::vector<nvcv::Image>          srcImages;
+    std::vector<nvcv::Image>          dstImages;
+    std::vector<std::vector<uint8_t>> expected;
+    for (size_t sample = 0; sample < sizes.size(); ++sample)
+    {
+        srcImages.emplace_back(sizes[sample], nvcv::FMT_RGB8);
+        dstImages.emplace_back(sizes[sample], nvcv::FMT_RGB8);
+        expected.emplace_back(MakeNonzeroU8Image(sizes[sample].w, sizes[sample].h, channels, static_cast<int>(sample)));
+        UploadU8Image(srcImages.back(), expected.back());
+        UploadU8Image(dstImages.back(), std::vector<uint8_t>(expected.back().size(), 0xA5));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(static_cast<int32_t>(sizes.size()));
+    nvcv::ImageBatchVarShape batchDst(static_cast<int32_t>(sizes.size()));
+    batchSrc.pushBack(srcImages.begin(), srcImages.end());
+    batchDst.pushBack(dstImages.begin(), dstImages.end());
+
+    const std::vector<int2> anchorVec{
+        {0, 0}
+    };
+    const std::vector<int3> erasingVec{
+        {0, 0, 0}
+    };
+    const std::vector<float> valuesVec(channels, 0.f);
+    const std::vector<int>   imgIdxVec{0};
+    const EraseParamValues   params{anchorVec, erasingVec, valuesVec, imgIdxVec};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, batchSrc, batchDst, channels, params));
+
+    for (size_t sample = 0; sample < dstImages.size(); ++sample)
+    {
+        SCOPED_TRACE(sample);
+        std::vector<uint8_t> actual;
+        DownloadU8Image(dstImages[sample], actual);
+        EXPECT_EQ(expected[sample], actual);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpEraseVarShapeCopyGold, interleaved_multi_block_vector_copy_handles_width_and_height_tails)
+{
+    constexpr int                   channels = 3;
+    const std::vector<nvcv::Size2D> sizes{
+        {704, 9},
+        {704, 7}
+    };
+
+    std::vector<nvcv::Image>          srcImages;
+    std::vector<nvcv::Image>          dstImages;
+    std::vector<std::vector<uint8_t>> expected;
+    for (size_t sample = 0; sample < sizes.size(); ++sample)
+    {
+        srcImages.emplace_back(sizes[sample], nvcv::FMT_RGB8);
+        dstImages.emplace_back(sizes[sample], nvcv::FMT_RGB8);
+        expected.emplace_back(MakeNonzeroU8Image(sizes[sample].w, sizes[sample].h, channels, static_cast<int>(sample)));
+        UploadU8Image(srcImages.back(), expected.back());
+        UploadU8Image(dstImages.back(), std::vector<uint8_t>(expected.back().size(), 0xA5));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(static_cast<int32_t>(sizes.size()));
+    nvcv::ImageBatchVarShape batchDst(static_cast<int32_t>(sizes.size()));
+    batchSrc.pushBack(srcImages.begin(), srcImages.end());
+    batchDst.pushBack(dstImages.begin(), dstImages.end());
+
+    const std::vector<int2> anchorVec{
+        { 13, 1},
+        {680, 5}
+    };
+    const std::vector<int3> erasingVec{
+        {7, 4, 0x7},
+        {8, 5, 0x5}
+    };
+    const std::vector<float> valuesVec{17.f, 26.f, 35.f, 41.f, 50.f, 59.f};
+    const std::vector<int>   imgIdxVec{0, 1};
+    const EraseParamValues   params{anchorVec, erasingVec, valuesVec, imgIdxVec};
+    ApplyEraseGold(expected, sizes, channels, params);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, batchSrc, batchDst, channels, params));
+
+    for (size_t sample = 0; sample < dstImages.size(); ++sample)
+    {
+        SCOPED_TRACE(sample);
+        std::vector<uint8_t> actual;
+        DownloadU8Image(dstImages[sample], actual);
+        EXPECT_EQ(expected[sample], actual);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpEraseVarShapeCopyGold, planar_unaligned_row_stride_preserves_visible_bytes)
+{
+    constexpr int    width        = 16;
+    constexpr int    height       = 5;
+    constexpr int    channels     = 3;
+    constexpr size_t rowStride    = 17;
+    constexpr size_t planeBytes   = rowStride * height;
+    constexpr size_t bufferBytes  = planeBytes * channels;
+    constexpr size_t visibleBytes = static_cast<size_t>(width) * height;
+
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), bufferBytes));
+    cudaError_t status = cudaMalloc(reinterpret_cast<void **>(&dstAllocation), bufferBytes);
+    if (status != cudaSuccess)
+    {
+        cudaFree(srcAllocation);
+    }
+    ASSERT_EQ(cudaSuccess, status);
+
+    nvcv::ImageDataStridedCuda::Buffer srcBuffer{};
+    srcBuffer.numPlanes = channels;
+    for (int plane = 0; plane < channels; ++plane)
+    {
+        srcBuffer.planes[plane].width     = width;
+        srcBuffer.planes[plane].height    = height;
+        srcBuffer.planes[plane].rowStride = rowStride;
+        srcBuffer.planes[plane].basePtr   = srcAllocation + plane * planeBytes;
+    }
+    auto dstBuffer = srcBuffer;
+    for (int plane = 0; plane < channels; ++plane)
+    {
+        dstBuffer.planes[plane].basePtr = dstAllocation + plane * planeBytes;
+    }
+
+    nvcv::Image srcImage = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_RGB8p, srcBuffer});
+    nvcv::Image dstImage = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_RGB8p, dstBuffer});
+
+    ASSERT_EQ(cudaSuccess, cudaMemset(srcAllocation, 0xCC, bufferBytes));
+    ASSERT_EQ(cudaSuccess, cudaMemset(dstAllocation, 0xA5, bufferBytes));
+
+    std::vector<uint8_t> expected(bufferBytes, 0xCC);
+    for (int plane = 0; plane < channels; ++plane)
+    {
+        std::vector<uint8_t> visible(visibleBytes);
+        for (size_t i = 0; i < visible.size(); ++i)
+        {
+            visible[i] = static_cast<uint8_t>(17 + plane * 31 + i % 233);
+            expected[plane * planeBytes + (i / width) * rowStride + i % width] = visible[i];
+        }
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(srcBuffer.planes[plane].basePtr, rowStride, visible.data(), width, width,
+                                            height, cudaMemcpyHostToDevice));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(1);
+    nvcv::ImageBatchVarShape batchDst(1);
+    batchSrc.pushBack(srcImage);
+    batchDst.pushBack(dstImage);
+
+    const std::vector<int2> anchorVec{
+        {0, 0}
+    };
+    const std::vector<int3> erasingVec{
+        {0, 0, 0}
+    };
+    const std::vector<float> valuesVec(channels, 0.f);
+    const std::vector<int>   imgIdxVec{0};
+    const EraseParamValues   params{anchorVec, erasingVec, valuesVec, imgIdxVec};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, batchSrc, batchDst, channels, params));
+
+    std::vector<uint8_t> actual(bufferBytes);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), dstAllocation, bufferBytes, cudaMemcpyDeviceToHost));
+    for (int plane = 0; plane < channels; ++plane)
+    {
+        for (size_t offset = 0; offset < planeBytes; ++offset)
+        {
+            const uint8_t expectedValue = offset % rowStride < static_cast<size_t>(width)
+                                            ? expected[plane * planeBytes + offset]
+                                            : static_cast<uint8_t>(0xA5);
+            EXPECT_EQ(expectedValue, actual[plane * planeBytes + offset]);
+        }
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    ASSERT_EQ(cudaSuccess, cudaFree(srcAllocation));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstAllocation));
+}
+
 TEST(OpEraseTensorCopyGold, tight_and_padded_planar_output_match_independent_gold)
 {
     constexpr int numImages = 2;
@@ -880,6 +1276,268 @@ TEST(OpEraseTensorCopyGold, tight_and_padded_planar_output_match_independent_gol
 
     ASSERT_NO_FATAL_FAILURE(runCase(false));
     ASSERT_NO_FATAL_FAILURE(runCase(true));
+}
+
+TEST(OpEraseTensorCopyGold, interleaved_padded_output_uses_row_copy)
+{
+    constexpr int     numImages       = 2;
+    constexpr int     channels        = 3;
+    constexpr int     width           = 16;
+    constexpr int     height          = 9;
+    constexpr int64_t rowBytes        = width * channels;
+    constexpr int64_t srcRowStride    = rowBytes;
+    constexpr int64_t dstRowStride    = rowBytes + 1;
+    constexpr int64_t srcSampleStride = srcRowStride * height;
+    constexpr int64_t dstSampleStride = dstRowStride * height;
+    const size_t      srcBufferBytes  = static_cast<size_t>(srcSampleStride) * numImages;
+    const size_t      dstBufferBytes  = static_cast<size_t>(dstSampleStride) * numImages;
+
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), srcBufferBytes));
+    cudaError_t status = cudaMalloc(reinterpret_cast<void **>(&dstAllocation), dstBufferBytes);
+    if (status != cudaSuccess)
+    {
+        cudaFree(srcAllocation);
+    }
+    ASSERT_EQ(cudaSuccess, status);
+
+    nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+    srcBuffer.basePtr    = srcAllocation;
+    srcBuffer.strides[0] = srcSampleStride;
+    srcBuffer.strides[1] = srcRowStride;
+    srcBuffer.strides[2] = channels;
+    srcBuffer.strides[3] = 1;
+    auto dstBuffer       = srcBuffer;
+    dstBuffer.basePtr    = dstAllocation;
+    dstBuffer.strides[0] = dstSampleStride;
+    dstBuffer.strides[1] = dstRowStride;
+
+    nvcv::TensorShape shape{
+        {numImages, height, width, channels},
+        "NHWC"
+    };
+    nvcv::Tensor src = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, srcBuffer},
+                                            nvcv::TensorDataCleanupCallback{[srcAllocation](const nvcv::TensorData &)
+                                                                            {
+                                                                                cudaFree(srcAllocation);
+                                                                            }});
+    nvcv::Tensor dst = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, dstBuffer},
+                                            nvcv::TensorDataCleanupCallback{[dstAllocation](const nvcv::TensorData &)
+                                                                            {
+                                                                                cudaFree(dstAllocation);
+                                                                            }});
+
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*src.exportData<nvcv::TensorDataStridedCuda>());
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dst.exportData<nvcv::TensorDataStridedCuda>());
+    ASSERT_TRUE(srcAccess && dstAccess);
+    ASSERT_EQ(srcRowStride, srcAccess->rowStride());
+    ASSERT_EQ(dstRowStride, dstAccess->rowStride());
+
+    ASSERT_EQ(cudaSuccess, cudaMemset(srcAllocation, 0xCC, srcBufferBytes));
+    ASSERT_EQ(cudaSuccess, cudaMemset(dstAllocation, 0xA5, dstBufferBytes));
+
+    std::vector<std::vector<uint8_t>> expected;
+    for (int image = 0; image < numImages; ++image)
+    {
+        expected.emplace_back(MakeNonzeroU8Image(width, height, channels, image));
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(srcAccess->sampleData(image), srcAccess->rowStride(), expected.back().data(), rowBytes,
+                               rowBytes, height, cudaMemcpyHostToDevice));
+    }
+
+    const std::vector<int2> anchorVec{
+        {0, 0}
+    };
+    const std::vector<int3> erasingVec{
+        {0, 0, 0}
+    };
+    const std::vector<float> valuesVec(channels, 0.f);
+    const std::vector<int>   imgIdxVec{0};
+    const EraseParamValues   params{anchorVec, erasingVec, valuesVec, imgIdxVec};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, src, dst, channels, params));
+
+    std::vector<uint8_t> actual(dstBufferBytes);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), dstAllocation, dstBufferBytes, cudaMemcpyDeviceToHost));
+    for (int image = 0; image < numImages; ++image)
+    {
+        SCOPED_TRACE(image);
+        const size_t sampleOffset = static_cast<size_t>(image) * dstSampleStride;
+        for (int y = 0; y < height; ++y)
+        {
+            const size_t rowOffset = sampleOffset + static_cast<size_t>(y) * dstRowStride;
+            EXPECT_TRUE(std::equal(expected[image].begin() + y * rowBytes, expected[image].begin() + (y + 1) * rowBytes,
+                                   actual.begin() + rowOffset));
+            EXPECT_EQ(0xA5, actual[rowOffset + rowBytes]);
+        }
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpEraseCopyGold, zero_extent_interleaved_copy_preserves_tensor_and_varshape)
+{
+    constexpr int    numImages   = 2;
+    constexpr int    channels    = 3;
+    constexpr int    width       = 16;
+    constexpr int    height      = 5;
+    constexpr size_t rowBytes    = width * channels;
+    constexpr size_t sampleBytes = rowBytes * height;
+    constexpr size_t bufferBytes = sampleBytes * numImages;
+
+    const std::vector<int2> anchorVec{
+        {0, 0}
+    };
+    const std::vector<int3> erasingVec{
+        {0, 0, 0}
+    };
+    const std::vector<float> valuesVec(channels, 0.f);
+    const std::vector<int>   imgIdxVec{0};
+    const EraseParamValues   params{anchorVec, erasingVec, valuesVec, imgIdxVec};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    {
+        NVCVByte *srcAllocation{};
+        NVCVByte *dstAllocation{};
+        ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), bufferBytes));
+        cudaError_t status = cudaMalloc(reinterpret_cast<void **>(&dstAllocation), bufferBytes);
+        if (status != cudaSuccess)
+        {
+            cudaFree(srcAllocation);
+        }
+        ASSERT_EQ(cudaSuccess, status);
+
+        nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+        srcBuffer.basePtr    = srcAllocation;
+        srcBuffer.strides[0] = sampleBytes;
+        srcBuffer.strides[1] = rowBytes;
+        srcBuffer.strides[2] = channels;
+        srcBuffer.strides[3] = 1;
+        auto dstBuffer       = srcBuffer;
+        dstBuffer.basePtr    = dstAllocation;
+
+        nvcv::TensorShape shape{
+            {numImages, height, width, channels},
+            "NHWC"
+        };
+        nvcv::Tensor src
+            = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, srcBuffer},
+                                   nvcv::TensorDataCleanupCallback{[srcAllocation](const nvcv::TensorData &)
+                                                                   {
+                                                                       cudaFree(srcAllocation);
+                                                                   }});
+        nvcv::Tensor dst
+            = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, dstBuffer},
+                                   nvcv::TensorDataCleanupCallback{[dstAllocation](const nvcv::TensorData &)
+                                                                   {
+                                                                       cudaFree(dstAllocation);
+                                                                   }});
+
+        std::vector<std::vector<uint8_t>> expected;
+        for (int sample = 0; sample < numImages; ++sample)
+        {
+            expected.emplace_back(MakeNonzeroU8Image(width, height, channels, sample));
+            nvcv::util::SetImageTensorFromVector<uint8_t>(src.exportData(), expected.back(), sample);
+        }
+
+        ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, src, dst, channels, params));
+
+        for (int sample = 0; sample < numImages; ++sample)
+        {
+            std::vector<uint8_t> actual;
+            nvcv::util::GetImageVectorFromTensor<uint8_t>(dst.exportData(), sample, actual);
+            EXPECT_EQ(expected[sample], actual);
+        }
+    }
+
+    {
+        const std::vector<nvcv::Size2D> sizes{
+            {16, 5},
+            {32, 3}
+        };
+        std::vector<nvcv::Image>          srcImages;
+        std::vector<nvcv::Image>          dstImages;
+        std::vector<std::vector<uint8_t>> expected;
+        for (size_t i = 0; i < sizes.size(); ++i)
+        {
+            srcImages.emplace_back(sizes[i], nvcv::FMT_RGB8);
+            dstImages.emplace_back(sizes[i], nvcv::FMT_RGB8);
+            expected.emplace_back(MakeNonzeroU8Image(sizes[i].w, sizes[i].h, channels, static_cast<int>(i)));
+            UploadU8Image(srcImages.back(), expected.back());
+        }
+
+        nvcv::ImageBatchVarShape batchSrc(static_cast<int32_t>(sizes.size()));
+        nvcv::ImageBatchVarShape batchDst(static_cast<int32_t>(sizes.size()));
+        batchSrc.pushBack(srcImages.begin(), srcImages.end());
+        batchDst.pushBack(dstImages.begin(), dstImages.end());
+
+        ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, batchSrc, batchDst, channels, params));
+
+        for (size_t i = 0; i < dstImages.size(); ++i)
+        {
+            SCOPED_TRACE(i);
+            std::vector<uint8_t> actual;
+            DownloadU8Image(dstImages[i], actual);
+            EXPECT_EQ(expected[i], actual);
+        }
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpEraseVarShapeCopyGold, planar_vector_copy_preserves_zero_extent)
+{
+    constexpr int                   channels = 3;
+    const std::vector<nvcv::Size2D> sizes{
+        {16, 5},
+        {32, 3}
+    };
+
+    std::vector<nvcv::Image>          srcImages;
+    std::vector<nvcv::Image>          dstImages;
+    std::vector<std::vector<uint8_t>> expected;
+    for (size_t i = 0; i < sizes.size(); ++i)
+    {
+        srcImages.emplace_back(sizes[i], nvcv::FMT_RGB8p);
+        dstImages.emplace_back(sizes[i], nvcv::FMT_RGB8p);
+        expected.emplace_back(MakeNonzeroU8Image(sizes[i].w, sizes[i].h, channels, static_cast<int>(i)));
+        UploadU8Image(srcImages.back(), expected.back());
+        UploadU8Image(dstImages.back(), std::vector<uint8_t>(expected.back().size(), 0xA5));
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(static_cast<int32_t>(sizes.size()));
+    nvcv::ImageBatchVarShape batchDst(static_cast<int32_t>(sizes.size()));
+    batchSrc.pushBack(srcImages.begin(), srcImages.end());
+    batchDst.pushBack(dstImages.begin(), dstImages.end());
+
+    const std::vector<int2> anchorVec{
+        {0, 0}
+    };
+    const std::vector<int3> erasingVec{
+        {0, 0, 0}
+    };
+    const std::vector<float> valuesVec(channels, 0.f);
+    const std::vector<int>   imgIdxVec{0};
+    const EraseParamValues   params{anchorVec, erasingVec, valuesVec, imgIdxVec};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    ASSERT_NO_FATAL_FAILURE(RunEraseWithParams(stream, batchSrc, batchDst, channels, params));
+
+    for (size_t i = 0; i < dstImages.size(); ++i)
+    {
+        SCOPED_TRACE(i);
+        std::vector<uint8_t> actual;
+        DownloadU8Image(dstImages[i], actual);
+        EXPECT_EQ(expected[i], actual);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 NVCV_TEST_SUITE_P(OpErasePlanar, nvcv::test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat>{
@@ -1252,6 +1910,18 @@ TEST(OpEraseRegion, all_scalar_dtypes_layouts_channels_and_inplace)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpEraseRegion, f64_chw_out_of_place_covers_normal_dispatch)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Erase op(0);
+    ASSERT_NO_FATAL_FAILURE(
+        RunEraseRegionMatrixCase<double>(stream, op, nvcv::TYPE_F64, false, "CHW", 1, false, false));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpEraseRegion, broadcast_and_python_slice_semantics_are_bit_exact)
 {
     cudaStream_t stream;
@@ -1406,6 +2076,105 @@ TEST(OpEraseRegion, float32_to_uint8_matches_torch_assignment_cast)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpEraseRegion, float32_integer_special_values_are_torch_compatible)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const float   nan = std::numeric_limits<float>::quiet_NaN();
+    cvcuda::Erase op(0);
+
+    const auto runCase
+        = [&]<typename Expected>(nvcv::DataType dtype, const std::vector<float> &hostValues, const Expected &expected)
+    {
+        using Value = typename std::decay_t<decltype(expected)>::value_type;
+
+        nvcv::Tensor input(
+            {
+                {1, 1, 1, 4},
+                "NCHW"
+        },
+            dtype);
+        nvcv::Tensor output(
+            {
+                {1, 1, 1, 4},
+                "NCHW"
+        },
+            dtype);
+        nvcv::Tensor values({{4}, "W"}, nvcv::TYPE_F32);
+
+        ASSERT_EQ(cudaSuccess, cudaMemset(input.exportData<nvcv::TensorDataStridedCuda>()->basePtr(), 0,
+                                          expected.size() * sizeof(Value)));
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(values.exportData<nvcv::TensorDataStridedCuda>()->basePtr(), hostValues.data(),
+                             hostValues.size() * sizeof(float), cudaMemcpyHostToDevice));
+
+        op(stream, input, output, 0, 0, 1, 4, values);
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        std::vector<Value> actual;
+        nvcv::util::GetImageVectorFromTensor<Value>(output.exportData(), 0, actual);
+        EXPECT_EQ(expected, actual);
+    };
+
+    runCase(nvcv::TYPE_S32, {nan, 0x1p31f, -0x1p31f, 1.75f},
+            std::vector<int32_t>{0, std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::min(), 1});
+    runCase(nvcv::TYPE_U32, {nan, -1.0f, 0x1p32f, 1.75f},
+            std::vector<uint32_t>{0, 0, std::numeric_limits<uint32_t>::max(), 1});
+    runCase(nvcv::TYPE_S64, {nan, -0x1p63f, 0x1p63f, 1.75f},
+            std::vector<int64_t>{std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::min(),
+                                 std::numeric_limits<int64_t>::max(), 1});
+    runCase(nvcv::TYPE_U64, {nan, -1.0f, 0x1p64f, 1.75f},
+            std::vector<uint64_t>{uint64_t{1} << 63, 0, std::numeric_limits<uint64_t>::max(), 1});
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpEraseRegion, extreme_empty_regions_preserve_in_place_and_out_of_place_data)
+{
+    constexpr int channels = 3;
+    nvcv::Tensor  input(
+         {
+             {channels, kEraseRegionHeight, kEraseRegionWidth},
+             "CHW"
+    },
+         nvcv::TYPE_U8);
+    nvcv::Tensor output(
+        {
+            {channels, kEraseRegionHeight, kEraseRegionWidth},
+            "CHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor values({{1}, "W"}, nvcv::TYPE_U8);
+
+    std::vector<uint8_t> source = MakeEraseRegionSource<uint8_t>(channels, 0, false);
+    std::vector<uint8_t> outputInitial(source.size(), 0xA5);
+    nvcv::util::SetImageTensorFromVector<uint8_t>(input.exportData(), source, 0);
+    nvcv::util::SetImageTensorFromVector<uint8_t>(output.exportData(), outputInitial, 0);
+    const uint8_t value = 9;
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(values.exportData<nvcv::TensorDataStridedCuda>()->basePtr(), &value,
+                                      sizeof(value), cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::Erase op(0);
+
+    op(stream, input, input, -1, -1, std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::min(), values);
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint8_t> actual;
+    nvcv::util::GetImageVectorFromTensor<uint8_t>(input.exportData(), 0, actual);
+    EXPECT_EQ(source, actual);
+
+    op(stream, input, output, std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(), 1, 1, values);
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    nvcv::util::GetImageVectorFromTensor<uint8_t>(output.exportData(), 0, actual);
+    EXPECT_EQ(source, actual);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpEraseRegion_Negative, rejects_unsupported_matrix_and_broadcast_complement)
 {
     cudaStream_t stream;
@@ -1482,6 +2251,75 @@ TEST(OpEraseRegion_Negative, rejects_unsupported_matrix_and_broadcast_complement
     expectInvalid(validInput, wrongLayoutOutput, scalarValue);
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpEraseRegion_Negative, reaches_region_validation_error_branches)
+{
+    cvcuda::Erase op(0);
+
+    nvcv::Tensor validInput(
+        {
+            {1, 1, 4, 5},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor validOutput(
+        {
+            {1, 1, 4, 5},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor scalarValue({{1}, "W"}, nvcv::TYPE_U8);
+
+    auto expectStatus = [&op](NVCVStatus expected, const nvcv::Tensor &input, const nvcv::Tensor &output,
+                              const nvcv::Tensor &values, int64_t height, int64_t width)
+    {
+        EXPECT_EQ(expected, nvcv::ProtectCall([&op, &input, &output, &values, height, width]
+                                              { op(nullptr, input, output, 0, 0, height, width, values); }));
+    };
+
+    nvcv::Tensor invalidLayout(
+        {
+            {1, 1, 4, 5},
+            "ABCD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor invalidLayoutOutput(
+        {
+            {1, 1, 4, 5},
+            "ABCD"
+    },
+        nvcv::TYPE_U8);
+    expectStatus(NVCV_ERROR_INVALID_ARGUMENT, invalidLayout, invalidLayoutOutput, scalarValue, 1, 1);
+
+    nvcv::Tensor rankFiveValues(
+        {
+            {1, 1, 1, 1, 1},
+            "NDHWC"
+    },
+        nvcv::TYPE_U8);
+    expectStatus(NVCV_ERROR_INVALID_ARGUMENT, validInput, validOutput, rankFiveValues, 1, 1);
+
+    constexpr int64_t                   hugeExtent = int64_t{1} << 32;
+    nvcv::TensorDataStridedCuda::Buffer hugeBuffer{};
+    hugeBuffer.basePtr    = reinterpret_cast<NVCVByte *>(0x1);
+    hugeBuffer.strides[2] = hugeExtent;
+    hugeBuffer.strides[3] = 1;
+    const nvcv::TensorShape hugeShape{
+        {1, 1, hugeExtent, hugeExtent},
+        "NCHW"
+    };
+    nvcv::Tensor hugeInput  = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{hugeShape, nvcv::TYPE_U8, hugeBuffer});
+    nvcv::Tensor hugeOutput = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{hugeShape, nvcv::TYPE_U8, hugeBuffer});
+    expectStatus(NVCV_ERROR_OVERFLOW, hugeInput, hugeOutput, scalarValue, hugeExtent, hugeExtent);
+
+    nvcv::Tensor wrongShapeOutput(
+        {
+            {1, 1, 4, 4},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    expectStatus(NVCV_ERROR_INVALID_ARGUMENT, validInput, wrongShapeOutput, scalarValue, 1, 1);
 }
 
 // clang-format off

@@ -33,7 +33,7 @@ namespace nvcv::cuda {
 
 namespace detail {
 
-template<typename T, NVCVBorderType B, NVCVInterpolationType I>
+template<typename T, NVCVBorderType B, NVCVInterpolationType I, bool ReadTapByValue>
 class InterpolationVarShapeWrapImpl
 {
 public:
@@ -88,22 +88,52 @@ public:
     }
 
 protected:
+    /*
+     * Which constant-border form is cheaper here is a property of the pixel width, not of the
+     * border mode; both return the same element (see
+     * nvcv::cuda::detail::ReadConstantBorder). `value()` re-materializes the border value per
+     * byte-component, so its cost scales with the pixel width, while what it saves -- the
+     * wrapper's stack frame -- is a fixed size. Measured on H100 CI the crossover sits between
+     * three and four components. The tensor interpolation ladder has its own measured policy;
+     * direct BorderVarShapeWrap consumers opt in only for measured scalar paths. Measured:
+     * with `value()` Remap var-shape uchar4 DENSE regressed
+     * 1198.6 -> 1343.5 us (+12.1%), while restricting it to one component put WarpAffine
+     * var-shape uchar3 LINEAR CONSTANT back on the indexing form at +13.3% (H100) and +10.0%
+     * (A100).
+     */
+    static constexpr bool kReadTapByValue = ReadTapByValue && B == NVCV_BORDER_CONSTANT && NumElements<ValueType> <= 3;
+
+    // The one place this interpolation policy is applied. Only the NVCV_BORDER_CONSTANT
+    // specialization has value(); every other case retains operator[].
+    template<typename IntCoord>
+    inline __host__ __device__ decltype(auto) readTap(IntCoord c) const
+    {
+        if constexpr (kReadTapByValue)
+        {
+            return m_borderWrap.value(c);
+        }
+        else
+        {
+            return m_borderWrap[c];
+        }
+    }
+
     template<typename DimType,
              class = Require<
                  std::is_same_v<BaseType<DimType>, float> && (NumElements<DimType> == 3 || NumElements<DimType> == 4)>>
-    inline const __host__ __device__ ValueType &doGetValue(DimType c) const
+    inline __host__ __device__ decltype(auto) doGetValue(DimType c) const
     {
-        return m_borderWrap[StaticCast<int>(c)];
+        return readTap(StaticCast<int>(c));
     }
 
-    inline const __host__ __device__ ValueType &doGetValue(float3 c, int x, int y) const
+    inline __host__ __device__ decltype(auto) doGetValue(float3 c, int x, int y) const
     {
-        return m_borderWrap[int3{x, y, static_cast<int>(c.z)}];
+        return readTap(int3{x, y, static_cast<int>(c.z)});
     }
 
-    inline const __host__ __device__ ValueType &doGetValue(float4 c, int x, int y) const
+    inline __host__ __device__ decltype(auto) doGetValue(float4 c, int x, int y) const
     {
-        return m_borderWrap[int4{x, y, static_cast<int>(c.z), static_cast<int>(c.w)}];
+        return readTap(int4{x, y, static_cast<int>(c.z), static_cast<int>(c.w)});
     }
 
     const BorderWrapper m_borderWrap = {};
@@ -127,10 +157,14 @@ protected:
  * @sa NVCV_CPP_CUDATOOLS_INTERPOLATIONVARSHAPEWRAPS
  *
  * @tparam T Type (it can be const) of each element inside the border var-shape wrapper.
+ * @tparam B Border extension used by the wrapped images.
  * @tparam I It is a \ref NVCVInterpolationType defining the interpolation type to be used.
+ * @tparam ReadTapByValue Whether to opt measured constant-border taps with at most three
+ *                       components into \ref BorderVarShapeWrap::value. Wider elements retain
+ *                       reference reads; the tensor \ref InterpolationWrap policy has no width clamp.
  */
-template<typename T, NVCVBorderType B, NVCVInterpolationType I>
-class InterpolationVarShapeWrap : public detail::InterpolationVarShapeWrapImpl<T, B, I>
+template<typename T, NVCVBorderType B, NVCVInterpolationType I, bool ReadTapByValue = false>
+class InterpolationVarShapeWrap : public detail::InterpolationVarShapeWrapImpl<T, B, I, ReadTapByValue>
 {
 };
 
@@ -139,11 +173,11 @@ class InterpolationVarShapeWrap : public detail::InterpolationVarShapeWrapImpl<T
  *
  * @tparam T Type (it can be const) of each element inside the border var-shape wrapper.
  */
-template<typename T, NVCVBorderType B>
-class InterpolationVarShapeWrap<T, B, NVCV_INTERP_NEAREST>
-    : public detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_NEAREST>
+template<typename T, NVCVBorderType B, bool ReadTapByValue>
+class InterpolationVarShapeWrap<T, B, NVCV_INTERP_NEAREST, ReadTapByValue>
+    : public detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_NEAREST, ReadTapByValue>
 {
-    using Base = detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_NEAREST>;
+    using Base = detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_NEAREST, ReadTapByValue>;
 
 public:
     using typename Base::BorderWrapper;
@@ -234,11 +268,11 @@ public:
  *
  * @tparam T Type (it can be const) of each element inside the border var-shape wrapper.
  */
-template<typename T, NVCVBorderType B>
-class InterpolationVarShapeWrap<T, B, NVCV_INTERP_LINEAR>
-    : public detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_LINEAR>
+template<typename T, NVCVBorderType B, bool ReadTapByValue>
+class InterpolationVarShapeWrap<T, B, NVCV_INTERP_LINEAR, ReadTapByValue>
+    : public detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_LINEAR, ReadTapByValue>
 {
-    using Base = detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_LINEAR>;
+    using Base = detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_LINEAR, ReadTapByValue>;
 
 public:
     using typename Base::BorderWrapper;
@@ -341,11 +375,11 @@ public:
  *
  * @tparam T Type (it can be const) of each element inside the border var-shape wrapper.
  */
-template<typename T, NVCVBorderType B>
-class InterpolationVarShapeWrap<T, B, NVCV_INTERP_CUBIC>
-    : public detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_CUBIC>
+template<typename T, NVCVBorderType B, bool ReadTapByValue>
+class InterpolationVarShapeWrap<T, B, NVCV_INTERP_CUBIC, ReadTapByValue>
+    : public detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_CUBIC, ReadTapByValue>
 {
-    using Base = detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_CUBIC>;
+    using Base = detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_CUBIC, ReadTapByValue>;
 
 public:
     using typename Base::BorderWrapper;
@@ -455,11 +489,11 @@ public:
  *
  * @tparam T Type (it can be const) of each element inside the border var-shape wrapper.
  */
-template<typename T, NVCVBorderType B>
-class InterpolationVarShapeWrap<T, B, NVCV_INTERP_AREA>
-    : public detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_AREA>
+template<typename T, NVCVBorderType B, bool ReadTapByValue>
+class InterpolationVarShapeWrap<T, B, NVCV_INTERP_AREA, ReadTapByValue>
+    : public detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_AREA, ReadTapByValue>
 {
-    using Base = detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_AREA>;
+    using Base = detail::InterpolationVarShapeWrapImpl<T, B, NVCV_INTERP_AREA, ReadTapByValue>;
 
 public:
     using typename Base::BorderWrapper;

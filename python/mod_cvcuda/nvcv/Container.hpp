@@ -24,20 +24,28 @@
 #include <common/Assert.hpp>
 #include <nvcv/python/Container.hpp>
 
+#include <algorithm>
 #include <memory>
+#include <optional>
 
 namespace nvcvpy::priv {
-namespace py = pybind11;
+namespace py = nanobind;
 
-class Container
-    : public Resource
-    , public CacheItem
+class Container : public Resource
 {
 public:
-    static void Export(py::module &m);
+    static void Export(py::module_ &m);
+
+    virtual const IKey &key() const            = 0;
+    virtual int64_t     GetSizeInBytes() const = 0;
+
+    RetainedMemory retainedMemory() const override
+    {
+        return {static_cast<uint64_t>(std::max<int64_t>(0, GetSizeInBytes())), 0};
+    }
 
 protected:
-    Container() = default;
+    using Resource::Resource;
 };
 
 inline std::shared_ptr<Container> SharedContainerFrom(Container &container)
@@ -77,6 +85,11 @@ public:
         NVCV_ASSERT(m_size_inbytes != -1
                     && "ExternalContainer has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
         return m_size_inbytes;
+    }
+
+    RetainedMemory retainedMemory() const override
+    {
+        return {0, 1};
     }
 
 private:

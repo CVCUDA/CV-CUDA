@@ -920,6 +920,253 @@ TEST(OpMinMaxLoc, rank3_location_representations_produce_correct_extrema)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpMinMaxLoc, repeated_extrema_cover_capacity_and_tail_paths)
+{
+    constexpr int W        = 5;
+    constexpr int H        = 3;
+    constexpr int capacity = 1;
+
+    nvcv::Tensor in     = nvcv::util::CreateTensor(1, W, H, nvcv::FMT_F64);
+    auto         inData = in.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inData);
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
+    ASSERT_TRUE(inAccess);
+
+    const long3 inStrides{inAccess->numRows() * inAccess->rowStride(), inAccess->rowStride(), inAccess->colStride()};
+    std::vector<uint8_t>                       input(inStrides.x * inAccess->numSamples(), uint8_t{0});
+    const std::array<std::array<double, W>, H> values = {
+        {
+         {0., 2., 0., 8., 8.},
+         {1., 2., 3., 8., 4.},
+         {0., 6., 7., 8., 8.},
+         }
+    };
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) test::ValueAt<double1>(input, inStrides, int3{x, y, 0}).x = values[y][x];
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(inData->basePtr(), input.data(), input.size(), cudaMemcpyHostToDevice));
+
+    auto makeValue = []
+    {
+        return nvcv::Tensor({{1}, "N"}, nvcv::TYPE_F64);
+    };
+    auto makeLocation = []
+    {
+        return nvcv::Tensor(
+            {
+                {1, capacity},
+                "NM"
+        },
+            nvcv::TYPE_2S32);
+    };
+    auto makeCount = []
+    {
+        return nvcv::Tensor({{1}, "N"}, nvcv::TYPE_S32);
+    };
+
+    nvcv::Tensor minValOnly = makeValue();
+    nvcv::Tensor minLocOnly = makeLocation();
+    nvcv::Tensor numMinOnly = makeCount();
+    nvcv::Tensor maxValOnly = makeValue();
+    nvcv::Tensor maxLocOnly = makeLocation();
+    nvcv::Tensor numMaxOnly = makeCount();
+    nvcv::Tensor minValBoth = makeValue();
+    nvcv::Tensor minLocBoth = makeLocation();
+    nvcv::Tensor numMinBoth = makeCount();
+    nvcv::Tensor maxValBoth = makeValue();
+    nvcv::Tensor maxLocBoth = makeLocation();
+    nvcv::Tensor numMaxBoth = makeCount();
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::MinMaxLoc op;
+    ASSERT_NO_THROW(op(stream, in, minValOnly, minLocOnly, numMinOnly, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
+                       nvcv::Tensor{nullptr}));
+    ASSERT_NO_THROW(op(stream, in, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, maxValOnly,
+                       maxLocOnly, numMaxOnly));
+    ASSERT_NO_THROW(op(stream, in, minValBoth, minLocBoth, numMinBoth, maxValBoth, maxLocBoth, numMaxBoth));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    auto readScalar = [](const nvcv::Tensor &tensor, auto &value)
+    {
+        auto data = tensor.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(data);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(&value, data->basePtr(), sizeof(value), cudaMemcpyDeviceToHost));
+    };
+
+    double minValueOnly = 0;
+    double maxValueOnly = 0;
+    int    minCountOnly = 0;
+    int    maxCountOnly = 0;
+    double minValueBoth = 0;
+    double maxValueBoth = 0;
+    int    minCountBoth = 0;
+    int    maxCountBoth = 0;
+    readScalar(minValOnly, minValueOnly);
+    readScalar(maxValOnly, maxValueOnly);
+    readScalar(numMinOnly, minCountOnly);
+    readScalar(numMaxOnly, maxCountOnly);
+    readScalar(minValBoth, minValueBoth);
+    readScalar(maxValBoth, maxValueBoth);
+    readScalar(numMinBoth, minCountBoth);
+    readScalar(numMaxBoth, maxCountBoth);
+
+    EXPECT_EQ(minValueOnly, 0.);
+    EXPECT_EQ(maxValueOnly, 8.);
+    EXPECT_EQ(minCountOnly, 3);
+    EXPECT_EQ(maxCountOnly, 5);
+    EXPECT_EQ(minValueBoth, 0.);
+    EXPECT_EQ(maxValueBoth, 8.);
+    EXPECT_EQ(minCountBoth, 3);
+    EXPECT_EQ(maxCountBoth, 5);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpMinMaxLoc, varshape_f64_tail_finalization)
+{
+    constexpr int W        = 5;
+    constexpr int H        = 3;
+    constexpr int capacity = 2;
+
+    nvcv::ImageFormat        inFormat{nvcv::FMT_F64};
+    std::vector<nvcv::Image> inImg;
+    inImg.emplace_back(nvcv::Size2D{W, H}, inFormat);
+
+    std::vector<std::vector<uint8_t>> inVec(1);
+    std::vector<long2>                inStrides(1);
+    std::vector<int2>                 inShape(1);
+
+    auto inData = inImg[0].exportData<nvcv::ImageDataStridedCuda>();
+    ASSERT_TRUE(inData);
+    inStrides[0] = long2{inData->plane(0).rowStride, sizeof(double1)};
+    inShape[0]   = int2{inData->plane(0).width, inData->plane(0).height};
+    inVec[0].resize(inStrides[0].x * inShape[0].y);
+
+    const std::array<std::array<double, W>, H> values = {
+        {
+         {0., 2., 0., 8., 8.},
+         {1., 2., 3., 8., 4.},
+         {0., 6., 7., 8., 8.},
+         }
+    };
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) test::ValueAt<double1>(inVec[0], inStrides[0], int2{x, y}).x = values[y][x];
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(inData->plane(0).basePtr, inStrides[0].x, inVec[0].data(), inStrides[0].x,
+                                        inStrides[0].x, H, cudaMemcpyHostToDevice));
+
+    nvcv::ImageBatchVarShape in(1);
+    in.pushBack(inImg.begin(), inImg.end());
+
+    // clang-format off
+
+    nvcv::Tensor minVal({{1}, "N"}, nvcv::TYPE_F64);
+    nvcv::Tensor minLoc({{1, capacity}, "NM"}, nvcv::TYPE_2S32);
+    nvcv::Tensor numMin({{1}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor maxVal({{1}, "N"}, nvcv::TYPE_F64);
+    nvcv::Tensor maxLoc({{1, capacity}, "NM"}, nvcv::TYPE_2S32);
+    nvcv::Tensor numMax({{1}, "N"}, nvcv::TYPE_S32);
+
+    // clang-format on
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::MinMaxLoc op;
+    ASSERT_NO_THROW(op(stream, in, minVal, minLoc, numMin, maxVal, maxLoc, numMax));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    MinMaxResults res;
+    GoldMinMaxLoc<double1, double1>(minVal, minLoc, numMin, maxVal, maxLoc, numMax, inVec, inStrides, inShape, res);
+
+    EXPECT_EQ(res.minValTest, res.minValGold);
+    EXPECT_EQ(res.minLocTest, res.minLocGold);
+    EXPECT_EQ(res.numMinTest, res.numMinGold);
+    EXPECT_EQ(res.maxValTest, res.maxValGold);
+    EXPECT_EQ(res.maxLocTest, res.maxLocGold);
+    EXPECT_EQ(res.numMaxTest, res.numMaxGold);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpMinMaxLoc, zero_sample_tensor_is_noop)
+{
+    nvcv::Tensor input(
+        {
+            {0, 3, 5, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::MinMaxLoc op;
+    EXPECT_NO_THROW(op(nullptr, input, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
+                       nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}));
+}
+
+TEST(OpMinMaxLoc, rank_one_location_output_uses_capacity_axis)
+{
+    constexpr int W        = 5;
+    constexpr int H        = 2;
+    constexpr int capacity = 2;
+
+    nvcv::Tensor input     = nvcv::util::CreateTensor(1, W, H, nvcv::FMT_U8);
+    auto         inputData = input.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inputData);
+    auto inputAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inputData);
+    ASSERT_TRUE(inputAccess);
+
+    const long3          inputStrides{inputAccess->numRows() * inputAccess->rowStride(), inputAccess->rowStride(),
+                             inputAccess->colStride()};
+    std::vector<uint8_t> inputHost(inputStrides.x * inputAccess->numSamples(), uint8_t{0});
+    const std::array<std::array<uint8_t, W>, H> values = {
+        {
+         {4, 9, 1, 7, 2},
+         {6, 3, 8, 5, 0},
+         }
+    };
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) test::ValueAt<uchar1>(inputHost, inputStrides, int3{x, y, 0}).x = values[y][x];
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(inputData->basePtr(), inputHost.data(), inputHost.size(), cudaMemcpyHostToDevice));
+
+    nvcv::Tensor maxVal({{1}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor maxLoc(
+        {
+            {1, capacity},
+            "NM"
+    },
+        nvcv::TYPE_2S32);
+    nvcv::Tensor numMax({{1}, "N"}, nvcv::TYPE_S32);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::MinMaxLoc op;
+    ASSERT_NO_THROW(
+        op(stream, input, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, maxVal, maxLoc, numMax));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    auto readScalar = [](const nvcv::Tensor &tensor, auto &value)
+    {
+        auto data = tensor.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(data);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(&value, data->basePtr(), sizeof(value), cudaMemcpyDeviceToHost));
+    };
+
+    uint1 maxValue{};
+    int2  maxLocation{};
+    int1  maxCount{};
+    readScalar(maxVal, maxValue);
+    readScalar(maxLoc, maxLocation);
+    readScalar(numMax, maxCount);
+
+    EXPECT_EQ(maxValue.x, 9);
+    EXPECT_EQ(maxLocation.x, 1);
+    EXPECT_EQ(maxLocation.y, 0);
+    EXPECT_EQ(maxCount.x, 1);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpMinMaxLoc_Negative, op)
 {
     int3         inShape{24, 24, 2};
@@ -1080,6 +1327,30 @@ TEST(OpMinMaxLoc_Negative, varshape_invalid_plane)
     std::array<char, 1024> msg;
     nvcvGetLastErrorMessage(msg.data(), msg.size());
     std::cout << "\033[33m" << msg.data() << "\033[0m" << std::endl;
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpMinMaxLoc_Negative, varshape_rejects_multi_channel_input)
+{
+    std::vector<nvcv::Image> images;
+    images.emplace_back(nvcv::Size2D{24, 24}, nvcv::FMT_RGB8);
+
+    nvcv::ImageBatchVarShape input(1);
+    input.pushBack(images.begin(), images.end());
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::MinMaxLoc op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&]
+                                               {
+                                                   op(stream, input, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
+                                                      nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
+                                                      nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr});
+                                               }));
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));

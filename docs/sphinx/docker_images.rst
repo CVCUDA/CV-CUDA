@@ -201,7 +201,7 @@ auto-generated and carry an ``AUTO-GENERATED`` header):
    * - docker/requirements.build.sys_python.txt
      - System Python only: wheel building and linting tools
    * - docker/requirements.build.all_pythons.txt
-     - All Python versions: pybind11 for CMake find_package
+     - All Python versions: nanobind for CMake find_package
    * - tests/requirements.tests.common.txt
      - All Python versions: pytest and typing-extensions
    * - docs/requirements.docs.txt

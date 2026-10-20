@@ -947,6 +947,8 @@ NVCV_TEST_SUITE_P(OpResizeCropConvertReformatPlanar,
     {31, 25, 42, 37, 29, 23, 3, 2, NVCV_INTERP_NEAREST, 2,       1,  0, false, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
     {64, 48, 32, 28, 25, 20, 2, 3,  NVCV_INTERP_LINEAR, 2, 1 / 127.5, -1, false, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32},
     {52, 39, 60, 45, 37, 31, 4, 5,  NVCV_INTERP_LINEAR, 1,       1,  0,  true, nvcv::FMT_BGR8p, nvcv::FMT_BGR8, nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+    {17, 13, 23, 19, 11,  9, 1, 2, NVCV_INTERP_NEAREST, 1,       1,  0, false, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_RGBf16p, nvcv::FMT_RGBf16},
+    {17, 13, 23, 19, 11,  9, 1, 2, NVCV_INTERP_NEAREST, 2,       1,  0, false, nvcv::FMT_Y8,    nvcv::FMT_Y8,  nvcv::FMT_F16,      nvcv::FMT_F16},
 });
 
 // clang-format on
@@ -1012,6 +1014,47 @@ ttype::Types<
 TEST(OpResizeCropConvertReformat_Negative, createWillNullPtr)
 {
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaResizeCropConvertReformatCreate(nullptr));
+}
+
+TEST(OpResizeCropConvertReformat_Negative, varshape_rejects_mixed_plane_data_types)
+{
+    const nvcv::ImageFormat mixedPlaneDataTypes{
+        NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X16)};
+
+    nvcv::ImageBatchVarShape input(1);
+    input.pushBack(nvcv::Image(nvcv::Size2D{8, 8}, mixedPlaneDataTypes));
+    nvcv::Tensor output = nvcv::util::CreateTensor(1, 4, 4, nvcv::FMT_RGB8);
+
+    cvcuda::ResizeCropConvertReformat op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&] {
+                      op(nullptr, input, output, NVCVSize2D{8, 8}, NVCV_INTERP_NEAREST, int2{0, 0});
+                  }));
+}
+
+TEST(OpResizeCropConvertReformat_Negative, rejects_mixed_width_tensor_dtype)
+{
+    const nvcv::DataType mixedWidth{nvcv::DataKind::UNSIGNED, nvcv::Packing::X5Y5Z6};
+    nvcv::Tensor         input(
+                {
+                    {1, 5, 5, 3},
+                    "NHWC"
+    },
+                mixedWidth);
+    nvcv::Tensor output(
+        {
+            {1, 5, 5, 3},
+            "NHWC"
+    },
+        mixedWidth);
+
+    cvcuda::ResizeCropConvertReformat op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&] {
+                      op(nullptr, input, output, NVCVSize2D{5, 5}, NVCV_INTERP_NEAREST, int2{0, 0});
+                  }));
 }
 
 TYPED_TEST(OpResizeCropConvertReformat_Negative, infer_negative_parameter)

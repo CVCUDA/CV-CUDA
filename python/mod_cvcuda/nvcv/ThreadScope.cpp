@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,9 +19,9 @@
 
 namespace nvcvpy::priv {
 
-void ExportThreadScope(py::module &m)
+void ExportThreadScope(py::module_ &m)
 {
-    py::enum_<ThreadScope>(m, "ThreadScope")
+    py::enum_compat<ThreadScope>(m, "ThreadScope")
         .value("GLOBAL", ThreadScope::GLOBAL, "Global scope.")
         .value("LOCAL", ThreadScope::LOCAL, "Thread-local scope.");
 }

@@ -23,34 +23,39 @@
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
 // Thin Python-facing wrappers; the create/guard/submit body lives in UnaryElementwiseOp.hpp, with
 // the threshold forwarded as the trailing submit() parameter.
-Tensor SolarizeInto(Tensor &output, Tensor &input, double threshold, std::optional<Stream> pstream)
+Tensor &SolarizeInto(Tensor &output, Tensor &input, double threshold, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::Solarize>(output, input, pstream, threshold);
 }
 
-Tensor Solarize(Tensor &input, double threshold, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Solarize(Tensor &input, double threshold, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseTensor<cvcuda::Solarize>(input, pstream, threshold);
 }
 
-ImageBatchVarShape SolarizeVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, double threshold,
-                                        std::optional<Stream> pstream)
+ImageBatchVarShape &SolarizeVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, double threshold,
+                                         std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::Solarize>(output, input, pstream, threshold);
 }
 
-ImageBatchVarShape SolarizeVarShape(ImageBatchVarShape &input, double threshold, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> SolarizeVarShape(ImageBatchVarShape &input, double threshold,
+                                                     std::optional<Stream *> pstream)
 {
     return UnaryElementwiseVarShape<cvcuda::Solarize>(input, pstream, threshold);
 }
 
 } // namespace
 
-void ExportOpSolarize(py::module &m)
+void ExportOpSolarize(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("solarize", NvtxTrace("cvcuda.solarize", &Solarize), "src"_a, "threshold"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
@@ -58,8 +63,9 @@ void ExportOpSolarize(py::module &m)
         Executes the Solarize operation on the given cuda stream.
 
         Inverts every pixel at or above ``threshold``: ``out = (in >= threshold) ? (bound - in) : in``,
-        where ``bound`` is the data type maximum (255 for uint8, 65535 for uint16, 1.0 for
-        float16/float32). Mirrors torchvision.transforms.v2.functional.solarize.
+        where ``bound`` is the maximum representable value for unsigned integer types and 1.0 for
+        float16/float32/float64. Floating-point subtraction is rounded to the output type.
+        Mirrors torchvision.transforms.v2.functional.solarize.
 
         See also:
             Refer to the CV-CUDA C API reference for the Solarize operator for more details and usage
@@ -79,7 +85,7 @@ void ExportOpSolarize(py::module &m)
     )pbdoc");
 
     m.def("solarize_into", NvtxTrace("cvcuda.solarize_into", &SolarizeInto), "dst"_a, "src"_a, "threshold"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Solarize operation on the given cuda stream.
 
@@ -120,8 +126,7 @@ void ExportOpSolarize(py::module &m)
     )pbdoc");
 
     m.def("solarize_into", NvtxTrace("cvcuda.solarize_into", &SolarizeVarShapeInto), "dst"_a, "src"_a, "threshold"_a,
-          py::kw_only(), "stream"_a = nullptr,
-          R"pbdoc(
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Solarize operation on the given cuda stream.
 

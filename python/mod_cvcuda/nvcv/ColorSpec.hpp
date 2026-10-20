@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,12 +18,12 @@
 #ifndef NVCV_PYTHON_COLOR_SPEC_HPP
 #define NVCV_PYTHON_COLOR_SPEC_HPP
 
-#include <pybind11/pybind11.h>
+#include <common/Binding.hpp>
 
 namespace nvcvpy::priv {
-namespace py = ::pybind11;
+namespace py = ::nanobind;
 
-void ExportColorSpec(py::module &m);
+void ExportColorSpec(py::module_ &m);
 
 } // namespace  nvcvpy::priv
 

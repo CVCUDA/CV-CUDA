@@ -22,16 +22,16 @@
 #include "Resource.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageFormat.hpp>
-#include <pybind11/stl.h>
 
 #include <cassert>
 #include <vector>
 
 namespace nvcvpy {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 namespace priv {
 class Image
@@ -48,7 +48,8 @@ public:
 
     static Image Create(nvcv::Size2D size, nvcv::ImageFormat fmt, int rowAlign = 0)
     {
-        PyObject *oimg = capi().Image_Create(size.w, size.h, static_cast<NVCVImageFormat>(fmt), rowAlign);
+        // reinterpret_steal below takes a non-const PyObject *.
+        PyObject *oimg = capi().Image_Create(size.w, size.h, static_cast<NVCVImageFormat>(fmt), rowAlign); // NOSONAR
         CheckCAPIError();
         NVCV_ASSERT(oimg != nullptr);
         py::object pyimg = py::reinterpret_steal<py::object>(oimg);
@@ -70,36 +71,31 @@ private:
 
 } // namespace nvcvpy
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 namespace cvpy = nvcvpy;
 
 template<>
-struct type_caster<cvpy::Image> : type_caster_base<cvpy::Image>
+struct type_caster<cvpy::Image>
 {
-    PYBIND11_TYPE_CASTER(cvpy::Image, const_name("cvcuda.Image"));
+    NB_TYPE_CASTER(cvpy::Image, const_name("cvcuda.Image"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *)
     {
-        // Does it have the correct object type?
-        const PyTypeObject *srctype = Py_TYPE(src.ptr());
-        if (strcmp(name.text, srctype->tp_name) == 0)
+        if (cvpy::IsFacadeInstance<cvpy::FacadeType::IMAGE>(src.ptr()))
         {
             value = cvpy::Image(reinterpret_borrow<object>(src));
             return true;
         }
-        else
-        {
-            return false;
-        }
+        return false;
     }
 
-    static handle cast(cvpy::Image tensor, return_value_policy /* policy */, handle /*parent */)
+    static handle from_cpp(cvpy::Image tensor, rv_policy, cleanup_list *) noexcept
     {
         return static_cast<object &>(tensor).release();
     }
 };
 
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_IMAGE_HPP

@@ -25,9 +25,9 @@ Overview
 The Advanced Color Conversion sample demonstrates GPU-accelerated color-space transformation
 using CV-CUDA's ``advcvtcolor`` operator. Unlike the basic :ref:`CvtColor Operator <sample_cvtcolor>`,
 ``advcvtcolor`` accepts a :pydata:`cvcuda.ColorSpec` argument that selects the standardized
-luma/chroma coefficients (BT.601, BT.709, or BT.2020) used during the conversion. This sample
-converts an RGB image to YUV (BT.709) and then back to RGB, demonstrating the round-trip workflow
-common in video-processing pipelines.
+luma/chroma coefficients (BT.601, BT.709, or BT.2020) used during the conversion. Each standard also
+has a full-range ``_ER`` variant. This sample converts an RGB image to full-range YUV (BT.709 ER) and
+then back to RGB, demonstrating the round-trip workflow common in video-processing pipelines.
 
 Usage
 -----
@@ -85,7 +85,9 @@ RGB to YUV and Back
 Key points:
 
 1. **Color Specification**: The ``spec`` argument selects the luma/chroma coefficients standard
-   (BT.601 for SD video, BT.709 for HDTV, BT.2020 for UHD/HDR). Mixing specifications between
+   (BT.601 for SD video, BT.709 for HDTV, BT.2020 for UHD/HDR). The corresponding ``_ER`` values
+   explicitly identify full range. AdvCvtColor's U8 arithmetic uses the full sample range for both
+   variants, so each base and ``_ER`` pair shares a coefficient family. Mixing standards between
    forward and inverse conversions will produce incorrect colors.
 2. **Round-trip fidelity**: Converting RGB → YUV → RGB with the same ``ColorSpec`` closely
    reproduces the original image; any visible difference is due to quantization in uint8.
@@ -114,7 +116,7 @@ After the RGB → YUV → RGB round-trip the image looks nearly identical to the
      - .. figure:: ../../content/cat_advcvtcolor.jpg
           :width: 100%
 
-          Output: RGB → YUV (BT.709) → RGB
+          Output: RGB → YUV (BT.709 ER) → RGB
 
 CV-CUDA Operators Used
 ^^^^^^^^^^^^^^^^^^^^^^

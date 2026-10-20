@@ -17,8 +17,7 @@
 
 #include "Nvtx.hpp"
 #include "OpCLAHE.hpp"
-
-#include "legacy/CvCudaUtils.cuh"
+#include "TensorAccessValidation.hpp"
 
 #include <cvcuda/cuda_tools/BorderVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/BorderWrap.hpp>
@@ -622,18 +621,8 @@ void CLAHE::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
     CVCUDA_NVTX_RANGE("cvcuda::CLAHE::operator()[Tensor]");
     ValidateClipLimit(clipLimit);
 
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (!inData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (!outData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData  = RequireCudaTensor(in, "Input");
+    auto outData = RequireCudaTensor(out, "Output");
 
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
     if (!inAccess)

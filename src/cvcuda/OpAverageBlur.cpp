@@ -17,6 +17,7 @@
 
 #include "priv/OpAverageBlur.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -54,6 +55,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaAverageBlurSubmit,
     return nvcv::ProtectCall(
         [&out, &in, &handle, &stream, &kernelWidth, &kernelHeight, &kernelAnchorX, &kernelAnchorY, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::TensorWrapHandle output(out);
             nvcv::TensorWrapHandle input(in);
             priv::ToDynamicRef<priv::AverageBlur>(handle)(stream, input.resource(), output.resource(),
@@ -70,6 +72,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaAverageBlurVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &kernelSize, &kernelAnchor, &handle, &stream, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
             nvcv::ImageBatchVarShapeWrapHandle outWrap(out);
             nvcv::TensorWrapHandle             kernelSizeWrap(kernelSize);

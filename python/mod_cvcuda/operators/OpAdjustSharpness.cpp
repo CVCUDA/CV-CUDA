@@ -23,35 +23,39 @@
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
 // Thin Python-facing wrappers; the create/guard/submit body lives in UnaryElementwiseOp.hpp, with
 // the sharpness factor forwarded as the trailing submit() parameter.
-Tensor AdjustSharpnessInto(Tensor &output, Tensor &input, float sharpnessFactor, std::optional<Stream> pstream)
+Tensor &AdjustSharpnessInto(Tensor &output, Tensor &input, double sharpnessFactor, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::AdjustSharpness>(output, input, pstream, sharpnessFactor);
 }
 
-Tensor AdjustSharpness(Tensor &input, float sharpnessFactor, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> AdjustSharpness(Tensor &input, double sharpnessFactor, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseTensor<cvcuda::AdjustSharpness>(input, pstream, sharpnessFactor);
 }
 
-ImageBatchVarShape AdjustSharpnessVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                               float sharpnessFactor, std::optional<Stream> pstream)
+ImageBatchVarShape &AdjustSharpnessVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                                double sharpnessFactor, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::AdjustSharpness>(output, input, pstream, sharpnessFactor);
 }
 
-ImageBatchVarShape AdjustSharpnessVarShape(ImageBatchVarShape &input, float sharpnessFactor,
-                                           std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> AdjustSharpnessVarShape(ImageBatchVarShape &input, double sharpnessFactor,
+                                                            std::optional<Stream *> pstream)
 {
     return UnaryElementwiseVarShape<cvcuda::AdjustSharpness>(input, pstream, sharpnessFactor);
 }
 
 } // namespace
 
-void ExportOpAdjustSharpness(py::module &m)
+void ExportOpAdjustSharpness(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("adjust_sharpness", NvtxTrace("cvcuda.adjust_sharpness", &AdjustSharpness), "src"_a, "sharpness_factor"_a,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -82,7 +86,7 @@ void ExportOpAdjustSharpness(py::module &m)
     )pbdoc");
 
     m.def("adjust_sharpness_into", NvtxTrace("cvcuda.adjust_sharpness_into", &AdjustSharpnessInto), "dst"_a, "src"_a,
-          "sharpness_factor"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "sharpness_factor"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Adjust Sharpness operation on the given cuda stream.
 
@@ -123,7 +127,8 @@ void ExportOpAdjustSharpness(py::module &m)
     )pbdoc");
 
     m.def("adjust_sharpness_into", NvtxTrace("cvcuda.adjust_sharpness_into", &AdjustSharpnessVarShapeInto), "dst"_a,
-          "src"_a, "sharpness_factor"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "src"_a, "sharpness_factor"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
+          R"pbdoc(
 
         Executes the Adjust Sharpness operation on the given cuda stream.
 

@@ -57,6 +57,10 @@ inline T MakeConvolveBorderValue(const float4 &borderValue)
     return borderValueT;
 }
 
+// Seeds the running min/max of Morph below (above) every representable value, so that only real
+// samples can win. lowest(), not min(): for a floating-point BT the latter is the smallest positive
+// normal, which is larger than every negative sample. cf.
+// OpMorphology.dilate_f32_all_negative_neighborhood.
 template<typename T>
 inline T MakeMorphBorderValue(NVCVMorphologyType type)
 {
@@ -69,7 +73,7 @@ inline T MakeMorphBorderValue(NVCVMorphologyType type)
     }
     else
     {
-        val = (type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
+        val = (type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::lowest()
                                                         : std::numeric_limits<BT>::max();
     }
     T borderValueT;
@@ -131,7 +135,8 @@ inline auto ConvolvePixel(const ConvolveRefData<T> &ref, int b, int y, int x)
     {
         for (int kx = 0; kx < ref.kernelSize.w; ++kx)
         {
-            res += ConvolveSourceValue(ref, b, y, x, ky, kx) * ref.kernel[ky * ref.kernelSize.w + kx];
+            res += cuda::StaticCast<std::common_type_t<BT, float>>(ConvolveSourceValue(ref, b, y, x, ky, kx))
+                 * ref.kernel[ky * ref.kernelSize.w + kx];
         }
     }
 
@@ -287,6 +292,14 @@ void Convolve(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::ve
 
         NVCV_TEST_CASE(U8, uint8_t);
         NVCV_TEST_CASE(U16, ushort);
+        NVCV_TEST_CASE(3U16, ushort3);
+        NVCV_TEST_CASE(4U16, ushort4);
+        NVCV_TEST_CASE(S16, short);
+        NVCV_TEST_CASE(3S16, short3);
+        NVCV_TEST_CASE(4S16, short4);
+        NVCV_TEST_CASE(S32, int);
+        NVCV_TEST_CASE(3S32, int3);
+        NVCV_TEST_CASE(4S32, int4);
         NVCV_TEST_CASE(3U8, uchar3);
         NVCV_TEST_CASE(4U8, uchar4);
         NVCV_TEST_CASE(4F32, float4);
@@ -315,6 +328,8 @@ void Morph(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vecto
 
         NVCV_TEST_CASE(U8, uint8_t);
         NVCV_TEST_CASE(U16, ushort);
+        NVCV_TEST_CASE(3U16, ushort3);
+        NVCV_TEST_CASE(4U16, ushort4);
         NVCV_TEST_CASE(3U8, uchar3);
         NVCV_TEST_CASE(4U8, uchar4);
         NVCV_TEST_CASE(4F32, float4);

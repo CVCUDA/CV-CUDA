@@ -15,41 +15,46 @@
  * limitations under the License.
  */
 
+#include "../nvcv/ImageBatch.hpp"
+#include "../nvcv/Tensor.hpp"
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpNormalize.hpp>
-#include <nvcv/python/Image.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 #include <stdexcept>
 
-namespace cvcudapy {
-
-namespace {
+namespace cvcudapy { namespace {
 
 enum OpFlags : uint32_t
 {
     SCALE_IS_STDDEV = CVCUDA_NORMALIZE_SCALE_IS_STDDEV
 };
 
-} // namespace
+}} // namespace cvcudapy
+
+namespace nanobind::detail {
+
+template<>
+struct type_caster<cvcudapy::OpFlags> : enum_compat_type_caster<cvcudapy::OpFlags>
+{
+};
+
+} // namespace nanobind::detail
+
+namespace cvcudapy {
 
 namespace {
 template<class DstT, class SrcT>
-DstT NormalizeSubmitInto(DstT &output, SrcT &input, Tensor &base, Tensor &scale, std::optional<uint32_t> flags,
-                         float globalScale, float globalShift, float epsilon, std::optional<Stream> pstream)
+DstT &NormalizeSubmitInto(DstT &output, SrcT &input, nvcvpy::priv::Tensor &base, nvcvpy::priv::Tensor &scale,
+                          std::optional<uint32_t> flags, float globalScale, float globalShift, float epsilon,
+                          std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    if (!pstream.has_value())
-    {
-        pstream = Stream::Current();
-    }
+    nvcvpy::priv::Stream &stream = pstream && *pstream ? **pstream : nvcvpy::priv::Stream::Current();
 
     if (!flags.has_value())
     {
@@ -58,32 +63,40 @@ DstT NormalizeSubmitInto(DstT &output, SrcT &input, Tensor &base, Tensor &scale,
 
     auto normalize = CreateOperator<cvcuda::Normalize>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, base, scale});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*normalize});
 
     guard.run(
-        [&normalize, &pstream, &input, &base, &scale, &output, &globalScale, &globalShift, &epsilon, &flags]() {
-            normalize->submit(pstream->cudaHandle(), input, base, scale, output, globalScale, globalShift, epsilon,
-                              *flags);
+        [&normalize, &stream, &input, &base, &scale, &output, &globalScale, &globalShift, &epsilon, &flags]()
+        {
+            normalize->submit(stream.handle(), input.impl(), base.impl(), scale.impl(), output.impl(), globalScale,
+                              globalShift, epsilon, *flags);
         });
 
     return output;
 }
 
-Tensor NormalizeInto(Tensor &output, Tensor &input, Tensor &base, Tensor &scale, std::optional<uint32_t> flags,
-                     float globalScale, float globalShift, float epsilon, std::optional<Stream> pstream)
+nvcvpy::priv::Tensor &NormalizeInto(nvcvpy::priv::Tensor &output, nvcvpy::priv::Tensor &input,
+                                    nvcvpy::priv::Tensor &base, nvcvpy::priv::Tensor &scale,
+                                    std::optional<uint32_t> flags, float globalScale, float globalShift, float epsilon,
+                                    std::optional<nvcvpy::priv::Stream *> pstream)
 {
     return NormalizeSubmitInto(output, input, base, scale, flags, globalScale, globalShift, epsilon, pstream);
 }
 
-Tensor Normalize(Tensor &input, Tensor &base, Tensor &scale, std::optional<uint32_t> flags, float globalScale,
-                 float globalShift, float epsilon, std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::Tensor> Normalize(nvcvpy::priv::Tensor &input, nvcvpy::priv::Tensor &base,
+                                                nvcvpy::priv::Tensor &scale, std::optional<uint32_t> flags,
+                                                float globalScale, float globalShift, float epsilon,
+                                                std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto stream = native::GetStream(pstream).sharedStream();
+    auto output = nvcvpy::priv::Tensor::CreateFromReqs(
+        nvcv::Tensor::CalcRequirements(input.impl().shape(), input.dtype()), stream.get());
 
-    return NormalizeInto(output, input, base, scale, flags, globalScale, globalShift, epsilon, pstream);
+    NormalizeInto(*output, input, base, scale, flags, globalScale, globalShift, epsilon, stream.get());
+    return output;
 }
 
 // Packs a Python list/tuple of 1..4 floats into a float4 (unused lanes zeroed) and reports how many
@@ -103,14 +116,12 @@ void ToFloat4AndCount(const std::vector<float> &values, const char *name, float4
     count = static_cast<int32_t>(n);
 }
 
-Tensor NormalizeScalarInto(Tensor &output, Tensor &input, const std::vector<float> &base,
-                           const std::vector<float> &scale, std::optional<uint32_t> flags, float globalScale,
-                           float globalShift, float epsilon, std::optional<Stream> pstream)
+nvcvpy::priv::Tensor &NormalizeScalarInto(nvcvpy::priv::Tensor &output, nvcvpy::priv::Tensor &input,
+                                          const std::vector<float> &base, const std::vector<float> &scale,
+                                          std::optional<uint32_t> flags, float globalScale, float globalShift,
+                                          float epsilon, std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    if (!pstream.has_value())
-    {
-        pstream = Stream::Current();
-    }
+    nvcvpy::priv::Stream &stream = pstream && *pstream ? **pstream : nvcvpy::priv::Stream::Current();
 
     if (!flags.has_value())
     {
@@ -128,54 +139,66 @@ Tensor NormalizeScalarInto(Tensor &output, Tensor &input, const std::vector<floa
 
     // base/scale are host values passed by value into the kernel launch, so only input/output are
     // device resources that need guarding.
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*normalize});
 
     guard.run(
-        [&normalize, &pstream, &input, base4, scale4, baseCount, scaleCount, &output, &globalScale, &globalShift,
+        [&normalize, &stream, &input, base4, scale4, baseCount, scaleCount, &output, &globalScale, &globalShift,
          &epsilon, &flags]()
         {
-            normalize->submit(pstream->cudaHandle(), input, base4, scale4, baseCount, scaleCount, output, globalScale,
-                              globalShift, epsilon, *flags);
+            normalize->submit(stream.handle(), input.impl(), base4, scale4, baseCount, scaleCount, output.impl(),
+                              globalScale, globalShift, epsilon, *flags);
         });
 
-    return std::move(output);
+    return output;
 }
 
-Tensor NormalizeScalar(Tensor &input, const std::vector<float> &base, const std::vector<float> &scale,
-                       std::optional<uint32_t> flags, float globalScale, float globalShift, float epsilon,
-                       std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::Tensor> NormalizeScalar(nvcvpy::priv::Tensor &input, const std::vector<float> &base,
+                                                      const std::vector<float> &scale, std::optional<uint32_t> flags,
+                                                      float globalScale, float globalShift, float epsilon,
+                                                      std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto stream = native::GetStream(pstream).sharedStream();
+    auto output = nvcvpy::priv::Tensor::CreateFromReqs(
+        nvcv::Tensor::CalcRequirements(input.impl().shape(), input.dtype()), stream.get());
 
-    return NormalizeScalarInto(output, input, base, scale, flags, globalScale, globalShift, epsilon, pstream);
+    NormalizeScalarInto(*output, input, base, scale, flags, globalScale, globalShift, epsilon, stream.get());
+    return output;
 }
 
-ImageBatchVarShape VarShapeNormalizeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &base,
-                                         Tensor &scale, std::optional<uint32_t> flags, float globalScale,
-                                         float globalShift, float epsilon, std::optional<Stream> pstream)
+nvcvpy::priv::ImageBatchVarShape &VarShapeNormalizeInto(nvcvpy::priv::ImageBatchVarShape &output,
+                                                        nvcvpy::priv::ImageBatchVarShape &input,
+                                                        nvcvpy::priv::Tensor &base, nvcvpy::priv::Tensor &scale,
+                                                        std::optional<uint32_t> flags, float globalScale,
+                                                        float globalShift, float epsilon,
+                                                        std::optional<nvcvpy::priv::Stream *> pstream)
 {
     return NormalizeSubmitInto(output, input, base, scale, flags, globalScale, globalShift, epsilon, pstream);
 }
 
-ImageBatchVarShape VarShapeNormalize(ImageBatchVarShape &input, Tensor &base, Tensor &scale,
-                                     std::optional<uint32_t> flags, float globalScale, float globalShift, float epsilon,
-                                     std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::ImageBatchVarShape> VarShapeNormalize(nvcvpy::priv::ImageBatchVarShape &input,
+                                                                    nvcvpy::priv::Tensor             &base,
+                                                                    nvcvpy::priv::Tensor             &scale,
+                                                                    std::optional<uint32_t> flags, float globalScale,
+                                                                    float globalShift, float epsilon,
+                                                                    std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto stream = native::GetStream(pstream).sharedStream();
+    auto output = CreateSameShapeImageBatch(input, *stream);
 
-    return VarShapeNormalizeInto(output, input, base, scale, flags, globalScale, globalShift, epsilon, pstream);
+    VarShapeNormalizeInto(*output, input, base, scale, flags, globalScale, globalShift, epsilon, stream.get());
+    return output;
 }
 
 } // namespace
 
-void ExportOpNormalize(py::module &m)
+void ExportOpNormalize(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
-    py::enum_<OpFlags>(m, "NormalizeFlags").value("SCALE_IS_STDDEV", OpFlags::SCALE_IS_STDDEV);
+    py::enum_compat<OpFlags>(m, "NormalizeFlags").value("SCALE_IS_STDDEV", OpFlags::SCALE_IS_STDDEV);
 
     float defGlobalScale = 1;
     float defGlobalShift = 0;
@@ -206,7 +229,7 @@ void ExportOpNormalize(py::module &m)
 
     m.def("normalize_into", NvtxTrace("cvcuda.normalize_into", &NormalizeInto), "dst"_a, "src"_a, "base"_a, "scale"_a,
           "flags"_a = std::nullopt, py::kw_only(), "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift,
-          "epsilon"_a = defEpsilon, "stream"_a = nullptr, R"pbdoc(
+          "epsilon"_a = defEpsilon, "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Normalize operation on the given cuda stream.
 
 
@@ -252,7 +275,8 @@ void ExportOpNormalize(py::module &m)
 
     m.def("normalize_into", NvtxTrace("cvcuda.normalize_into", &VarShapeNormalizeInto), "dst"_a, "src"_a, "base"_a,
           "scale"_a, "flags"_a = std::nullopt, py::kw_only(), "globalscale"_a = defGlobalScale,
-          "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon, "stream"_a = nullptr, R"pbdoc(
+          "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon, "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Normalize operation on the given cuda stream.
 
 
@@ -300,7 +324,8 @@ void ExportOpNormalize(py::module &m)
 
     m.def("normalize_into", NvtxTrace("cvcuda.normalize_into", &NormalizeScalarInto), "dst"_a, "src"_a, "base"_a,
           "scale"_a, "flags"_a = std::nullopt, py::kw_only(), "globalscale"_a = defGlobalScale,
-          "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon, "stream"_a = nullptr, R"pbdoc(
+          "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon, "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Normalize operation on the given cuda stream.
 
         base and scale are given by value as Python lists/tuples of floats (not tensors), so no

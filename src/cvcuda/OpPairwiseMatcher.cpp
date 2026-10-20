@@ -17,6 +17,7 @@
 
 #include "priv/OpPairwiseMatcher.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -32,6 +33,7 @@ CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaPairwiseMatcherCreate,
     return nvcv::ProtectCall(
         [&handle, &algoChoice]
         {
+            priv::CheckEnumArg(algoChoice, NVCV_BRUTE_FORCE, "pairwise matcher type");
             if (handle == nullptr)
             {
                 throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -53,6 +55,7 @@ CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaPairwiseMatcherSubmit,
         [&handle, &stream, &set1, &set2, &numSet1, &numSet2, &matches, &numMatches, &distances, &crossCheck,
          &matchesPerPoint, &normType]
         {
+            priv::CheckEnumArg(normType, NVCV_NORM_HUBER, "norm type");
             cvcuda::priv::ToDynamicRef<cvcuda::priv::PairwiseMatcher>(handle)(
                 stream, nvcv::TensorWrapHandle{set1}.resource(), nvcv::TensorWrapHandle{set2}.resource(),
                 nvcv::TensorWrapHandle{numSet1}.resource(), nvcv::TensorWrapHandle{numSet2}.resource(),

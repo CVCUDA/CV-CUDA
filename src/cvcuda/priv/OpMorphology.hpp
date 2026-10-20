@@ -25,12 +25,12 @@
 #define CVCUDA_PRIV_MORPHOLOGY_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <cvcuda/Types.h>
+#include <nvcv/BorderType.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -47,10 +47,6 @@ public:
                     nvcv::OptionalImageBatchVarShapeConstRef workspace, NVCVMorphologyType morph_type,
                     const nvcv::Tensor &masks, const nvcv::Tensor &anchors, int32_t iteration,
                     NVCVBorderType borderMode) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::Morphology>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::MorphologyVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

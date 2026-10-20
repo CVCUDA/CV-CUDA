@@ -15,56 +15,81 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpOSD.hpp>
 #include <cvcuda/priv/Types.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 #include <memory>
 
 namespace cvcudapy {
 
+template<>
+struct OperatorCacheUsesCompletionLease<cvcuda::OSD> : std::true_type
+{
+};
+
 namespace {
 using ElementsImpl = cvcuda::priv::NVCVElementsImpl;
+using native::Stream;
+using native::Tensor;
 
-Tensor OSDInto(Tensor &output, Tensor &input, const std::shared_ptr<ElementsImpl> &elements,
-               std::optional<Stream> pstream)
+// Segment and PolyLine commands contain device pointers owned by Elements.
+// Model that owner as a resource so the pending-release queue retains it until OSD completes.
+class ElementsLifetimeResource final : public OperatorResource
 {
-    if (!pstream)
+public:
+    explicit ElementsLifetimeResource(std::shared_ptr<ElementsImpl> elements)
+        : m_elements(std::move(elements))
     {
-        pstream = Stream::Current();
     }
 
-    auto op = CreateOperator<cvcuda::OSD>();
+    std::mutex *submissionMutex() const override
+    {
+        return nullptr;
+    }
 
-    ResourceGuard guard(*pstream);
+private:
+    std::shared_ptr<ElementsImpl> m_elements;
+};
+
+Tensor &OSDInto(Tensor &output, Tensor &input, const std::shared_ptr<ElementsImpl> &elements,
+                std::optional<Stream *> pstream)
+{
+    Stream &stream = native::GetStream(pstream);
+
+    auto op               = CreateOperator<cvcuda::OSD>();
+    auto elementsLifetime = std::make_shared<ElementsLifetimeResource>(elements);
+
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_NONE, {*elementsLifetime});
 
     auto elementsHandle = static_cast<NVCVElements>(static_cast<void *>(elements.get()));
-    guard.run([&op, &pstream, &input, &output, elementsHandle]()
-              { op->submit(pstream->cudaHandle(), input, output, elementsHandle); });
+    guard.run([&op, &stream, &input, &output, elementsHandle]()
+              { op->submit(stream.handle(), input.impl(), output.impl(), elementsHandle); });
 
-    return std::move(output);
+    return output;
 }
 
-Tensor OSD(Tensor &input, const std::shared_ptr<ElementsImpl> &elements, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> OSD(Tensor &input, const std::shared_ptr<ElementsImpl> &elements,
+                            std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return OSDInto(output, input, elements, pstream);
+    OSDInto(*output, input, elements, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpOSD(py::module &m)
+void ExportOpOSD(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("osd", NvtxTrace("cvcuda.osd", &OSD), "src"_a, "elements"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the OSD operation on the given cuda stream.
@@ -81,7 +106,7 @@ void ExportOpOSD(py::module &m)
     )pbdoc");
 
     m.def("osd_into", NvtxTrace("cvcuda.osd_into", &OSDInto), "dst"_a, "src"_a, "elements"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the OSD operation on the given cuda stream.
 
 

@@ -29,6 +29,7 @@
 
 #include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
+#include <nvcv/RoundMode.h>
 #include <nvcv/Tensor.hpp>
 
 #include <cstddef>
@@ -66,10 +67,11 @@ class AdjustContrast final : public IOperator
 public:
     explicit AdjustContrast();
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double contrastFactor) const;
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double contrastFactor,
+                    NVCVRoundMode roundMode) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
-                    double contrastFactor) const;
+                    double contrastFactor, NVCVRoundMode roundMode) const;
 
 private:
     mutable PerDeviceResource<AdjustContrastWorkspace> m_workspace;

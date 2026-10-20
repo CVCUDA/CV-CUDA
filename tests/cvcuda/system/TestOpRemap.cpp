@@ -30,6 +30,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <random>
@@ -173,19 +174,38 @@ void Remap(const std::vector<uint8_t> &src, std::vector<uint8_t> &dst, const std
     }
 }
 
+// Gather the valid output elements through the strides, skipping row/sample padding bytes.
+template<typename T, int NumChannels>
+static std::vector<T> GatherElements(const std::vector<uint8_t> &vec, const long3 &strides, const int3 &shape)
+{
+    std::vector<T> out;
+    out.reserve(static_cast<size_t>(shape.x) * shape.y * shape.z * NumChannels);
+    for (int z = 0; z < shape.z; ++z)
+        for (int y = 0; y < shape.y; ++y)
+            for (int x = 0; x < shape.x; ++x)
+            {
+                // The channels of one pixel are contiguous, so copy them in one go.
+                out.resize(out.size() + NumChannels);
+                std::memcpy(&out[out.size() - NumChannels], &vec[z * strides.x + y * strides.y + x * strides.z],
+                            NumChannels * sizeof(T));
+            }
+    return out;
+}
+
 // Check the operator output against the CPU gold. F16 runs the FP32 gold on the widened
-// (already half-quantized) input and compares within half ULPs; everything else runs the
-// same-type gold with the historical byte-wise NEAR(1) check.
+// (already half-quantized) input and compares within half ULPs; F32 compares within float ULPs;
+// integer types keep the historical byte-wise NEAR(1) check.
 template<NVCVInterpolationType SI, NVCVInterpolationType MI, NVCVBorderType SB, typename ValueType>
 void CheckAgainstGold(const std::vector<uint8_t> &dstVec, const std::vector<uint8_t> &srcVec,
                       const std::vector<uint8_t> &mapVec, const long3 &srcStrides, const long3 &dstStrides,
                       const long3 &mapStrides, const int3 &srcShape, const int3 &dstShape, const int3 &mapShape,
                       NVCVRemapMapValueType mapValueType, bool alignCorners, const float4 &borderValue)
 {
-    if constexpr (std::is_same_v<cuda::BaseType<ValueType>, __half>)
-    {
-        static_assert(cuda::NumElements<ValueType> == 1, "F16 remap is single-channel only, like F32");
+    using BT                = cuda::BaseType<ValueType>;
+    constexpr int kNumElems = cuda::NumElements<ValueType>;
 
+    if constexpr (std::is_same_v<BT, __half>)
+    {
         // Widen the half input into a float buffer with doubled strides (__half is 2 bytes,
         // float is 4); padding bytes widen to garbage floats, but the gold never reads them.
         std::vector<float>   srcFloat = test::HalfBytesToFloat(srcVec);
@@ -194,30 +214,15 @@ void CheckAgainstGold(const std::vector<uint8_t> &dstVec, const std::vector<uint
 
         std::vector<uint8_t> refVecF(dstVec.size() * 2, uint8_t{0});
 
-        Remap<SI, MI, SB, float1>(srcVecF, refVecF, mapVec, srcStrides * 2, dstStrides * 2, mapStrides, srcShape,
-                                  dstShape, mapShape, mapValueType, alignCorners, borderValue);
+        using FloatType = cuda::ConvertBaseTypeTo<float, ValueType>;
+        Remap<SI, MI, SB, FloatType>(srcVecF, refVecF, mapVec, srcStrides * 2, dstStrides * 2, mapStrides, srcShape,
+                                     dstShape, mapShape, mapValueType, alignCorners, borderValue);
 
-        // Gather the valid elements through the strides (skipping padding bytes) and compare
-        // within kUlps = 4 (HalfTestUtils.hpp policy): the FP32 reference is intentionally
+        // kUlps = 4 (HalfTestUtils.hpp policy): the FP32 reference is intentionally
         // higher precision, and remap does one n-tap source interpolation (4-tap LINEAR /
         // 16-tap CUBIC) accumulated in float with a single final rounding to half.
-        const long3         dstStridesF = dstStrides * 2;
-        std::vector<float>  gold;
-        std::vector<__half> out;
-        gold.reserve(static_cast<size_t>(dstShape.x) * dstShape.y * dstShape.z);
-        out.reserve(gold.capacity());
-        const int elemsPerImage = dstShape.x * dstShape.y;
-        for (int i = 0; i < elemsPerImage * dstShape.z; ++i)
-        {
-            const int z = i / elemsPerImage;
-            const int y = i % elemsPerImage / dstShape.x;
-            const int x = i % dstShape.x;
-            gold.push_back(
-                *reinterpret_cast<const float *>(&refVecF[z * dstStridesF.x + y * dstStridesF.y + x * dstStridesF.z]));
-            out.push_back(
-                *reinterpret_cast<const __half *>(&dstVec[z * dstStrides.x + y * dstStrides.y + x * dstStrides.z]));
-        }
-        test::ExpectNearHalfUlps(gold, out, 4.f);
+        test::ExpectNearHalfUlps(GatherElements<float, kNumElems>(refVecF, dstStrides * 2, dstShape),
+                                 GatherElements<__half, kNumElems>(dstVec, dstStrides, dstShape), 4.f);
     }
     else
     {
@@ -226,7 +231,24 @@ void CheckAgainstGold(const std::vector<uint8_t> &dstVec, const std::vector<uint
         Remap<SI, MI, SB, ValueType>(srcVec, refVec, mapVec, srcStrides, dstStrides, mapStrides, srcShape, dstShape,
                                      mapShape, mapValueType, alignCorners, borderValue);
 
-        VEC_EXPECT_NEAR(dstVec, refVec, 1);
+        if constexpr (std::is_same_v<BT, float>)
+        {
+            // Byte-wise NEAR(1) on IEEE floats is meaningless. Host and device both accumulate
+            // the n-tap interpolation in float, but nvcc contracts the multiply-adds into FMAs
+            // while the host compiler may not (target/flag dependent), so results differ by a
+            // few ULPs. 4 float ULPs bounds 4 taps of non-negative weights.
+            const std::vector<float> gold = GatherElements<float, kNumElems>(refVec, dstStrides, dstShape);
+            const std::vector<float> out  = GatherElements<float, kNumElems>(dstVec, dstStrides, dstShape);
+            for (size_t i = 0; i < gold.size(); ++i)
+            {
+                const float ulp = std::nextafter(std::abs(gold[i]), INFINITY) - std::abs(gold[i]);
+                EXPECT_NEAR(out[i], gold[i], 4.f * ulp) << "At element " << i;
+            }
+        }
+        else
+        {
+            VEC_EXPECT_NEAR(dstVec, refVec, 1);
+        }
     }
 }
 
@@ -267,7 +289,7 @@ NVCV_TYPED_TEST_SUITE(
                   false, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_REFLECT101, 0.f),
     NVCV_TEST_ROW(NVCV_SHAPE(16, 17, 3), NVCV_SHAPE(18, 12, 3), NVCV_SHAPE(36, 24, 3), uchar1, NVCV_IMAGE_FORMAT_Y8,
                   true, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, NVCV_REMAP_RELATIVE_NORMALIZED, NVCV_BORDER_REFLECT101, 0.f),
-    // F16 mirrors F32 support (single-channel only). Rows are appended so the fixed-seed random
+    // Rows are appended so the fixed-seed random
     // draw sequences of the pre-existing rows stay unchanged.
     NVCV_TEST_ROW(NVCV_SHAPE(42, 42, 1), NVCV_SHAPE(42, 42, 1), NVCV_SHAPE(2, 2, 1), half1, NVCV_IMAGE_FORMAT_F16,
                   false, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_REMAP_RELATIVE_NORMALIZED, NVCV_BORDER_CONSTANT, 123.f),
@@ -276,7 +298,15 @@ NVCV_TYPED_TEST_SUITE(
     NVCV_TEST_ROW(NVCV_SHAPE(51, 62, 2), NVCV_SHAPE(12, 38, 2), NVCV_SHAPE(24, 76, 2), half1, NVCV_IMAGE_FORMAT_F16,
                   false, NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_WRAP, 0.f),
     NVCV_TEST_ROW(NVCV_SHAPE(16, 17, 3), NVCV_SHAPE(18, 12, 3), NVCV_SHAPE(18, 12, 3), half1, NVCV_IMAGE_FORMAT_F16,
-                  false, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_REFLECT101, 0.f)
+                  false, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_REFLECT101, 0.f),
+    NVCV_TEST_ROW(NVCV_SHAPE(13, 9, 2), NVCV_SHAPE(11, 8, 2), NVCV_SHAPE(11, 8, 2), float3, NVCV_IMAGE_FORMAT_RGBf32,
+                  false, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_CONSTANT, .25f),
+    NVCV_TEST_ROW(NVCV_SHAPE(13, 9, 2), NVCV_SHAPE(11, 8, 2), NVCV_SHAPE(11, 8, 2), float4, NVCV_IMAGE_FORMAT_RGBAf32,
+                  false, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_CONSTANT, .25f),
+    NVCV_TEST_ROW(NVCV_SHAPE(13, 9, 2), NVCV_SHAPE(11, 8, 2), NVCV_SHAPE(11, 8, 2), half3, NVCV_IMAGE_FORMAT_RGBf16,
+                  false, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_CONSTANT, .25f),
+    NVCV_TEST_ROW(NVCV_SHAPE(13, 9, 2), NVCV_SHAPE(11, 8, 2), NVCV_SHAPE(11, 8, 2), half4, NVCV_IMAGE_FORMAT_RGBAf16,
+                  false, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_CONSTANT, .25f)
 >);
 
 // clang-format on
@@ -542,7 +572,8 @@ std::vector<float> MakeDeterministicMap(int w, int h, int seed)
 
 template<typename T>
 void RunRemapTensorParity(nvcv::ImageFormat interFmt, nvcv::ImageFormat planarFmt, int W, int H, int N,
-                          NVCVInterpolationType srcInterp, NVCVInterpolationType mapInterp, NVCVBorderType border)
+                          NVCVInterpolationType srcInterp, NVCVInterpolationType mapInterp, NVCVBorderType border,
+                          float4 borderValue = {})
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -574,10 +605,10 @@ void RunRemapTensorParity(nvcv::ImageFormat interFmt, nvcv::ImageFormat planarFm
     }
 
     cvcuda::Remap op;
-    EXPECT_NO_THROW(op(stream, srcI, dstI, mapT, srcInterp, mapInterp, NVCV_REMAP_RELATIVE_NORMALIZED, false, border,
-                       float4{0.f, 0.f, 0.f, 0.f}));
-    EXPECT_NO_THROW(op(stream, srcP, dstP, mapT, srcInterp, mapInterp, NVCV_REMAP_RELATIVE_NORMALIZED, false, border,
-                       float4{0.f, 0.f, 0.f, 0.f}));
+    EXPECT_NO_THROW(
+        op(stream, srcI, dstI, mapT, srcInterp, mapInterp, NVCV_REMAP_RELATIVE_NORMALIZED, false, border, borderValue));
+    EXPECT_NO_THROW(
+        op(stream, srcP, dstP, mapT, srcInterp, mapInterp, NVCV_REMAP_RELATIVE_NORMALIZED, false, border, borderValue));
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 
     for (int n = 0; n < N; ++n)
@@ -595,6 +626,76 @@ void RunRemapTensorParity(nvcv::ImageFormat interFmt, nvcv::ImageFormat planarFm
 
 } // namespace
 
+TEST(OpRemapPlanar, tensor_more_than_four_channels_constant_and_replicate)
+{
+    constexpr int kWidth  = 8;
+    constexpr int kHeight = 8;
+    cudaStream_t  stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    for (int kChannels : {4, 5, 8})
+    {
+        SCOPED_TRACE(kChannels);
+        nvcv::Tensor src(
+            {
+                {1, kChannels, kHeight, kWidth},
+                "NCHW"
+        },
+            nvcv::TYPE_U8);
+        nvcv::Tensor dst(
+            {
+                {1, kChannels, kHeight, kWidth},
+                "NCHW"
+        },
+            nvcv::TYPE_U8);
+        nvcv::Tensor map     = nvcv::util::CreateTensor(1, kWidth, kHeight, nvcv::FMT_2F32);
+        auto         srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+        auto         dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+        auto         mapData = map.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(srcData && dstData && mapData);
+        std::vector<uint8_t> input(kChannels * kWidth * kHeight, 29);
+        std::vector<float>   mapValues(2 * kWidth * kHeight, -20.f);
+        nvcv::util::SetImageTensorFromVector<uint8_t>(*srcData, input, 0);
+        nvcv::util::SetImageTensorFromVector<float>(*mapData, mapValues, 0);
+        cvcuda::Remap op;
+        const float4  uniform{7.f, 7.f, 7.f, 7.f};
+        const float4  nonuniform{7.f, 8.f, 7.f, 7.f};
+        for (auto border : {NVCV_BORDER_CONSTANT, NVCV_BORDER_CONSTANT_COVERAGE})
+        {
+            SCOPED_TRACE(border);
+            EXPECT_EQ(NVCV_SUCCESS, nvcv::ProtectCall(
+                                        [&] {
+                                            op(stream, src, dst, map, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST,
+                                               NVCV_REMAP_ABSOLUTE, false, border, uniform);
+                                        }));
+            ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+            std::vector<uint8_t> actual;
+            nvcv::util::GetImageVectorFromTensor<uint8_t>(*dstData, 0, actual);
+            EXPECT_EQ(actual, std::vector<uint8_t>(kChannels * kWidth * kHeight, 7));
+            if (kChannels > 4)
+            {
+                EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                                           [&]
+                                                           {
+                                                               op(stream, src, dst, map, NVCV_INTERP_NEAREST,
+                                                                  NVCV_INTERP_NEAREST, NVCV_REMAP_ABSOLUTE, false,
+                                                                  border, nonuniform);
+                                                           }));
+            }
+        }
+        EXPECT_EQ(NVCV_SUCCESS, nvcv::ProtectCall(
+                                    [&]
+                                    {
+                                        op(stream, src, dst, map, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST,
+                                           NVCV_REMAP_ABSOLUTE, false, NVCV_BORDER_REPLICATE, nonuniform);
+                                    }));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        std::vector<uint8_t> replicate;
+        nvcv::util::GetImageVectorFromTensor<uint8_t>(*dstData, 0, replicate);
+        EXPECT_EQ(replicate, std::vector<uint8_t>(kChannels * kWidth * kHeight, 29));
+    }
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpRemapPlanar, tensor_rgb8_nearest_matches_interleaved)
 {
     RunRemapTensorParity<uint8_t>(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 33, 17, 2, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST,
@@ -606,6 +707,18 @@ TEST(OpRemapPlanar, tensor_rgb8_cubic_constant_matches_interleaved)
     // CUBIC source interpolation + uniform (zero) constant border.
     RunRemapTensorParity<uint8_t>(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 24, 20, 2, NVCV_INTERP_CUBIC, NVCV_INTERP_LINEAR,
                                   NVCV_BORDER_CONSTANT);
+}
+
+TEST(OpRemapPlanar, tensor_rgb32_nonuniform_constant_matches_interleaved)
+{
+    RunRemapTensorParity<float>(nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p, 17, 13, 2, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST,
+                                NVCV_BORDER_CONSTANT, float4{11.f, 17.f, 23.f, 0.f});
+}
+
+TEST(OpRemapPlanar, tensor_rgb32_nonuniform_coverage_matches_interleaved)
+{
+    RunRemapTensorParity<float>(nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p, 17, 13, 2, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST,
+                                NVCV_BORDER_CONSTANT_COVERAGE, float4{11.75f, 17.75f, 23.75f, 0.f});
 }
 
 TEST(OpRemapPlanar, tensor_rgba8_linear_matches_interleaved)
@@ -668,7 +781,8 @@ std::vector<T> DownloadImageInterleaved(const nvcv::Image &img, int w, int h, in
 
 template<typename T>
 void RunRemapVarShapeParity(nvcv::ImageFormat interFmt, nvcv::ImageFormat planarFmt, int W, int H, int N,
-                            NVCVInterpolationType srcInterp, NVCVInterpolationType mapInterp, NVCVBorderType border)
+                            NVCVInterpolationType srcInterp, NVCVInterpolationType mapInterp, NVCVBorderType border,
+                            float4 borderValue = {})
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -713,9 +827,9 @@ void RunRemapVarShapeParity(nvcv::ImageFormat interFmt, nvcv::ImageFormat planar
 
     cvcuda::Remap op;
     EXPECT_NO_THROW(op(stream, bSrcI, bDstI, mapT, srcInterp, mapInterp, NVCV_REMAP_RELATIVE_NORMALIZED, false, border,
-                       float4{0.f, 0.f, 0.f, 0.f}));
+                       borderValue));
     EXPECT_NO_THROW(op(stream, bSrcP, bDstP, mapT, srcInterp, mapInterp, NVCV_REMAP_RELATIVE_NORMALIZED, false, border,
-                       float4{0.f, 0.f, 0.f, 0.f}));
+                       borderValue));
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 
     for (int n = 0; n < N; ++n)
@@ -743,6 +857,42 @@ TEST(OpRemapPlanar, varshape_rgba8_linear_matches_interleaved)
                                     NVCV_INTERP_LINEAR, NVCV_BORDER_CONSTANT);
 }
 
+TEST(OpRemapPlanar, varshape_rgb32_nonuniform_constant_matches_interleaved)
+{
+    RunRemapVarShapeParity<float>(nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p, 17, 13, 2, NVCV_INTERP_LINEAR,
+                                  NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT, float4{11.f, 17.f, 23.f, 0.f});
+}
+
+TEST(OpRemapPlanar, varshape_rgb32_replicate_nonuniform_matches_uniform)
+{
+    RunRemapVarShapeParity<float>(nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p, 17, 13, 2, NVCV_INTERP_LINEAR,
+                                  NVCV_INTERP_NEAREST, NVCV_BORDER_REPLICATE, float4{11.f, 17.f, 23.f, 0.f});
+}
+
+TEST(OpRemapPlanar, varshape_rgba32_nonuniform_constant_matches_interleaved)
+{
+    RunRemapVarShapeParity<float>(nvcv::FMT_RGBAf32, nvcv::FMT_RGBAf32p, 17, 13, 2, NVCV_INTERP_LINEAR,
+                                  NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT, float4{11.f, 17.f, 23.f, 31.f});
+}
+
+TEST(OpRemapPlanar, varshape_rgb16_nonuniform_constant_matches_interleaved)
+{
+    RunRemapVarShapeParity<half>(nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p, 17, 13, 2, NVCV_INTERP_LINEAR,
+                                 NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT, float4{11.f, 17.f, 23.f, 0.f});
+}
+
+TEST(OpRemapPlanar, varshape_rgba16_nonuniform_constant_matches_interleaved)
+{
+    RunRemapVarShapeParity<half>(nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16p, 17, 13, 2, NVCV_INTERP_LINEAR,
+                                 NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT, float4{11.f, 17.f, 23.f, 31.f});
+}
+
+TEST(OpRemapPlanar, varshape_rgb8_cubic_edge_guards)
+{
+    RunRemapVarShapeParity<uint8_t>(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 33, 5, 2, NVCV_INTERP_CUBIC, NVCV_INTERP_LINEAR,
+                                    NVCV_BORDER_REPLICATE);
+}
+
 #define NVCV_IMAGE_FORMAT_INVALID_MAP NVCV_DETAIL_MAKE_NONCOLOR_FMT2(PL, FLOAT, XYZW, ASSOCIATED, X32_Y32, X32_Y32)
 
 static auto OpRemapNegativeParams()
@@ -751,23 +901,20 @@ static auto OpRemapNegativeParams()
                     nvcv::ImageFormat, NVCVInterpolationType, NVCVInterpolationType, NVCVBorderType>
         params{
   // inputShape, dstShape, mapShape, inputFormat, outputFormat, mapFormat, inputInterp, mapInterp, borderValue
-            {42, 42, 1, 42, 42, 1, 2, 2, 1,   nvcv::FMT_RGB8,     nvcv::FMT_U8,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
+            {42, 42, 1, 42, 42, 1, 2, 2, 1,  nvcv::FMT_RGB8,     nvcv::FMT_U8,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
              NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
-            {42, 42, 2, 42, 42, 1, 2, 2, 1,   nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
+            {42, 42, 2, 42, 42, 1, 2, 2, 1,  nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
              NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
-            {42, 42, 2, 42, 42, 2, 2, 2, 5,   nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
+            {42, 42, 2, 42, 42, 2, 2, 2, 5,  nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
              NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
-            {42, 42, 1, 42, 42, 1, 2, 2, 1,  nvcv::FMT_RGB8p,   nvcv::FMT_RGB8,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
+            {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGB8p,   nvcv::FMT_RGB8,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
              NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
-            {42, 42, 1, 42, 42, 1, 2, 2, 1,   nvcv::FMT_RGB8, nvcv::FMT_RGBf32,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
+            {42, 42, 1, 42, 42, 1, 2, 2, 1,  nvcv::FMT_RGB8, nvcv::FMT_RGBf32,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
              NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
-            {42, 42, 1, 42, 42, 1, 2, 2, 1,   nvcv::FMT_RGB8,   nvcv::FMT_RGB8, nvcv::FMT_RGBf32, NVCV_INTERP_NEAREST,
-             NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
- // multi-channel F16 is unsupported (F16 is single-channel only, like F32)
-            {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGBf16, nvcv::FMT_RGBf16,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
+            {42, 42, 1, 42, 42, 1, 2, 2, 1,  nvcv::FMT_RGB8,   nvcv::FMT_RGB8, nvcv::FMT_RGBf32, NVCV_INTERP_NEAREST,
              NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
  // F64 is an unsupported data type even single-channel
-            {42, 42, 1, 42, 42, 1, 2, 2, 1,    nvcv::FMT_F64,    nvcv::FMT_F64,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
+            {42, 42, 1, 42, 42, 1, 2, 2, 1,   nvcv::FMT_F64,    nvcv::FMT_F64,   nvcv::FMT_2F32, NVCV_INTERP_NEAREST,
              NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
     };
 #ifndef ENABLE_SANITIZER
@@ -786,12 +933,10 @@ NVCV_TEST_SUITE_P(OpRemap_Negative, OpRemapNegativeParams());
 NVCV_TEST_SUITE_P(OpRemapVarshape_Negative,
                   test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat>{
   // inputNumImages, outputNumImages, mapNumSamples, inputFormat, outputFormat, mapFormat
-                      {2, 1, 1,   nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_2F32},
-                      {1, 1, 2,   nvcv::FMT_RGB8,   nvcv::FMT_RGB8,   nvcv::FMT_2F32},
-                      {1, 1, 1,   nvcv::FMT_RGB8,   nvcv::FMT_RGB8, nvcv::FMT_RGBf32},
-                      {1, 1, 1,  nvcv::FMT_RGB8p,   nvcv::FMT_RGB8,   nvcv::FMT_2F32},
- // multi-channel F16 is unsupported (F16 is single-channel only, like F32)
-                      {1, 1, 1, nvcv::FMT_RGBf16, nvcv::FMT_RGBf16,   nvcv::FMT_2F32},
+                      {2, 1, 1,  nvcv::FMT_RGB8, nvcv::FMT_RGB8,   nvcv::FMT_2F32},
+                      {1, 1, 2,  nvcv::FMT_RGB8, nvcv::FMT_RGB8,   nvcv::FMT_2F32},
+                      {1, 1, 1,  nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_RGBf32},
+                      {1, 1, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8,   nvcv::FMT_2F32},
 });
 
 TEST_P(OpRemap_Negative, op)
@@ -919,7 +1064,8 @@ TEST(OpRemap_Negative, varshape_hasDifferentFormat)
 
     std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
         {nvcv::FMT_RGBA8,             fmt},
-        {            fmt, nvcv::FMT_RGBA8}
+        {            fmt, nvcv::FMT_RGBA8},
+        {nvcv::FMT_RGBA8, nvcv::FMT_RGBA8}
     };
 
     for (const auto &[inputFmtExtra, outputFmtExtra] : testSet)

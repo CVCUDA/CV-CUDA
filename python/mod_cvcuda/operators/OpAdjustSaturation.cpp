@@ -23,34 +23,39 @@
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
 // Thin Python-facing wrappers; the create/guard/submit body lives in UnaryElementwiseOp.hpp, with
 // the saturation factor forwarded as the trailing submit() parameter.
-Tensor AdjustSaturationInto(Tensor &output, Tensor &input, double saturation, std::optional<Stream> pstream)
+Tensor &AdjustSaturationInto(Tensor &output, Tensor &input, double saturation, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::AdjustSaturation>(output, input, pstream, saturation);
 }
 
-Tensor AdjustSaturation(Tensor &input, double saturation, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> AdjustSaturation(Tensor &input, double saturation, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseTensor<cvcuda::AdjustSaturation>(input, pstream, saturation);
 }
 
-ImageBatchVarShape AdjustSaturationVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                                double saturation, std::optional<Stream> pstream)
+ImageBatchVarShape &AdjustSaturationVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                                 double saturation, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::AdjustSaturation>(output, input, pstream, saturation);
 }
 
-ImageBatchVarShape AdjustSaturationVarShape(ImageBatchVarShape &input, double saturation, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> AdjustSaturationVarShape(ImageBatchVarShape &input, double saturation,
+                                                             std::optional<Stream *> pstream)
 {
     return UnaryElementwiseVarShape<cvcuda::AdjustSaturation>(input, pstream, saturation);
 }
 
 } // namespace
 
-void ExportOpAdjustSaturation(py::module &m)
+void ExportOpAdjustSaturation(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("adjust_saturation", NvtxTrace("cvcuda.adjust_saturation", &AdjustSaturation), "src"_a, "saturation"_a,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -81,7 +86,7 @@ void ExportOpAdjustSaturation(py::module &m)
     )pbdoc");
 
     m.def("adjust_saturation_into", NvtxTrace("cvcuda.adjust_saturation_into", &AdjustSaturationInto), "dst"_a, "src"_a,
-          "saturation"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "saturation"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Adjust Saturation operation on the given cuda stream.
 
@@ -122,7 +127,7 @@ void ExportOpAdjustSaturation(py::module &m)
     )pbdoc");
 
     m.def("adjust_saturation_into", NvtxTrace("cvcuda.adjust_saturation_into", &AdjustSaturationVarShapeInto), "dst"_a,
-          "src"_a, "saturation"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "src"_a, "saturation"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Adjust Saturation operation on the given cuda stream.
 

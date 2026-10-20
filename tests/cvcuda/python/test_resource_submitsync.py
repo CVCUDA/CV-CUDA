@@ -29,8 +29,10 @@ to cudaDeviceSynchronize) is covered separately in test_cai_input_stream_race.py
 """
 
 import cupy
+import pytest
 
 import cvcuda
+from cvcuda_test_utils import as_cupy_stream
 
 # GPU-side busy-wait: keeps a stream occupied for long enough that any missing
 # cross-stream barrier surfaces as wrong output.  ~500 ms at 1 GHz SM clock.
@@ -53,34 +55,8 @@ def _fill_tensor(tensor, value, stream):
         cp_arr.fill(value)
 
 
-class _CupyStream:
-    """Thin wrapper so a raw cupy Stream handle can be used as a context manager."""
-
-    def __init__(self, handle):
-        self._s = cupy.cuda.ExternalStream(handle)
-
-    def __enter__(self):
-        self._s.__enter__()
-        return self
-
-    def __exit__(self, *a):
-        self._s.__exit__(*a)
-
-
-class _RawStreamHandle:
-    """Wraps a raw integer CUDA stream handle as a cupy stream protocol object."""
-
-    def __init__(self, handle: int):
-        self._handle = handle
-
-    def __cuda_stream__(self):
-        return (0, self._handle)
-
-
 def _as_cupy_stream(cvcuda_stream):
-    if hasattr(cupy.cuda.Stream, "from_external"):
-        return cupy.cuda.Stream.from_external(_RawStreamHandle(cvcuda_stream.handle))
-    return _CupyStream(cvcuda_stream.handle)
+    return as_cupy_stream(cvcuda_stream.handle)
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +159,38 @@ def test_cross_stream_sync_orders_work():
         f"cross-stream sync failed: expected all {FILL_VALUE}, got {unique}. "
         "submitSync did not insert an event barrier between stream A and B."
     )
+
+
+@pytest.mark.parametrize("explicit_wait", [False, True])
+def test_cross_resource_waits_preserve_earlier_dependencies(explicit_wait):
+    producers = [cvcuda.Stream(), cvcuda.Stream()]
+    consumer = cvcuda.Stream()
+    buffers = [cupy.zeros((1, 8, 8, 1), dtype=cupy.uint8) for _ in producers]
+    results = [cupy.empty_like(buffer) for buffer in buffers]
+    tensors = [cvcuda.as_tensor(buffer, "NHWC") for buffer in buffers]
+    for tensor, producer in zip(tensors, producers):
+        tensor.submitStreamSync(producer)
+    cupy.cuda.runtime.deviceSynchronize()
+
+    for index, (tensor, buffer, result, producer) in enumerate(
+        zip(tensors, buffers, results, producers)
+    ):
+        with _as_cupy_stream(producer):
+            if index == 0:
+                _BUSY_WAIT((1,), (1,), (_WAIT_CYCLES,))
+            buffer.fill(index + 11)
+        # The second producer finishes first. Reusing the consumer's event
+        # must not replace the dependency already queued for the first copy.
+        if explicit_wait:
+            consumer.wait_stream(producer)
+        else:
+            tensor.submitStreamSync(consumer)
+        with _as_cupy_stream(consumer):
+            cupy.copyto(result, buffer)
+
+    consumer.sync()
+    for index, result in enumerate(results):
+        assert bool(cupy.all(result == index + 11))
 
 
 def test_cross_stream_multiple_hops():

@@ -23,18 +23,141 @@
 
 #include <nvbench/nvbench.cuh>
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+namespace {
+
 struct HQResizeBenchParams
 {
-    long3                 srcShape;
-    long3                 dstShape;
-    nvcv::Size2D          srcSize;
-    nvcv::Size2D          dstSize;
-    nvcv::DataType        dtype;
-    NVCVInterpolationType interpolation;
-    bool                  antialias;
-    bool                  planar;
-    int                   channels;
+    long3                     srcShape;
+    long3                     dstShape;
+    nvcv::Size2D              srcSize;
+    nvcv::Size2D              dstSize;
+    nvcv::DataType            dtype;
+    NVCVInterpolationType     interpolation;
+    bool                      antialias;
+    bool                      planar;
+    int                       channels;
+    std::vector<HQResizeRoiF> rois;
 };
+
+std::optional<std::pair<int, int>> ParsePositiveSquareOrShape(std::string_view value)
+{
+    if (value.empty() || value.find_first_not_of("0123456789x") != std::string_view::npos)
+    {
+        return std::nullopt;
+    }
+
+    try
+    {
+        const std::string dimensions{value};
+        if (value.find('x') == std::string_view::npos)
+        {
+            const auto side = benchutils::GetShape<1>(dimensions);
+            return side.x > 0 ? std::optional{std::pair{static_cast<int>(side.x), static_cast<int>(side.x)}}
+                              : std::nullopt;
+        }
+
+        const auto shape = benchutils::GetShape<2>(dimensions);
+        return shape.x > 0 && shape.y > 0
+                 ? std::optional{std::pair{static_cast<int>(shape.x), static_cast<int>(shape.y)}}
+                 : std::nullopt;
+    }
+    catch (const std::invalid_argument &)
+    {
+        return std::nullopt;
+    }
+    catch (const std::out_of_range &)
+    {
+        return std::nullopt;
+    }
+}
+
+std::optional<HQResizeRoiF> GetVLMCenterCropRoi(int inputHeight, int inputWidth, int outputHeight, int outputWidth)
+{
+    const double resizeScale
+        = std::max(static_cast<double>(outputHeight) / inputHeight, static_cast<double>(outputWidth) / inputWidth);
+    const double scaledHeight = static_cast<double>(inputHeight) * resizeScale + 0.5;
+    const double scaledWidth  = static_cast<double>(inputWidth) * resizeScale + 0.5;
+    if (scaledHeight > std::numeric_limits<int>::max() || scaledWidth > std::numeric_limits<int>::max())
+    {
+        return std::nullopt;
+    }
+    const auto  resizeHeight = static_cast<int>(scaledHeight);
+    const auto  resizeWidth  = static_cast<int>(scaledWidth);
+    const int   cropY        = (resizeHeight - outputHeight) / 2;
+    const int   cropX        = (resizeWidth - outputWidth) / 2;
+    const float scaleY       = static_cast<float>(inputHeight) / static_cast<float>(resizeHeight);
+    const float scaleX       = static_cast<float>(inputWidth) / static_cast<float>(resizeWidth);
+    return HQResizeRoiF{
+        {               static_cast<float>(cropY) * scaleY,               static_cast<float>(cropX) * scaleX},
+        {static_cast<float>(cropY + outputHeight) * scaleY, static_cast<float>(cropX + outputWidth) * scaleX}
+    };
+}
+
+template<typename T>
+bool ValidateVLMCenterCropInput(nvbench::state &state, const long3 &srcShape, std::string_view inputKind,
+                                std::string_view layout, int channels, NVCVInterpolationType interpolation)
+{
+    if (inputKind != "VarShape")
+    {
+        state.skip("VLM center crop requires inputKind=VarShape");
+        return false;
+    }
+    if (layout != "NHWC")
+    {
+        state.skip("VLM center crop requires layout=NHWC");
+        return false;
+    }
+    if (srcShape.y <= 0)
+    {
+        state.skip("VLM center crop requires a positive input height");
+        return false;
+    }
+    if (srcShape.z < srcShape.y)
+    {
+        state.skip("VLM center crop requires landscape input (width >= height)");
+        return false;
+    }
+    if (srcShape.y > std::numeric_limits<int>::max() || srcShape.z > std::numeric_limits<int>::max())
+    {
+        state.skip("VLM center crop input dimensions exceed the supported range");
+        return false;
+    }
+    if constexpr (!std::is_same_v<T, uint8_t>)
+    {
+        state.skip("VLM center crop requires InOutDataType=uint8");
+        return false;
+    }
+    if (channels != 3)
+    {
+        state.skip("VLM center crop requires numChannels=3");
+        return false;
+    }
+    if (interpolation != NVCV_INTERP_CUBIC)
+    {
+        state.skip("VLM center crop requires interpolation=CUBIC");
+        return false;
+    }
+    return true;
+}
+
+inline HQResizeRoisF BatchRois(const HQResizeBenchParams &params)
+{
+    if (params.rois.empty())
+    {
+        return {};
+    }
+    return {static_cast<int32_t>(params.rois.size()), 2, params.rois.data()};
+}
 
 inline cvcuda::UniqueWorkspace AllocateHQResizeTensorWorkspace(cvcuda::HQResize &op, const HQResizeBenchParams &params)
 {
@@ -80,8 +203,10 @@ inline cvcuda::UniqueWorkspace AllocateHQResizeBatchWorkspace(cvcuda::HQResize &
     }
     HQResizeTensorShapesI inShapeDesc{inShapes.data(), wsSamples, 2, wsChannels};
     HQResizeTensorShapesI outShapeDesc{outShapes.data(), wsSamples, 2, wsChannels};
+
+    const HQResizeRoisF roiDesc = BatchRois(params);
     return cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(
-        wsSamples, inShapeDesc, outShapeDesc, params.interpolation, params.interpolation, params.antialias));
+        wsSamples, inShapeDesc, outShapeDesc, params.interpolation, params.interpolation, params.antialias, roiDesc));
 }
 
 template<typename T>
@@ -174,10 +299,11 @@ inline void RunVarShapeHQResizeBench(nvbench::state &state, cvcuda::HQResize &op
         return;
     }
 
+    const HQResizeRoisF rois = BatchRois(params);
     benchutils::warmup_and_exec(
         state, BENCH_HQRESIZE_WARMUP_ITERATIONS,
-        [&op, &ws, &src, &dst, interpolation = params.interpolation, antialias = params.antialias](cudaStream_t s)
-        { op(s, ws.get(), src, dst, interpolation, interpolation, antialias); });
+        [&op, &ws, &src, &dst, interpolation = params.interpolation, antialias = params.antialias, rois](cudaStream_t s)
+        { op(s, ws.get(), src, dst, interpolation, interpolation, antialias, rois); });
 }
 
 template<typename T>
@@ -201,11 +327,39 @@ inline void RunTensorBatchHQResizeBench(nvbench::state &state, cvcuda::HQResize 
         dstTensors.pushBack(dst);
     }
 
-    benchutils::warmup_and_exec(state, BENCH_HQRESIZE_WARMUP_ITERATIONS,
-                                [&op, &ws, &srcTensors, &dstTensors, interpolation = params.interpolation,
-                                 antialias = params.antialias](cudaStream_t s)
-                                { op(s, ws.get(), srcTensors, dstTensors, interpolation, interpolation, antialias); });
+    const HQResizeRoisF rois = BatchRois(params);
+    benchutils::warmup_and_exec(
+        state, BENCH_HQRESIZE_WARMUP_ITERATIONS,
+        [&op, &ws, &srcTensors, &dstTensors, interpolation = params.interpolation, antialias = params.antialias,
+         rois](cudaStream_t s)
+        { op(s, ws.get(), srcTensors, dstTensors, interpolation, interpolation, antialias, rois); });
 }
+
+template<typename T>
+void RunHQResizeBench(nvbench::state &state, cvcuda::HQResize &op, const HQResizeBenchParams &params,
+                      std::string_view inputKind, bool fakePlanar)
+{
+    if (fakePlanar)
+    {
+        // NCHW -> NHWC -> HQResize -> NHWC -> NCHW.
+        RunFakePlanarHQResizeBench<T>(state, op, params);
+    }
+    else if (inputKind == "Tensor")
+    {
+        RunTensorHQResizeBench<T>(state, op, params);
+    }
+    else if (inputKind == "VarShape")
+    {
+        RunVarShapeHQResizeBench<T>(state, op, params);
+    }
+    else
+    {
+        // TensorBatch is the only remaining validated input kind.
+        RunTensorBatchHQResizeBench<T>(state, op, params);
+    }
+}
+
+} // namespace
 
 template<typename T>
 inline void hqresize(nvbench::state &state, nvbench::type_list<T>)
@@ -243,21 +397,66 @@ try
         return;
     }
 
-    const std::string resizeType = state.get_string("resizeType");
-    long3             dstShape   = benchutils::GetResizeOutputShape(srcShape, resizeType);
-    if (dstShape.y >= srcShape.y && dstShape.z >= srcShape.z && (dstShape.y > srcShape.y || dstShape.z > srcShape.z)
-        && antialias)
+    const auto                 resizeType = state.get_string("resizeType");
+    long3                      dstShape;
+    std::vector<HQResizeRoiF>  rois;
+    long                       srcBytes;
+    auto                       effectiveInputHeight = static_cast<double>(srcShape.y);
+    auto                       effectiveInputWidth  = static_cast<double>(srcShape.z);
+    constexpr std::string_view kVLMCenterCropPrefix = "VLM_CENTER_CROP_";
+    if (resizeType.rfind(kVLMCenterCropPrefix, 0) == 0)
+    {
+        const auto output
+            = ParsePositiveSquareOrShape(std::string_view{resizeType}.substr(kVLMCenterCropPrefix.size()));
+        if (!output)
+        {
+            state.skip("VLM center-crop output must be a positive HxW or square value");
+            return;
+        }
+        const auto [outputHeight, outputWidth] = *output;
+        if (!ValidateVLMCenterCropInput<T>(state, srcShape, inputKind, layout, channels, interpolation))
+        {
+            return;
+        }
+
+        // Model the standard resize-to-cover followed by a centered crop as
+        // one equivalent source ROI; bench_hqresize.py mirrors this contract.
+        const auto roi = GetVLMCenterCropRoi(static_cast<int>(srcShape.y), static_cast<int>(srcShape.z), outputHeight,
+                                             outputWidth);
+        if (!roi)
+        {
+            state.skip("VLM center-crop intermediate dimensions exceed the supported range");
+            return;
+        }
+        dstShape              = long3{srcShape.x, outputHeight, outputWidth};
+        effectiveInputHeight  = static_cast<double>(roi->hi[0] - roi->lo[0]);
+        effectiveInputWidth   = static_cast<double>(roi->hi[1] - roi->lo[1]);
+        const long readHeight = std::clamp(static_cast<long>(std::ceil(roi->hi[0])), 0L, srcShape.y)
+                              - std::clamp(static_cast<long>(std::floor(roi->lo[0])), 0L, srcShape.y);
+        const long readWidth = std::clamp(static_cast<long>(std::ceil(roi->hi[1])), 0L, srcShape.z)
+                             - std::clamp(static_cast<long>(std::floor(roi->lo[1])), 0L, srcShape.z);
+        srcBytes = srcShape.x * readHeight * readWidth * channels * static_cast<long>(sizeof(T));
+        rois.assign(static_cast<std::size_t>(srcShape.x), *roi);
+    }
+    else
+    {
+        dstShape = benchutils::GetResizeOutputShape(srcShape, resizeType);
+        srcBytes = srcShape.x * srcShape.y * srcShape.z * channels * static_cast<long>(sizeof(T));
+    }
+    const auto outputHeight = static_cast<double>(dstShape.y);
+    const auto outputWidth  = static_cast<double>(dstShape.z);
+    if (outputHeight >= effectiveInputHeight && outputWidth >= effectiveInputWidth
+        && (outputHeight > effectiveInputHeight || outputWidth > effectiveInputWidth) && antialias)
     {
         state.skip("Antialias is no-op for expanding");
         return;
     }
 
-    nvcv::Size2D srcSize{(int)srcShape.z, (int)srcShape.y};
-    nvcv::Size2D dstSize{(int)dstShape.z, (int)dstShape.y};
+    nvcv::Size2D srcSize{static_cast<int>(srcShape.z), static_cast<int>(srcShape.y)};
+    nvcv::Size2D dstSize{static_cast<int>(dstShape.z), static_cast<int>(dstShape.y)};
 
     nvcv::DataType dtype{benchutils::GetDataType<T>()};
 
-    const long srcBytes = srcShape.x * srcShape.y * srcShape.z * channels * static_cast<long>(sizeof(T));
     const long dstBytes = dstShape.x * dstShape.y * dstShape.z * channels * static_cast<long>(sizeof(T));
     if (fakePlanar)
     {
@@ -272,26 +471,11 @@ try
         state.add_global_memory_writes(dstBytes);
     }
 
-    const HQResizeBenchParams params{srcShape,      dstShape,  srcSize, dstSize, dtype,
-                                     interpolation, antialias, planar,  channels};
+    const HQResizeBenchParams params{srcShape,      dstShape,  srcSize, dstSize,  dtype,
+                                     interpolation, antialias, planar,  channels, std::move(rois)};
     cvcuda::HQResize          op;
 
-    if (fakePlanar) // tensor-only: NCHW -> NHWC -> hqresize -> NHWC -> NCHW
-    {
-        RunFakePlanarHQResizeBench<T>(state, op, params);
-    }
-    else if (inputKind == "Tensor")
-    {
-        RunTensorHQResizeBench<T>(state, op, params);
-    }
-    else if (inputKind == "VarShape")
-    {
-        RunVarShapeHQResizeBench<T>(state, op, params);
-    }
-    else // TensorBatch
-    {
-        RunTensorBatchHQResizeBench<T>(state, op, params);
-    }
+    RunHQResizeBench<T>(state, op, params, inputKind, fakePlanar);
 }
 
 CVCUDA_BENCH_SKIP_ERRORS(state)

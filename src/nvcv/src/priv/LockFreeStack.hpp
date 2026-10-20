@@ -55,8 +55,8 @@ public:
                 return nullptr;
             }
 
-            if (m_head.compare_exchange_weak(head, doGetLocked(head), std::memory_order_relaxed,
-                                             std::memory_order_release))
+            if (m_head.compare_exchange_weak(head, doGetLocked(head), std::memory_order_acquire,
+                                             std::memory_order_relaxed))
             {
                 break;
             }
@@ -72,7 +72,7 @@ public:
 
             newHead = doGetUnlocked(oldHead)->next;
         }
-        while (!m_head.compare_exchange_weak(oldHead, newHead, std::memory_order_relaxed, std::memory_order_release));
+        while (!m_head.compare_exchange_weak(oldHead, newHead, std::memory_order_release, std::memory_order_relaxed));
 
         return doGetUnlocked(oldHead);
     }
@@ -85,16 +85,18 @@ public:
             oldHead       = doGetUnlocked(m_head.load(std::memory_order_relaxed));
             newNode->next = oldHead;
         }
-        while (!m_head.compare_exchange_weak(oldHead, newNode, std::memory_order_relaxed, std::memory_order_release));
+        while (!m_head.compare_exchange_weak(oldHead, newNode, std::memory_order_release, std::memory_order_relaxed));
     }
 
     Node *release() noexcept
     {
-        Node *h = m_head.load(std::memory_order_relaxed);
-        while (!m_head.compare_exchange_weak(h, nullptr, std::memory_order_relaxed, std::memory_order_release))
+        Node *h;
+        do
         {
-            // Retry until the observed head is released.
+            // An untagged expected value cannot detach a head claimed by pop().
+            h = doGetUnlocked(m_head.load(std::memory_order_relaxed));
         }
+        while (!m_head.compare_exchange_weak(h, nullptr, std::memory_order_acquire, std::memory_order_relaxed));
 
         return h;
     }
@@ -107,17 +109,17 @@ public:
             oldHead    = doGetUnlocked(m_head.load(std::memory_order_relaxed));
             last->next = oldHead;
         }
-        while (!m_head.compare_exchange_weak(oldHead, newHead, std::memory_order_relaxed, std::memory_order_release));
+        while (!m_head.compare_exchange_weak(oldHead, newHead, std::memory_order_release, std::memory_order_relaxed));
     }
 
     Node *top() const
     {
-        return doGetUnlocked(m_head.load());
+        return doGetUnlocked(m_head.load(std::memory_order_acquire));
     }
 
     void clear()
     {
-        m_head = nullptr;
+        (void)release();
     }
 
     bool empty() const

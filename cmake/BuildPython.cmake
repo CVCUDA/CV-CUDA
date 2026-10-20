@@ -43,6 +43,14 @@ list(APPEND PYPROJ_COMMON_ARGS
     -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
 )
 
+# The sub-builds are separate CMake projects, so they do not inherit the ccache launcher from
+# cmake/ConfigCCache.cmake; without it every Python extension source recompiled on every build.
+foreach(lang C CXX)
+    if(CMAKE_${lang}_COMPILER_LAUNCHER)
+        list(APPEND PYPROJ_COMMON_ARGS -DCMAKE_${lang}_COMPILER_LAUNCHER=${CMAKE_${lang}_COMPILER_LAUNCHER})
+    endif()
+endforeach()
+
 # It needs to overwrite the PYTHON_MODULE_EXTENSION to generate
 # python module name with correct name when cross compiling
 # example: set(PYTHON_MODULE_EXTENSION .cpython-py38-aarch64-linux-gnu.so)
@@ -94,31 +102,11 @@ foreach(VER ${PYTHON_VERSIONS})
     )
 endforeach()
 
-# Enum classes exposed under `cvcuda.`.  pybind11_stubgen emits warnings and
-# falls back to ugly default-value reprs like `<Border.CONSTANT: 0>` unless
-# it knows where each enum class lives.  Keep this list in sync with enums
-# registered via py::enum_ under the cvcuda module.
-set(CVCUDA_STUBGEN_ENUM_LOCATIONS
-    --enum-class-locations Border:cvcuda.Border
-    --enum-class-locations Interp:cvcuda.Interp
-    --enum-class-locations ThresholdType:cvcuda.ThresholdType
-    --enum-class-locations AdaptiveThresholdType:cvcuda.AdaptiveThresholdType
-    --enum-class-locations Remap:cvcuda.Remap
-    --enum-class-locations ChannelManip:cvcuda.ChannelManip
-    --enum-class-locations LabelMaskType:cvcuda.LabelMaskType
-    --enum-class-locations ThreadScope:cvcuda.ThreadScope
-    --enum-class-locations LABEL:cvcuda.LABEL
-    --enum-class-locations SIFT:cvcuda.SIFT
-    --enum-class-locations Matcher:cvcuda.Matcher
-    --enum-class-locations ConnectivityType:cvcuda.ConnectivityType
-)
-
-# pybind11_stubgen must run against a Python that (a) can import the just-built
-# cvcuda extension and (b) has pybind11-stubgen installed.  Prefer the first
-# version in PYTHON_VERSIONS (always paired with a pybind11-stubgen install in
-# our Docker images), and fall back to the generic Python3 interpreter CMake
-# discovered.  Without this, CMake's `find_package(Python3)` may pick a newer
-# system Python (e.g. /usr/bin/python3.12) that has no pybind11-stubgen and
+# nanobind.stubgen must run against a Python that can import the just-built
+# cvcuda extension and has the pinned nanobind package installed. Prefer the
+# first version in PYTHON_VERSIONS, and fall back to the generic Python3
+# interpreter CMake discovered. Without this, CMake's `find_package(Python3)`
+# may pick a newer system Python that has no nanobind package and
 # breaks the `wheel` target.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(PYTHON_VERSIONS)
@@ -132,10 +120,13 @@ endif()
 if(STUBGEN_PYTHON)
     add_custom_target(generate_stubs
         COMMAND ${CMAKE_COMMAND} -E env
-                PYTHONPATH=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/python
-                ${STUBGEN_PYTHON} -m pybind11_stubgen cvcuda
-                ${CVCUDA_STUBGEN_ENUM_LOCATIONS}
-                --output-dir ${CMAKE_BINARY_DIR}/python3
+                PYTHONPATH=${CMAKE_BINARY_DIR}/python3
+                ${STUBGEN_PYTHON} -m nanobind.stubgen -m cvcuda --recursive
+                --pattern-file ${CMAKE_SOURCE_DIR}/python/stubgen.patterns
+                --output-dir ${CMAKE_BINARY_DIR}/python3/cvcuda
+                --quiet
+        COMMAND ${STUBGEN_PYTHON} ${CMAKE_SOURCE_DIR}/python/validate_stubs.py
+                ${CMAKE_BINARY_DIR}/python3/cvcuda
         COMMENT "Generating Python type stubs (dev target)"
         VERBATIM
     )
@@ -162,11 +153,24 @@ from ._cvcuda import _C_API, _test  # noqa: F401")
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/cvcuda
             COMPONENT lib)
 
+    # cvcuda.tv: pure-Python torchvision-compatible subpackage. Its sources live
+    # under python/cvcuda_tv/ (kept separate from the generated python3/cvcuda/
+    # staging tree) and are shared across all Python versions, so install them in
+    # the lib component mirroring __init__.py above. The trailing slash installs
+    # the directory contents into .../cvcuda/tv (not .../cvcuda/tv/cvcuda_tv).
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/python/cvcuda_tv/"
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/cvcuda/tv
+            COMPONENT lib
+            FILES_MATCHING PATTERN "*.py")
+
     # BUILD_PYTHON must leave an importable build-tree package even when wheel
     # packaging is disabled. Benchmarks deliberately prefer this package over
     # ambient installations so they exercise the bindings from the current build.
     add_custom_target(stage_python_build_tree ALL
         COMMAND sh -c "cp \"${CMAKE_BINARY_DIR}\"/lib/python/_cvcuda*.so \"${CMAKE_BINARY_DIR}\"/python3/cvcuda/"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/python/cvcuda_tv
+                ${CMAKE_BINARY_DIR}/python3/cvcuda/tv
         COMMENT "Staging Python package for build-tree use"
         VERBATIM
     )
@@ -201,9 +205,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release" AND BUILD_PYTHON_WHEEL)
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nvcv_types> ${CMAKE_BINARY_DIR}/python3/lib
     )
 
-    # Ensure numpy is importable by the stubgen Python before pybind11_stubgen
-    # runs: stubgen imports cvcuda, and _cvcuda.so pulls numpy via pybind11's
-    # npy_api at module init.  The manylinux :v11 builder image ships without
+    # Ensure numpy is importable by the stubgen Python before nanobind.stubgen
+    # runs: stubgen imports cvcuda, and the extension imports NumPy while
+    # registering its dtype compatibility layer. The manylinux builder ships without
     # numpy for cp3{10..14}, so without this the wheel target fails with
     # "ModuleNotFoundError: No module named 'numpy'".  On images that already
     # have numpy (Ubuntu devel, Jetson edge venv) this is a fast no-op.
@@ -212,16 +216,19 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release" AND BUILD_PYTHON_WHEEL)
     add_custom_command(
         TARGET wheel
         COMMAND sh -c "${STUBGEN_PYTHON} -c 'import numpy' >/dev/null 2>&1 || ${STUBGEN_PYTHON} -m pip install --quiet --disable-pip-version-check -r ${CMAKE_SOURCE_DIR}/tests/requirements.tests.numpy2.txt"
-        COMMENT "Ensuring numpy is available for pybind11_stubgen"
+        COMMENT "Ensuring numpy is available for nanobind.stubgen"
         VERBATIM
     )
 
     add_custom_command(
         TARGET wheel
         COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_BINARY_DIR}/python3
-                ${STUBGEN_PYTHON} -m pybind11_stubgen cvcuda
-                ${CVCUDA_STUBGEN_ENUM_LOCATIONS}
-                --output-dir ${CMAKE_BINARY_DIR}/python3
+                ${STUBGEN_PYTHON} -m nanobind.stubgen -m cvcuda --recursive
+                --pattern-file ${CMAKE_SOURCE_DIR}/python/stubgen.patterns
+                --output-dir ${CMAKE_BINARY_DIR}/python3/cvcuda
+                --quiet
+        COMMAND ${STUBGEN_PYTHON} ${CMAKE_SOURCE_DIR}/python/validate_stubs.py
+                ${CMAKE_BINARY_DIR}/python3/cvcuda
         COMMENT "Generating Python type stubs for cvcuda"
         VERBATIM
     )

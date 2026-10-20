@@ -84,6 +84,8 @@ inline void flip(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std:
 
 NVCV_TEST_INST(uint8_t);
 NVCV_TEST_INST(ushort);
+NVCV_TEST_INST(int32_t);
+NVCV_TEST_INST(float);
 NVCV_TEST_INST(ushort3);
 NVCV_TEST_INST(ushort4);
 NVCV_TEST_INST(uchar3);
@@ -109,6 +111,8 @@ void FlipCPU(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vec
 
         NVCV_TEST_CASE(U8, uint8_t);
         NVCV_TEST_CASE(U16, ushort);
+        NVCV_TEST_CASE(S32, int32_t);
+        NVCV_TEST_CASE(F32, float);
         NVCV_TEST_CASE(3U8, uchar3);
         NVCV_TEST_CASE(4U8, uchar4);
         NVCV_TEST_CASE(4F32, float4);

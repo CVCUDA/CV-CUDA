@@ -26,13 +26,12 @@
 
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
+#include "WarpTransformMatrix.hpp"
 
+#include <cuda_runtime.h>
 #include <cvcuda/OpWarpPerspective.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -50,10 +49,11 @@ public:
                     const float4 borderValue) const;
 
 private:
-    static std::unique_ptr<nvcv::legacy::cuda_op::WarpPerspective> CreateLegacyOp(int deviceId);
+    const int32_t m_maxVarShapeBatchSize;
 
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::WarpPerspective>         m_legacyOp{CreateLegacyOp};
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::WarpPerspectiveVarShape> m_legacyOpVarShape;
+    // The coefficient scratch is device memory, so PerDeviceResource holds one instance per CUDA
+    // device for transparent multi-GPU support.
+    mutable PerDeviceResource<warp::TransformMatrix> m_transformMatrix;
 };
 
 } // namespace cvcuda::priv

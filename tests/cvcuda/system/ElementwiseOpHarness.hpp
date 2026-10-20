@@ -226,17 +226,16 @@ void RunTensorCorrectDispatch(int width, int height, int batch, nvcv::ImageForma
 //   gold:   DT(DT)
 //   invoke: void(cudaStream_t, const ImageBatchVarShape&, ImageBatchVarShape&)
 template<typename DT, typename GoldBufferFn, typename InvokeFn>
-void RunVarShapeCorrectBufferTyped(nvcv::ImageFormat fmt, GoldBufferFn goldBuffer, InvokeFn invoke, double maxDiff = 0)
+void RunVarShapeCorrectBufferTyped(nvcv::ImageFormat fmt, GoldBufferFn goldBuffer, InvokeFn invoke, double maxDiff = 0,
+                                   std::array<int, 3> widths = {23, 57, 89}, std::array<int, 3> heights = {31, 71, 43})
 {
     ASSERT_EQ(fmt.numPlanes(), 1) << "RunVarShapeCorrectBufferTyped requires an interleaved format";
 
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    constexpr std::array widths  = {23, 57, 89};
-    constexpr std::array heights = {31, 71, 43};
-    const auto           n       = static_cast<int>(widths.size());
-    const int            ch      = fmt.numChannels();
+    const auto n  = static_cast<int>(widths.size());
+    const int  ch = fmt.numChannels();
 
     std::vector<nvcv::Image> srcImgs;
     std::vector<nvcv::Image> dstImgs;
@@ -412,6 +411,90 @@ void ExpectVarShapeRejected(nvcv::ImageFormat fmt, InvokeFn invoke, int width = 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { invoke(stream, src, dst); }));
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// The two rejections same_shape::ValidateSrcDstTensors owns ------------------------------------
+//
+// That one validator now decides the tensor-side API contract of Invert, Posterize, Solarize and
+// AdjustSharpness, so both of its bug-fix rejections are pinned here once and asserted from each
+// operator's own entry point rather than only from the operator whose file the fix was written in.
+// Each takes the same `invoke: void(cudaStream_t, const Tensor&, const Tensor&)` callable the rest
+// of this harness uses.
+
+// A tensor whose *dtype* carries the channels while its C axis is 1 must be rejected.
+//
+// `nvcv::Tensor({{1, 4, 4, 1}, "NHWC"}, nvcv::TYPE_3U8)` allocates: Tensor::CalcRequirements has no
+// dtype-vs-C-axis consistency check, and colStride == dtype.strideBytes() == 3. Before the fix the
+// channel count came from the C axis (uchar1) while the element size came from the dtype, so the
+// element stream took a row to be 4 bytes when it is 12 and transformed the first third of every
+// row, silently leaving the rest.
+template<typename InvokeFn>
+void ExpectMultiChannelDtypeTensorRejected(InvokeFn invoke)
+{
+    nvcv::Tensor src(
+        {
+            {1, 4, 4, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_3U8);
+    nvcv::Tensor dst(
+        {
+            {1, 4, 4, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_3U8);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { invoke(stream, src, dst); }));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// A tensor whose columns are spaced further apart than one pixel must be rejected.
+//
+// No path in this family can express such a spacing -- the element stream treats a row as
+// `width * sizeof(pixel)` contiguous bytes and the tensor wraps index x by sizeof(pixel) -- so
+// before the fix the operator transformed the padding and left three of every four columns
+// untouched. The shape is reachable because nvcv::priv::ValidateTensorBufferStrided skips an
+// extent-1 axis when pinning the packed axes: with C == 1 the channel stride is never pinned to
+// the element size, and the width stride is then only required to equal channelStride * 1.
+//
+// The tensor is wrapped over a token allocation because the rejection is host-side, before any
+// launch.
+template<typename InvokeFn>
+void ExpectPaddedColumnStrideTensorRejected(InvokeFn invoke)
+{
+    constexpr int64_t kSide = 4;
+
+    NVCVByte *ptr = nullptr;
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&ptr, 64));
+
+    auto wrap = [&]
+    {
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = ptr;
+        buffer.strides[0] = 64; // sample
+        buffer.strides[1] = 16; // row
+        buffer.strides[2] = 4;  // column: 4 bytes apart for a 1-byte pixel
+        buffer.strides[3] = 4;  // channel (C == 1, never pinned by the nvcv validator)
+        return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{1, kSide, kSide, 1}, "NHWC"},
+            nvcv::DataType{       nvcv::TYPE_U8       },
+            buffer
+        });
+    };
+
+    nvcv::Tensor src = wrap();
+    nvcv::Tensor dst = wrap();
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { invoke(stream, src, dst); }));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    ASSERT_EQ(cudaSuccess, cudaFree(ptr));
 }
 
 template<typename InvokeFn>

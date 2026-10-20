@@ -19,9 +19,13 @@
  */
 
 #include "CudaDeviceUtils.hpp"
+#include "FlipPolicy.hpp"
 #include "Nvtx.hpp"
 #include "OpFlip.hpp"
 #include "PlanarTensorView.hpp"
+#include "TensorAccessValidation.hpp"
+
+#include "ElementStreamCommon.cuh"
 
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/TensorWrap.hpp>
@@ -41,6 +45,7 @@
 
 namespace cuda = nvcv::cuda;
 namespace util = nvcv::util;
+namespace es   = cvcuda::priv::elem_stream;
 
 namespace {
 
@@ -62,6 +67,9 @@ constexpr int kVec = 4;
 constexpr int kU8GroupWidth = 4;
 
 constexpr dim3 kBlock{32, 8, 1};
+
+// Independent 16-byte transfers issued per thread.
+constexpr int kFlipCarriersPerThread = 4;
 
 // Compute capability of the current device as major * 10 + minor, or 0 when it cannot be queried —
 // which simply leaves the per-architecture scheduling exceptions below unselected.
@@ -92,6 +100,9 @@ struct FlipGeometry
 template<bool MirrorX, bool MirrorY>
 struct TensorGeometry
 {
+    static constexpr bool kMirrorX = MirrorX;
+    static constexpr bool kMirrorY = MirrorY;
+
     int2 size;
 
     template<class DstWrapper>
@@ -392,12 +403,107 @@ void RunTensorSingleChannel(cudaStream_t stream, const nvcv::TensorDataStridedCu
     }
 }
 
+// Destination row r reads source row height-1-r when the flip mirrors the row axis, and row r
+// otherwise. The flag is compile-time, so the mirror folds away where it does not apply.
+template<bool MirrorY>
+struct FlipRows
+{
+    struct Param
+    {
+        int32_t height;
+    };
+
+    inline static __device__ int32_t SrcRegion(int32_t region, const Param &p)
+    {
+        return MirrorY ? p.height - 1 - region : region;
+    }
+};
+
+// A flip moves bytes and computes nothing, so nothing about it depends on the dtype or the channel
+// count. The per-pixel kernels above are capped at the pixel's own footprint -- one byte per access
+// for a single-channel uchar -- while the carrier stream moves 16 bytes per thread whatever the
+// pixel is. A vertical flip keeps the column order, so it is the shared shift carrier over mirrored
+// rows; a horizontal flip reverses the pixels, which is the shared reversal map with the row's own
+// anchor. Rows are never folded together: each row has its own reversal anchor and its own source
+// row.
+template<int PixelBytes, bool MirrorX, bool MirrorY>
+bool LaunchFlipCarrierStream(cudaStream_t stream, const nvcv::TensorDataStridedCuda &inData,
+                             const nvcv::TensorDataStridedCuda              &outData,
+                             const nvcv::TensorDataAccessStridedImagePlanar &inAccess,
+                             const nvcv::TensorDataAccessStridedImagePlanar &outAccess)
+{
+    // Columns must be packed for a row to be a byte run.
+    if (inAccess.colStride() != PixelBytes || outAccess.colStride() != PixelBytes)
+    {
+        return false;
+    }
+
+    const int64_t rowBytes = inAccess.numCols() * PixelBytes;
+
+    es::Plan plan;
+    if (!es::MakeRunPlan(rowBytes, inAccess.numRows(), inAccess.numSamples(), inAccess.rowStride(),
+                         outAccess.rowStride(), inAccess.sampleStride(), outAccess.sampleStride(), false, plan))
+    {
+        return false;
+    }
+
+    const auto          *srcLo = reinterpret_cast<const unsigned char *>(inData.basePtr());
+    const unsigned char *srcHi = es::SourceEnd(srcLo, inAccess);
+    auto                *dst   = reinterpret_cast<unsigned char *>(outData.basePtr());
+
+    const typename FlipRows<MirrorY>::Param rows{static_cast<int32_t>(inAccess.numRows())};
+
+    if constexpr (MirrorX)
+    {
+        using Map    = es::ReverseMap<PixelBytes>;
+        using Region = FlipRows<MirrorY>;
+
+        // Source column of destination column x is (W - 1 - x), which in bytes is the reversal
+        // anchor the shared map expects.
+        const typename Map::Data data{rowBytes - PixelBytes};
+
+        constexpr int kReversalCarriersPerThread = PixelBytes == 3 ? 1 : kFlipCarriersPerThread;
+        return es::TryRunShifted<kReversalCarriersPerThread, es::PermuteCarrier<Map, Region>>(
+            stream, srcLo, dst, srcLo, srcHi, plan, es::MakePermuteParam<Map, Region>(data, rows));
+    }
+    else
+    {
+        return es::TryRunShifted<kFlipCarriersPerThread, es::ShiftCarrier<FlipRows<MirrorY>>>(stream, srcLo, dst, srcLo,
+                                                                                              srcHi, plan, rows);
+    }
+}
+
+template<typename T, class Geometry>
+bool TryFlipCarrierStream(cudaStream_t stream, const nvcv::TensorDataStridedCuda &inData,
+                          const nvcv::TensorDataStridedCuda              &outData,
+                          const nvcv::TensorDataAccessStridedImagePlanar &inAccess,
+                          const nvcv::TensorDataAccessStridedImagePlanar &outAccess)
+{
+    constexpr int  kPixelBytes = static_cast<int>(sizeof(T));
+    constexpr bool kMirrorX    = Geometry::kMirrorX;
+    constexpr bool kMirrorY    = Geometry::kMirrorY;
+
+    if constexpr (kMirrorX && !cvcuda::priv::FlipReversalUsesCarrierStream(kPixelBytes))
+    {
+        return false;
+    }
+    else
+    {
+        return LaunchFlipCarrierStream<kPixelBytes, kMirrorX, kMirrorY>(stream, inData, outData, inAccess, outAccess);
+    }
+}
+
 template<typename T, class Geometry>
 void RunFlipTensor(cudaStream_t stream, const nvcv::TensorDataStridedCuda &inData,
                    const nvcv::TensorDataStridedCuda &outData, const Geometry &geometry, int numSamples,
                    const nvcv::TensorDataAccessStridedImagePlanar &inAccess,
                    const nvcv::TensorDataAccessStridedImagePlanar &outAccess)
 {
+    if (TryFlipCarrierStream<T, Geometry>(stream, inData, outData, inAccess, outAccess))
+    {
+        return;
+    }
+
     if constexpr (cuda::NumElements<T> == 1)
     {
         RunTensorSingleChannel<T>(stream, inData, outData, geometry, numSamples, inAccess, outAccess);
@@ -451,6 +557,13 @@ void RunFlipPlanarTensor(cudaStream_t stream, const nvcv::TensorDataStridedCuda 
         }
     }
 
+    // Reached only after the two architecture exceptions above have declined, so the byte path
+    // never overrides them.
+    if (TryFlipCarrierStream<T, Geometry>(stream, inView, outView, inAccess, outAccess))
+    {
+        return;
+    }
+
     RunTensorSingleChannel<T>(stream, inView, outView, geometry, flatSamples, inAccess, outAccess);
 }
 
@@ -468,20 +581,39 @@ void LaunchVarShapeScalar(cudaStream_t stream, const nvcv::ImageBatchVarShapeDat
     NVCV_CHECK_THROW(cudaGetLastError());
 }
 
-template<bool IsPlanar>
-void LaunchVarShapeWideU8(cudaStream_t stream, const nvcv::ImageBatchVarShapeDataStridedCuda &inData,
-                          const nvcv::ImageBatchVarShapeDataStridedCuda &outData, const VarShapeGeometry &geometry,
-                          int numPlanes)
+template<int NIX, bool IsPlanar>
+void LaunchVarShapeWideU8WithGroups(cudaStream_t stream, const nvcv::ImageBatchVarShapeDataStridedCuda &inData,
+                                    const nvcv::ImageBatchVarShapeDataStridedCuda &outData,
+                                    const VarShapeGeometry &geometry, int numPlanes)
 {
     cuda::ImageBatchVarShapeWrap<const unsigned char> src(inData);
     cuda::ImageBatchVarShapeWrap<unsigned char>       dst(outData);
 
     const int groups = util::DivUp(inData.maxSize().w, kU8GroupWidth);
 
-    FlipWideU8VarShapeKernel<kNIX, IsPlanar>
-        <<<FlipGrid(groups, inData.maxSize().h, kNIX, outData.numImages()), kBlock, 0, stream>>>(src, dst, geometry,
-                                                                                                 numPlanes);
+    FlipWideU8VarShapeKernel<NIX, IsPlanar>
+        <<<FlipGrid(groups, inData.maxSize().h, NIX, outData.numImages()), kBlock, 0, stream>>>(src, dst, geometry,
+                                                                                                numPlanes);
     NVCV_CHECK_THROW(cudaGetLastError());
+}
+
+// The group count is the one flip tuning knob that does not carry across architectures; see
+// FlipVarShapeU8GroupsPerThread. Both counts are instantiated and the device picks one at launch.
+template<bool IsPlanar>
+void LaunchVarShapeWideU8(cudaStream_t stream, const nvcv::ImageBatchVarShapeDataStridedCuda &inData,
+                          const nvcv::ImageBatchVarShapeDataStridedCuda &outData, const VarShapeGeometry &geometry,
+                          int numPlanes)
+{
+    constexpr int kWideU8Groups = 16;
+
+    if (cvcuda::priv::FlipVarShapeU8GroupsPerThread(CurrentDeviceSMOrZero(), IsPlanar) == kWideU8Groups)
+    {
+        LaunchVarShapeWideU8WithGroups<kWideU8Groups, IsPlanar>(stream, inData, outData, geometry, numPlanes);
+    }
+    else
+    {
+        LaunchVarShapeWideU8WithGroups<kNIX, IsPlanar>(stream, inData, outData, geometry, numPlanes);
+    }
 }
 
 template<bool IsPlanar, typename T>
@@ -664,24 +796,10 @@ void Flip::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::T
 {
     CVCUDA_NVTX_RANGE("cvcuda::Flip::operator()[Tensor]");
 
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData  = RequireCudaTensor(in, "Input");
+    auto outData = RequireCudaTensor(out, "Output");
 
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-
-    if (inData->dtype() != outData->dtype())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same data type");
-    }
+    RequireSameDtype(*inData, *outData);
 
     ValidateTensorLayout(inData->layout(), outData->layout());
 
@@ -754,26 +872,9 @@ void Flip::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, c
 {
     CVCUDA_NVTX_RANGE("cvcuda::Flip::operator()[ImageBatchVarShape]");
 
-    auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    auto outData = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, varshape pitch-linear image batch");
-    }
-
-    auto flipCodeData = flipCode.exportData<nvcv::TensorDataStridedCuda>();
-    if (flipCodeData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Flip Code must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData       = RequireCudaVarShape(in, stream, "Input");
+    auto outData      = RequireCudaVarShape(out, stream, "Output");
+    auto flipCodeData = RequireCudaTensor(flipCode, "Flip Code");
     if (flipCodeData->dtype() != nvcv::TYPE_S32)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Flip Code must be an int32 (S32) tensor");

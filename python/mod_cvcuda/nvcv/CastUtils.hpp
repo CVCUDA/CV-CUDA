@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,28 +18,26 @@
 #ifndef NVCV_PYTHON_PRIV_CAST_UTILS_HPP
 #define NVCV_PYTHON_PRIV_CAST_UTILS_HPP
 
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
+#include <common/Binding.hpp>
 
 #include <memory>
 
 namespace nvcvpy::priv {
-namespace py = pybind11;
+namespace py = nanobind;
 
-// pybind11 2.10.3 can't convert an item from the input list into another type
-// automatically. It won't be able to match the call to current method definition.
-// We have to accept std::vector<py::object> and try to cast them manually.
+// Convert either an already-wrapped object or an object implementing one of
+// ExternalBuffer's supported interchange protocols.
 
 template<typename T>
 std::shared_ptr<T> cast_py_object_as(py::object &obj)
 {
-    py::detail::type_caster<T> caster;
-    if (!caster.load(obj, true))
+    if (py::isinstance<T>(obj))
     {
-        return {};
+        return py::cast<std::shared_ptr<T>>(obj, false);
     }
-    std::shared_ptr<T> buf = caster;
-    return buf;
+
+    std::shared_ptr<T> out = std::make_shared<T>();
+    return out->load(obj.ptr()) ? out : std::shared_ptr<T>{};
 }
 
 } // namespace nvcvpy::priv

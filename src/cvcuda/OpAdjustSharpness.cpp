@@ -37,15 +37,13 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaAdjustSharpnessCreate, (NVCVOperatorHa
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            // Ownership of the operator is transferred to the C handle and released by
-            // cvcudaOperatorDestroy; this matches every other operator's Create entry point.
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::AdjustSharpness()); // NOSONAR
+            *handle = priv::CreateOperatorHandle<priv::AdjustSharpness>();
         });
 }
 
-CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaAdjustSharpnessSubmit,
+CVCUDA_DEFINE_API(0, 19, NVCVStatus, cvcudaAdjustSharpnessSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
-                   float sharpnessFactor))
+                   double sharpnessFactor))
 {
     CVCUDA_NVTX_RANGE("cvcudaAdjustSharpnessSubmit");
     return nvcv::ProtectCall(
@@ -58,9 +56,9 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaAdjustSharpnessSubmit,
         });
 }
 
-CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaAdjustSharpnessVarShapeSubmit,
+CVCUDA_DEFINE_API(0, 19, NVCVStatus, cvcudaAdjustSharpnessVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
-                   float sharpnessFactor))
+                   double sharpnessFactor))
 {
     CVCUDA_NVTX_RANGE("cvcudaAdjustSharpnessVarShapeSubmit");
     return nvcv::ProtectCall(

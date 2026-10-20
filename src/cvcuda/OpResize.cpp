@@ -17,6 +17,7 @@
 
 #include "priv/OpResize.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -50,6 +51,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaResizeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &interpolation]
         {
+            priv::CheckEnumArg(interpolation, NVCV_INTERP_BOX, "interpolation type");
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
             priv::ToDynamicRef<priv::Resize>(handle)(stream, input.resource(), output.resource(), interpolation);
@@ -64,6 +66,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaResizeVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &interpolation]
         {
+            priv::CheckEnumArg(interpolation, NVCV_INTERP_BOX, "interpolation type");
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::ImageBatchVarShapeWrapHandle output(out);
             priv::ToDynamicRef<priv::Resize>(handle)(stream, input.resource(), output.resource(), interpolation);

@@ -27,6 +27,9 @@ import json
 import math
 import os
 import re
+from pathlib import Path
+
+import pytest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _BENCH = os.path.dirname(_HERE)
@@ -54,6 +57,10 @@ _BASE_BYTES = {
     "float": 4,
     "float64": 8,
     "double": 8,
+    "int64": 8,
+    "uint64": 8,
+    "longlong": 8,
+    "ulonglong": 8,
 }
 
 
@@ -136,6 +143,9 @@ def _max_tensor_elems(body, shape: str):
     batch, height, width = dims
     resize_types = body.get("string_axes", {}).get("resizeType", [])
     output_elems = [input_elems]
+    for output_shape in body.get("string_axes", {}).get("outputShape", []):
+        output_height, output_width = map(int, output_shape.split("x"))
+        output_elems.append(batch * output_height * output_width)
     for resize_type in resize_types:
         if resize_type == "EXPAND":
             output_elems.append(batch * (height * 2) * (width * 2))
@@ -234,21 +244,66 @@ def test_r4_cat_a_has_advanced_rgba_mirror():
 
 
 # ---------------------------------------------------------------------------
-# R6 — batch sizes are round numbers / powers of two (all operators).
+# R6 — batch sizes follow explicit patterns or the legacy round-size convention.
 # ---------------------------------------------------------------------------
-def test_r6_batch_sizes_are_round():
+def test_r6_batch_sizes_match_input_pattern():
+    """Uniform batches allow any positive N; heterogeneous patterns repeat triples."""
     bad = []
     for op, key, body in _profiles():
         if op not in CAT_A:  # only the operators this MR re-tunes
             continue
+        batch_cases = body.get("string_axes", {}).get("batchCase")
         for shape in _shapes(body):
-            n = _batch(shape)
-            if n is not None and not _is_round(n):
-                bad.append(f"{key}: N={n} ({shape})")
+            count = _batch(shape)
+            if count is None or count <= 0:
+                valid = False
+            elif batch_cases is None:
+                valid = _is_round(count)
+            else:
+                valid = bool(batch_cases) and all(
+                    batch_case == "uniform"
+                    or (
+                        batch_case in ("ordinary", "mixed-singleton") and count % 3 == 0
+                    )
+                    for batch_case in batch_cases
+                )
+            if not valid:
+                bad.append(f"{key}: N={count} ({shape}), batchCase={batch_cases}")
     assert not bad, (
-        "Cat-A batch sizes must be round (pow2 / multiple of 4 / <=4):\n  "
+        "Cat-A batch sizes must match their batchCase or legacy round-size convention:\n  "
         + "\n  ".join(bad)
     )
+
+
+@pytest.mark.parametrize(
+    "count,batch_cases,valid",
+    [
+        (33, ["uniform"], True),
+        (34, ["uniform"], True),
+        (47, ["uniform"], True),
+        (9, ["ordinary", "mixed-singleton"], True),
+        (4, ["ordinary"], False),
+        (8, ["mixed-singleton"], False),
+        (0, ["uniform"], False),
+        (-4, ["uniform"], False),
+        (4, ["unknown"], False),
+        (4, [], False),
+        (32, None, True),
+        (33, None, False),
+    ],
+)
+def test_r6_respects_explicit_batch_patterns(monkeypatch, count, batch_cases, valid):
+    profile = {"string_axes": {"shape": [f"{count}x1080x1920"]}}
+    if batch_cases is not None:
+        profile["string_axes"]["batchCase"] = batch_cases
+    monkeypatch.setitem(
+        globals(), "_profiles", lambda: [("tvresize", "batch-pattern", profile)]
+    )
+    if valid:
+        test_r6_batch_sizes_match_input_pattern()
+    else:
+        with pytest.raises(AssertionError):
+            test_r6_batch_sizes_match_input_pattern()
 
 
 # ---------------------------------------------------------------------------
@@ -257,13 +312,16 @@ def test_r6_batch_sizes_are_round():
 def test_r8_no_tensor_exceeds_2gb():
     bad = []
     for op, key, body in _profiles():
-        channels = max(body.get("int64_axes", {}).get("numChannels", [1]))
+        channels = body.get("int64_axes", {}).get("numChannels")
         for dt in body.get("dtypes", []):
+            pixel_bytes = (
+                _BASE_BYTES[_base(dt)] * max(channels) if channels else _dtype_bytes(dt)
+            )
             for shape in _shapes(body):
                 elems = _max_tensor_elems(body, shape)
                 if elems is None:
                     continue
-                nbytes = elems * _dtype_bytes(dt) * channels
+                nbytes = elems * pixel_bytes
                 if nbytes >= TWO_GB:
                     bad.append(f"{key}: {dt} {shape} = {nbytes/1e9:.2f} GB")
     assert not bad, "Configs exceeding the 2 GB TensorWrap32 limit:\n  " + "\n  ".join(
@@ -271,9 +329,43 @@ def test_r8_no_tensor_exceeds_2gb():
     )
 
 
+@pytest.mark.parametrize(
+    "dtype,channels,shape,output_shape,exceeds_limit",
+    [
+        ("float3", 3, "33x1080x1920", None, False),
+        ("float4", 4, "20x1080x1920", None, False),
+        ("float3", 3, "87x1080x1920", None, True),
+        ("float32", 3, "87x1080x1920", None, True),
+        ("float3", None, "87x1080x1920", None, True),
+        ("uint8", 16, "1x8192x16384", None, True),
+        ("uint8", 16, "1x8192x16383", None, False),
+        ("float3", 3, "1x32x32", "16384x16384", True),
+        ("float3", 3, "1x32x32", "64x64", False),
+    ],
+)
+def test_r8_channel_and_output_accounting(
+    monkeypatch, dtype, channels, shape, output_shape, exceeds_limit
+):
+    profile = {"dtypes": [dtype], "string_axes": {"shape": [shape]}}
+    if channels is not None:
+        profile["int64_axes"] = {"numChannels": [channels]}
+    if output_shape is not None:
+        profile["string_axes"]["outputShape"] = [output_shape]
+    monkeypatch.setitem(
+        globals(),
+        "_profiles",
+        lambda: [("tvresize", "memory-accounting", profile)],
+    )
+    if exceeds_limit:
+        with pytest.raises(AssertionError, match="Configs exceeding"):
+            test_r8_no_tensor_exceeds_2gb()
+    else:
+        test_r8_no_tensor_exceeds_2gb()
+
+
 # ---------------------------------------------------------------------------
 # R10 — inputKind is the string container selector everywhere. Operator-specific
-# API variants extend it here: TensorBatch, TensorScalar, and ScalarGamma are
+# API variants TensorBatch, TensorScalar, ScalarGamma, and VarShapeToTensor are
 # reserved for operators with distinct execution pathways.
 # ---------------------------------------------------------------------------
 def test_r10_input_kind_is_valid():
@@ -283,6 +375,7 @@ def test_r10_input_kind_is_valid():
         "TensorBatch",
         "TensorScalar",
         "ScalarGamma",
+        "VarShapeToTensor",
     )
     bad = []
     for op, key, body in _profiles():
@@ -294,6 +387,33 @@ def test_r10_input_kind_is_valid():
             invalid.append("TensorScalar (only Normalize supports it)")
         if op != "gammacontrast" and "ScalarGamma" in kinds:
             invalid.append("ScalarGamma (only GammaContrast supports it)")
+        if op != "copymakeborder" and "VarShapeToTensor" in kinds:
+            invalid.append("VarShapeToTensor (only CopyMakeBorder supports it)")
         if invalid:
             bad.append(f"{key}: {invalid}")
     assert not bad, "inputKind has unsupported values:\n  " + "\n  ".join(bad)
+
+
+SUPPORTED_RGB_TYPES = {
+    "autocontrast": {"short3"},
+    "brightnesscontrast": {"longlong3", "double3"},
+    "copymakeborder": {"char3", "int3", "longlong3", "double3"},
+    "customcrop": {"uint3", "longlong3", "ulonglong3"},
+    "invert": {"short3", "int3", "longlong3", "double3"},
+    "posterize": {"half3", "float3", "double3"},
+    "solarize": {"double3"},
+}
+
+
+@pytest.mark.parametrize("operator,dtypes", SUPPORTED_RGB_TYPES.items())
+def test_basic_covers_supported_dtypes_in_both_tensor_layouts(operator, dtypes):
+    configs = json.loads((Path(_OPS_DIR) / f"{operator}.json").read_text())["configs"]
+    for dtype in dtypes:
+        for layout in ("NHWC", "NCHW"):
+            assert any(
+                c["tier"] == "basic"
+                and dtype in c["dtypes"]
+                and layout in c["string_axes"]["layout"]
+                and "Tensor" in c["string_axes"]["inputKind"]
+                for c in configs.values()
+            ), (operator, dtype, layout)

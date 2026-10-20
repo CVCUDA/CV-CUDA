@@ -17,6 +17,7 @@
 
 #include "priv/OpLaplacian.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -50,6 +51,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaLaplacianSubmit,
     return nvcv::ProtectCall(
         [&out, &in, &handle, &stream, &ksize, &scale, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::TensorWrapHandle output(out);
             nvcv::TensorWrapHandle input(in);
             priv::ToDynamicRef<priv::Laplacian>(handle)(stream, input.resource(), output.resource(), ksize, scale,
@@ -65,6 +67,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaLaplacianVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &ksize, &scale, &handle, &stream, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
             nvcv::ImageBatchVarShapeWrapHandle outWrap(out);
             nvcv::TensorWrapHandle             ksizeWrap(ksize);

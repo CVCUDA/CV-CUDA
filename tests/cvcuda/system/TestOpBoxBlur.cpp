@@ -631,6 +631,67 @@ TEST(OpBoxBlur, padded_planar_channel_strides_match_independent_cpu_reference)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpBoxBlur, padded_interleaved_rgba_strides_match_independent_cpu_reference)
+{
+    constexpr int samples  = 2;
+    constexpr int channels = 4;
+    constexpr int width    = 40;
+    constexpr int height   = 32;
+
+    auto makePaddedInterleaved = [](int rowPadding)
+    {
+        const int64_t rowStride    = width * channels + rowPadding;
+        const int64_t sampleStride = rowStride * height;
+        NVCVByte     *allocation{};
+        EXPECT_EQ(cudaSuccess,
+                  cudaMalloc(reinterpret_cast<void **>(&allocation), static_cast<size_t>(sampleStride * samples)));
+
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = allocation;
+        buffer.strides[0] = sampleStride;
+        buffer.strides[1] = rowStride;
+        buffer.strides[2] = channels;
+        buffer.strides[3] = 1;
+        return nvcv::TensorWrapData(
+            nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{samples, height, width, channels}, "NHWC"},
+                nvcv::TYPE_U8, buffer
+        },
+            nvcv::TensorDataCleanupCallback{[allocation](const nvcv::TensorData &)
+                                            {
+                                                EXPECT_EQ(cudaSuccess, cudaFree(allocation));
+                                            }});
+    };
+
+    nvcv::Tensor input      = makePaddedInterleaved(8);
+    nvcv::Tensor output     = makePaddedInterleaved(12);
+    auto         inputData  = input.exportData<nvcv::TensorDataStridedCuda>();
+    auto         outputData = output.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inputData && outputData);
+    auto inputAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(*inputData);
+    auto outputAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outputData);
+    ASSERT_TRUE(inputAccess && outputAccess);
+
+    const auto inputHost = MakeBoxBlurInput(samples, channels, height, width, false);
+    UploadTensorPixels(*inputAccess, inputHost);
+    ASSERT_EQ(cudaSuccess, cudaMemset(outputData->basePtr(), 0xCD,
+                                      static_cast<size_t>(outputAccess->sampleStride() * outputAccess->numSamples())));
+
+    const std::vector<NVCVBlurBoxI> boxes{
+        {{3, 4, 19, 17}, 5}
+    };
+    const auto reference = BoxBlurReference(inputHost, samples, channels, height, width, false, boxes);
+    auto       blurBoxes = MakeBlurBoxes(samples, boxes);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::BoxBlur op;
+    ASSERT_NO_THROW(op(stream, input, output, (NVCVBlurBoxesI)blurBoxes.get()));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(reference, DownloadTensorPixels(*outputAccess));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpBoxBlur, hwc_tensor_correct_output_matches_independent_cpu_reference)
 {
     constexpr int samples  = 1;
@@ -674,6 +735,158 @@ TEST(OpBoxBlur, hwc_tensor_correct_output_matches_independent_cpu_reference)
 
     EXPECT_EQ(reference, DownloadTensorPixels(*outputAccess));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpBoxBlur, chw_rgba_tensor_matches_independent_cpu_reference)
+{
+    constexpr int samples  = 1;
+    constexpr int channels = 4;
+    constexpr int width    = 37;
+    constexpr int height   = 35;
+
+    const nvcv::TensorShape shape{
+        {channels, height, width},
+        "CHW"
+    };
+    nvcv::Tensor input(shape, nvcv::TYPE_U8);
+    nvcv::Tensor output(shape, nvcv::TYPE_U8);
+
+    auto inputData  = input.exportData<nvcv::TensorDataStridedCuda>();
+    auto outputData = output.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inputData);
+    ASSERT_TRUE(outputData);
+
+    auto inputAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(*inputData);
+    auto outputAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outputData);
+    ASSERT_TRUE(inputAccess);
+    ASSERT_TRUE(outputAccess);
+    ASSERT_EQ(1, inputAccess->numSamples());
+    ASSERT_EQ(1, outputAccess->numSamples());
+
+    const auto inputHost = MakeBoxBlurInput(samples, channels, height, width, true);
+    UploadTensorPixels(*inputAccess, inputHost);
+
+    const std::vector<NVCVBlurBoxI> boxes{
+        {{5, 4, 25, 29}, 5}
+    };
+    const auto reference = BoxBlurReference(inputHost, samples, channels, height, width, true, boxes);
+    auto       blurBoxes = MakeBlurBoxes(samples, boxes);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::BoxBlur op;
+    ASSERT_NO_THROW(op(stream, input, output, (NVCVBlurBoxesI)blurBoxes.get()));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    EXPECT_EQ(reference, DownloadTensorPixels(*outputAccess));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpBoxBlur, rank3_rgba_hwc_and_rgb_chw_match_independent_cpu_reference)
+{
+    const std::vector<NVCVBlurBoxI> boxes{
+        {{5, 4, 25, 29}, 5}
+    };
+
+    auto runCase = [&boxes](bool planar)
+    {
+        constexpr int samples = 1;
+        constexpr int width   = 37;
+        constexpr int height  = 35;
+
+        SCOPED_TRACE(planar ? "CHW RGB" : "HWC RGBA");
+        const int channels = planar ? 3 : 4;
+        const nvcv::TensorShape shape
+            = planar ? nvcv::TensorShape{{channels, height, width}, "CHW"}
+                     : nvcv::TensorShape{{height, width, channels}, "HWC"};
+        nvcv::Tensor input(shape, nvcv::TYPE_U8);
+        nvcv::Tensor output(shape, nvcv::TYPE_U8);
+
+        auto inputData  = input.exportData<nvcv::TensorDataStridedCuda>();
+        auto outputData = output.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(inputData);
+        ASSERT_TRUE(outputData);
+
+        auto inputAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(*inputData);
+        auto outputAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outputData);
+        ASSERT_TRUE(inputAccess);
+        ASSERT_TRUE(outputAccess);
+        ASSERT_EQ(samples, inputAccess->numSamples());
+        ASSERT_EQ(samples, outputAccess->numSamples());
+
+        const auto inputHost = MakeBoxBlurInput(samples, channels, height, width, planar);
+        UploadTensorPixels(*inputAccess, inputHost);
+
+        const auto reference = BoxBlurReference(inputHost, samples, channels, height, width, planar, boxes);
+        auto       blurBoxes = MakeBlurBoxes(samples, boxes);
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+        cvcuda::BoxBlur op;
+        ASSERT_NO_THROW(op(stream, input, output, (NVCVBlurBoxesI)blurBoxes.get()));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        EXPECT_EQ(reference, DownloadTensorPixels(*outputAccess));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    };
+
+    for (const bool planar : {false, true})
+    {
+        ASSERT_NO_FATAL_FAILURE(runCase(planar));
+    }
+}
+
+TEST(OpBoxBlur, edge_clamped_rgba_layouts_match_independent_cpu_reference)
+{
+    const std::vector<NVCVBlurBoxI> boxes{
+        {{-4, -3, 18, 17}, 3},
+        {{29, 27, 20, 16}, 5},
+    };
+
+    auto runCase = [&boxes](nvcv::ImageFormat format)
+    {
+        constexpr int samples = 2;
+        constexpr int width   = 37;
+        constexpr int height  = 35;
+
+        nvcv::Tensor input  = nvcv::util::CreateTensor(samples, width, height, format);
+        nvcv::Tensor output = nvcv::util::CreateTensor(samples, width, height, format);
+
+        auto inputData  = input.exportData<nvcv::TensorDataStridedCuda>();
+        auto outputData = output.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(inputData);
+        ASSERT_TRUE(outputData);
+
+        auto inputAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(*inputData);
+        auto outputAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outputData);
+        ASSERT_TRUE(inputAccess);
+        ASSERT_TRUE(outputAccess);
+
+        const int  channels  = inputAccess->numChannels();
+        const bool planar    = inputAccess->chStride() != 1;
+        const auto inputHost = MakeBoxBlurInput(samples, channels, height, width, planar);
+        UploadTensorPixels(*inputAccess, inputHost);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemset(outputData->basePtr(), 0xCD,
+                             static_cast<size_t>(outputAccess->sampleStride() * outputAccess->numSamples())));
+
+        const auto reference = BoxBlurReference(inputHost, samples, channels, height, width, planar, boxes);
+        auto       blurBoxes = MakeBlurBoxes(samples, boxes);
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+        cvcuda::BoxBlur op;
+        ASSERT_NO_THROW(op(stream, input, output, (NVCVBlurBoxesI)blurBoxes.get()));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        EXPECT_EQ(reference, DownloadTensorPixels(*outputAccess));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    };
+
+    for (const nvcv::ImageFormat format : {nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p})
+    {
+        ASSERT_NO_FATAL_FAILURE(runCase(format));
+    }
 }
 
 // clang-format off
@@ -829,6 +1042,37 @@ TEST(OpBoxBlur_Negative, rejects_single_channel_tensor)
               nvcv::ProtectCall([&] { op(nullptr, src, dst, (NVCVBlurBoxesI)blurBoxes.get()); }));
 }
 
+TEST(OpBoxBlur_Negative, rejects_same_unsupported_float_type)
+{
+    nvcv::Tensor src       = nvcv::util::CreateTensor(1, 16, 12, nvcv::FMT_RGBf32);
+    nvcv::Tensor dst       = nvcv::util::CreateTensor(1, 16, 12, nvcv::FMT_RGBf32);
+    auto         blurBoxes = MakeBlurBoxes(1, {
+                                                  {{2, 2, 8, 6}, 3}
+    });
+
+    cvcuda::BoxBlur op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, src, dst, (NVCVBlurBoxesI)blurBoxes.get()); }));
+}
+
+TEST(OpBoxBlur_Negative, rejects_eight_bit_float_tensor_type)
+{
+    const nvcv::DataType    eightBitFloat{nvcv::DataKind::FLOAT, nvcv::Packing::X8_Y8_Z8};
+    const nvcv::TensorShape shape{
+        {1, 12, 16, 3},
+        "NHWC"
+    };
+    nvcv::Tensor src(shape, eightBitFloat);
+    nvcv::Tensor dst(shape, eightBitFloat);
+    auto         blurBoxes = MakeBlurBoxes(1, {
+                                                  {{2, 2, 8, 6}, 3}
+    });
+
+    cvcuda::BoxBlur op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, src, dst, (NVCVBlurBoxesI)blurBoxes.get()); }));
+}
+
 TEST_P(OpBoxBlur_Negative, invalid_parameters)
 {
     cudaStream_t stream;
@@ -953,4 +1197,18 @@ TEST(OpBoxBlur, test_nothing_to_apply)
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Hardening: a null bboxes handle used to be dereferenced during the batch check.
+TEST(OpBoxBlur_Negative, rejects_null_bboxes)
+{
+    const nvcv::TensorShape shape{
+        {1, 12, 16, 3},
+        "NHWC"
+    };
+    nvcv::Tensor src(shape, nvcv::TYPE_U8);
+    nvcv::Tensor dst(shape, nvcv::TYPE_U8);
+
+    cvcuda::BoxBlur op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, src, dst, (NVCVBlurBoxesI) nullptr); }));
 }

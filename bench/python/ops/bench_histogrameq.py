@@ -47,6 +47,18 @@ def histogrameq(state):
     input_kind = get_input_kind(state.get_string("inputKind"))
     device_id = state.get_device()
 
+    method_str = state.get_string_or_default("method", "OPENCV")
+
+    if method_str == "PILLOW":
+        method = cvcuda.HistogramEq.PILLOW
+    elif method_str == "OPENCV":
+        method = cvcuda.HistogramEq.OPENCV
+    else:
+        state.skip(
+            f"HistogramEq benchmark supports only OPENCV and PILLOW methods, got {method_str}"
+        )
+        return None
+
     if layout not in ("NHWC", "NCHW", "NCHW_FAKE"):
         state.skip(
             "HistogramEq benchmark supports only NHWC, NCHW, and NCHW_FAKE layouts"
@@ -92,7 +104,7 @@ def histogrameq(state):
         def run_fake(launch):
             stream = get_stream(launch)
             cvcuda.reformat_into(inter_src, src, stream=stream)
-            cvcuda.histogrameq_into(inter_dst, inter_src, stream=stream)
+            cvcuda.histogrameq_into(inter_dst, inter_src, method=method, stream=stream)
             cvcuda.reformat_into(dst, inter_dst, stream=stream)
 
         return run_fake
@@ -136,6 +148,7 @@ def histogrameq(state):
         cvcuda.histogrameq_into(
             dst=dst,
             src=src,
+            method=method,
             stream=get_stream(launch),
         )
 

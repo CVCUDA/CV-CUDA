@@ -46,12 +46,12 @@ void SubmitBrightnessContrast(NVCVOperatorHandle handle, cudaStream_t stream, In
 template<typename InWrap, typename OutWrap, typename InHandle, typename OutHandle>
 void SubmitBrightnessContrastScalar(NVCVOperatorHandle handle, cudaStream_t stream, InHandle in, OutHandle out,
                                     double brightness, double contrast, double brightnessShift, double contrastCenter,
-                                    bool clamp)
+                                    bool clamp, NVCVRoundMode roundMode)
 {
     InWrap  _in(in);
     OutWrap _out(out);
     priv::ToDynamicRef<priv::BrightnessContrast>(handle)(stream, _in.resource(), _out.resource(), brightness, contrast,
-                                                         brightnessShift, contrastCenter, clamp);
+                                                         brightnessShift, contrastCenter, clamp, roundMode);
 }
 
 CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaBrightnessContrastCreate, (NVCVOperatorHandle * handle))
@@ -106,7 +106,8 @@ CVCUDA_DEFINE_API(0, 17, NVCVStatus, cvcudaBrightnessContrastScalarSubmit,
         [&handle, &stream, &in, &out, &brightness, &contrast, &brightnessShift, &contrastCenter, &clamp]
         {
             SubmitBrightnessContrastScalar<nvcv::TensorWrapHandle, nvcv::TensorWrapHandle>(
-                handle, stream, in, out, brightness, contrast, brightnessShift, contrastCenter, clamp);
+                handle, stream, in, out, brightness, contrast, brightnessShift, contrastCenter, clamp,
+                NVCV_ROUND_NEAREST);
         });
 }
 
@@ -119,6 +120,35 @@ CVCUDA_DEFINE_API(0, 17, NVCVStatus, cvcudaBrightnessContrastVarShapeScalarSubmi
         [&handle, &stream, &in, &out, &brightness, &contrast, &brightnessShift, &contrastCenter, &clamp]
         {
             SubmitBrightnessContrastScalar<nvcv::ImageBatchVarShapeWrapHandle, nvcv::ImageBatchVarShapeWrapHandle>(
-                handle, stream, in, out, brightness, contrast, brightnessShift, contrastCenter, clamp);
+                handle, stream, in, out, brightness, contrast, brightnessShift, contrastCenter, clamp,
+                NVCV_ROUND_NEAREST);
+        });
+}
+
+CVCUDA_DEFINE_API(0, 19, NVCVStatus, cvcudaBrightnessContrastScalarRoundSubmit,
+                  (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
+                   double brightness, double contrast, double brightnessShift, double contrastCenter, bool clamp,
+                   NVCVRoundMode roundMode))
+{
+    CVCUDA_NVTX_RANGE("cvcudaBrightnessContrastScalarRoundSubmit");
+    return nvcv::ProtectCall(
+        [&handle, &stream, &in, &out, &brightness, &contrast, &brightnessShift, &contrastCenter, &clamp, &roundMode]
+        {
+            SubmitBrightnessContrastScalar<nvcv::TensorWrapHandle, nvcv::TensorWrapHandle>(
+                handle, stream, in, out, brightness, contrast, brightnessShift, contrastCenter, clamp, roundMode);
+        });
+}
+
+CVCUDA_DEFINE_API(0, 19, NVCVStatus, cvcudaBrightnessContrastVarShapeScalarRoundSubmit,
+                  (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
+                   double brightness, double contrast, double brightnessShift, double contrastCenter, bool clamp,
+                   NVCVRoundMode roundMode))
+{
+    CVCUDA_NVTX_RANGE("cvcudaBrightnessContrastVarShapeScalarRoundSubmit");
+    return nvcv::ProtectCall(
+        [&handle, &stream, &in, &out, &brightness, &contrast, &brightnessShift, &contrastCenter, &clamp, &roundMode]
+        {
+            SubmitBrightnessContrastScalar<nvcv::ImageBatchVarShapeWrapHandle, nvcv::ImageBatchVarShapeWrapHandle>(
+                handle, stream, in, out, brightness, contrast, brightnessShift, contrastCenter, clamp, roundMode);
         });
 }

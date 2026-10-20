@@ -20,6 +20,7 @@
 #include "Nvtx.hpp"
 #include "OpCenterCrop.hpp"
 #include "PlanarTensorView.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cuda_runtime_api.h>
 #include <cvcuda/cuda_tools/TensorWrap.hpp>
@@ -290,19 +291,8 @@ void CenterCrop::operator()(cudaStream_t stream, const nvcv::Tensor &in, const n
                             const nvcv::Size2D &cropSize) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::CenterCrop::operator()[Tensor]");
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData  = RequireCudaTensor(in, "Input");
+    auto outData = RequireCudaTensor(out, "Output");
 
     if (TryCopyDenseByteNHWCCenterCrop(stream, *inData, *outData, cropSize))
     {

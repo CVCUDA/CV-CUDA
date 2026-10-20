@@ -15,94 +15,97 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpLabel.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 #include <optional>
 
 namespace cvcudapy {
 
-using TupleTensor3 = std::tuple<Tensor, std::optional<Tensor>, std::optional<Tensor>>;
-
 namespace {
+using native::Stream;
+using native::Tensor;
+using TupleTensor3    = std::tuple<std::shared_ptr<Tensor>, std::optional<std::shared_ptr<Tensor>>,
+                                std::optional<std::shared_ptr<Tensor>>>;
+using TupleTensor3Ref = std::tuple<Tensor *, std::optional<Tensor *>, std::optional<Tensor *>>;
 
-TupleTensor3 LabelInto(Tensor &output, std::optional<Tensor> count, std::optional<Tensor> stats, Tensor &input,
-                       NVCVConnectivityType connectivity, NVCVLabelType assignLabels, NVCVLabelMaskType maskType,
-                       const std::optional<Tensor> &bgLabel, const std::optional<Tensor> &minThresh,
-                       const std::optional<Tensor> &maxThresh, const std::optional<Tensor> &minSize,
-                       const std::optional<Tensor> &mask, std::optional<Stream> pstream)
+const nvcv::Tensor &AsNativeTensor(const std::optional<Tensor *> &tensor, const nvcv::Tensor &nullTensor)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    return tensor && *tensor ? (*tensor)->impl() : nullTensor;
+}
+
+TupleTensor3Ref LabelInto(Tensor &output, std::optional<Tensor *> count, std::optional<Tensor *> stats, Tensor &input,
+                          NVCVConnectivityType connectivity, NVCVLabelType assignLabels, NVCVLabelMaskType maskType,
+                          const std::optional<Tensor *> &bgLabel, const std::optional<Tensor *> &minThresh,
+                          const std::optional<Tensor *> &maxThresh, const std::optional<Tensor *> &minSize,
+                          const std::optional<Tensor *> &mask, std::optional<Stream *> pstream)
+{
+    Stream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<cvcuda::Label>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    if (count)
+    if (count && *count)
     {
-        guard.add(LockMode::LOCK_MODE_WRITE, {*count});
+        guard.add(LockMode::LOCK_MODE_WRITE, {**count});
     }
-    if (stats)
+    if (stats && *stats)
     {
-        guard.add(LockMode::LOCK_MODE_WRITE, {*stats});
+        guard.add(LockMode::LOCK_MODE_WRITE, {**stats});
     }
-    if (bgLabel)
+    if (bgLabel && *bgLabel)
     {
-        guard.add(LockMode::LOCK_MODE_READ, {*bgLabel});
+        guard.add(LockMode::LOCK_MODE_READ, {**bgLabel});
     }
-    if (minThresh)
+    if (minThresh && *minThresh)
     {
-        guard.add(LockMode::LOCK_MODE_READ, {*minThresh});
+        guard.add(LockMode::LOCK_MODE_READ, {**minThresh});
     }
-    if (maxThresh)
+    if (maxThresh && *maxThresh)
     {
-        guard.add(LockMode::LOCK_MODE_READ, {*maxThresh});
+        guard.add(LockMode::LOCK_MODE_READ, {**maxThresh});
     }
-    if (minSize)
+    if (minSize && *minSize)
     {
-        guard.add(LockMode::LOCK_MODE_READ, {*minSize});
+        guard.add(LockMode::LOCK_MODE_READ, {**minSize});
     }
-    if (mask)
+    if (mask && *mask)
     {
-        guard.add(LockMode::LOCK_MODE_READ, {*mask});
+        guard.add(LockMode::LOCK_MODE_READ, {**mask});
     }
 
     guard.run(
-        [&bgLabel, &minThresh, &maxThresh, &minSize, &count, &stats, &mask, &op, &pstream, &input, &output,
+        [&bgLabel, &minThresh, &maxThresh, &minSize, &count, &stats, &mask, &op, &stream, &input, &output,
          &connectivity, &assignLabels, &maskType]()
         {
             const nvcv::Tensor nullTensor{nullptr};
-            op->submit(pstream->cudaHandle(), input, output, AsNvcvTensor(bgLabel, nullTensor),
-                       AsNvcvTensor(minThresh, nullTensor), AsNvcvTensor(maxThresh, nullTensor),
-                       AsNvcvTensor(minSize, nullTensor), AsNvcvTensor(count, nullTensor),
-                       AsNvcvTensor(stats, nullTensor), AsNvcvTensor(mask, nullTensor), connectivity, assignLabels,
+            op->submit(stream.handle(), input.impl(), output.impl(), AsNativeTensor(bgLabel, nullTensor),
+                       AsNativeTensor(minThresh, nullTensor), AsNativeTensor(maxThresh, nullTensor),
+                       AsNativeTensor(minSize, nullTensor), AsNativeTensor(count, nullTensor),
+                       AsNativeTensor(stats, nullTensor), AsNativeTensor(mask, nullTensor), connectivity, assignLabels,
                        maskType);
         });
 
-    return TupleTensor3(std::move(output), count, stats);
+    return {&output, count, stats};
 }
 
 TupleTensor3 Label(Tensor &input, NVCVConnectivityType connectivity, NVCVLabelType assignLabels,
                    NVCVLabelMaskType maskType, bool count, bool stats, int maxLabels,
-                   const std::optional<Tensor> &bgLabel, const std::optional<Tensor> &minThresh,
-                   const std::optional<Tensor> &maxThresh, const std::optional<Tensor> &minSize,
-                   const std::optional<Tensor> &mask, std::optional<Stream> pstream)
+                   const std::optional<Tensor *> &bgLabel, const std::optional<Tensor *> &minThresh,
+                   const std::optional<Tensor *> &maxThresh, const std::optional<Tensor *> &minSize,
+                   const std::optional<Tensor *> &mask, std::optional<Stream *> pstream)
 {
     constexpr nvcv::DataType outType = nvcv::TYPE_S32;
 
-    auto inputData = input.exportData<nvcv::TensorDataStridedCuda>();
+    auto inputData = input.impl().exportData<nvcv::TensorDataStridedCuda>();
     if (!inputData)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must be a valid CUDA strided tensor");
@@ -114,13 +117,13 @@ TupleTensor3 Label(Tensor &input, NVCVConnectivityType connectivity, NVCVLabelTy
     }
     auto numSamples = static_cast<int>(inAccess->numSamples());
 
-    Tensor                output = Tensor::Create(input.shape(), outType);
-    std::optional<Tensor> countTensor;
-    std::optional<Tensor> statsTensor;
+    auto                                   output = native::CreateTensor(input.impl().shape(), outType);
+    std::optional<std::shared_ptr<Tensor>> countTensor;
+    std::optional<std::shared_ptr<Tensor>> statsTensor;
 
     if (count)
     {
-        countTensor = Tensor::Create({{numSamples}, "N"}, outType);
+        countTensor = native::CreateTensor({{numSamples}, "N"}, outType);
     }
     if (stats)
     {
@@ -134,7 +137,7 @@ TupleTensor3 Label(Tensor &input, NVCVConnectivityType connectivity, NVCVLabelTy
             numStats = 9;
         }
 
-        statsTensor = Tensor::Create(
+        statsTensor = native::CreateTensor(
             {
                 {numSamples, maxLabels, numStats},
                 "NMA"
@@ -142,17 +145,19 @@ TupleTensor3 Label(Tensor &input, NVCVConnectivityType connectivity, NVCVLabelTy
             outType);
     }
 
-    return LabelInto(output, countTensor, statsTensor, input, connectivity, assignLabels, maskType, bgLabel, minThresh,
-                     maxThresh, minSize, mask, pstream);
+    LabelInto(*output, countTensor ? std::optional<Tensor *>{countTensor->get()} : std::nullopt,
+              statsTensor ? std::optional<Tensor *>{statsTensor->get()} : std::nullopt, input, connectivity,
+              assignLabels, maskType, bgLabel, minThresh, maxThresh, minSize, mask, pstream);
+    return {std::move(output), std::move(countTensor), std::move(statsTensor)};
 }
 
 } // namespace
 
-void ExportOpLabel(py::module &m)
+void ExportOpLabel(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
-    py::enum_<NVCVLabelMaskType>(m, "LabelMaskType", py::arithmetic())
+    py::enum_compat<NVCVLabelMaskType>(m, "LabelMaskType", py::is_arithmetic())
         .value("REMOVE_ISLANDS_OUTSIDE_MASK_ONLY", NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY)
         .export_values();
 
@@ -197,7 +202,7 @@ void ExportOpLabel(py::module &m)
           "src"_a, "connectivity"_a = NVCV_CONNECTIVITY_4_2D, "assign_labels"_a = NVCV_LABEL_FAST,
           "mask_type"_a = NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY, py::kw_only(), "bg_label"_a = nullptr,
           "min_thresh"_a = nullptr, "max_thresh"_a = nullptr, "min_size"_a = nullptr, "mask"_a = nullptr,
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Label operation on the given cuda stream.
 
 

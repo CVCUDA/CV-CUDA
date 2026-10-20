@@ -126,6 +126,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLaplacianSubmit(NVCVOperatorHandle handle, cudaSt
 /**
  * Executes the Laplacian operation on a batch of images.
  *
+ * Input and output batches must contain the same number of images. Each output image must have
+ * the same width and height as its corresponding input image.
+ *
  * @param[in] in Input image batch.
  * @param[out] out Output image batch.
  * @param[in] ksize Aperture size to compute second-derivative filters, either 1 or 3 per image, as a 1D Tensor of int.

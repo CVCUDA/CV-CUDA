@@ -132,7 +132,7 @@ def warpperspective(state):
         # Pre-convert the 3x3 xform to a contiguous host numpy array ONCE.
         # The C++ Python wrapper (OpWarpPerspective.cpp) takes `xform` as a
         # pyarray and indexes it 9 times per call (xform.data(i, j) loop) —
-        # passing a fresh Python list of lists every iteration forces pybind11
+        # Passing a fresh Python list of lists every iteration forces the binding
         # to redo the list→ndarray conversion in the per-call hot path, which
         # adds 50-100us of host overhead per submit and surfaces as a parity-
         # gate trip on uint8 (compute-bound, ~1.8ms kernel where 50us is 3%).

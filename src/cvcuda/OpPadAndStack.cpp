@@ -17,6 +17,7 @@
 
 #include "priv/OpPadAndStack.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -50,6 +51,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaPadAndStackSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &top, &left, &handle, &stream, &borderMode, &borderValue]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::TensorWrapHandle             output(out);
             nvcv::TensorWrapHandle             topWrap(top);

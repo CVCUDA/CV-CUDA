@@ -17,6 +17,7 @@
 
 #include "priv/OpRemap.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -51,6 +52,10 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaRemapSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &map, &handle, &stream, &inInterp, &mapInterp, &mapValueType, &alignCorners, &border, &borderValue]
         {
+            priv::CheckEnumArg(border, NVCV_BORDER_CONSTANT_COVERAGE, "border type");
+            priv::CheckEnumArg(inInterp, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(mapInterp, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(mapValueType, NVCV_REMAP_RELATIVE_NORMALIZED, "remap map value type");
             nvcv::TensorWrapHandle _in(in);
             nvcv::TensorWrapHandle _out(out);
             nvcv::TensorWrapHandle _map(map);
@@ -69,6 +74,10 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaRemapVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &map, &handle, &stream, &inInterp, &mapInterp, &mapValueType, &alignCorners, &border, &borderValue]
         {
+            priv::CheckEnumArg(border, NVCV_BORDER_REFLECT101, "border type");
+            priv::CheckEnumArg(inInterp, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(mapInterp, NVCV_INTERP_BOX, "interpolation type");
+            priv::CheckEnumArg(mapValueType, NVCV_REMAP_RELATIVE_NORMALIZED, "remap map value type");
             nvcv::ImageBatchVarShapeWrapHandle _in(in);
             nvcv::ImageBatchVarShapeWrapHandle _out(out);
             nvcv::TensorWrapHandle             _map(map);

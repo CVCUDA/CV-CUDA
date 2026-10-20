@@ -54,8 +54,22 @@ public:
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double brightness,
                     double contrast, double brightnessShift, double contrastCenter, bool clamp = false) const;
 
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double brightness,
+                    double contrast, double brightnessShift, double contrastCenter, NVCVRoundMode roundMode) const;
+
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double brightness,
+                    double contrast, double brightnessShift, double contrastCenter, bool clamp,
+                    NVCVRoundMode roundMode) const;
+
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out, double brightness,
                     double contrast, double brightnessShift, double contrastCenter, bool clamp = false) const;
+
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out, double brightness,
+                    double contrast, double brightnessShift, double contrastCenter, NVCVRoundMode roundMode) const;
+
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out, double brightness,
+                    double contrast, double brightnessShift, double contrastCenter, bool clamp,
+                    NVCVRoundMode roundMode) const;
 
     NVCVOperatorHandle handle() const noexcept override;
 
@@ -100,6 +114,22 @@ inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::Tens
                                                                   clamp));
 }
 
+inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                           double brightness, double contrast, double brightnessShift,
+                                           double contrastCenter, NVCVRoundMode roundMode) const
+{
+    (*this)(stream, in, out, brightness, contrast, brightnessShift, contrastCenter, false, roundMode);
+}
+
+inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                           double brightness, double contrast, double brightnessShift,
+                                           double contrastCenter, bool clamp, NVCVRoundMode roundMode) const
+{
+    nvcv::detail::CheckThrow(
+        cvcudaBrightnessContrastScalarRoundSubmit(m_handle.get(), stream, in.handle(), out.handle(), brightness,
+                                                  contrast, brightnessShift, contrastCenter, clamp, roundMode));
+}
+
 inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
                                            double brightness, double contrast, double brightnessShift,
                                            double contrastCenter, bool clamp) const
@@ -107,6 +137,22 @@ inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::Imag
     nvcv::detail::CheckThrow(cvcudaBrightnessContrastVarShapeScalarSubmit(m_handle.get(), stream, in.handle(),
                                                                           out.handle(), brightness, contrast,
                                                                           brightnessShift, contrastCenter, clamp));
+}
+
+inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                                           double brightness, double contrast, double brightnessShift,
+                                           double contrastCenter, NVCVRoundMode roundMode) const
+{
+    (*this)(stream, in, out, brightness, contrast, brightnessShift, contrastCenter, false, roundMode);
+}
+
+inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                                           double brightness, double contrast, double brightnessShift,
+                                           double contrastCenter, bool clamp, NVCVRoundMode roundMode) const
+{
+    nvcv::detail::CheckThrow(
+        cvcudaBrightnessContrastVarShapeScalarRoundSubmit(m_handle.get(), stream, in.handle(), out.handle(), brightness,
+                                                          contrast, brightnessShift, contrastCenter, clamp, roundMode));
 }
 
 inline NVCVOperatorHandle BrightnessContrast::handle() const noexcept

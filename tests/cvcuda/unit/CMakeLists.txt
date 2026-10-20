@@ -15,16 +15,22 @@
 
 add_executable(cvcuda_test_unit
     TestCudaDeviceUtils.cpp
-    TestLegacyHelpers.cpp
     TestWorkspaceAllocator.cpp
     TestWorkspaceEstimator.cpp
     TestStreamId.cpp
     TestSimpleCache.cpp
     TestPerStreamCache.cpp
+    TestOpBndBoxPolicy.cpp
+    TestOpBndBoxCommands.cpp
     TestOpBoxBlur.cpp
+    TestOpCopyMakeBorderPolicy.cpp
+    TestOpEraseCopyPolicy.cpp
+    TestOpFlipPolicy.cpp
     TestOpHQResize.cpp
     TestOpHQResizePolicy.cpp
     TestOpInvertPolicy.cpp
+    TestOpPillowResizePolicy.cpp
+    TestPlanarSampleDecode.cpp
     TestTextBackend.cpp
 )
 

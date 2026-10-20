@@ -18,6 +18,17 @@ import cvcuda
 import pytest
 import numpy as np
 import cvcuda_tools as cv_tools
+import cvcuda_util as util
+
+
+_color_specs = [
+    cvcuda.ColorSpec.BT601,
+    cvcuda.ColorSpec.BT601_ER,
+    cvcuda.ColorSpec.BT709,
+    cvcuda.ColorSpec.BT709_ER,
+    cvcuda.ColorSpec.BT2020,
+    cvcuda.ColorSpec.BT2020_ER,
+]
 
 
 @pytest.mark.parametrize(
@@ -39,24 +50,44 @@ import cvcuda_tools as cv_tools
 def test_op_advcvtcolor(input, dtype, code):
 
     input = cvcuda.Tensor(*input)
-    color_specs = [
-        cvcuda.ColorSpec.BT601,
-        cvcuda.ColorSpec.BT709,
-        cvcuda.ColorSpec.BT2020,
-    ]
-
-    for spec in color_specs:
+    for spec in _color_specs:
         out = cvcuda.advcvtcolor(input, code, spec)
         assert out.layout == input.layout
         assert out.shape == input.shape
         assert out.dtype == input.dtype
 
     out = cvcuda.Tensor(input.shape, dtype, input.layout)
-    for spec in color_specs:
-        out = cvcuda.advcvtcolor_into(input, out, code, spec)
+    for spec in _color_specs:
+        out = cvcuda.advcvtcolor_into(out, input, code, spec)
         assert out.layout == input.layout
         assert out.shape == input.shape
         assert out.dtype == input.dtype
+
+
+@pytest.mark.parametrize(
+    "base_spec,extended_spec,expected_color",
+    [
+        (cvcuda.ColorSpec.BT601, cvcuda.ColorSpec.BT601_ER, [110, 206, 62]),
+        (cvcuda.ColorSpec.BT709, cvcuda.ColorSpec.BT709_ER, [115, 200, 66]),
+        (cvcuda.ColorSpec.BT2020, cvcuda.ColorSpec.BT2020_ER, [108, 203, 66]),
+    ],
+)
+def test_op_advcvtcolor_extended_range_values(base_spec, extended_spec, expected_color):
+    input_data = np.array([[[[192, 192, 192], [17, 131, 249]]]], dtype=np.uint8)
+    # Colored triples pin each family's staged Q14 output; independent standards-derived
+    # coverage is in tests/cvcuda/system/TestOpAdvCvtColor.cpp. Neutral gray pins normalized luma.
+    expected = np.array([[[[192, 128, 128], expected_color]]], dtype=np.uint8)
+    input_tensor = util.to_cvcuda_tensor(input_data, "NHWC")
+
+    base = cvcuda.advcvtcolor(input_tensor, cvcuda.ColorConversion.RGB2YUV, base_spec)
+    extended = cvcuda.advcvtcolor(
+        input_tensor, cvcuda.ColorConversion.RGB2YUV, extended_spec
+    )
+    base_data = util.to_cpu_numpy_buffer(base.cuda())
+    extended_data = util.to_cpu_numpy_buffer(extended.cuda())
+
+    np.testing.assert_array_equal(extended_data, base_data)
+    np.testing.assert_array_equal(extended_data, expected)
 
 
 @pytest.mark.parametrize(
@@ -121,18 +152,13 @@ def test_op_advcvtcolor_FromNV(input, dtype, code):
         )
 
     inputTensor = cvcuda.Tensor(*inputNV)
-    color_specs = [
-        cvcuda.ColorSpec.BT601,
-        cvcuda.ColorSpec.BT709,
-        cvcuda.ColorSpec.BT2020,
-    ]
-    for spec in color_specs:
+    for spec in _color_specs:
         out = cvcuda.advcvtcolor(inputTensor, code, spec)
         assert out.layout == inputTensor.layout
         assert out.dtype == inputTensor.dtype
 
     outTensor = cvcuda.Tensor(out.shape, dtype, out.layout)
-    for spec in color_specs:
+    for spec in _color_specs:
         cvcuda.advcvtcolor_into(outTensor, inputTensor, code, spec)
         assert outTensor.layout == inputTensor.layout
         assert outTensor.dtype == inputTensor.dtype
@@ -173,18 +199,13 @@ def test_op_advcvtcolor_FromNV(input, dtype, code):
 def test_op_advcvtcolor_toNV(input, dtype, code):
 
     inputTensor = cvcuda.Tensor(*input)
-    color_specs = [
-        cvcuda.ColorSpec.BT601,
-        cvcuda.ColorSpec.BT709,
-        cvcuda.ColorSpec.BT2020,
-    ]
-    for spec in color_specs:
+    for spec in _color_specs:
         out = cvcuda.advcvtcolor(inputTensor, code, spec)
         assert out.layout == inputTensor.layout
         assert out.dtype == inputTensor.dtype
 
     outTensor = cvcuda.Tensor(out.shape, dtype, out.layout)
-    for spec in color_specs:
+    for spec in _color_specs:
         cvcuda.advcvtcolor_into(outTensor, inputTensor, code, spec)
         assert outTensor.layout == inputTensor.layout
         assert outTensor.dtype == inputTensor.dtype
@@ -328,12 +349,6 @@ globals().update(
         supported_dtypes={cvcuda.Type.U8},
         supported_layouts=_supported_layouts,
         supported_channels={3},
-        extra_params={
-            "spec": {
-                cvcuda.ColorSpec.BT601,
-                cvcuda.ColorSpec.BT709,
-                cvcuda.ColorSpec.BT2020,
-            }
-        },
+        extra_params={"spec": set(_color_specs)},
     )
 )

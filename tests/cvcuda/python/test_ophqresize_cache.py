@@ -87,7 +87,7 @@ _SCRIPT_PRELUDE = textwrap.dedent(
 
 _SCRIPT_EPILOGUE = textwrap.dedent(
     """
-    cvcuda.internal.syncAuxStream()
+    cvcuda.internal.drain_pending_releases()
     print("PASS", flush=True)
     """
 )

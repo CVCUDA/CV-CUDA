@@ -26,7 +26,7 @@ FROM ${BUILDER_EXTRA_DEPS:-scratch} AS extra_deps
 FROM ${CUDA_IMAGE:-scratch} AS cuda
 FROM ${FROM_IMAGE_NAME:-quay.io/pypa/manylinux_2_28_x86_64:latest}
 
-ARG PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14"
+ARG PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14 3.14t"
 ARG CMAKE_VERSION=3.24.3
 ARG CCACHE_VERSION=4.13.6
 ARG CCACHE_SHA256_X86_64=09e0547a0c3b250a76675c33130366f1399f3580842fb360c052520d56214ead
@@ -128,11 +128,10 @@ ENV PYBIN=${PYTHONPATH}/bin \
     PYLIB=${PYTHONPATH}/lib
 
 # Manylinux Python paths — must list all versions from PYTHON_VERSIONS
-# Free-threaded variants (cp313t, cp314t) are intentionally excluded; add them here
-# and to PYTHON_VERSIONS if free-threaded support is needed in the future.
-ENV PATH=/opt/python/cp310-cp310/bin:/opt/python/cp311-cp311/bin:/opt/python/cp312-cp312/bin:/opt/python/cp313-cp313/bin:/opt/python/cp314-cp314/bin:${PYBIN}:${PATH} \
-    LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib:/opt/python/cp310-cp310/lib:/opt/python/cp311-cp311/lib:/opt/python/cp312-cp312/lib:/opt/python/cp313-cp313/lib:/opt/python/cp314-cp314/lib:${PYLIB}:${LD_LIBRARY_PATH:-} \
-    LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib:/opt/python/cp310-cp310/lib:/opt/python/cp311-cp311/lib:/opt/python/cp312-cp312/lib:/opt/python/cp313-cp313/lib:/opt/python/cp314-cp314/lib:${PYLIB}
+# The interpreter tag stays cp314; its free-threaded ABI tag is cp314t.
+ENV PATH=/opt/python/cp310-cp310/bin:/opt/python/cp311-cp311/bin:/opt/python/cp312-cp312/bin:/opt/python/cp313-cp313/bin:/opt/python/cp314-cp314/bin:/opt/python/cp314-cp314t/bin:${PYBIN}:${PATH} \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib:/opt/python/cp310-cp310/lib:/opt/python/cp311-cp311/lib:/opt/python/cp312-cp312/lib:/opt/python/cp313-cp313/lib:/opt/python/cp314-cp314/lib:/opt/python/cp314-cp314t/lib:${PYLIB}:${LD_LIBRARY_PATH:-} \
+    LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib:/opt/python/cp310-cp310/lib:/opt/python/cp311-cp311/lib:/opt/python/cp312-cp312/lib:/opt/python/cp313-cp313/lib:/opt/python/cp314-cp314/lib:/opt/python/cp314-cp314t/lib:${PYLIB}
 
 # Symlink default Python version
 RUN echo "Looking for Python directories in /opt/python:" && \
@@ -158,17 +157,12 @@ RUN echo "Looking for Python directories in /opt/python:" && \
         fi; \
     fi
 
-# install build/packaging/linting packages for the system python
-COPY requirements.build.sys_python.txt /tmp/requirements.build.sys_python.txt
+# install locked build, packaging, linting and documentation packages for the system python
+COPY requirements.sys_python.lock /tmp/requirements.sys_python.lock
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --break-system-packages --force-reinstall -r /tmp/requirements.build.sys_python.txt && \
-    rm -rf /tmp/requirements.build.sys_python.txt
-
-# install documentation packages for the system python
-COPY requirements.docs.txt /tmp/requirements.docs.txt
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --break-system-packages --force-reinstall -r /tmp/requirements.docs.txt && \
-    rm -rf /tmp/requirements.docs.txt
+    python -m pip install --require-hashes --break-system-packages --force-reinstall \
+        -r /tmp/requirements.sys_python.lock && \
+    rm -f /tmp/requirements.sys_python.lock
 
 # install build dependencies for all specified Python versions (needed for CMake find_package)
 COPY requirements.build.all_pythons.txt /tmp/requirements.build.all_pythons.txt
@@ -176,7 +170,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     set -e; \
     for pyver in $PYTHON_VERSIONS; do \
         cpver="cp$(echo "$pyver" | tr -d '.')"; \
-        pydir="/opt/python/${cpver}-${cpver}"; \
+        pydir="/opt/python/${cpver%t}-${cpver}"; \
         if [ -d "$pydir" ]; then \
             echo "Installing build packages for Python $pyver ($pydir)"; \
             "$pydir/bin/pip" install -r /tmp/requirements.build.all_pythons.txt; \
@@ -192,7 +186,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     set -e; \
     for pyver in $PYTHON_VERSIONS; do \
         cpver="cp$(echo "$pyver" | tr -d '.')"; \
-        pydir="/opt/python/${cpver}-${cpver}"; \
+        pydir="/opt/python/${cpver%t}-${cpver}"; \
         if [ -d "$pydir" ]; then \
             echo "Installing test packages for Python $pyver ($pydir)"; \
             "$pydir/bin/pip" install -r /tmp/requirements.tests.common.txt; \
@@ -203,8 +197,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     rm -f /tmp/requirements.tests.common.txt
 
 # install numpy for all specified Python versions
-# - Needed at wheel-build time: pybind11_stubgen imports cvcuda, and
-#   _cvcuda.so pulls numpy via pybind11's npy_api at module init.
+# - Needed at wheel-build time: nanobind's stub generator imports cvcuda, and
+#   _cvcuda.so uses NumPy's C API at module init.
 # - At end-user runtime the wheel declares numpy as an install_requires
 #   so pip pulls it transparently; this install is purely build-time.
 COPY requirements.tests.numpy2.txt /tmp/requirements.tests.numpy.txt
@@ -212,7 +206,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     set -e; \
     for pyver in $PYTHON_VERSIONS; do \
         cpver="cp$(echo "$pyver" | tr -d '.')"; \
-        pydir="/opt/python/${cpver}-${cpver}"; \
+        pydir="/opt/python/${cpver%t}-${cpver}"; \
         if [ -d "$pydir" ]; then \
             echo "Installing numpy for Python $pyver ($pydir)"; \
             "$pydir/bin/pip" install -r /tmp/requirements.tests.numpy.txt; \
@@ -229,15 +223,16 @@ ARG PYTHON_VERSIONS
 RUN set -e; \
     for pyver in $PYTHON_VERSIONS; do \
         cpver="cp$(echo "$pyver" | tr -d '.')"; \
-        pydir="/opt/python/${cpver}-${cpver}"; \
+        pydir="/opt/python/${cpver%t}-${cpver}"; \
         if [ ! -d "$pydir" ]; then \
             echo "VERIFY FAILED: No directory found at $pydir" && exit 1; \
         fi; \
         echo "Verifying Python $pyver ($pydir)..."; \
-        "$pydir/bin/python" -c "import pybind11; print(f'  pybind11 {pybind11.__version__}')" || \
-            { echo "VERIFY FAILED: pybind11 not importable for Python $pyver" && exit 1; }; \
-        "$pydir/bin/python" -c "import pybind11_stubgen" || \
-            { echo "VERIFY FAILED: pybind11_stubgen not importable for Python $pyver" && exit 1; }; \
+        "$pydir/bin/python" -c \
+            "import sysconfig; assert bool(sysconfig.get_config_var('Py_GIL_DISABLED')) == '$pyver'.endswith('t')" || \
+            { echo "VERIFY FAILED: Python $pyver has the wrong GIL ABI" && exit 1; }; \
+        "$pydir/bin/python" -c "import nanobind; print(f'  nanobind {nanobind.__version__}')" || \
+            { echo "VERIFY FAILED: nanobind not importable for Python $pyver" && exit 1; }; \
         "$pydir/bin/python" -c "import pytest; print(f'  pytest {pytest.__version__}')" || \
             { echo "VERIFY FAILED: pytest not importable for Python $pyver" && exit 1; }; \
         "$pydir/bin/python" -c "import numpy; print(f'  numpy {numpy.__version__}')" || \
@@ -257,14 +252,14 @@ ENV NVIDIA_DRIVER_CAPABILITIES=video,compute,utility
 COPY --from=cuda /usr/local/cuda /usr/local/cuda
 
 # Install cupy and CUDA Python test dependencies from requirements file
-# Uses ${cpver}-${cpver} pattern to match standard builds only (excludes free-threaded cp3XXt)
+# Resolve ordinary and free-threaded manylinux interpreter directories.
 COPY requirements.tests.cu12.txt requirements.tests.cu13.txt /tmp/
 RUN --mount=type=cache,target=/root/.cache/pip \
     CUDA_MAJOR=$(/usr/local/cuda/bin/nvcc --version | grep -oP 'release \K[0-9]+') && \
     set -e; \
     for pyver in $PYTHON_VERSIONS; do \
         cpver="cp$(echo "$pyver" | tr -d '.')"; \
-        pydir="/opt/python/${cpver}-${cpver}"; \
+        pydir="/opt/python/${cpver%t}-${cpver}"; \
         if [ -d "$pydir" ]; then \
             echo "Installing cupy test deps for Python $pyver ($pydir)"; \
             "$pydir/bin/pip" install -r "/tmp/requirements.tests.cu${CUDA_MAJOR}.txt"; \

@@ -20,6 +20,151 @@
 
 #include "OpHQResizeKernel.cuh"
 
+#include <cub/block/block_scan.cuh>
+
+#include <cassert>
+
+namespace cvcuda::priv::hq_resize::batch_wrapper::tensor {
+namespace {
+
+constexpr int kSetupBlockSize = 256;
+
+inline __device__ void SetupPlanarTensorBatchElement(PlanarTensorBatchElement            &out,
+                                                     const NVCVTensorBatchElementStrided &in, int sample, int channel,
+                                                     bool hasSampleDim)
+{
+    const int channelDim = hasSampleDim ? 1 : 0;
+    const int heightDim  = channelDim + 1;
+
+    out.data      = in.data + (hasSampleDim ? sample * in.stride[0] : 0) + channel * in.stride[channelDim];
+    out.rowStride = in.stride[heightDim];
+}
+
+template<typename StrideT>
+__global__ void SetupPlanarTensorBatchElementsKernel(
+    PlanarTensorBatchElement *expandedSrc, PlanarTensorBatchElement *expandedDst,
+    dynamic::TensorAccessDesc<StrideT> *intermediateMeta, float *intermediate,
+    const kernel::resampling::SampleDesc<2> *sampleDescs, const NVCVTensorBatchElementStrided *src,
+    const NVCVTensorBatchElementStrided *dst, int numTensors, bool hasSampleDim)
+{
+    using PlaneScan = cub::BlockScan<int, kSetupBlockSize>;
+    using ByteScan  = cub::BlockScan<int64_t, kSetupBlockSize>;
+    __shared__ typename PlaneScan::TempStorage planeScanStorage;
+    __shared__ typename ByteScan::TempStorage  byteScanStorage;
+    __shared__ int                             planeOffsets[kSetupBlockSize + 1];
+    __shared__ int                             tensorChannels[kSetupBlockSize];
+
+    int     expandedBase           = 0;
+    int64_t intermediateByteOffset = 0;
+    for (int tensorBase = 0; tensorBase < numTensors; tensorBase += kSetupBlockSize)
+    {
+        const int tileTensors = min(kSetupBlockSize, numTensors - tensorBase);
+        const int tensor      = tensorBase + threadIdx.x;
+        int       numSamples{};
+        int       numChannels{};
+        if (tensor < numTensors)
+        {
+            const int channelDim = hasSampleDim ? 1 : 0;
+            numSamples           = hasSampleDim ? static_cast<int>(src[tensor].shape[0]) : 1;
+            numChannels          = static_cast<int>(src[tensor].shape[channelDim]);
+        }
+
+        const int numPlanes = numSamples * numChannels;
+        int       tensorOffset;
+        int       tilePlanes;
+        PlaneScan(planeScanStorage).ExclusiveSum(numPlanes, tensorOffset, tilePlanes);
+
+        if (threadIdx.x < tileTensors)
+        {
+            planeOffsets[threadIdx.x]   = tensorOffset;
+            tensorChannels[threadIdx.x] = numChannels;
+        }
+        if (threadIdx.x == 0)
+        {
+            planeOffsets[tileTensors] = tilePlanes;
+        }
+        __syncthreads();
+
+        for (int planeBase = 0; planeBase < tilePlanes; planeBase += kSetupBlockSize)
+        {
+            const int plane = planeBase + threadIdx.x;
+            int       owner{};
+            if (plane < tilePlanes)
+            {
+                int hi = tileTensors;
+                while (owner + 1 < hi)
+                {
+                    const int mid = (owner + hi) / 2;
+                    if (planeOffsets[mid] <= plane)
+                    {
+                        owner = mid;
+                    }
+                    else
+                    {
+                        hi = mid;
+                    }
+                }
+            }
+
+            const int expandedIdx = expandedBase + plane;
+            VecI<2>   shape{};
+            int64_t   rowStride{};
+            int64_t   planeBytes{};
+            if (plane < tilePlanes)
+            {
+                shape      = sampleDescs[expandedIdx].shapes[1];
+                rowStride  = static_cast<int64_t>(shape.x) * sizeof(float);
+                planeBytes = rowStride * shape.y;
+            }
+
+            int64_t planeByteOffset;
+            int64_t planeTileBytes;
+            ByteScan(byteScanStorage).ExclusiveSum(planeBytes, planeByteOffset, planeTileBytes);
+
+            if (plane < tilePlanes)
+            {
+                const int channelCount = tensorChannels[owner];
+                const int tensorPlane  = plane - planeOffsets[owner];
+                const int sample       = tensorPlane / channelCount;
+                const int channel      = tensorPlane % channelCount;
+                const int ownerTensor  = tensorBase + owner;
+                SetupPlanarTensorBatchElement(expandedSrc[expandedIdx], src[ownerTensor], sample, channel,
+                                              hasSampleDim);
+                SetupPlanarTensorBatchElement(expandedDst[expandedIdx], dst[ownerTensor], sample, channel,
+                                              hasSampleDim);
+
+                assert(rowStride <= cuda::TypeTraits<StrideT>::max);
+                intermediateMeta[expandedIdx].basePtr
+                    = reinterpret_cast<unsigned char *>(intermediate) + intermediateByteOffset + planeByteOffset;
+                intermediateMeta[expandedIdx].strides[0] = static_cast<StrideT>(rowStride);
+            }
+
+            intermediateByteOffset += planeTileBytes;
+            __syncthreads();
+        }
+
+        expandedBase += tilePlanes;
+        __syncthreads();
+    }
+}
+
+} // namespace
+
+template<typename StrideT>
+void SetupPlanarTensorBatchElements(PlanarTensorBatchElement *expandedSrc, PlanarTensorBatchElement *expandedDst,
+                                    dynamic::TensorAccessDesc<StrideT> *intermediateMeta, float *intermediate,
+                                    const kernel::resampling::SampleDesc<2> *sampleDescs,
+                                    const nvcv::TensorBatchDataStridedCuda  &src,
+                                    const nvcv::TensorBatchDataStridedCuda &dst, bool hasSampleDim, cudaStream_t stream)
+{
+    SetupPlanarTensorBatchElementsKernel<StrideT>
+        <<<1, kSetupBlockSize, 0, stream>>>(expandedSrc, expandedDst, intermediateMeta, intermediate, sampleDescs,
+                                            src.buffer().tensors, dst.buffer().tensors, src.numTensors(), hasSampleDim);
+    NVCV_CHECK_THROW(cudaGetLastError());
+}
+
+} // namespace cvcuda::priv::hq_resize::batch_wrapper::tensor
+
 namespace cvcuda::priv::hq_resize {
 
 using kernel::HQResizeRun;

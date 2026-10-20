@@ -15,30 +15,28 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpCropFlipNormalizeReformat.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 #include <iostream>
 
 namespace cvcudapy {
 
 namespace {
-Tensor CropFlipNormalizeReformatInto(Tensor &output, ImageBatchVarShape &input, Tensor &cropRect, Tensor &flipCode,
-                                     Tensor &base, Tensor &scale, float globalScale, float globalShift, float epsilon,
-                                     std::optional<uint32_t> flags, NVCVBorderType borderMode, float borderValue,
-                                     std::optional<Stream> pstream)
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
+Tensor &CropFlipNormalizeReformatInto(Tensor &output, ImageBatchVarShape &input, Tensor &cropRect, Tensor &flipCode,
+                                      Tensor &base, Tensor &scale, float globalScale, float globalShift, float epsilon,
+                                      std::optional<uint32_t> flags, NVCVBorderType borderMode, float borderValue,
+                                      std::optional<Stream *> pstream)
 {
-    if (!pstream.has_value())
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<cvcuda::CropFlipNormalizeReformat>();
 
@@ -47,38 +45,40 @@ Tensor CropFlipNormalizeReformatInto(Tensor &output, ImageBatchVarShape &input, 
         flags = 0;
     }
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, cropRect, flipCode, base, scale});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
     guard.run(
-        [&op, &pstream, &input, &output, &cropRect, &borderMode, &borderValue, &flipCode, &base, &scale, &globalScale,
+        [&op, &stream, &input, &output, &cropRect, &borderMode, &borderValue, &flipCode, &base, &scale, &globalScale,
          &globalShift, &epsilon, &flags]()
         {
-            op->submit(pstream->cudaHandle(), input, output, cropRect, borderMode, borderValue, flipCode, base, scale,
-                       globalScale, globalShift, epsilon, *flags);
+            op->submit(stream.handle(), input.impl(), output.impl(), cropRect.impl(), borderMode, borderValue,
+                       flipCode.impl(), base.impl(), scale.impl(), globalScale, globalShift, epsilon, *flags);
         });
 
     return output;
 }
 
-Tensor CropFlipNormalizeReformat(ImageBatchVarShape &input, const Shape &out_shape, nvcv::DataType out_dtype,
-                                 nvcv::TensorLayout out_layout, Tensor &cropRect, Tensor &flipCode, Tensor &base,
-                                 Tensor &scale, float globalScale, float globalShift, float epsilon,
-                                 std::optional<uint32_t> flags, NVCVBorderType borderMode, float borderValue,
-                                 std::optional<Stream> pstream)
+std::shared_ptr<Tensor> CropFlipNormalizeReformat(ImageBatchVarShape &input, const Shape &out_shape,
+                                                  nvcv::DataType out_dtype, nvcv::TensorLayout out_layout,
+                                                  Tensor &cropRect, Tensor &flipCode, Tensor &base, Tensor &scale,
+                                                  float globalScale, float globalShift, float epsilon,
+                                                  std::optional<uint32_t> flags, NVCVBorderType borderMode,
+                                                  float borderValue, std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(out_shape, out_dtype, out_layout);
+    auto output = Tensor::Create(out_shape, out_dtype, out_layout, 0);
 
-    return CropFlipNormalizeReformatInto(output, input, cropRect, flipCode, base, scale, globalScale, globalShift,
-                                         epsilon, flags, borderMode, borderValue, pstream);
+    CropFlipNormalizeReformatInto(*output, input, cropRect, flipCode, base, scale, globalScale, globalShift, epsilon,
+                                  flags, borderMode, borderValue, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpCropFlipNormalizeReformat(py::module &m)
+void ExportOpCropFlipNormalizeReformat(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     float defGlobalScale = 1;
     float defGlobalShift = 0;
@@ -124,7 +124,8 @@ void ExportOpCropFlipNormalizeReformat(py::module &m)
           NvtxTrace("cvcuda.crop_flip_normalize_reformat_into", &CropFlipNormalizeReformatInto), "dst"_a, "src"_a,
           "rect"_a, "flip_code"_a, "base"_a, "scale"_a, "globalscale"_a = defGlobalScale,
           "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon, "flags"_a = std::nullopt,
-          "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the CropFlipNormalizeReformat operation on the given cuda stream.
 
 

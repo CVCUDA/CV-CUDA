@@ -15,77 +15,80 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpAdjustContrast.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
+#include <nvcv/RoundMode.h>
 
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
 template<typename Container>
-Container AdjustContrastIntoImpl(Container &output, Container &input, double contrastFactor,
-                                 std::optional<Stream> pstream)
+Container &AdjustContrastIntoImpl(Container &output, Container &input, double contrastFactor, NVCVRoundMode round,
+                                  std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<cvcuda::AdjustContrast>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     // The operator owns scratch read by the kernels, so keep and serialize it through completion.
     guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
 
-    guard.run([&op, &pstream, &input, &output, contrastFactor]()
-              { op->submit(pstream->cudaHandle(), input, output, contrastFactor); });
+    guard.run([&op, &stream, &input, &output, contrastFactor, round]()
+              { op->submit(stream.handle(), input.impl(), output.impl(), contrastFactor, round); });
 
     return output;
 }
 
-Tensor AdjustContrastInto(Tensor &output, Tensor &input, double contrast_factor, std::optional<Stream> pstream)
+Tensor &AdjustContrastInto(Tensor &output, Tensor &input, double contrast_factor, NVCVRoundMode round,
+                           std::optional<Stream *> pstream)
 {
-    return AdjustContrastIntoImpl(output, input, contrast_factor, pstream);
+    return AdjustContrastIntoImpl(output, input, contrast_factor, round, pstream);
 }
 
-Tensor AdjustContrast(Tensor &input, double contrast_factor, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> AdjustContrast(Tensor &input, double contrast_factor, NVCVRoundMode round,
+                                       std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return AdjustContrastInto(output, input, contrast_factor, pstream);
+    AdjustContrastInto(*output, input, contrast_factor, round, pstream);
+    return output;
 }
 
-ImageBatchVarShape AdjustContrastVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                              double contrast_factor, std::optional<Stream> pstream)
+ImageBatchVarShape &AdjustContrastVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                               double contrast_factor, NVCVRoundMode round,
+                                               std::optional<Stream *> pstream)
 {
-    return AdjustContrastIntoImpl(output, input, contrast_factor, pstream);
+    return AdjustContrastIntoImpl(output, input, contrast_factor, round, pstream);
 }
 
-ImageBatchVarShape AdjustContrastVarShape(ImageBatchVarShape &input, double contrast_factor,
-                                          std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> AdjustContrastVarShape(ImageBatchVarShape &input, double contrast_factor,
+                                                           NVCVRoundMode round, std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return AdjustContrastVarShapeInto(output, input, contrast_factor, pstream);
+    AdjustContrastVarShapeInto(*output, input, contrast_factor, round, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpAdjustContrast(py::module &m)
+void ExportOpAdjustContrast(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("adjust_contrast", NvtxTrace("cvcuda.adjust_contrast", &AdjustContrast), "src"_a, "contrast_factor"_a,
-          py::kw_only(), "stream"_a = nullptr,
+          py::kw_only(), "round"_a = NVCV_ROUND_NEAREST, "stream"_a = nullptr,
           R"pbdoc(
 
         Executes the AdjustContrast operation on the given cuda stream.
@@ -103,6 +106,9 @@ void ExportOpAdjustContrast(py::module &m)
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images (1 or 3 channels).
             contrast_factor (float): Non-negative contrast multiplier (0 = flat gray, 1 = unchanged).
+            round (cvcuda.Round, optional): Rounding mode used for integer outputs. Defaults to
+                cvcuda.Round.NEAREST; use cvcuda.Round.TRUNCATE to drop the fractional part, which is
+                what torchvision's adjust_contrast does. Has no effect on floating-point outputs.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -114,7 +120,8 @@ void ExportOpAdjustContrast(py::module &m)
     )pbdoc");
 
     m.def("adjust_contrast_into", NvtxTrace("cvcuda.adjust_contrast_into", &AdjustContrastInto), "dst"_a, "src"_a,
-          "contrast_factor"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "contrast_factor"_a, py::kw_only(), "round"_a = NVCV_ROUND_NEAREST, "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
 
         Executes the AdjustContrast operation on the given cuda stream.
 
@@ -126,6 +133,9 @@ void ExportOpAdjustContrast(py::module &m)
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
             src (cvcuda.Tensor): Input tensor containing one or more images (1 or 3 channels).
             contrast_factor (float): Non-negative contrast multiplier (0 = flat gray, 1 = unchanged).
+            round (cvcuda.Round, optional): Rounding mode used for integer outputs. Defaults to
+                cvcuda.Round.NEAREST; use cvcuda.Round.TRUNCATE to drop the fractional part, which is
+                what torchvision's adjust_contrast does. Has no effect on floating-point outputs.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -137,7 +147,7 @@ void ExportOpAdjustContrast(py::module &m)
     )pbdoc");
 
     m.def("adjust_contrast", NvtxTrace("cvcuda.adjust_contrast", &AdjustContrastVarShape), "src"_a, "contrast_factor"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          py::kw_only(), "round"_a = NVCV_ROUND_NEAREST, "stream"_a = nullptr, R"pbdoc(
 
         Executes the AdjustContrast operation on the given cuda stream.
 
@@ -145,6 +155,9 @@ void ExportOpAdjustContrast(py::module &m)
             src (cvcuda.ImageBatchVarShape): Input image batch containing one- or three-component images.
                 Three-component inputs are interpreted as RGB, with RGB and BGR storage swizzles honored.
             contrast_factor (float): Non-negative contrast multiplier (0 = flat gray, 1 = unchanged).
+            round (cvcuda.Round, optional): Rounding mode used for integer outputs. Defaults to
+                cvcuda.Round.NEAREST; use cvcuda.Round.TRUNCATE to drop the fractional part, which is
+                what torchvision's adjust_contrast does. Has no effect on floating-point outputs.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -156,7 +169,9 @@ void ExportOpAdjustContrast(py::module &m)
     )pbdoc");
 
     m.def("adjust_contrast_into", NvtxTrace("cvcuda.adjust_contrast_into", &AdjustContrastVarShapeInto), "dst"_a,
-          "src"_a, "contrast_factor"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "src"_a, "contrast_factor"_a, py::kw_only(), "round"_a = NVCV_ROUND_NEAREST, "stream"_a = nullptr,
+          py::return_value_policy::reference,
+          R"pbdoc(
 
         Executes the AdjustContrast operation on the given cuda stream.
 
@@ -165,6 +180,9 @@ void ExportOpAdjustContrast(py::module &m)
             src (cvcuda.ImageBatchVarShape): Input image batch containing one- or three-component images.
                 Three-component inputs are interpreted as RGB, with RGB and BGR storage swizzles honored.
             contrast_factor (float): Non-negative contrast multiplier (0 = flat gray, 1 = unchanged).
+            round (cvcuda.Round, optional): Rounding mode used for integer outputs. Defaults to
+                cvcuda.Round.NEAREST; use cvcuda.Round.TRUNCATE to drop the fractional part, which is
+                what torchvision's adjust_contrast does. Has no effect on floating-point outputs.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:

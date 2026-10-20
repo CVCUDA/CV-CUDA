@@ -85,6 +85,8 @@ static void ValidateTensorBufferStrided(const NVCVTensorData &tdata)
         prevSizeConsidered   = tdata.shape[dim];
     }
 
+    int64_t align = dtype.alignment();
+
     // Test non-packed dimensions
     for (; dim >= 0; --dim)
     {
@@ -97,6 +99,12 @@ static void ValidateTensorBufferStrided(const NVCVTensorData &tdata)
         {
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
                 << "Pitch of dimension " << dim << " must be >= " << minPitch << ", but it is " << buffer.strides[dim];
+        }
+        if (buffer.strides[dim] % align != 0)
+        {
+            throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
+                << "Pitch of dimension " << dim << " must be a multiple of " << align
+                << " (element alignment), but it is " << buffer.strides[dim];
         }
         prevStrideConsidered = buffer.strides[dim];
         prevSizeConsidered   = tdata.shape[dim];

@@ -21,6 +21,9 @@ add_subdirectory(priv)
 set(CV_CUDA_LIB_FILES Operator.cpp Types.cpp)
 
 set(CV_CUDA_OP_FILES
+    OpMerge.cpp
+    OpSplit.cpp
+    OpTvResize.cpp
     OpJpegCompressionDistortion.cpp
     OpAdjustHue.cpp
     OpAdjustSaturation.cpp
@@ -149,32 +152,46 @@ install(DIRECTORY include/cvcuda
         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 
 include(CMakePackageConfigHelpers)
+configure_package_config_file(
+    cvcuda-config.cmake.in
+    cvcuda-config.cmake
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/cvcuda"
+)
+
+# Pre-1.0 minor releases may break API and ABI compatibility.
+if(CVCUDA_VERSION_MAJOR EQUAL 0)
+    set(CVCUDA_PACKAGE_VERSION_COMPATIBILITY SameMinorVersion)
+else()
+    set(CVCUDA_PACKAGE_VERSION_COMPATIBILITY SameMajorVersion)
+endif()
 write_basic_package_version_file(cvcuda-config-version.cmake
-                                 COMPATIBILITY SameMajorVersion)
+                                 COMPATIBILITY ${CVCUDA_PACKAGE_VERSION_COMPATIBILITY})
 
 if(UNIX)
     install(EXPORT cvcuda
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/cvcuda"
-        FILE cvcuda-config.cmake
+        FILE cvcuda-targets.cmake
         COMPONENT dev)
 
     # WAR for https://gitlab.kitware.com/cmake/cmake/-/issues/23563
-    install(CODE "set(CVCUDA_CONFIG_PATH \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/cmake/cvcuda/cvcuda-config.cmake\")"
+    install(CODE "set(CVCUDA_TARGETS_PATH \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/cmake/cvcuda/cvcuda-targets.cmake\")"
         COMPONENT dev)
 
     install(CODE [=[
-        file(READ "${CVCUDA_CONFIG_PATH}" contents)
+        file(READ "${CVCUDA_TARGETS_PATH}" contents)
         string(REPLACE "get_filename_component(_IMPORT_PREFIX \"\${CMAKE_CURRENT_LIST_FILE}\" PATH)"
 [[
 get_filename_component(_IMPORT_PREFIX "${CMAKE_CURRENT_LIST_FILE}" PATH)
 get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" REALPATH)
 ]]
             contents "${contents}")
-        file(WRITE "${CVCUDA_CONFIG_PATH}" "${contents}")
+        file(WRITE "${CVCUDA_TARGETS_PATH}" "${contents}")
         ]=]
         COMPONENT dev)
 
-    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cvcuda-config-version.cmake
+    install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/cvcuda-config.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/cvcuda-config-version.cmake
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/cvcuda"
         COMPONENT dev)
 endif()

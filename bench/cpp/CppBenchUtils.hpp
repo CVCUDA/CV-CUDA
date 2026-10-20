@@ -18,6 +18,7 @@
 #ifndef CVCUDA_CPP_BENCH_UTILS_HPP
 #define CVCUDA_CPP_BENCH_UTILS_HPP
 
+#include "BenchClockProbe.hpp"
 #include "BenchFillKernels.hpp"
 #include "WarmupPolicy.hpp"
 
@@ -54,6 +55,11 @@
 // nvbench only declares type strings for the standard arithmetic types; without this the F16
 // axis key would fall back to the demangled "__half".
 NVBENCH_DECLARE_TYPE_STRINGS(__half, "F16", "__half");
+NVBENCH_DECLARE_TYPE_STRINGS(long long, "I64", "long long");
+NVBENCH_DECLARE_TYPE_STRINGS(unsigned long long, "U64", "unsigned long long");
+NVBENCH_DECLARE_TYPE_STRINGS(longlong4_16a, "longlong4", "longlong4_16a");
+NVBENCH_DECLARE_TYPE_STRINGS(ulonglong4_16a, "ulonglong4", "ulonglong4_16a");
+NVBENCH_DECLARE_TYPE_STRINGS(double4_16a, "double4", "double4_16a");
 
 namespace benchutils {
 
@@ -215,7 +221,22 @@ inline nvcv::DataType GetDataType()
     CVCUDA_BENCH_GET_DATA_TYPE(uint8_t, nvcv::TYPE_U8);
     CVCUDA_BENCH_GET_DATA_TYPE(uint16_t, nvcv::TYPE_U16);
     CVCUDA_BENCH_GET_DATA_TYPE(uint32_t, nvcv::TYPE_U32);
+    CVCUDA_BENCH_GET_DATA_TYPE(uint3, nvcv::TYPE_3U32);
+    CVCUDA_BENCH_GET_DATA_TYPE(uint4, nvcv::TYPE_4U32);
+    CVCUDA_BENCH_GET_DATA_TYPE(signed char, nvcv::TYPE_S8);
+    CVCUDA_BENCH_GET_DATA_TYPE(char3, nvcv::TYPE_3S8);
+    CVCUDA_BENCH_GET_DATA_TYPE(char4, nvcv::TYPE_4S8);
+    CVCUDA_BENCH_GET_DATA_TYPE(long long, nvcv::TYPE_S64);
+    CVCUDA_BENCH_GET_DATA_TYPE(longlong3, nvcv::TYPE_3S64);
+    CVCUDA_BENCH_GET_DATA_TYPE(longlong4_16a, nvcv::TYPE_4S64);
+    CVCUDA_BENCH_GET_DATA_TYPE(unsigned long long, nvcv::TYPE_U64);
+    CVCUDA_BENCH_GET_DATA_TYPE(ulonglong3, nvcv::TYPE_3U64);
+    CVCUDA_BENCH_GET_DATA_TYPE(ulonglong4_16a, nvcv::TYPE_4U64);
+    CVCUDA_BENCH_GET_DATA_TYPE(double, nvcv::TYPE_F64);
+    CVCUDA_BENCH_GET_DATA_TYPE(double3, nvcv::TYPE_3F64);
+    CVCUDA_BENCH_GET_DATA_TYPE(double4_16a, nvcv::TYPE_4F64);
 
+    CVCUDA_BENCH_GET_DATA_TYPE(uchar2, nvcv::TYPE_2U8);
     CVCUDA_BENCH_GET_DATA_TYPE(uchar3, nvcv::TYPE_3U8);
     CVCUDA_BENCH_GET_DATA_TYPE(uchar4, nvcv::TYPE_4U8);
     CVCUDA_BENCH_GET_DATA_TYPE(float, nvcv::TYPE_F32);
@@ -229,11 +250,14 @@ inline nvcv::DataType GetDataType()
     CVCUDA_BENCH_GET_DATA_TYPE(half4, nvcv::TYPE_4F16);
 
     CVCUDA_BENCH_GET_DATA_TYPE(int, nvcv::TYPE_S32);
+    CVCUDA_BENCH_GET_DATA_TYPE(int3, nvcv::TYPE_3S32);
+    CVCUDA_BENCH_GET_DATA_TYPE(int4, nvcv::TYPE_4S32);
 
     CVCUDA_BENCH_GET_DATA_TYPE(short, nvcv::TYPE_S16);
 
     CVCUDA_BENCH_GET_DATA_TYPE(ushort3, nvcv::TYPE_3U16);
     CVCUDA_BENCH_GET_DATA_TYPE(ushort4, nvcv::TYPE_4U16);
+    CVCUDA_BENCH_GET_DATA_TYPE(short3, nvcv::TYPE_3S16);
     CVCUDA_BENCH_GET_DATA_TYPE(short4, nvcv::TYPE_4S16);
 
 #undef CVCUDA_BENCH_GET_DATA_TYPE
@@ -754,6 +778,17 @@ inline nvcv::ImageFormat GetPlanarFormat()
     {
         return nvcv::FMT_RGBAf16p;
     }
+    else if constexpr (C == 3 || C == 4)
+    {
+        const auto dtype = GetDataType<BT>();
+        return nvcv::ImageFormat{nvcv::MemLayout::PL,
+                                 dtype.dataKind(),
+                                 C == 3 ? nvcv::Swizzle::S_XYZ0 : nvcv::Swizzle::S_XYZW,
+                                 dtype.packing(),
+                                 dtype.packing(),
+                                 dtype.packing(),
+                                 C == 4 ? dtype.packing() : nvcv::Packing::NONE};
+    }
     else
     {
         throw std::invalid_argument("Unsupported planar benchmark data type");
@@ -913,8 +948,8 @@ inline void warmup(int iterations, Func &&func)
  *
  * This helper function wraps state.exec() with exec_tag::sync, which:
  * - Disables nvbench's deadlock detection
- * - Uses CPU-based timing instead of GPU events
- * - Indicates that the kernel may perform internal synchronization
+ * - Records both CPU Time and CUDA-event-based GPU Time
+ * - Disables nvbench's batched hot measurement
  *
  * All CV-CUDA operators may perform internal synchronization (especially in VarShape paths),
  * so this should be used by default for all benchmarks to match Python behavior.
@@ -930,6 +965,7 @@ inline void warmup(int iterations, Func &&func)
 template<typename Func>
 inline void exec_with_sync(nvbench::state &state, Func &&func)
 {
+    verifyExpectedSmClock();
     state.exec(nvbench::exec_tag::sync, std::forward<Func>(func));
 }
 

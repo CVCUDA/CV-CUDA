@@ -15,6 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -e
+
 if [[ "$#" -ne 1 ]]; then
     echo "Usage: build_wheels.sh <python_build_dir>"
     exit 1
@@ -26,7 +28,7 @@ WHEEL_DIR="${PYTHON_BUILD_DIR}/dist"
 REPAIRED_WHEEL_DIR="${PYTHON_BUILD_DIR}/repaired_wheels"
 WHEEL_BUILD_DIR="${PYTHON_BUILD_DIR}/build_wheel"
 LIB_DIR="${PYTHON_BUILD_DIR}/cvcuda_cu${CUDA_VERSION_MAJOR}.libs"
-SUPPORTED_PYTHONS=("310" "311" "312" "313" "314")
+SUPPORTED_PYTHONS=("310" "311" "312" "313" "314" "314t")
 
 # Option to force universal wheel creation even if not all Python versions are built
 FORCE_UNIVERSAL=${FORCE_UNIVERSAL:-false}
@@ -52,10 +54,15 @@ mkdir -p "${WHEEL_DIR}" "${REPAIRED_WHEEL_DIR}" "${WHEEL_BUILD_DIR}" "${LIB_DIR}
 
 # Detect available Python bindings
 AVAILABLE_PYTHONS=()
+AVAILABLE_PYTHON_TAGS=()
 for py_ver in "${SUPPORTED_PYTHONS[@]}"; do
     py_exec="python3.${py_ver:1}"
     if command -v "${py_exec}" &> /dev/null && compgen -G "${PYTHON_BUILD_DIR}/cvcuda/*.cpython-${py_ver}-*.so" > /dev/null; then
         AVAILABLE_PYTHONS+=("cp${py_ver}")
+        tag="cp${py_ver%t}"
+        if [[ " ${AVAILABLE_PYTHON_TAGS[*]} " != *" ${tag} "* ]]; then
+            AVAILABLE_PYTHON_TAGS+=("${tag}")
+        fi
     fi
 done
 PYTHON_EXECUTABLE=python3
@@ -114,8 +121,8 @@ if [[ "${#AVAILABLE_PYTHONS[@]}" -eq "${#SUPPORTED_PYTHONS[@]}" ]] || [[ "${FORC
 else
     echo "Creating multi-version wheel for available Python versions..."
     echo "  Available: ${AVAILABLE_PYTHONS[*]}"
-    python_tag=$(IFS=. ; echo "${AVAILABLE_PYTHONS[*]}")
-    abi_tag="${python_tag}"
+    python_tag=$(IFS=. ; echo "${AVAILABLE_PYTHON_TAGS[*]}")
+    abi_tag=$(IFS=. ; echo "${AVAILABLE_PYTHONS[*]}")
 fi
 
 # Check the auditwheel version and handle "auto" platform tag

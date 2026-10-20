@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,8 +38,11 @@ foreach(VER ${PYTHON_VERSIONS})
         # Depend on current or any future ABI with same major version
         set(CPACK_DEBIAN_${PYTHON_MODULE_NAME}_PACKAGE_DEPENDS "${CPACK_DEBIAN_LIB_PACKAGE_NAME} (>= ${NVCV_VERSION_API})")
 
-        # Depend on python interpreter
-        set(CPACK_DEBIAN_${PYTHON_MODULE_NAME}_PACKAGE_DEPENDS "${CPACK_DEBIAN_${PYTHON_MODULE_NAME}_PACKAGE_DEPENDS}, python${VER}")
+        # Free-threaded interpreters may be installed outside dpkg (e.g. uv).
+        # Their presence and ABI are checked by postinst instead.
+        if(NOT VER MATCHES "t$")
+            set(CPACK_DEBIAN_${PYTHON_MODULE_NAME}_PACKAGE_DEPENDS "${CPACK_DEBIAN_${PYTHON_MODULE_NAME}_PACKAGE_DEPENDS}, python${VER}")
+        endif()
 
         set(CPACK_DEBIAN_${PYTHON_MODULE_NAME}_PACKAGE_CONTROL_EXTRA
             "${CMAKE_BINARY_DIR}/python${VER}/build/cpack/postinst"

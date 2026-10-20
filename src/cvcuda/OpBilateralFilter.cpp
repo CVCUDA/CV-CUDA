@@ -17,6 +17,7 @@
 
 #include "priv/OpBilateralFilter.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -50,6 +51,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaBilateralFilterSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &diameter, &sigmaColor, &sigmaSpace, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
             priv::ToDynamicRef<priv::BilateralFilter>(handle)(stream, input.resource(), output.resource(), diameter,
@@ -66,6 +68,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaBilateralFilterVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &diameter, &sigmaColor, &sigmaSpace, &handle, &stream, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::ImageBatchVarShapeWrapHandle output(out);
             nvcv::TensorWrapHandle             diameterData(diameter);

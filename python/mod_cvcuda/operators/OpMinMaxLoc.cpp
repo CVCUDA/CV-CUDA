@@ -15,15 +15,13 @@
  * limitations under the License.
  */
 
+#include "../nvcv/ImageBatch.hpp"
+#include "../nvcv/Tensor.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpMinMaxLoc.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 #include <sstream>
 #include <stdexcept>
@@ -40,8 +38,14 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-using TupleTensor3 = std::tuple<Tensor, Tensor, Tensor>;
-using TupleTensor6 = std::tuple<Tensor, Tensor, Tensor, Tensor, Tensor, Tensor>;
+using Tensor             = nvcvpy::priv::Tensor;
+using ImageBatchVarShape = nvcvpy::priv::ImageBatchVarShape;
+using Stream             = nvcvpy::priv::Stream;
+using TupleTensor3       = std::tuple<std::shared_ptr<Tensor>, std::shared_ptr<Tensor>, std::shared_ptr<Tensor>>;
+using TupleTensor6       = std::tuple<std::shared_ptr<Tensor>, std::shared_ptr<Tensor>, std::shared_ptr<Tensor>,
+                                std::shared_ptr<Tensor>, std::shared_ptr<Tensor>, std::shared_ptr<Tensor>>;
+using TupleTensor3Ref    = std::tuple<Tensor *, Tensor *, Tensor *>;
+using TupleTensor6Ref    = std::tuple<Tensor *, Tensor *, Tensor *, Tensor *, Tensor *, Tensor *>;
 
 // Auxiliary function to get the value data type (for minVal or maxVal) for the given input data type
 nvcv::DataType GetValDataType(nvcv::DataType inDataType)
@@ -74,137 +78,139 @@ inline int GetDefaultMaxLocs(int width, int height)
     return std::max(width * height / 100, 1);
 }
 
-template<class InputContainer>
-TupleTensor3 MinLocInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, InputContainer &input,
-                        std::optional<Stream> pstream)
+std::shared_ptr<Tensor> CreateOutputTensor(std::initializer_list<int64_t> shape, const char *layout,
+                                           nvcv::DataType dtype)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    nvcv::TensorShape tensorShape{nvcv::TensorShape::ShapeType(shape), layout};
+    return Tensor::CreateFromReqs(nvcv::Tensor::CalcRequirements(tensorShape, dtype, nvcv::MemAlignment{}.rowAddr(1)));
+}
+
+template<class InputContainer>
+TupleTensor3Ref MinLocInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, InputContainer &input,
+                           std::optional<Stream *> pstream)
+{
+    Stream &stream = pstream && *pstream ? **pstream : Stream::Current();
 
     auto op = CreateOperator<cvcuda::MinMaxLoc>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {minVal, minLoc, numMin});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     guard.run(
-        [&op, &pstream, &input, &minVal, &minLoc, &numMin]()
+        [&op, &stream, &input, &minVal, &minLoc, &numMin]()
         {
-            op->submit(pstream->cudaHandle(), input, minVal, minLoc, numMin, nvcv::Tensor{nullptr},
-                       nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr});
+            op->submit(stream.handle(), input.impl(), minVal.impl(), minLoc.impl(), numMin.impl(),
+                       nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr});
         });
 
-    return TupleTensor3(std::move(minVal), std::move(minLoc), std::move(numMin));
+    return {&minVal, &minLoc, &numMin};
 }
 
-TupleTensor3 MinLocTensorInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, Tensor &input,
-                              std::optional<Stream> pstream)
+TupleTensor3Ref MinLocTensorInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, Tensor &input,
+                                 std::optional<Stream *> pstream)
 {
     return MinLocInto(minVal, minLoc, numMin, input, pstream);
 }
 
-TupleTensor3 MinLocVarShapeInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, ImageBatchVarShape &input,
-                                std::optional<Stream> pstream)
+TupleTensor3Ref MinLocVarShapeInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, ImageBatchVarShape &input,
+                                   std::optional<Stream *> pstream)
 {
     return MinLocInto(minVal, minLoc, numMin, input, pstream);
 }
 
 template<class InputContainer>
-TupleTensor3 MaxLocInto(Tensor &maxVal, Tensor &maxLoc, Tensor &numMax, InputContainer &input,
-                        std::optional<Stream> pstream)
+TupleTensor3Ref MaxLocInto(Tensor &maxVal, Tensor &maxLoc, Tensor &numMax, InputContainer &input,
+                           std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = pstream && *pstream ? **pstream : Stream::Current();
 
     auto op = CreateOperator<cvcuda::MinMaxLoc>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {maxVal, maxLoc, numMax});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     guard.run(
-        [&op, &pstream, &input, &maxVal, &maxLoc, &numMax]()
+        [&op, &stream, &input, &maxVal, &maxLoc, &numMax]()
         {
-            op->submit(pstream->cudaHandle(), input, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
-                       nvcv::Tensor{nullptr}, maxVal, maxLoc, numMax);
+            op->submit(stream.handle(), input.impl(), nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
+                       nvcv::Tensor{nullptr}, maxVal.impl(), maxLoc.impl(), numMax.impl());
         });
 
-    return TupleTensor3(std::move(maxVal), std::move(maxLoc), std::move(numMax));
+    return {&maxVal, &maxLoc, &numMax};
 }
 
-TupleTensor3 MaxLocTensorInto(Tensor &maxVal, Tensor &maxLoc, Tensor &numMax, Tensor &input,
-                              std::optional<Stream> pstream)
+TupleTensor3Ref MaxLocTensorInto(Tensor &maxVal, Tensor &maxLoc, Tensor &numMax, Tensor &input,
+                                 std::optional<Stream *> pstream)
 {
     return MaxLocInto(maxVal, maxLoc, numMax, input, pstream);
 }
 
-TupleTensor3 MaxLocVarShapeInto(Tensor &maxVal, Tensor &maxLoc, Tensor &numMax, ImageBatchVarShape &input,
-                                std::optional<Stream> pstream)
+TupleTensor3Ref MaxLocVarShapeInto(Tensor &maxVal, Tensor &maxLoc, Tensor &numMax, ImageBatchVarShape &input,
+                                   std::optional<Stream *> pstream)
 {
     return MaxLocInto(maxVal, maxLoc, numMax, input, pstream);
 }
 
 template<class InputContainer>
-TupleTensor6 MinMaxLocInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, Tensor &maxVal, Tensor &maxLoc,
-                           Tensor &numMax, InputContainer &input, std::optional<Stream> pstream)
+TupleTensor6Ref MinMaxLocInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, Tensor &maxVal, Tensor &maxLoc,
+                              Tensor &numMax, InputContainer &input, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = pstream && *pstream ? **pstream : Stream::Current();
 
     auto op = CreateOperator<cvcuda::MinMaxLoc>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {minVal, minLoc, numMin, maxVal, maxLoc, numMax});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    guard.run([&op, &pstream, &input, &minVal, &minLoc, &numMin, &maxVal, &maxLoc, &numMax]()
-              { op->submit(pstream->cudaHandle(), input, minVal, minLoc, numMin, maxVal, maxLoc, numMax); });
+    guard.run(
+        [&op, &stream, &input, &minVal, &minLoc, &numMin, &maxVal, &maxLoc, &numMax]()
+        {
+            op->submit(stream.handle(), input.impl(), minVal.impl(), minLoc.impl(), numMin.impl(), maxVal.impl(),
+                       maxLoc.impl(), numMax.impl());
+        });
 
-    return TupleTensor6(std::move(minVal), std::move(minLoc), std::move(numMin), std::move(maxVal), std::move(maxLoc),
-                        std::move(numMax));
+    return {&minVal, &minLoc, &numMin, &maxVal, &maxLoc, &numMax};
 }
 
-TupleTensor6 MinMaxLocTensorInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, Tensor &maxVal, Tensor &maxLoc,
-                                 Tensor &numMax, Tensor &input, std::optional<Stream> pstream)
+TupleTensor6Ref MinMaxLocTensorInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, Tensor &maxVal, Tensor &maxLoc,
+                                    Tensor &numMax, Tensor &input, std::optional<Stream *> pstream)
 {
     return MinMaxLocInto(minVal, minLoc, numMin, maxVal, maxLoc, numMax, input, pstream);
 }
 
-TupleTensor6 MinMaxLocVarShapeInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, Tensor &maxVal, Tensor &maxLoc,
-                                   Tensor &numMax, ImageBatchVarShape &input, std::optional<Stream> pstream)
+TupleTensor6Ref MinMaxLocVarShapeInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, Tensor &maxVal, Tensor &maxLoc,
+                                      Tensor &numMax, ImageBatchVarShape &input, std::optional<Stream *> pstream)
 {
     return MinMaxLocInto(minVal, minLoc, numMin, maxVal, maxLoc, numMax, input, pstream);
 }
 
 template<class InputContainer>
 TupleTensor3 MinLoc(InputContainer &input, nvcv::DataType inDataType, int numSamples, int maxLocs,
-                    std::optional<Stream> pstream)
+                    std::optional<Stream *> pstream)
 {
     // Row align must be 1 in below tensors so last 2 dimensions are packed
 
     // clang-format off
 
-    Tensor minVal = Tensor::Create({{numSamples, 1}, "NC"}, GetValDataType(inDataType), 1);
-    Tensor minLoc = Tensor::Create({{numSamples, maxLocs, 2}, "NMC"}, nvcv::TYPE_S32, 1);
-    Tensor numMin = Tensor::Create({{numSamples, 1}, "NC"}, nvcv::TYPE_S32, 1);
+    auto minVal = CreateOutputTensor({numSamples, 1}, "NC", GetValDataType(inDataType));
+    auto minLoc = CreateOutputTensor({numSamples, maxLocs, 2}, "NMC", nvcv::TYPE_S32);
+    auto numMin = CreateOutputTensor({numSamples, 1}, "NC", nvcv::TYPE_S32);
 
     // clang-format on
 
-    return MinLocInto(minVal, minLoc, numMin, input, pstream);
+    MinLocInto(*minVal, *minLoc, *numMin, input, pstream);
+    return {std::move(minVal), std::move(minLoc), std::move(numMin)};
 }
 
-TupleTensor3 MinLocTensor(Tensor &input, int maxLocs, std::optional<Stream> pstream)
+TupleTensor3 MinLocTensor(Tensor &input, int maxLocs, std::optional<Stream *> pstream)
 {
-    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(input.exportData());
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(input.impl().exportData());
     if (!inAccess)
     {
         throw MinMaxLocError("Incompatible input tensor layout");
@@ -215,33 +221,35 @@ TupleTensor3 MinLocTensor(Tensor &input, int maxLocs, std::optional<Stream> pstr
     return MinLoc(input, input.dtype(), static_cast<int>(inAccess->numSamples()), maxLocs, pstream);
 }
 
-TupleTensor3 MinLocVarShape(ImageBatchVarShape &input, int maxLocs, std::optional<Stream> pstream)
+TupleTensor3 MinLocVarShape(ImageBatchVarShape &input, int maxLocs, std::optional<Stream *> pstream)
 {
-    maxLocs = maxLocs == 0 ? GetDefaultMaxLocs(input.maxSize().w, input.maxSize().h) : maxLocs;
+    nvcv::Size2D maxSize = input.impl().maxSize();
+    maxLocs              = maxLocs == 0 ? GetDefaultMaxLocs(maxSize.w, maxSize.h) : maxLocs;
 
-    return MinLoc(input, input.uniqueFormat().planeDataType(0), input.numImages(), maxLocs, pstream);
+    return MinLoc(input, input.impl().uniqueFormat().planeDataType(0), input.numImages(), maxLocs, pstream);
 }
 
 template<class InputContainer>
 TupleTensor3 MaxLoc(InputContainer &input, nvcv::DataType inDataType, int numSamples, int maxLocs,
-                    std::optional<Stream> pstream)
+                    std::optional<Stream *> pstream)
 {
     // Row align must be 1 in below tensors so last 2 dimensions are packed
 
     // clang-format off
 
-    Tensor maxVal = Tensor::Create({{numSamples, 1}, "NC"}, GetValDataType(inDataType), 1);
-    Tensor maxLoc = Tensor::Create({{numSamples, maxLocs, 2}, "NMC"}, nvcv::TYPE_S32, 1);
-    Tensor numMax = Tensor::Create({{numSamples, 1}, "NC"}, nvcv::TYPE_S32, 1);
+    auto maxVal = CreateOutputTensor({numSamples, 1}, "NC", GetValDataType(inDataType));
+    auto maxLoc = CreateOutputTensor({numSamples, maxLocs, 2}, "NMC", nvcv::TYPE_S32);
+    auto numMax = CreateOutputTensor({numSamples, 1}, "NC", nvcv::TYPE_S32);
 
     // clang-format on
 
-    return MaxLocInto(maxVal, maxLoc, numMax, input, pstream);
+    MaxLocInto(*maxVal, *maxLoc, *numMax, input, pstream);
+    return {std::move(maxVal), std::move(maxLoc), std::move(numMax)};
 }
 
-TupleTensor3 MaxLocTensor(Tensor &input, int maxLocs, std::optional<Stream> pstream)
+TupleTensor3 MaxLocTensor(Tensor &input, int maxLocs, std::optional<Stream *> pstream)
 {
-    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(input.exportData());
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(input.impl().exportData());
     if (!inAccess)
     {
         throw MinMaxLocError("Incompatible input tensor layout");
@@ -252,36 +260,39 @@ TupleTensor3 MaxLocTensor(Tensor &input, int maxLocs, std::optional<Stream> pstr
     return MaxLoc(input, input.dtype(), static_cast<int>(inAccess->numSamples()), maxLocs, pstream);
 }
 
-TupleTensor3 MaxLocVarShape(ImageBatchVarShape &input, int maxLocs, std::optional<Stream> pstream)
+TupleTensor3 MaxLocVarShape(ImageBatchVarShape &input, int maxLocs, std::optional<Stream *> pstream)
 {
-    maxLocs = maxLocs == 0 ? GetDefaultMaxLocs(input.maxSize().w, input.maxSize().h) : maxLocs;
+    nvcv::Size2D maxSize = input.impl().maxSize();
+    maxLocs              = maxLocs == 0 ? GetDefaultMaxLocs(maxSize.w, maxSize.h) : maxLocs;
 
-    return MaxLoc(input, input.uniqueFormat().planeDataType(0), input.numImages(), maxLocs, pstream);
+    return MaxLoc(input, input.impl().uniqueFormat().planeDataType(0), input.numImages(), maxLocs, pstream);
 }
 
 template<class InputContainer>
 TupleTensor6 MinMaxLoc(InputContainer &input, nvcv::DataType inDataType, int numSamples, int maxLocs,
-                       std::optional<Stream> pstream)
+                       std::optional<Stream *> pstream)
 {
     // Row align must be 1 in below tensors so last 2 dimensions are packed
 
     // clang-format off
 
-    Tensor minVal = Tensor::Create({{numSamples, 1}, "NC"}, GetValDataType(inDataType), 1);
-    Tensor minLoc = Tensor::Create({{numSamples, maxLocs, 2}, "NMC"}, nvcv::TYPE_S32, 1);
-    Tensor numMin = Tensor::Create({{numSamples, 1}, "NC"}, nvcv::TYPE_S32, 1);
-    Tensor maxVal = Tensor::Create({{numSamples, 1}, "NC"}, GetValDataType(inDataType), 1);
-    Tensor maxLoc = Tensor::Create({{numSamples, maxLocs, 2}, "NMC"}, nvcv::TYPE_S32, 1);
-    Tensor numMax = Tensor::Create({{numSamples, 1}, "NC"}, nvcv::TYPE_S32, 1);
+    auto minVal = CreateOutputTensor({numSamples, 1}, "NC", GetValDataType(inDataType));
+    auto minLoc = CreateOutputTensor({numSamples, maxLocs, 2}, "NMC", nvcv::TYPE_S32);
+    auto numMin = CreateOutputTensor({numSamples, 1}, "NC", nvcv::TYPE_S32);
+    auto maxVal = CreateOutputTensor({numSamples, 1}, "NC", GetValDataType(inDataType));
+    auto maxLoc = CreateOutputTensor({numSamples, maxLocs, 2}, "NMC", nvcv::TYPE_S32);
+    auto numMax = CreateOutputTensor({numSamples, 1}, "NC", nvcv::TYPE_S32);
 
     // clang-format on
 
-    return MinMaxLocInto(minVal, minLoc, numMin, maxVal, maxLoc, numMax, input, pstream);
+    MinMaxLocInto(*minVal, *minLoc, *numMin, *maxVal, *maxLoc, *numMax, input, pstream);
+    return {std::move(minVal), std::move(minLoc), std::move(numMin),
+            std::move(maxVal), std::move(maxLoc), std::move(numMax)};
 }
 
-TupleTensor6 MinMaxLocTensor(Tensor &input, int maxLocs, std::optional<Stream> pstream)
+TupleTensor6 MinMaxLocTensor(Tensor &input, int maxLocs, std::optional<Stream *> pstream)
 {
-    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(input.exportData());
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(input.impl().exportData());
     if (!inAccess)
     {
         throw MinMaxLocError("Incompatible input tensor layout");
@@ -292,11 +303,12 @@ TupleTensor6 MinMaxLocTensor(Tensor &input, int maxLocs, std::optional<Stream> p
     return MinMaxLoc(input, input.dtype(), static_cast<int>(inAccess->numSamples()), maxLocs, pstream);
 }
 
-TupleTensor6 MinMaxLocVarShape(ImageBatchVarShape &input, int maxLocs, std::optional<Stream> pstream)
+TupleTensor6 MinMaxLocVarShape(ImageBatchVarShape &input, int maxLocs, std::optional<Stream *> pstream)
 {
-    maxLocs = maxLocs == 0 ? GetDefaultMaxLocs(input.maxSize().w, input.maxSize().h) : maxLocs;
+    nvcv::Size2D maxSize = input.impl().maxSize();
+    maxLocs              = maxLocs == 0 ? GetDefaultMaxLocs(maxSize.w, maxSize.h) : maxLocs;
 
-    return MinMaxLoc(input, input.uniqueFormat().planeDataType(0), input.numImages(), maxLocs, pstream);
+    return MinMaxLoc(input, input.impl().uniqueFormat().planeDataType(0), input.numImages(), maxLocs, pstream);
 }
 
 // Function to get the docstring for an entry function.
@@ -376,9 +388,9 @@ inline std::string GetDocString(std::string_view strInto, std::string_view strTe
 
 } // namespace
 
-void ExportOpMinMaxLoc(py::module &m)
+void ExportOpMinMaxLoc(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("min_loc", NvtxTrace("cvcuda.min_loc", &MinLocTensor), "src"_a, "max_locations"_a = 0, py::kw_only(),
           "stream"_a = nullptr, GetDocString("", "tensor", "minimum").c_str());
@@ -399,24 +411,28 @@ void ExportOpMinMaxLoc(py::module &m)
           py::kw_only(), "stream"_a = nullptr, GetDocString("", "batch", "minimum/maximum").c_str());
 
     m.def("min_loc_into", NvtxTrace("cvcuda.min_loc_into", &MinLocTensorInto), "min_val"_a, "min_loc"_a, "num_min"_a,
-          "src"_a, py::kw_only(), "stream"_a = nullptr, GetDocString("into", "tensor", "minimum").c_str());
+          "src"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
+          GetDocString("into", "tensor", "minimum").c_str());
 
     m.def("min_loc_into", NvtxTrace("cvcuda.min_loc_into", &MinLocVarShapeInto), "min_val"_a, "min_loc"_a, "num_min"_a,
-          "src"_a, py::kw_only(), "stream"_a = nullptr, GetDocString("into", "batch", "minimum").c_str());
+          "src"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
+          GetDocString("into", "batch", "minimum").c_str());
 
     m.def("max_loc_into", NvtxTrace("cvcuda.max_loc_into", &MaxLocTensorInto), "max_val"_a, "max_loc"_a, "num_max"_a,
-          "src"_a, py::kw_only(), "stream"_a = nullptr, GetDocString("into", "tensor", "maximum").c_str());
+          "src"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
+          GetDocString("into", "tensor", "maximum").c_str());
 
     m.def("max_loc_into", NvtxTrace("cvcuda.max_loc_into", &MaxLocVarShapeInto), "max_val"_a, "max_loc"_a, "num_max"_a,
-          "src"_a, py::kw_only(), "stream"_a = nullptr, GetDocString("into", "batch", "maximum").c_str());
+          "src"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
+          GetDocString("into", "batch", "maximum").c_str());
 
     m.def("min_max_loc_into", NvtxTrace("cvcuda.min_max_loc_into", &MinMaxLocTensorInto), "min_val"_a, "min_loc"_a,
           "num_min"_a, "max_val"_a, "max_loc"_a, "num_max"_a, "src"_a, py::kw_only(), "stream"_a = nullptr,
-          GetDocString("into", "tensor", "minimum/maximum").c_str());
+          py::return_value_policy::reference, GetDocString("into", "tensor", "minimum/maximum").c_str());
 
     m.def("min_max_loc_into", NvtxTrace("cvcuda.min_max_loc_into", &MinMaxLocVarShapeInto), "min_val"_a, "min_loc"_a,
           "num_min"_a, "max_val"_a, "max_loc"_a, "num_max"_a, "src"_a, py::kw_only(), "stream"_a = nullptr,
-          GetDocString("into", "batch", "minimum/maximum").c_str());
+          py::return_value_policy::reference, GetDocString("into", "batch", "minimum/maximum").c_str());
 }
 
 } // namespace cvcudapy

@@ -39,16 +39,25 @@ extern "C"
 // @brief Flag to choose the interpolation method to be used
 typedef enum
 {
-    NVCV_INTERP_NEAREST   = 0,
-    NVCV_INTERP_LINEAR    = 1,
-    NVCV_INTERP_CUBIC     = 2,
-    NVCV_INTERP_AREA      = 3,
-    NVCV_INTERP_LANCZOS   = 4,
-    NVCV_INTERP_GAUSSIAN  = 5,
-    NVCV_INTERP_MAX       = 7,
-    NVCV_WARP_INVERSE_MAP = 16,
-    NVCV_INTERP_HAMMING   = 17,
-    NVCV_INTERP_BOX       = 18
+    // Samples the source pixel covering the destination pixel's center, i.e.
+    // floor((dst + 0.5) * scale). This is the convention used by PIL, OpenCV's
+    // INTER_NEAREST, scikit-image, and torchvision's "nearest-exact".
+    NVCV_INTERP_NEAREST  = 0,
+    NVCV_INTERP_LINEAR   = 1,
+    NVCV_INTERP_CUBIC    = 2,
+    NVCV_INTERP_AREA     = 3,
+    NVCV_INTERP_LANCZOS  = 4,
+    NVCV_INTERP_GAUSSIAN = 5,
+    // Drops the half-pixel offset, i.e. floor(dst * scale), so every sample is
+    // biased toward the top-left. Reproduces the alignment that PyTorch and
+    // torchvision retain under the plain "nearest" mode for backward
+    // compatibility; prefer NVCV_INTERP_NEAREST unless bit-compatibility with
+    // that mode is required. Supported by the Resize operator only.
+    NVCV_INTERP_NEAREST_FLOOR = 6,
+    NVCV_INTERP_MAX           = 7,
+    NVCV_WARP_INVERSE_MAP     = 16,
+    NVCV_INTERP_HAMMING       = 17,
+    NVCV_INTERP_BOX           = 18
 } NVCVInterpolationType;
 
 typedef enum
@@ -342,7 +351,42 @@ typedef enum
     NVCV_COLOR_BGRA2YUV_NV21 = 147,
     NVCV_COLOR_BGRA2YUV420sp = NVCV_COLOR_BGRA2YUV_NV21,
 
-    NVCV_COLORCVT_MAX = 148,
+    /** Grayscale bit-exact with torchvision.transforms.v2.functional.rgb_to_grayscale.
+     *
+     * Computes BT.601 luma with torchvision's rounded weights:
+     *
+     *     Y = 0.2989 * R + 0.587 * G + 0.114 * B
+     *
+     * These are the BT.601 luma weights as rounded by MATLAB rgb2gray / TensorFlow
+     * tf.image.rgb_to_grayscale, which torchvision follows. NVCV_COLOR_RGB2GRAY instead
+     * follows OpenCV: weights 0.299 / 0.587 / 0.114, with integer inputs computed in 15-bit
+     * fixed point and rounded to nearest. Consequences of following torchvision:
+     *
+     * - The weights sum to 0.9999, so a white pixel does not map to white: U8 255 -> 254,
+     *   U16 65535 -> 65528, F32 1.0 -> 0.9999 and F16 1.0 -> 0.99951171875.
+     * - Evaluation order is fixed to match torchvision on CUDA: R * 0.2989 is computed
+     *   first, then G * 0.587 and B * 0.114 are each added with a fused multiply-add.
+     *   U8, U16 and F32 inputs evaluate in float32. F16 inputs round to half after each
+     *   of the three operations, as torchvision's half-precision kernels do.
+     * - Integer outputs truncate toward zero (torchvision casts with .to(dtype)); they
+     *   do not round to nearest. Float outputs are not clamped.
+     *
+     * Supports U8, U16, F16 and F32 tensors (HWC/NHWC, CHW/NCHW) and variable-shape
+     * image batches (interleaved or planar). The output has one channel.
+     */
+    NVCV_COLOR_RGB2GRAY_TV = 148,
+    /** NVCV_COLOR_RGB2GRAY_TV for BGR channel order; identical weights and arithmetic. */
+    NVCV_COLOR_BGR2GRAY_TV = 149,
+    /** NVCV_COLOR_RGB2GRAY_TV for RGBA input; alpha is ignored. CV-CUDA extension:
+     * torchvision's rgb_to_grayscale accepts only three-channel input.
+     */
+    NVCV_COLOR_RGBA2GRAY_TV = 150,
+    /** NVCV_COLOR_RGB2GRAY_TV for BGRA input; alpha is ignored. CV-CUDA extension:
+     * torchvision's rgb_to_grayscale accepts only three-channel input.
+     */
+    NVCV_COLOR_BGRA2GRAY_TV = 151,
+
+    NVCV_COLORCVT_MAX = 152,
 
 } NVCVColorConversionCode;
 
@@ -364,6 +408,26 @@ typedef enum
     NVCV_ADAPTIVE_THRESH_MEAN_C     = 0,
     NVCV_ADAPTIVE_THRESH_GAUSSIAN_C = 1
 } NVCVAdaptiveThresholdType;
+
+// @brief Flag to choose how HistogramEq builds its equalization lookup table.
+//
+// Both methods equalize the same 256-bin per-channel histogram and differ only in how that
+// histogram becomes a lookup table, so they agree in shape and disagree in the last unit or two.
+typedef enum
+{
+    /** OpenCV's `equalizeHist`: the cumulative histogram, shifted so its first non-empty bin maps
+     *  to zero, normalized by the pixel count and scaled to the output range. */
+    NVCV_HISTOGRAM_EQ_OPENCV = 0,
+
+    /** Pillow's `ImageOps.equalize`, which torchvision follows. With `step` the count of pixels
+     *  outside the histogram's tallest bin divided by 255, the table is
+     *  `lut[0] = 0` and `lut[k] = clamp((cumulative[k - 1] + step / 2) / step, 0, 255)`, all in
+     *  integer arithmetic. A channel whose `step` is zero is passed through unchanged. */
+    NVCV_HISTOGRAM_EQ_PILLOW = 1,
+
+    /** Reserved invalid value for validating method arguments (not a lookup-table method). */
+    NVCV_HISTOGRAM_EQ_INVALID = 255
+} NVCVHistogramEqMethod;
 
 // @brief Flag to choose the map value type of the remap operator
 typedef enum

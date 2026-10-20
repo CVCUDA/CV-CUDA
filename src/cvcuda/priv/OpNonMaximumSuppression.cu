@@ -17,6 +17,7 @@
 
 #include "Nvtx.hpp"
 #include "OpNonMaximumSuppression.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cvcuda/cuda_tools/DropCast.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
@@ -233,26 +234,9 @@ void NonMaximumSuppression::operator()(cudaStream_t stream, const nvcv::Tensor &
                                        const nvcv::Tensor &scores, float scoreThreshold, float iouThreshold) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::NonMaximumSuppression::operator()[Tensor]");
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (!inData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (!outData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto scoreData = scores.exportData<nvcv::TensorDataStridedCuda>();
-    if (!scoreData)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Scores must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData    = RequireCudaTensor(in, "Input");
+    auto outData   = RequireCudaTensor(out, "Output");
+    auto scoreData = RequireCudaTensor(scores, "Scores");
 
     if (!((inData->rank() == 3 && inData->dtype() == nvcv::TYPE_S16 && inData->shape(2) == 4)
           || (inData->rank() == 3 && inData->dtype() == nvcv::TYPE_4S16 && inData->shape(2) == 1)

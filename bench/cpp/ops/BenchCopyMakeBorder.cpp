@@ -29,7 +29,9 @@ try
 {
     long3                       srcShape  = benchutils::GetShape<3>(state.get_string("shape"));
     auto                        layout    = benchutils::GetStringParam(state, "layout", "NHWC");
-    const benchutils::InputKind inputKind = benchutils::GetInputKind(state.get_string("inputKind"));
+    const auto                  inputMode = state.get_string("inputKind");
+    const bool                  isStack   = inputMode == "VarShapeToTensor";
+    const benchutils::InputKind inputKind = benchutils::GetInputKind(isStack ? "VarShape" : inputMode);
 
     using BT = typename nvcv::cuda::BaseType<T>;
 
@@ -74,6 +76,15 @@ try
 
     // clang-format off
 
+    const auto makeTensor = [isPlanar, ch](long3 shape)
+    {
+        if (isPlanar)
+        {
+            return nvcv::Tensor({{shape.x, ch, shape.y, shape.z}, "NCHW"}, benchutils::GetDataType<BT>());
+        }
+        return nvcv::Tensor({{shape.x, shape.y, shape.z, ch}, "NHWC"}, benchutils::GetDataType<BT>());
+    };
+
     if (isFakePlanar)
     {
         nvcv::Tensor src     ({{srcShape.x, ch, srcShape.y, srcShape.z}, "NCHW"}, benchutils::GetDataType<BT>());
@@ -94,16 +105,8 @@ try
     }
     else if (inputKind == benchutils::InputKind::Tensor)
     {
-        nvcv::Tensor src = isPlanar
-                             ? nvcv::Tensor({{srcShape.x, ch, srcShape.y, srcShape.z}, "NCHW"},
-                                            benchutils::GetDataType<BT>())
-                             : nvcv::Tensor({{srcShape.x, srcShape.y, srcShape.z, ch}, "NHWC"},
-                                            benchutils::GetDataType<BT>());
-        nvcv::Tensor dst = isPlanar
-                             ? nvcv::Tensor({{dstShape.x, ch, dstShape.y, dstShape.z}, "NCHW"},
-                                            benchutils::GetDataType<BT>())
-                             : nvcv::Tensor({{dstShape.x, dstShape.y, dstShape.z, ch}, "NHWC"},
-                                            benchutils::GetDataType<BT>());
+        nvcv::Tensor src = makeTensor(srcShape);
+        nvcv::Tensor dst = makeTensor(dstShape);
 
         benchutils::FillTensor<BT>(src, benchutils::CheckerboardValues<BT>());
 
@@ -115,31 +118,44 @@ try
     else // zero and positive var shape means use ImageBatchVarShape
     {
         nvcv::ImageBatchVarShape src(static_cast<int32_t>(srcShape.x));
-        nvcv::ImageBatchVarShape dst(static_cast<int32_t>(dstShape.x));
 
         if (isPlanar)
         {
             benchutils::FillPlanarImageBatch<T>(src, long2{srcShape.z, srcShape.y}, long2{0, 0});
-            benchutils::FillPlanarImageBatch<T>(dst, long2{dstShape.z, dstShape.y}, long2{0, 0}, false);
         }
         else
         {
             benchutils::FillImageBatch<T>(src, long2{srcShape.z, srcShape.y}, long2{0, 0},
                                           benchutils::CheckerboardValues<T>());
-            benchutils::FillImageBatch<T>(dst, long2{dstShape.z, dstShape.y}, long2{0, 0},
-                                          [](const long4_16a &) { return T{0}; });
         }
 
-        nvcv::Tensor topTensor({{srcShape.x, 1, 1, 1}, "NHWC"}, nvcv::TYPE_S32);
-        nvcv::Tensor leftTensor({{srcShape.x, 1, 1, 1}, "NHWC"}, nvcv::TYPE_S32);
+        nvcv::Tensor topTensor({{1, 1, srcShape.x, 1}, "NHWC"}, nvcv::TYPE_S32);
+        nvcv::Tensor leftTensor({{1, 1, srcShape.x, 1}, "NHWC"}, nvcv::TYPE_S32);
 
         benchutils::FillTensor<int>(topTensor, [&top](const long4_16a &){ return top; });
         benchutils::FillTensor<int>(leftTensor, [&left](const long4_16a &){ return left; });
 
-        benchutils::warmup_and_exec(state, BENCH_COPYMAKEBORDER_WARMUP_ITERATIONS,
-            [&op, &src, &dst, &topTensor, &leftTensor, &borderType, &borderValue](cudaStream_t s) {
-                op(s, src, dst, topTensor, leftTensor, borderType, borderValue);
-            });
+        if (isStack)
+        {
+            nvcv::Tensor dst = makeTensor(dstShape);
+            benchutils::warmup_and_exec(state, BENCH_COPYMAKEBORDER_WARMUP_ITERATIONS,
+                [&op, &src, &dst, &topTensor, &leftTensor, &borderType, &borderValue](cudaStream_t s) {
+                    op(s, src, dst, topTensor, leftTensor, borderType, borderValue);
+                });
+        }
+        else
+        {
+            nvcv::ImageBatchVarShape dst(static_cast<int32_t>(dstShape.x));
+            if (isPlanar)
+                benchutils::FillPlanarImageBatch<T>(dst, long2{dstShape.z, dstShape.y}, long2{0, 0}, false);
+            else
+                benchutils::FillImageBatch<T>(dst, long2{dstShape.z, dstShape.y}, long2{0, 0},
+                                              [](const long4_16a &) { return T{0}; });
+            benchutils::warmup_and_exec(state, BENCH_COPYMAKEBORDER_WARMUP_ITERATIONS,
+                [&op, &src, &dst, &topTensor, &leftTensor, &borderType, &borderValue](cudaStream_t s) {
+                    op(s, src, dst, topTensor, leftTensor, borderType, borderValue);
+                });
+        }
     }
 }
 CVCUDA_BENCH_SKIP_ERRORS(state)

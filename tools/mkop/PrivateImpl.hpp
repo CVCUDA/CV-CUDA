@@ -25,7 +25,6 @@
 #define CVCUDA_PRIV___OPNAMECAP___HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
 #include <nvcv/Tensor.hpp>
 

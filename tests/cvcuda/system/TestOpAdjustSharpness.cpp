@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "ElementwiseOpHarness.hpp" // for elementwise::Expect*TensorRejected
 #include "HalfTestUtils.hpp"
 #include "PlanarParityUtils.hpp"
 
@@ -36,6 +37,7 @@
 #include <vector>
 
 namespace test = nvcv::test;
+namespace ew   = nvcv::test::elementwise;
 
 namespace {
 
@@ -154,9 +156,9 @@ void FillTypedRandom(std::vector<uint8_t> &buf, long3 strides, int width, int he
 // image with a dimension < 3 is copied in full (every pixel is a border pixel).
 template<typename BT>
 void AdjustSharpnessGold(std::vector<uint8_t> &dst, const std::vector<uint8_t> &src, long3 strides, int width,
-                         int height, int batches, int channels, float factor)
+                         int height, int batches, int channels, double factor)
 {
-    const float oneMinusFactor = 1.0f - factor;
+    const float oneMinusFactor = static_cast<float>(1.0 - factor);
     const float bound          = SharpnessRefBound<BT>();
     for (int i = 0; i < batches * height * width; ++i)
     {
@@ -187,6 +189,37 @@ void AdjustSharpnessGold(std::vector<uint8_t> &dst, const std::vector<uint8_t> &
     }
 }
 
+// CPU gold for tensors whose input and output have different pitches. Planar tensors are represented
+// as one single-channel image per plane so the existing typed element helpers remain the oracle.
+template<typename BT>
+void AdjustSharpnessGoldStrided(std::vector<uint8_t> &dst, long3 dstStrides, const std::vector<uint8_t> &src,
+                                long3 srcStrides, int width, int height, int planes, float factor)
+{
+    const float oneMinusFactor = static_cast<float>(1.0 - factor);
+    const float bound          = SharpnessRefBound<BT>();
+    for (int i = 0; i < planes * height * width; ++i)
+    {
+        const int n = i / (height * width);
+        const int y = i / width % height;
+        const int x = i % width;
+
+        if (const bool border = (x == 0 || y == 0 || x == width - 1 || y == height - 1); border)
+        {
+            WriteElem<BT>(dst, dstStrides, n, y, x, 0, ReadElem<BT>(src, srcStrides, n, y, x, 0));
+            continue;
+        }
+
+        const auto at = [&](int yy, int xx)
+        {
+            return static_cast<float>(ReadElem<BT>(src, srcStrides, n, yy, xx, 0));
+        };
+        WriteElem<BT>(dst, dstStrides, n, y, x, 0,
+                      AdjustSharpnessRefScalar<BT>(at(y - 1, x - 1), at(y - 1, x), at(y - 1, x + 1), at(y, x - 1),
+                                                   at(y, x), at(y, x + 1), at(y + 1, x - 1), at(y + 1, x),
+                                                   at(y + 1, x + 1), oneMinusFactor, bound));
+    }
+}
+
 // F16 comparison against an FP32 reference. The kernel widens every half tap to float and runs
 // the same fixed fmaf chain as the F32 path (no rintf on the smoothed value), rounding once on
 // the half store, so the reference is AdjustSharpnessRefScalar<float> with the float bound (1.0)
@@ -200,7 +233,7 @@ constexpr float kSharpF16Ulps = 4.f;
 void ExpectSharpnessF16NearGold(const std::vector<uint8_t> &tst, const std::vector<uint8_t> &src, long3 strides,
                                 int width, int height, int batches, int channels, float factor)
 {
-    const float oneMinusFactor = 1.0f - factor;
+    const float oneMinusFactor = static_cast<float>(1.0 - factor);
     auto        at             = [&](int n, int y, int x, int c)
     {
         return __half2float(ReadElem<__half>(src, strides, n, y, x, c));
@@ -229,7 +262,7 @@ void ExpectSharpnessF16NearGold(const std::vector<uint8_t> &tst, const std::vect
 
 // Run the tensor path for one dtype and assert bit-exact equality with the CPU gold.
 template<typename BT>
-void RunCorrectness(int width, int height, int batches, nvcv::ImageFormat format, float factor)
+void RunCorrectness(int width, int height, int batches, nvcv::ImageFormat format, double factor)
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -399,6 +432,13 @@ TEST_P(OpAdjustSharpness, correct_output)
 {
     RunCorrectnessDispatch(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(),
                            nvcv::ImageFormat{GetParamValue<3>()}, GetParamValue<4>());
+}
+
+// 0.6 and 1.7 are not float-representable: the weight must be float(1.0 - factor), as in torchvision.
+TEST(OpAdjustSharpness, double_factor_weight_rounded_once)
+{
+    RunCorrectness<uint8_t>(67, 45, 2, nvcv::FMT_RGB8, 0.6);
+    RunCorrectness<uint16_t>(67, 45, 2, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB16U}, 1.7);
 }
 
 // VarShape correctness: bit-exact vs the CPU gold across the declared dtype x channel matrix. Each
@@ -587,6 +627,51 @@ TEST_P(OpAdjustSharpnessVarShape, correct_output)
     RunVarShapeCorrectnessDispatch(GetParamValue<0>(), nvcv::ImageFormat{GetParamValue<1>()}, GetParamValue<2>());
 }
 
+TEST(OpAdjustSharpnessVarShape, varshape_rgb8_element_width_tail_matches_gold)
+{
+    // 129 RGB pixels require a second element-stream block, while 13 rows leave a partial 12-row tile.
+    constexpr int           width     = 129;
+    constexpr int           height    = 13;
+    constexpr int           channels  = 3;
+    constexpr float         factor    = 0.5f;
+    const nvcv::ImageFormat format    = nvcv::FMT_RGB8;
+    const int               rowStride = width * format.planePixelStrideBytes(0);
+    const long3             strides{static_cast<long>(height) * rowStride, rowStride, format.planePixelStrideBytes(0)};
+
+    nvcv::Image srcImage({width, height}, format);
+    nvcv::Image dstImage({width, height}, format);
+
+    std::vector<uint8_t> srcVec(static_cast<size_t>(strides.x), 0);
+    std::vector<uint8_t> goldVec(static_cast<size_t>(strides.x), 0);
+    std::vector<uint8_t> testVec(static_cast<size_t>(strides.x), 0);
+    FillTypedRandom<uint8_t>(srcVec, strides, width, height, 1, channels, /*seed=*/101u);
+    AdjustSharpnessGold<uint8_t>(goldVec, srcVec, strides, width, height, 1, channels, factor);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    auto srcData = srcImage.exportData<nvcv::ImageDataStridedCuda>();
+    auto dstData = dstImage.exportData<nvcv::ImageDataStridedCuda>();
+    ASSERT_NE(srcData, nvcv::NullOpt);
+    ASSERT_NE(dstData, nvcv::NullOpt);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2DAsync(srcData->plane(0).basePtr, srcData->plane(0).rowStride, srcVec.data(),
+                                             rowStride, rowStride, height, cudaMemcpyHostToDevice, stream));
+
+    nvcv::ImageBatchVarShape srcBatch(1);
+    nvcv::ImageBatchVarShape dstBatch(1);
+    srcBatch.pushBack(srcImage);
+    dstBatch.pushBack(dstImage);
+
+    cvcuda::AdjustSharpness op;
+    EXPECT_NO_THROW(op(stream, srcBatch, dstBatch, factor));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(testVec.data(), rowStride, dstData->plane(0).basePtr,
+                                        dstData->plane(0).rowStride, rowStride, height, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    EXPECT_EQ(testVec, goldVec);
+}
+
 // Planar == interleaved parity (the op treats channels independently). ---------------------------
 // clang-format off
 NVCV_TEST_SUITE_P(OpAdjustSharpnessPlanar,
@@ -618,6 +703,68 @@ TEST_P(OpAdjustSharpnessPlanar, tensor_matches_interleaved)
             cvcuda::AdjustSharpness op;
             EXPECT_NO_THROW(op(s, src, dst, factor));
         });
+}
+
+TEST(OpAdjustSharpnessPlanar, tensor_float32_unequal_input_output_strides)
+{
+    constexpr int   width    = 66;
+    constexpr int   height   = 37;
+    constexpr int   batches  = 2;
+    constexpr int   channels = 3;
+    constexpr int   planes   = batches * channels;
+    constexpr float factor   = 1.5f;
+
+    constexpr int64_t srcRowStride   = (width + 2) * sizeof(float);
+    constexpr int64_t dstRowStride   = (width + 6) * sizeof(float);
+    constexpr int64_t srcPlaneStride = srcRowStride * height;
+    constexpr int64_t dstPlaneStride = dstRowStride * height;
+    constexpr size_t  srcBytes       = srcPlaneStride * planes;
+    constexpr size_t  dstBytes       = dstPlaneStride * planes;
+
+    NVCVByte *srcPtr{};
+    NVCVByte *dstPtr{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&srcPtr, srcBytes));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&dstPtr, dstBytes));
+
+    auto wrapTensor = [](NVCVByte *basePtr, int64_t rowStride, int64_t planeStride)
+    {
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = basePtr;
+        buffer.strides[0] = planeStride * channels;
+        buffer.strides[1] = planeStride;
+        buffer.strides[2] = rowStride;
+        buffer.strides[3] = sizeof(float);
+        return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{batches, channels, height, width}, "NCHW"},
+            nvcv::TYPE_F32, buffer
+        });
+    };
+
+    nvcv::Tensor src = wrapTensor(srcPtr, srcRowStride, srcPlaneStride);
+    nvcv::Tensor dst = wrapTensor(dstPtr, dstRowStride, dstPlaneStride);
+
+    const long3          srcStrides{srcPlaneStride, srcRowStride, sizeof(float)};
+    const long3          dstStrides{dstPlaneStride, dstRowStride, sizeof(float)};
+    std::vector<uint8_t> srcVec(srcBytes, 0);
+    std::vector<uint8_t> dstVec(dstBytes, 0);
+    std::vector<uint8_t> goldVec(dstBytes, 0);
+    FillTypedRandom<float>(srcVec, srcStrides, width, height, planes, 1, /*seed=*/17u);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcPtr, srcVec.data(), srcBytes, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemset(dstPtr, 0, dstBytes));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::AdjustSharpness op;
+    EXPECT_NO_THROW(op(stream, src, dst, factor));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstVec.data(), dstPtr, dstBytes, cudaMemcpyDeviceToHost));
+
+    AdjustSharpnessGoldStrided<float>(goldVec, dstStrides, srcVec, srcStrides, width, height, planes, factor);
+    EXPECT_EQ(dstVec, goldVec);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    ASSERT_EQ(cudaSuccess, cudaFree(srcPtr));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstPtr));
 }
 
 TEST_P(OpAdjustSharpnessPlanar, varshape_matches_interleaved)
@@ -682,7 +829,57 @@ TEST(OpAdjustSharpness_Negative, varshape_rejects_negative_factor)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpAdjustSharpness_Negative, varshape_height_exceeds_grid_y_limit)
+{
+    // The element path folds twelve rows into each grid.y block; one extra row makes it decline,
+    // after which the scalar fallback must reject the same height instead of launching an invalid grid.
+    constexpr int kHeight = 12 * 65535 + 1;
+
+    nvcv::Image              srcImage({1, kHeight}, nvcv::FMT_RGB8);
+    nvcv::Image              dstImage({1, kHeight}, nvcv::FMT_RGB8);
+    nvcv::ImageBatchVarShape srcBatch(1);
+    nvcv::ImageBatchVarShape dstBatch(1);
+    srcBatch.pushBack(srcImage);
+    dstBatch.pushBack(dstImage);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::AdjustSharpness op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&op, stream, &srcBatch, &dstBatch] { op(stream, srcBatch, dstBatch, 1.0f); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpAdjustSharpness_Negative, create_null_handle)
 {
     EXPECT_EQ(cvcudaAdjustSharpnessCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+// The two rejections same_shape::ValidateSrcDstTensors owns. They are asserted per entry point
+// rather than only where the fix was written, because that one validator now decides the tensor
+// contract of four operators. Bodies and rationale: ElementwiseOpHarness.hpp.
+namespace {
+
+auto invokeSharpness(float factor)
+{
+    return [factor](cudaStream_t s, const auto &in, auto &out)
+    {
+        cvcuda::AdjustSharpness op;
+        op(s, in, out, factor);
+    };
+}
+
+} // namespace
+
+TEST(OpAdjustSharpness_Negative, tensor_padded_column_stride)
+{
+    ew::ExpectPaddedColumnStrideTensorRejected(invokeSharpness(1.5f));
+}
+
+TEST(OpAdjustSharpness_Negative, tensor_multi_channel_dtype)
+{
+    ew::ExpectMultiChannelDtypeTensorRejected(invokeSharpness(1.5f));
 }

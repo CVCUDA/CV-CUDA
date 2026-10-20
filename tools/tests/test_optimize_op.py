@@ -19,13 +19,22 @@ changed-implementation attribution (incl. the cross-op CamelCase-prefix trap), a
 results-summary format enforcement — without coupling to live per-op state. Stdlib-only;
 runs in the bench Python unit-test CI step alongside tools/tests/test_review_op.py.
 """
+
 import importlib.util
 import json
 import math
+import re
 import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
+
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[2] / ".agents" / "tools" / "tests")
+)
+import evidence_fixtures as fixtures  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / "tools" / "optimize_op.py"
@@ -91,16 +100,280 @@ def test_evidence_exit_blocks_unresolved_manual(monkeypatch):
     assert m.main(["Resize", "--phase", "evidence"]) == 1
 
 
+def _mock_summary_checkout(monkeypatch, module, event_type, target_available=True):
+    source = "a" * 40
+    candidate = "b" * 40 if event_type in {"merged_result", "merge_train"} else source
+    target = "c" * 40
+    diff_base = "d" * 40
+    for name in (
+        "CI_MERGE_REQUEST_EVENT_TYPE",
+        "CI_COMMIT_SHA",
+        "CI_MERGE_REQUEST_SOURCE_BRANCH_SHA",
+        "CI_MERGE_REQUEST_TARGET_BRANCH_SHA",
+        "CI_MERGE_REQUEST_DIFF_BASE_SHA",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    if event_type:
+        monkeypatch.setenv("CI_MERGE_REQUEST_EVENT_TYPE", event_type)
+        monkeypatch.setenv("CI_COMMIT_SHA", candidate)
+        monkeypatch.setenv("CI_MERGE_REQUEST_SOURCE_BRANCH_SHA", source)
+        monkeypatch.setenv("CI_MERGE_REQUEST_DIFF_BASE_SHA", diff_base)
+        if target_available:
+            monkeypatch.setenv("CI_MERGE_REQUEST_TARGET_BRANCH_SHA", target)
+    monkeypatch.setattr(
+        module,
+        "resolve_commit",
+        lambda ref: (
+            candidate
+            if ref == "HEAD"
+            else ref if ref in {source, candidate, target, diff_base} else ""
+        ),
+    )
+    monkeypatch.setattr(module, "git_success", lambda *_args: True)
+    monkeypatch.setattr(
+        module,
+        "git",
+        lambda *args: (
+            diff_base if args == ("merge-base", "origin/main", "HEAD") else ""
+        ),
+    )
+    expected_target = target if candidate != source and target_available else diff_base
+    return source, candidate, expected_target
+
+
+@pytest.mark.parametrize("authorized", (True, False))
+@pytest.mark.parametrize("stale", (False, True))
+@pytest.mark.parametrize(
+    ("event_type", "target_available"),
+    [
+        (None, True),
+        ("detached", True),
+        ("merged_result", True),
+        ("merge_train", True),
+        ("merged_result", False),
+    ],
+)
+@pytest.mark.parametrize("invalid_retention", [False, True])
+def test_odo2_reference_exception_resolves_only_its_checklist_gate(
+    monkeypatch, authorized, stale, event_type, target_available, invalid_retention
+):
+    module = _module()
+    source, candidate, target = _mock_summary_checkout(
+        monkeypatch, module, event_type, target_available
+    )
+    paths = module.resolve_op("CopyMakeBorder")
+    monkeypatch.setattr(module, "all_operator_stems", lambda: {"copymakeborder"})
+    monkeypatch.setattr(
+        module, "changed_paths", lambda _base: ["src/cvcuda/priv/OpCopyMakeBorder.cu"]
+    )
+    monkeypatch.setattr(module, "read_results", lambda _path: "summary")
+    monkeypatch.setattr(
+        module,
+        "parse_summary",
+        lambda _text: SimpleNamespace(
+            metadata=SimpleNamespace(
+                operators=("CopyMakeBorder",),
+                candidate_commit="e" * 40 if stale else source,
+                baseline_retention="invalid" if invalid_retention else None,
+                evidence={},
+            )
+        ),
+    )
+    if invalid_retention:
+
+        def rejected(*_args):
+            raise ValueError("invalid retention proof")
+
+        monkeypatch.setattr(module, "_retention_evidence", rejected)
+    policy_calls = []
+
+    def reviewed(summary, **kwargs):
+        policy_calls.append(kwargs)
+        return authorized
+
+    monkeypatch.setattr(module, "is_reviewed_reference_exception", reviewed)
+    monkeypatch.setattr(module, "review_op_findings", lambda *_args: [])
+    for function, finding_id in (
+        ("_leads_exhausted", "ODO-4"),
+        ("_api_abi", "ODO-5"),
+        ("_perf_hygiene", "ODO-6"),
+        ("_baseline_regression_gate", "ODO-7"),
+        ("_review_refactor_gate", "ODO-8"),
+        ("_memory_footprint_gate", "ODO-9"),
+        ("_operator_scope_gate", "ODO-10"),
+        ("_fake_planar_coverage_gate", "ODO-11"),
+        ("_binding_impact_gate", "ODO-12"),
+    ):
+        monkeypatch.setattr(
+            module,
+            function,
+            lambda *_args, finding_id=finding_id: module.Finding(
+                finding_id, "evidence", module.PASS, "ok"
+            ),
+        )
+
+    def results_format(_results, guide, _retention):
+        return module.Finding(
+            "ODO-3", "evidence", module.PASS, "format", guideline=guide
+        )
+
+    monkeypatch.setattr(module, "_results_format", results_format)
+    findings = module.check_evidence(
+        paths, "origin/main", "summary.md", mr_iid="reviewed"
+    )
+    assert next(item for item in findings if item.id == "ODO-2").status == (
+        module.NA if authorized and not stale and not invalid_retention else module.GAP
+    )
+    assert next(item for item in findings if item.id == "ODO-1").status == module.GAP
+    if stale or invalid_retention:
+        assert not policy_calls
+        return
+    assert len(policy_calls) == 1
+    assert policy_calls[0]["mr_iid"] == "reviewed"
+    assert policy_calls[0]["source_commit"] == source
+    assert policy_calls[0]["candidate_commit"] == candidate
+    assert policy_calls[0]["diff_base_commit"] == target
+
+
+@pytest.mark.parametrize(
+    "event_type", [None, "detached", "merged_result", "merge_train"]
+)
+@pytest.mark.parametrize("stale", [False, True])
+def test_retention_evidence_binds_source_and_merge_context(
+    monkeypatch, event_type, stale
+):
+    module = _module()
+    source, candidate, _target = _mock_summary_checkout(monkeypatch, module, event_type)
+    summary = SimpleNamespace(
+        metadata=SimpleNamespace(
+            operators=("BndBox", "OSD"),
+            baseline_retention="reviewed",
+            baseline_commit="d" * 40,
+            candidate_commit="e" * 40 if stale else source,
+        )
+    )
+    import baseline_retention_policy
+
+    calls = []
+
+    def validate(**kwargs):
+        calls.append(kwargs)
+        return "reviewed proof"
+
+    monkeypatch.setattr(baseline_retention_policy, "validate_retention", validate)
+    if stale:
+        with pytest.raises(ValueError, match="match source HEAD"):
+            module._retention_evidence(summary, "2003")
+        assert not calls
+    else:
+        assert module._retention_evidence(summary, "2003") == "reviewed proof"
+        assert calls[0]["source_commit"] == source
+        assert calls[0]["candidate_commit"] == candidate
+        assert calls[0]["operators"] == ("BndBox", "OSD")
+
+
+@pytest.mark.parametrize(
+    "event_type", (None, "detached", "merged_result", "merge_train")
+)
+@pytest.mark.parametrize("stale", (False, True))
+def test_results_format_binds_summary_to_source_context(monkeypatch, event_type, stale):
+    module = _module()
+    source, _candidate, _target = _mock_summary_checkout(
+        monkeypatch, module, event_type
+    )
+    summary = SimpleNamespace(
+        metadata=SimpleNamespace(
+            operators=("CopyMakeBorder",),
+            baseline_commit="d" * 40,
+            candidate_commit="e" * 40 if stale else source,
+        ),
+        scope_rows=(),
+    )
+    monkeypatch.setattr(module, "parse_summary", lambda _text: summary)
+
+    def validate(parsed, *, expected_candidate_commit, retention_detail):
+        ok = parsed.metadata.candidate_commit == expected_candidate_commit
+        return SimpleNamespace(
+            ok=ok,
+            errors=(
+                ()
+                if ok
+                else (
+                    SimpleNamespace(code="candidate-commit", message="stale summary"),
+                )
+            ),
+            warnings=(),
+        )
+
+    monkeypatch.setattr(module, "validate_summary", validate)
+    finding = module._results_format("summary", "guide", None)
+    assert finding.status == (module.GAP if stale else module.PASS)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    (
+        "missing_source",
+        "missing_target",
+        "wrong_checkout",
+        "unknown_source",
+        "unknown_target",
+        "source_not_ancestor",
+        "target_not_ancestor",
+    ),
+)
+def test_results_format_rejects_unbound_merge_context(monkeypatch, fault):
+    module = _module()
+    source, _candidate, target = _mock_summary_checkout(
+        monkeypatch, module, "merged_result"
+    )
+    summary = SimpleNamespace(
+        metadata=SimpleNamespace(
+            operators=("CopyMakeBorder",),
+            baseline_commit="d" * 40,
+            candidate_commit=source,
+        ),
+        scope_rows=(),
+    )
+    monkeypatch.setattr(module, "parse_summary", lambda _text: summary)
+    monkeypatch.setattr(
+        module,
+        "validate_summary",
+        lambda *_args, **_kwargs: SimpleNamespace(ok=True, errors=(), warnings=()),
+    )
+    if fault == "missing_source":
+        monkeypatch.delenv("CI_MERGE_REQUEST_SOURCE_BRANCH_SHA")
+    elif fault == "missing_target":
+        monkeypatch.delenv("CI_MERGE_REQUEST_TARGET_BRANCH_SHA")
+        monkeypatch.delenv("CI_MERGE_REQUEST_DIFF_BASE_SHA")
+    elif fault == "wrong_checkout":
+        monkeypatch.setenv("CI_COMMIT_SHA", "f" * 40)
+    elif fault == "unknown_source":
+        monkeypatch.setenv("CI_MERGE_REQUEST_SOURCE_BRANCH_SHA", "f" * 40)
+    elif fault == "unknown_target":
+        monkeypatch.setenv("CI_MERGE_REQUEST_TARGET_BRANCH_SHA", "f" * 40)
+    else:
+        rejected = source if fault == "source_not_ancestor" else target
+        monkeypatch.setattr(module, "git_success", lambda *args: args[2] != rejected)
+    assert module._results_format("summary", "guide", {}).status == module.GAP
+
+
+def test_reference_exception_is_denied_without_internal_module(monkeypatch):
+    original = Path.is_file
+    monkeypatch.setattr(
+        Path,
+        "is_file",
+        lambda path: (
+            False if path.name == "optimization_reference_policy.py" else original(path)
+        ),
+    )
+    module = _module()
+    assert not module.is_reviewed_reference_exception(object(), mr_iid="reviewed")
+
+
 def test_phase_is_required_and_validated():
     assert run("Resize").returncode == 2  # missing --phase
     assert run("Resize", "--phase", "bogus").returncode == 2  # invalid choice
-
-
-def test_summary_initialization_requires_explicit_artifact_inputs():
-    r = run("Resize", "--phase", "summary")
-    assert r.returncode == 2
-    assert "--benchmark-base" in r.stderr
-    assert "--optimized-cases-file" in r.stderr
 
 
 def test_preflight_ben6_gap_blocks_pre2(monkeypatch):
@@ -245,7 +518,11 @@ def test_odo10_accepts_synthetic_reviewed_secondary_scope(monkeypatch):
         m,
         "parse_summary",
         lambda _results: SimpleNamespace(
-            metadata=SimpleNamespace(operator="OSD", secondary_operators=("BndBox",))
+            metadata=SimpleNamespace(primary="OSD", operators=("OSD", "BndBox")),
+            impact_rows=(
+                SimpleNamespace(operator="OSD"),
+                SimpleNamespace(operator="BndBox"),
+            ),
         ),
     )
 
@@ -253,6 +530,102 @@ def test_odo10_accepts_synthetic_reviewed_secondary_scope(monkeypatch):
 
     assert finding.status == m.PASS
     assert "code-reviewed secondary" in finding.summary
+
+
+@pytest.mark.parametrize("proof", [True, False])
+@pytest.mark.parametrize("foreign", [True, False])
+def test_odo10_retained_shared_scope_requires_verified_proof(
+    monkeypatch, proof, foreign
+):
+    m = _module()
+    paths = m.resolve_op("OSD")
+    monkeypatch.setattr(m, "is_reviewed_secondary_scope", _synthetic_reviewed_scope)
+    monkeypatch.setattr(
+        m,
+        "parse_summary",
+        lambda _: SimpleNamespace(
+            metadata=SimpleNamespace(
+                primary="OSD",
+                operators=("OSD", "BndBox"),
+                baseline_retention="reviewed",
+            ),
+            impact_rows=(
+                SimpleNamespace(operator="OSD"),
+                SimpleNamespace(operator="BndBox"),
+            ),
+        ),
+    )
+    monkeypatch.setattr(m, "_retention_evidence", lambda *_: "proof" if proof else None)
+    finding = m._operator_scope_gate(
+        paths, {"other"} if foreign else set(), "summary", "123", "guide"
+    )
+    assert finding.status == (m.PASS if proof and not foreign else m.GAP)
+
+
+def test_odo10_rejects_a_summary_for_a_different_operator(monkeypatch):
+    """ODO-3 used to carry this cross-check via expected_operator."""
+
+    m = _module()
+    osd = m.resolve_op("OSD")
+    monkeypatch.setattr(
+        m,
+        "parse_summary",
+        lambda _results: SimpleNamespace(
+            metadata=SimpleNamespace(primary="BndBox", operators=("BndBox",)),
+            impact_rows=(SimpleNamespace(operator="BndBox"),),
+        ),
+    )
+
+    finding = m._operator_scope_gate(osd, {"osd"}, "summary", None, "guide")
+
+    assert finding.status == m.GAP
+    assert "different operator" in finding.summary
+    assert "BndBox" in finding.evidence
+
+
+def test_odo10_requires_measured_impact_for_every_declared_secondary(monkeypatch):
+    m = _module()
+    osd = m.resolve_op("OSD")
+    monkeypatch.setattr(m, "is_reviewed_secondary_scope", _synthetic_reviewed_scope)
+    monkeypatch.setattr(
+        m,
+        "parse_summary",
+        lambda _results: SimpleNamespace(
+            metadata=SimpleNamespace(primary="OSD", operators=("OSD", "BndBox")),
+            impact_rows=(SimpleNamespace(operator="OSD"),),
+        ),
+    )
+
+    finding = m._operator_scope_gate(osd, {"osd", "bndbox"}, "summary", "123", "guide")
+
+    assert finding.status == m.GAP
+    assert "Impact" in finding.evidence
+
+
+def test_odo10_rejects_partial_declared_secondary_coverage(monkeypatch):
+    m = _module()
+    osd = m.resolve_op("OSD")
+    monkeypatch.setattr(m, "is_reviewed_secondary_scope", _synthetic_reviewed_scope)
+    monkeypatch.setattr(
+        m,
+        "parse_summary",
+        lambda _results: SimpleNamespace(
+            metadata=SimpleNamespace(
+                primary="OSD", operators=("OSD", "BndBox", "Warp")
+            ),
+            impact_rows=(
+                SimpleNamespace(operator="OSD"),
+                SimpleNamespace(operator="BndBox"),
+            ),
+        ),
+    )
+
+    finding = m._operator_scope_gate(
+        osd, {"osd", "bndbox", "warp"}, "summary", "123", "guide"
+    )
+
+    assert finding.status == m.GAP
+    assert "Impact" in finding.evidence
 
 
 def test_odo10_secondary_scope_fails_closed(monkeypatch):
@@ -274,9 +647,13 @@ def test_odo10_secondary_scope_fails_closed(monkeypatch):
             lambda _results, metadata_operator=metadata_operator, secondary=secondary: (
                 SimpleNamespace(
                     metadata=SimpleNamespace(
-                        operator=metadata_operator,
-                        secondary_operators=secondary,
-                    )
+                        primary=metadata_operator,
+                        operators=(metadata_operator, *secondary),
+                    ),
+                    impact_rows=tuple(
+                        SimpleNamespace(operator=name)
+                        for name in (metadata_operator, *secondary)
+                    ),
                 )
             ),
         )
@@ -293,7 +670,8 @@ def test_odo10_default_scope_remains_strict(monkeypatch):
         m,
         "parse_summary",
         lambda _results: SimpleNamespace(
-            metadata=SimpleNamespace(operator="OSD", secondary_operators=())
+            metadata=SimpleNamespace(primary="OSD", operators=("OSD",)),
+            impact_rows=(SimpleNamespace(operator="OSD"),),
         ),
     )
 
@@ -321,21 +699,42 @@ def test_implementation_attribution_includes_only_the_matching_binding():
     assert m._is_op_implementation("src/cvcuda/priv/OpHQResizeKernel.cuh", hq, ops)
 
 
-def test_kernel_attribution_explicit_shared_legacy_sources():
+def test_kernel_attribution_explicit_shared_sources():
+    """A shared source is attributed to every consumer even when its name derives none of them.
+
+    The fixtures used to be legacy/warp.cu and legacy/filter.cu; both operators migrated, so the
+    shared kernels now live in priv headers. The property under test is unchanged: attribution
+    comes from the source map, not from the filename.
+    """
     m = _module()
     ops = m.all_operator_stems()
-    histogram = m.resolve_op("Histogram")
-    histogram_eq = m.resolve_op("HistogramEq")
     warp_affine = m.resolve_op("WarpAffine")
     warp_perspective = m.resolve_op("WarpPerspective")
+    gaussian = m.resolve_op("Gaussian")
+    average_blur = m.resolve_op("AverageBlur")
 
-    calc_hist = "src/cvcuda/priv/legacy/calc_hist.cu"
-    assert m._is_op_kernel(calc_hist, histogram, ops) is True
-    assert m._is_op_kernel(calc_hist, histogram_eq, ops) is False
-
-    shared_warp = "src/cvcuda/priv/legacy/warp.cu"
+    shared_warp = "src/cvcuda/priv/WarpCommon.cuh"
     assert m._is_op_kernel(shared_warp, warp_affine, ops) is True
     assert m._is_op_kernel(shared_warp, warp_perspective, ops) is True
+
+    shared_filter = "src/cvcuda/priv/FilterCommon.cuh"
+    assert m._is_op_kernel(shared_filter, gaussian, ops) is True
+    assert m._is_op_kernel(shared_filter, average_blur, ops) is True
+
+
+@pytest.mark.parametrize("operator", ["Split", "Merge"])
+@pytest.mark.parametrize("suffix", ["cu", "hpp"])
+def test_channel_copy_implementation_attribution(operator, suffix):
+    module = _module()
+    operators = module.all_operator_stems()
+    paths = module.resolve_op(operator)
+    source = f"src/cvcuda/priv/ChannelCopy.{suffix}"
+
+    assert module._is_op_kernel(source, paths, operators)
+    assert module._is_op_implementation(source, paths, operators)
+    assert not module._is_op_implementation(
+        source, module.resolve_op("Resize"), operators
+    )
 
 
 def test_multi_operator_perf_attribution_uses_configs_and_longest_priv_prefix():
@@ -354,30 +753,10 @@ def test_multi_operator_perf_attribution_uses_configs_and_longest_priv_prefix():
     assert touched == {"resize", "warpaffine", "hqresize", "pillowresize"}
 
 
-def test_pixelwise_assertion_requires_a_concrete_assertion_name():
-    m = _module()
-
-    for evidence in (
-        "EXPECT_EQ(output, reference)",
-        "EXPECT_NEAR(output, reference, 1e-6)",
-        "assert bool(cupy.all(output == reference))",
-        "assert output == reference",
-        "cupy.testing.assert_array_equal(output, reference)",
-    ):
-        assert m._has_pixelwise_assertion(evidence), evidence
-
-    for evidence in (
-        "We assert every pixel matches the independent reference.",
-        "EXPECT_EQ compares every output pixel",
-        "cupy.testing.assert_array_equal verifies the output",
-        "The Python test asserts exact output",
-        "The equality assertion passed",
-        "Pixel equality was checked",
-    ):
-        assert not m._has_pixelwise_assertion(evidence), evidence
-
-
-def test_binding_only_change_triggers_implementation_evidence_gates(monkeypatch):
+@pytest.mark.parametrize("retention", [False, True])
+def test_binding_only_change_triggers_implementation_evidence_gates(
+    monkeypatch, retention
+):
     m = _module()
     hq = m.resolve_op("HQResize")
     binding = "python/mod_cvcuda/operators/OpHQResize.cpp"
@@ -385,22 +764,47 @@ def test_binding_only_change_triggers_implementation_evidence_gates(monkeypatch)
 
     monkeypatch.setattr(m, "all_operator_stems", lambda: {"hqresize"})
     monkeypatch.setattr(m, "changed_paths", lambda _base: [binding])
+    evidence = fixtures.complete()
+    monkeypatch.setattr(m, "read_results", lambda _path: "summary")
     monkeypatch.setattr(
         m,
-        "read_results",
-        lambda _path: (
-            "- [x] **Pixelwise equality to reference** — `assert "
-            "bool(cupy.all(output == expected))` checks every pixel against a "
-            "constant-value oracle; 6 passed.\n"
+        "parse_summary",
+        lambda _text: SimpleNamespace(
+            metadata=SimpleNamespace(
+                evidence=evidence,
+                candidate_commit=fixtures.CANDIDATE,
+                primary="HQResize",
+                operators=("HQResize",),
+                baseline_retention=None,
+            ),
+            impact_rows=(),
         ),
+    )
+    monkeypatch.setattr(
+        m,
+        "_binding_impact_gate",
+        lambda *_args: m.Finding("ODO-12", "evidence", m.PASS, "ok"),
+    )
+    monkeypatch.setattr(
+        m,
+        "_imported_baselines",
+        lambda ev: m.evidence_mod.GateResult(m.PASS, "imported"),
     )
     monkeypatch.setattr(m, "review_op_findings", lambda *_args: [])
     monkeypatch.setattr(
         m,
         "git",
         lambda *args: (
-            '+                "gpu_gap_stddev_us": 4.25' if args[0] == "diff" else ""
+            '+                "gpu_gap_stddev_us": 4.25'
+            if args[0] == "diff" and not retention
+            else ""
         ),
+    )
+    monkeypatch.setattr(
+        m,
+        "_retention_evidence",
+        lambda *_args: "reviewed proof" if retention else None,
+        raising=False,
     )
     monkeypatch.setattr(
         m,
@@ -445,7 +849,7 @@ def test_binding_only_change_triggers_implementation_evidence_gates(monkeypatch)
     assert not any(item.id == "ODO-0" for item in findings)
     assert next(item for item in findings if item.id == "ODO-1").status == "PASS"
     assert next(item for item in findings if item.id == "ODO-2").status == "PASS"
-    assert next(item for item in findings if item.id == "ODO-9").status == "GAP"
+    assert next(item for item in findings if item.id == "ODO-9").status == "PASS"
     assert reviewed == [binding]
 
 
@@ -546,7 +950,10 @@ def _binding_impact_inputs(
     noise_us=2.0,
     n_runs=5,
     include_gap_stddev=True,
+    reviewed_deferral=False,
 ):
+    from optimization_summary import GENERALIZATION_AREAS, GeneralizationRow
+
     cases = (
         "target_nhwc[layout=NHWC][inputKind=TensorBatch]",
         "target_nchw[layout=NCHW][inputKind=TensorBatch]",
@@ -575,7 +982,23 @@ def _binding_impact_inputs(
     sku_map = {"entries": [{"stem": "A100"}, {"stem": "H100"}]}
 
     monkeypatch.setattr(
-        module, "parse_summary", lambda _results: SimpleNamespace(metadata=metadata)
+        module,
+        "parse_summary",
+        lambda _results: SimpleNamespace(
+            metadata=metadata,
+            generalization_rows=(
+                tuple(
+                    GeneralizationRow(
+                        area,
+                        "The dispatch in `HQResize` could apply the Tensor fast path to NCHW.",
+                        "Deferred: keep this MR scoped to the NHWC binding path.",
+                    )
+                    for area in GENERALIZATION_AREAS
+                )
+                if reviewed_deferral
+                else ()
+            ),
+        ),
     )
     monkeypatch.setattr(module, "git_json", lambda *_args: baseline)
     monkeypatch.setattr(
@@ -621,6 +1044,121 @@ def test_binding_impact_gate_rejects_claim_within_paired_gap_error(monkeypatch):
     assert "does not clear" in finding.evidence
 
 
+def test_binding_sibling_deferral_cannot_waive_unchanged_layout(monkeypatch):
+    m = _module()
+    from optimization_summary import (
+        GENERALIZATION_AREAS,
+        GeneralizationRow,
+        validate_generalization_rows,
+    )
+
+    cases = _binding_impact_inputs(monkeypatch, m, reduction_us=10.0)
+    summary = m.parse_summary("summary")
+    summary.generalization_rows = tuple(
+        GeneralizationRow(
+            area,
+            (
+                "`SiblingOp.cpp` could reuse this dispatch."
+                if area == "Shared code / sibling operators"
+                else "`HQResize` uses the same binding dispatch across this area."
+            ),
+            (
+                "Deferred: keep sibling operators in a separate MR."
+                if area == "Shared code / sibling operators"
+                else "Not applicable: these paths already use the same dispatch."
+            ),
+        )
+        for area in GENERALIZATION_AREAS
+    )
+    assert not validate_generalization_rows(summary.generalization_rows)
+    monkeypatch.setattr(m, "parse_summary", lambda _: summary)
+    candidate = m._load_json(m.resolve_op("HQResize").bench_cfg)
+    for metrics in candidate["configs"]["target_nchw"]["baselines"][cases[1]].values():
+        metrics["gpu_time_us_python"] = 1040.0
+
+    finding = m._binding_impact_gate(
+        m.resolve_op("HQResize"),
+        "summary",
+        ["python/mod_cvcuda/operators/OpHQResize.cpp"],
+        "guide",
+    )
+    assert finding.status == "GAP", finding.evidence
+    assert "target_nchw" in finding.evidence
+    assert "does not clear standard error" in finding.evidence
+
+
+@pytest.mark.parametrize(
+    "deferred_reduction, dispersion, complete_review, expected",
+    [
+        (10.0, 2.0, True, "PASS"),
+        (0.0, 2.0, True, "GAP"),
+        (0.5, 2.0, True, "GAP"),
+        (-0.5, 2.0, True, "GAP"),
+        (-3.0, 2.0, True, "GAP"),
+        (3.0, 10.0, True, "GAP"),
+        (0.0, 2.0, False, "GAP"),
+    ],
+)
+def test_binding_impact_requires_each_reviewed_case_to_clear_error(
+    monkeypatch, deferred_reduction, dispersion, complete_review, expected
+):
+    m = _module()
+    cases = _binding_impact_inputs(
+        monkeypatch, m, reduction_us=10.0, reviewed_deferral=True
+    )
+    summary = m.parse_summary("summary")
+    if not complete_review:
+        summary.generalization_rows = summary.generalization_rows[:-1]
+    monkeypatch.setattr(m, "parse_summary", lambda _: summary)
+    candidate = m._load_json(m.resolve_op("HQResize").bench_cfg)
+    for metrics in candidate["configs"]["target_nchw"]["baselines"][cases[1]].values():
+        metrics["gpu_time_us_python"] = 1040.0 - deferred_reduction
+        metrics["gpu_gap_stddev_us"] = dispersion
+
+    finding = m._binding_impact_gate(
+        m.resolve_op("HQResize"),
+        "summary",
+        ["python/mod_cvcuda/operators/OpHQResize.cpp"],
+        "guide",
+    )
+    assert finding.status == expected, finding.evidence
+
+
+@pytest.mark.parametrize(
+    "fault", ["missing_candidate", "missing_before", "no_win", "no_cases", "parity"]
+)
+def test_binding_deferral_retains_full_coverage_proven_impact_and_parity(
+    monkeypatch, fault
+):
+    m = _module()
+    cases = _binding_impact_inputs(
+        monkeypatch, m, reduction_us=10.0, reviewed_deferral=True
+    )
+    candidate = m._load_json(m.resolve_op("HQResize").bench_cfg)
+    if fault == "missing_candidate":
+        del candidate["configs"]["target_nchw"]
+    elif fault == "missing_before":
+        del m.git_json()["configs"]["target_nchw"]["baselines"][cases[1]]["H100"]
+    elif fault == "no_cases":
+        candidate["configs"].clear()
+        m.git_json()["configs"].clear()
+    else:
+        for entry in candidate["configs"].values():
+            for by_sku in entry["baselines"].values():
+                for metrics in by_sku.values():
+                    metrics["gpu_time_us_python"] = (
+                        1040.0 if fault == "no_win" else 1070.0
+                    )
+
+    finding = m._binding_impact_gate(
+        m.resolve_op("HQResize"),
+        "summary",
+        ["python/mod_cvcuda/operators/OpHQResize.cpp"],
+        "guide",
+    )
+    assert finding.status == "GAP", finding.evidence
+
+
 def test_binding_impact_gate_requires_paired_gap_dispersion(monkeypatch):
     m = _module()
     hq = m.resolve_op("HQResize")
@@ -640,6 +1178,70 @@ def test_binding_impact_gate_requires_paired_gap_dispersion(monkeypatch):
 
     assert finding.status == "GAP"
     assert "paired-gap-dispersion" in finding.evidence
+
+
+@pytest.mark.parametrize("n_runs", [1, 5])
+@pytest.mark.parametrize("reduction_us, expected", [(1.0, "PASS"), (0.5, "GAP")])
+def test_binding_impact_gate_uses_committed_timings_without_historical_dispersion(
+    monkeypatch, n_runs, reduction_us, expected
+):
+    m = _module()
+    cases = _binding_impact_inputs(monkeypatch, m, reduction_us=reduction_us)
+    baseline = _binding_impact_config(
+        cases, gap_us=40.0, n_runs=n_runs, include_gap_stddev=False
+    )
+    monkeypatch.setattr(m, "git_json", lambda *_args: baseline)
+
+    finding = m._binding_impact_gate(
+        m.resolve_op("HQResize"),
+        "summary",
+        ["python/mod_cvcuda/operators/OpHQResize.cpp"],
+        "guide",
+    )
+
+    assert finding.status == expected
+    assert "candidate SE vs fixed committed reference" in finding.evidence
+    assert f"{2.0 / math.sqrt(5):.2f} us" in finding.evidence
+
+
+@pytest.mark.parametrize("reduction_us, expected", [(1.0, "GAP"), (2.0, "PASS")])
+def test_binding_impact_gate_retains_available_historical_dispersion(
+    monkeypatch, reduction_us, expected
+):
+    m = _module()
+    cases = _binding_impact_inputs(monkeypatch, m, reduction_us=reduction_us)
+    baseline = _binding_impact_config(cases, gap_us=40.0)
+    for entry in baseline["configs"].values():
+        for by_sku in entry["baselines"].values():
+            del by_sku["A100"]["gpu_gap_stddev_us"]
+    monkeypatch.setattr(m, "git_json", lambda *_args: baseline)
+
+    finding = m._binding_impact_gate(
+        m.resolve_op("HQResize"),
+        "summary",
+        ["python/mod_cvcuda/operators/OpHQResize.cpp"],
+        "guide",
+    )
+
+    assert finding.status == expected, finding.evidence
+    for case in cases:
+        short = case.split("[", 1)[0]
+        measurement = (
+            f"{short}: gap 40.00->{40.0 - reduction_us:.2f} us; "
+            f"reduction {reduction_us:.2f} us; "
+        )
+        assert (
+            f"H100 {measurement}paired-gap combined SE {math.sqrt(2 * 2.0**2 / 5):.2f} us"
+            in finding.evidence
+        )
+        if expected == "PASS":
+            assert (
+                f"A100 {measurement}candidate SE vs fixed committed reference "
+                f"{2.0 / math.sqrt(5):.2f} us" in finding.evidence
+            )
+    if expected == "GAP":
+        assert "does not clear" in finding.evidence
+        assert "A100" not in finding.evidence
 
 
 def test_binding_impact_gate_requires_repeated_artifacts(monkeypatch):
@@ -670,7 +1272,8 @@ def test_binding_impact_gate_accepts_legacy_summary_metric(monkeypatch):
                 impact_metric="cpp_time",
                 baseline_commit="a" * 40,
                 optimized_cases=cases,
-            )
+            ),
+            generalization_rows=(),
         ),
     )
 
@@ -682,7 +1285,7 @@ def test_binding_impact_gate_accepts_legacy_summary_metric(monkeypatch):
     )
 
     assert finding.status == "PASS"
-    assert "paired-gap combined standard error" in finding.summary
+    assert "paired-gap standard error" in finding.summary
 
 
 def _binding_source(signature=None, registration=None, body=None, aliases=""):
@@ -1053,6 +1656,100 @@ def _commit(repo, subject, files):
     subprocess.run(["git", "commit", "-q", "-m", subject], cwd=repo, check=True)
 
 
+def test_perf_hygiene_accepts_only_proven_cpp_formatting(monkeypatch, tmp_path):
+    m = _module()
+    op = m.resolve_op("BoxBlur")
+    repo = tmp_path / "formatting"
+    _init_git_history(repo)
+    source = "src/cvcuda/priv/legacy/box_blur.cu"
+    before = "if constexpr (B\n              == CONSTANT) { run(); }\n"
+    after = "if constexpr (B == CONSTANT) { run(); }\n"
+    _commit(repo, "perf(boxblur): establish implementation", {source: before})
+    base = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=repo, text=True
+    ).strip()
+    _commit(repo, "style(boxblur): format dispatch", {source: after})
+    monkeypatch.setattr(m, "REPO", repo)
+
+    result = m._perf_hygiene(op, base, ["boxblur"], "guide")
+
+    assert result.status == "PASS"
+    assert "formatting-only" in result.evidence
+    _commit(
+        repo, "style(boxblur): change dispatch", {source: after.replace("==", "!=")}
+    )
+    assert m._perf_hygiene(op, base, ["boxblur"], "guide").status == "GAP"
+
+
+def test_cpp_formatting_comparison_preserves_sensitive_whitespace():
+    m = _module()
+    assert m._cpp_formatting_only("if (a\n&& b) {}", "if (a && b) {}")
+    for before, after in (
+        ("int value;", "intvalue;"),
+        ('const char *s = "a b";', 'const char *s = "ab";'),
+        ('auto s = R"tag(a b)tag";', 'auto s = R"tag(ab)tag";'),
+        ('auto s = "a"_tag;', 'auto s = "a" _tag;'),
+        ("a ++ b;", "a + + b;"),
+        ("float x = 1e+2;", "float x = 1e +2;"),
+        ("a / * b;", "a /* b;"),
+        ("a; // b\nc;", "a; // bc;"),
+        ("#define F(x) x\n", "#define F (x) x\n"),
+        ("STR(a + b)", "STR(a+b)"),
+        ("#define STR(x) #x\nSTR(a+b)\n", "#define STR(x) #x\nSTR(a + b)\n"),
+        ("#include <a>\n#include <b>\n", "#include <b>\n#include <a>\n"),
+        ("a;\\\nb;", "a; b;"),
+        ("__LINE__;\nx;", "__LINE__; x;"),
+        ("// comment\na;", "//comment\na;"),
+    ):
+        assert not m._cpp_formatting_only(before, after), (before, after)
+
+
+def test_cpp_formatting_comparison_preserves_indented_directives():
+    m = _module()
+    for prefix in ("", "int earlier;\n", "int earlier;\n\n"):
+        for directive in ("  #define F(x) #x\n", "\t%:define F(x) #x\n"):
+            before = prefix + directive + "int  value;\n"
+            after = prefix + directive + "int value;\n"
+            assert m._cpp_formatting_only(before, after), (prefix, directive)
+            assert not m._cpp_formatting_only(before, after.replace("F(x)", "F (x)"))
+
+
+def test_cpp_formatting_comparison_preserves_commented_macro_arguments():
+    m = _module()
+    for comment in ("/*same*/", "// same\n", "/*first*/ /*second*/"):
+        before = f"#define STR(x) #x\nSTR {comment} (a+b)\n"
+        after = f"#define STR(x) #x\nSTR {comment} (a + b)\n"
+        assert not m._cpp_formatting_only(before, after), comment
+        assert m._cpp_formatting_only(before, before)
+
+
+def test_formatting_proof_rejects_missing_added_non_cpp_and_mode_changes(
+    monkeypatch, tmp_path
+):
+    m = _module()
+    repo = tmp_path / "proof-limits"
+    _init_git_history(repo)
+    monkeypatch.setattr(m, "REPO", repo)
+    source = "kernel.cu"
+    script = "kernel.py"
+    _commit(repo, "style: add source", {source: "int x;\n", script: "pass\n"})
+    assert not m._formatting_only_implementation("HEAD", [source])
+    assert not m._formatting_only_implementation("HEAD", [script])
+    assert not m._formatting_only_implementation("missing", [source])
+    assert not m._formatting_only_implementation("HEAD", [])
+    (repo / source).chmod(0o755)
+    _commit(repo, "style: change mode", {source: "int  x;\n"})
+    assert not m._formatting_only_implementation("HEAD", [source])
+    (repo / source).chmod(0o644)
+    _commit(repo, "style: restore mode", {source: "int x;\n"})
+    (repo / source).write_bytes(b"\xff\n")
+    subprocess.run(["git", "add", source], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "style: binary bytes"], cwd=repo, check=True
+    )
+    assert not m._formatting_only_implementation("HEAD", [source])
+
+
 def test_perf_hygiene_accepts_scoped_regression_backed_fix(monkeypatch, tmp_path):
     m = _module()
     boxblur = m.resolve_op("BoxBlur")
@@ -1132,6 +1829,125 @@ def test_perf_hygiene_rejects_unpaired_or_disguised_fix(monkeypatch, tmp_path):
         assert "fix" in result.evidence, name
 
 
+def _compiler_trailers(parent):
+    return (
+        f"Compiler-Failure: {parent} https://ci.example/project/-/jobs/123\n"
+        "Compiler-Verification: parent-fail/candidate-pass/codegen "
+        + "a" * 64
+        + " /absolute/artifacts/compiler-proof.md"
+    )
+
+
+def test_perf_hygiene_compiler_evidence_requires_manual_review(monkeypatch, tmp_path):
+    m = _module()
+    op = m.resolve_op("BoxBlur")
+    repo = tmp_path / "compiler"
+    _init_git_history(repo)
+    source = "src/cvcuda/priv/OpBoxBlur.cu"
+    _commit(repo, "perf(boxblur): establish implementation", {source: "old();\n"})
+    base = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=repo, text=True
+    ).strip()
+    _commit(
+        repo,
+        "build(boxblur): preserve dependent lookup\n\n"
+        + _compiler_trailers(base)
+        .replace(" https://", "\n https://")
+        .replace(" " + "a" * 64, "\n " + "a" * 64)
+        .replace(" /absolute/", "\n /absolute/"),
+        {source: "compiler_compatible();\n"},
+    )
+    monkeypatch.setattr(m, "REPO", repo)
+
+    result = m._perf_hygiene(op, base, ["boxblur"], "guide")
+
+    assert (
+        result.status == "MANUAL"
+    )  # Structured claims never establish compiler or semantic proof.
+    assert base in result.evidence
+    assert "https://ci.example/project/-/jobs/123" in result.evidence
+    assert "/absolute/artifacts/compiler-proof.md" in result.evidence
+    assert "a" * 64 in result.evidence
+
+    _commit(
+        repo, "chore: unrelated implementation edit", {source: "another_change();\n"}
+    )
+    assert m._perf_hygiene(op, base, ["boxblur"], "guide").status == "GAP"
+
+
+def test_perf_hygiene_rejects_unqualified_compiler_claims(monkeypatch, tmp_path):
+    source = "src/cvcuda/priv/OpBoxBlur.cu"
+    cases = (
+        ("unscoped", "build: compiler compatibility", None, {}),
+        ("wrong-scope", "build(resize): compiler compatibility", None, {}),
+        ("missing-failure", None, lambda t: t.split("\n")[1], {}),
+        ("missing-verification", None, lambda t: t.split("\n")[0], {}),
+        ("wrong-parent", None, lambda t: t.replace(t.split()[1], "0" * 40), {}),
+        (
+            "abbreviated-parent",
+            None,
+            lambda t: t.replace(t.split()[1], t.split()[1][:8]),
+            {},
+        ),
+        ("not-a-job", None, lambda t: t.replace("/-/jobs/123", "/-/pipelines/123"), {}),
+        ("missing-codegen", None, lambda t: t.replace("/codegen", ""), {}),
+        ("bad-report-hash", None, lambda t: t.replace("a" * 64, "a" * 8), {}),
+        ("duplicate", None, lambda t: t + "\n" + t, {}),
+        ("body-not-trailers", None, lambda t: t + "\n\nNot a trailer block.", {}),
+        (
+            "public-header",
+            None,
+            None,
+            {"src/cvcuda/include/cvcuda/OpBoxBlur.h": "changed\n"},
+        ),
+        ("other-operator", None, None, {"src/cvcuda/priv/OpResize.cu": "changed\n"}),
+        (
+            "shared-header",
+            None,
+            None,
+            {"src/cvcuda/priv/FilterCommon.cuh": "changed\n"},
+        ),
+        ("checker-test", None, None, {"tools/tests/test_optimize_op.py": "changed\n"}),
+        ("new-tu", None, None, {"src/cvcuda/priv/OpBoxBlurExtra.cu": "new\n"}),
+    )
+    for name, subject, rewrite, extra in cases:
+        m = _module()
+        op = m.resolve_op("BoxBlur")
+        repo = tmp_path / name
+        _init_git_history(repo)
+        initial = {source: "old();\n"}
+        initial.update({path: "old\n" for path in extra if name != "new-tu"})
+        _commit(repo, "perf(boxblur): establish implementation", initial)
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=repo, text=True
+        ).strip()
+        trailers = _compiler_trailers(base)
+        if rewrite:
+            trailers = rewrite(trailers)
+        _commit(
+            repo,
+            (subject or "build(boxblur): compiler compatibility") + "\n\n" + trailers,
+            {source: "compiler_compatible();\n", **extra},
+        )
+        monkeypatch.setattr(m, "REPO", repo)
+        assert (
+            m._perf_hygiene(op, base, ["boxblur", "resize"], "guide").status == "GAP"
+        ), name
+
+
+def test_compiler_compatibility_requires_single_parent(monkeypatch):
+    m = _module()
+    op = m.resolve_op("BoxBlur")
+    monkeypatch.setattr(m, "git", lambda *args: "a" * 40 + " " + "b" * 40)
+
+    accepted, reason = m._compiler_compatibility_build(
+        op, ["boxblur"], "HEAD", "build(boxblur): compiler fix"
+    )
+
+    assert not accepted
+    assert "exactly one" in reason
+
+
 # ---- results-summary format enforcement (base-independent) ------------------------------
 def test_results_missing_sections_is_gap(tmp_path):
     rf = tmp_path / "res.md"
@@ -1147,296 +1963,61 @@ def test_results_absent_is_gap():
     assert odo3["status"] == "GAP"
 
 
-def test_results_declared_baseline_config_unavailable_is_precise_gap(monkeypatch):
-    m = _module()
-    resize = m.resolve_op("Resize")
-    baseline_commit = "1" * 40
-    candidate_commit = "2" * 40
-    summary = SimpleNamespace(
+# ---- record-backed gates (ODO-2/4/8/9); gate semantics live in test_optimization_evidence
+def _summary(evidence, rows=()):
+    return SimpleNamespace(
         metadata=SimpleNamespace(
-            baseline_commit=baseline_commit,
-            candidate_commit=candidate_commit,
-        )
-    )
-    monkeypatch.setattr(m, "parse_summary", lambda _results: summary)
-    monkeypatch.setattr(m, "git_success", lambda *_args: True)
-    monkeypatch.setattr(m, "git_json", lambda *_args: None)
-
-    finding = m._results_format(
-        resize,
-        "v1 summary",
-        Path("description.md"),
-        "guideline",
-        {},
-    )
-
-    assert finding.id == "ODO-3"
-    assert finding.status == "GAP"
-    assert finding.summary == "Declared baseline benchmark config cannot be loaded"
-    assert baseline_commit in finding.evidence
-    assert "bench/config/operators/resize.json" in finding.evidence
-
-
-# ---- ODO-4 lead-exhaustion hard evidence ------------------------------------------------
-def test_lead_exhaustion_requires_checked_measured_evidence():
-    m = _module()
-    unchecked = "- [ ] **Lead exhaustion** — ncu showed 93% Memory SOL at ridge.\n"
-    unmeasured = (
-        "- [x] **Lead exhaustion** — profiling says the implementation is at ridge.\n"
-    )
-    assert m._leads_exhausted(unchecked, "guide").status == "GAP"
-    assert m._leads_exhausted(unmeasured, "guide").status == "GAP"
-
-
-def test_lead_exhaustion_accepts_ridge_or_three_measured_strikes():
-    m = _module()
-    ridge = "- [x] **Lead exhaustion** — ncu showed 93% Memory SOL at ridge; PASS.\n"
-    strikes = (
-        "- [x] **Lead exhaustion** — three failed leads measured at -2.1%, "
-        "-0.8%, and 0.1%; PASS.\n"
-    )
-    assert m._leads_exhausted(ridge, "guide").status == "PASS"
-    assert m._leads_exhausted(strikes, "guide").status == "PASS"
-
-
-# ---- ODO-8 review/refactor lock-in gate evidence ----------------------------------------
-def test_review_refactor_gate_requires_assess_evidence():
-    m = _module()
-    resize = m.resolve_op("Resize")
-    result = m._review_refactor_gate(
-        resize,
-        "- [x] **Review/refactor gate** — reviewed changed implementation; PASS.\n",
-        ["src/cvcuda/priv/OpResize.cu"],
-        "guide",
-    )
-    assert result.status == "GAP"
-    assert "refactor_op.py" in result.fix
-
-
-def test_review_refactor_gate_passes_with_clean_assess_result():
-    m = _module()
-    resize = m.resolve_op("Resize")
-    results = (
-        "- [x] **Review/refactor gate** — reviewed changed implementation; "
-        "tools/refactor_op.py Resize --phase assess PASS with 0 recommendations; "
-        "no refactor applied.\n"
-    )
-    result = m._review_refactor_gate(
-        resize, results, ["src/cvcuda/priv/OpResize.cu"], "guide"
-    )
-    assert result.status == "PASS"
-
-
-def test_review_refactor_gate_requires_verify_tests_and_bench_for_applied_refactor():
-    m = _module()
-    resize = m.resolve_op("Resize")
-    missing = (
-        "- [x] **Review/refactor gate** — reviewed changed implementation; "
-        "tools/refactor_op.py Resize --phase assess RECOMMENDATION RED-1; "
-        "Refactor applied: yes.\n"
-    )
-    result = m._review_refactor_gate(
-        resize, missing, ["src/cvcuda/priv/OpResize.cu"], "guide"
-    )
-    assert result.status == "GAP"
-    assert "--phase verify" in result.evidence
-    assert "frozen operator tests" in result.evidence
-    assert "post-refactor benchmark proof" in result.evidence
-
-    complete = (
-        "- [x] **Review/refactor gate** — reviewed changed implementation and fixed RED-1; "
-        "tools/refactor_op.py Resize --phase assess RECOMMENDATION RED-1; "
-        "Refactor applied: yes; tools/refactor_op.py Resize --phase verify PASS; "
-        "cvcuda_test_system tests passed; run_bench.py benchmark passed with no regression.\n"
-    )
-    result = m._review_refactor_gate(
-        resize, complete, ["src/cvcuda/priv/OpResize.cu"], "guide"
-    )
-    assert result.status == "PASS"
-
-
-# ---- ODO-9 memory-footprint growth gate -----------------------------------------------
-def _memory_results(increase=0, allocations="no", evidence=None):
-    if evidence is None:
-        evidence = (
-            "Measured aggregate peak-live added bytes across changed memory paths."
-        )
-    return f"""## Memory footprint
-Peak attributable increase: {increase} B
-New runtime CUDA allocations/frees: {allocations}
-Evidence: {evidence}
-"""
-
-
-def test_memory_footprint_gate_accepts_zero_and_ten_mb_boundaries():
-    m = _module()
-    for increase in (0, 9_999_999, 10_000_000):
-        result = m._memory_footprint_gate(
-            _memory_results(increase), ["src/cvcuda/priv/OpResize.cu"], "guide"
-        )
-        assert result.status == "PASS", increase
-
-
-def test_memory_footprint_gate_requires_review_above_ten_mb():
-    m = _module()
-    result = m._memory_footprint_gate(_memory_results(10_000_001), [], "guide")
-    assert result.status == "MANUAL"
-    assert "10000001 B exceeds" in result.evidence
-
-
-def test_memory_footprint_gate_requires_review_for_new_cuda_allocation_path():
-    m = _module()
-    for increase in (0, 10_000_000):
-        result = m._memory_footprint_gate(
-            _memory_results(increase, allocations="yes"), [], "guide"
-        )
-        assert result.status == "MANUAL", increase
-        assert "allocation/free path" in result.evidence
-
-
-def test_memory_footprint_gate_rejects_missing_fields():
-    m = _module()
-    lines = _memory_results().splitlines()
-    for label in (
-        "Peak attributable increase:",
-        "New runtime CUDA allocations/frees:",
-        "Evidence:",
-    ):
-        results = "\n".join(line for line in lines if not line.startswith(label))
-        result = m._memory_footprint_gate(results, [], "guide")
-        assert result.status == "GAP", label
-        assert "missing, duplicated, or malformed" in result.summary
-
-
-def test_memory_footprint_gate_rejects_duplicate_fields():
-    m = _module()
-    duplicates = (
-        "Peak attributable increase: 0 B",
-        "New runtime CUDA allocations/frees: no",
-        "Evidence: Independently inspected the changed source.",
-    )
-    for duplicate in duplicates:
-        result = m._memory_footprint_gate(
-            _memory_results() + duplicate + "\n", [], "guide"
-        )
-        assert result.status == "GAP", duplicate
-        assert "found 2 occurrences" in result.evidence
-
-
-def test_memory_footprint_gate_rejects_malformed_increase():
-    m = _module()
-    for value in ("-1 B", "1.5 B", "1 KiB", "1", "9" * 5000 + " B"):
-        results = _memory_results().replace(
-            "Peak attributable increase: 0 B",
-            "Peak attributable increase: " + value,
-        )
-        result = m._memory_footprint_gate(results, [], "guide")
-        assert result.status == "GAP", value
-        assert "malformed declaration" in result.evidence
-
-
-def test_memory_footprint_gate_rejects_malformed_allocation_flag():
-    m = _module()
-    for value in ("No", "maybe", "false"):
-        result = m._memory_footprint_gate(
-            _memory_results(allocations=value), [], "guide"
-        )
-        assert result.status == "GAP", value
-
-
-def test_memory_footprint_gate_rejects_placeholder_evidence_before_manual():
-    m = _module()
-    for evidence in (
-        "",
-        "TBD",
-        "pending",
-        "measurement pending",
-        "n/a",
-        "<measurement evidence>",
-        "\nSupporting prose must not fill a blank declaration.",
-    ):
-        result = m._memory_footprint_gate(
-            _memory_results(10_000_001, allocations="yes", evidence=evidence),
-            [],
-            "guide",
-        )
-        assert result.status == "GAP", evidence
-
-
-def test_memory_footprint_gate_allows_substantive_evidence_with_placeholder_words():
-    m = _module()
-    result = m._memory_footprint_gate(
-        _memory_results(
-            evidence="Code inspection found no pending CUDA allocation/free paths."
+            evidence=evidence, candidate_commit=fixtures.CANDIDATE
         ),
-        [],
-        "guide",
+        generalization_rows=rows,
     )
-    assert result.status == "PASS"
 
 
-def test_memory_footprint_gate_hidden_fields_do_not_satisfy_declarations():
+def test_record_gates_pass_on_complete_evidence():
     m = _module()
-    fields = _memory_results().removeprefix("## Memory footprint\n")
-    for hidden in (
-        "<!--\n" + fields + "-->",
-        "<!--\n" + fields,
-        "```text\n" + fields + "```",
-        "~~~~text\n" + fields + "~~~~",
-    ):
-        result = m._memory_footprint_gate("## Memory footprint\n" + hidden, [], "guide")
-        assert result.status == "GAP"
-        assert "found 0 occurrences" in result.evidence
-
-
-def test_memory_footprint_gate_ignores_hidden_duplicate_fields():
-    m = _module()
-    fields = _memory_results().removeprefix("## Memory footprint\n")
-    results = _memory_results() + "<!--\n" + fields + "-->\n"
-    result = m._memory_footprint_gate(results, [], "guide")
-    assert result.status == "PASS"
-
-
-def test_memory_footprint_gate_ignores_hidden_or_fenced_headings():
-    m = _module()
-    for results in (
-        "<!--\n" + _memory_results() + "-->",
-        "<!--\n" + _memory_results(),
-        "```markdown\n" + _memory_results() + "```",
-        "````markdown\n```\n" + _memory_results() + "````",
-    ):
-        result = m._memory_footprint_gate(results, [], "guide")
-        assert result.status == "GAP"
-        assert "missing or duplicated" in result.summary
-
-
-def test_memory_footprint_gate_requires_canonical_heading():
-    m = _module()
-    for heading in (
-        "# Memory footprint",
-        "### Memory footprint",
-        "## 9. Memory footprint",
-    ):
-        result = m._memory_footprint_gate(
-            _memory_results().replace("## Memory footprint", heading), [], "guide"
-        )
-        assert result.status == "GAP", heading
-
-
-def test_memory_footprint_gate_rejects_duplicate_sections():
-    m = _module()
-    result = m._memory_footprint_gate(
-        _memory_results() + "\n" + _memory_results(), [], "guide"
+    evidence = fixtures.complete()
+    assert m._leads_exhausted(_summary(evidence), "g").status == m.PASS
+    assert (
+        m._review_refactor_gate(m.resolve_op("Resize"), evidence, ["x.cu"], "g").status
+        == m.PASS
     )
-    assert result.status == "GAP"
-    assert "found 2" in result.evidence
+    assert m._memory_footprint_gate(_summary(evidence), "g").status == m.PASS
 
 
-def test_memory_footprint_gate_applies_without_implementation_changes():
+def test_record_gates_are_gaps_without_records():
     m = _module()
-    result = m._memory_footprint_gate("", [], "guide")
-    assert result.status == "GAP"
-    assert "missing or duplicated" in result.summary
+    evidence = {"schema": 1}
+    assert m._leads_exhausted(_summary(evidence), "g").status == m.GAP
+    assert m._leads_exhausted(None, "g").status == m.GAP
+    review = m._review_refactor_gate(m.resolve_op("Resize"), evidence, ["x.cu"], "g")
+    assert review.status == m.GAP and "Resize refactor review" in review.fix
+    assert m._memory_footprint_gate(_summary(evidence), "g").status == m.GAP
+    assert m._memory_footprint_gate(None, "g").status == m.GAP
+
+
+def test_review_gate_is_na_without_implementation_change():
+    m = _module()
+    assert m._review_refactor_gate(m.resolve_op("Resize"), {}, [], "g").status == m.NA
+
+
+def test_memory_gate_escalates_to_manual_from_the_record():
+    m = _module()
+    evidence = fixtures.complete()
+    evidence["memory"]["sites"][0]["after_peak_bytes"] += 20_000_000
+    assert m._memory_footprint_gate(_summary(evidence), "g").status == m.MANUAL
+
+
+def test_baseline_import_must_match_committed_configs(monkeypatch):
+    m = _module()
+    evidence = fixtures.complete()
+    ((path, _digest),) = evidence["baselines"]["import"]["files"].items()
+    monkeypatch.setattr(m, "read", lambda _p: "{}")
+    assert m._imported_baselines(evidence).status == m.GAP
+    import hashlib
+
+    evidence["baselines"]["import"]["files"][path] = hashlib.sha256(b"{}").hexdigest()
+    assert m._imported_baselines(evidence).status == m.PASS
+    assert m._imported_baselines({}).status == m.GAP
 
 
 # ---- ODO-7 comparable committed-baseline regression gate -------------------------------
@@ -1482,106 +2063,90 @@ def test_baseline_regression_gate_blocks_validator_failure(monkeypatch):
     assert "revert the regressed baseline" in result.fix
 
 
-# ---- PRE-6: baseline freshness ----------------------------------------------------------
-def _freshness(monkeypatch, m, *, last_refresh, is_ancestor, changed, git_ok=True):
-    """Drive _baseline_freshness_gate over a synthetic git history."""
+@pytest.mark.parametrize("n_runs, partial", [(1, False), (5, False), (5, True)])
+def test_preflight_reuses_committed_baselines_without_refresh_history(
+    tmp_path, monkeypatch, n_runs, partial
+):
+    m = _module()
+    paths = m.resolve_op("Gaussian")
+    paths.bench_cfg = tmp_path / "gaussian.json"
+    document = {
+        "benchmark": "gaussian",
+        "configs": {
+            "gaussian_basic": {"baselines": {"case": {"A100": {"n_runs": n_runs}}}}
+        },
+    }
+    if partial:
+        document["baseline_refresh_incomplete"] = True
+    paths.bench_cfg.write_text(json.dumps(document))
+    monkeypatch.setattr(m, "review_op_findings", lambda *_args: [])
+    monkeypatch.setattr(m.shutil, "which", lambda name: "/usr/bin/" + name)
 
-    def returncode(*args):
-        if not git_ok:
-            return 128
-        if args[0] == "merge-base":
-            return 0 if is_ancestor else 1
-        return 0
+    def unexpected_history(*_args, **_kwargs):
+        raise AssertionError("committed baselines do not require refresh history")
 
-    monkeypatch.setattr(m, "_last_baseline_refresh", lambda *_a, **_k: last_refresh)
-    monkeypatch.setattr(m, "_git_returncode", returncode)
-    monkeypatch.setattr(m, "resolve_commit", lambda _ref: "b" * 40)
-    monkeypatch.setattr(m, "changed_paths", lambda *_a, **_k: changed)
-    monkeypatch.setattr(m, "git", lambda *_a, **_k: "")
-    return m._baseline_freshness_gate(
-        m.resolve_op("Gaussian"), "origin/main", "guide.md"
+    monkeypatch.setattr(m, "git", unexpected_history)
+    monkeypatch.setattr(m.subprocess, "run", unexpected_history)
+
+    findings = m.check_preflight(paths, "unavailable-history")
+
+    assert not [finding for finding in findings if finding.status == m.GAP]
+    assert next(f for f in findings if f.id == "PRE-3").status == m.PASS
+    assert not any("baseline-regen" in finding.fix for finding in findings)
+
+
+@pytest.mark.parametrize("tier", ["basic", "advanced"])
+def test_preflight_still_blocks_missing_baseline_coverage(monkeypatch, tier):
+    m = _module()
+    paths = m.resolve_op("Gaussian")
+
+    def review(_paths, domain):
+        if domain == "bench":
+            return [{"id": "BEN-7", "status": m.GAP, "summary": f"missing {tier} case"}]
+        return []
+
+    monkeypatch.setattr(m, "review_op_findings", review)
+    findings = m.check_preflight(paths, "origin/main")
+    coverage = next(f for f in findings if f.id == "PRE-2")
+    assert coverage.status == m.GAP
+    assert f"missing {tier} case" in coverage.evidence
+
+
+def test_git_json_distinguishes_missing_and_malformed(monkeypatch):
+    m = _module()
+    monkeypatch.setattr(
+        m.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout=""),
     )
+    assert m.git_json("HEAD", "bench.json") is m._MALFORMED_GIT_JSON
 
-
-def test_pre6_flags_baselines_that_predate_an_operator_code_change(monkeypatch):
-    """Gaussian's kernel lives in the shared legacy/filter.cu; a change there staleness it."""
-    m = _module()
-    finding = _freshness(
-        monkeypatch,
-        m,
-        last_refresh="a" * 40,
-        is_ancestor=True,
-        changed=["src/cvcuda/priv/legacy/filter.cu", "docs/sphinx/index.rst"],
+    monkeypatch.setattr(
+        m.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1, stdout=""),
     )
-
-    assert finding.id == "PRE-6"
-    assert finding.status == m.GAP
-    assert "src/cvcuda/priv/legacy/filter.cu" in finding.evidence
-    # The remediation must be the exact block a campaign can paste.
-    assert '"config": "baseline-regen"' in finding.fix
-    assert '"benchmark_operators": "gaussian"' in finding.fix
+    assert m.git_json("HEAD", "bench.json") is None
 
 
-def test_pre6_ignores_changes_that_cannot_move_this_operator(monkeypatch):
-    m = _module()
-    finding = _freshness(
-        monkeypatch,
-        m,
-        last_refresh="a" * 40,
-        is_ancestor=True,
-        changed=[
-            "src/cvcuda/priv/legacy/median_blur.cu",
-            "tests/cvcuda/system/TestOpGaussian.cpp",
-            "ci/generate_pipeline.py",
-        ],
-    )
-
-    assert finding.status == m.PASS
+def _github_slug(heading):
+    slug = re.sub(r"[^\w\- ]", "", heading.strip().lower())
+    return slug.replace(" ", "-")
 
 
-def test_pre6_accepts_baselines_refreshed_at_or_after_the_campaign_base(monkeypatch):
-    """Rows written on the campaign branch postdate the base by construction."""
-    m = _module()
-    finding = _freshness(
-        monkeypatch,
-        m,
-        last_refresh="c" * 40,
-        is_ancestor=False,
-        changed=["src/cvcuda/priv/legacy/filter.cu"],
-    )
-
-    assert finding.status == m.PASS
-    assert "at or after the campaign base" in finding.summary
-
-
-def test_pre6_is_manual_when_history_is_unavailable(monkeypatch):
-    """A shallow clone hides the refresh commit; do not report a false PASS or GAP."""
-    m = _module()
-    finding = _freshness(monkeypatch, m, last_refresh="", is_ancestor=True, changed=[])
-
-    assert finding.status == m.MANUAL
-    assert '"config": "baseline-regen"' in finding.fix
-
-
-def test_preflight_includes_the_freshness_gate():
-    m = _module()
-    ids = [
-        item.id for item in m.check_preflight(m.resolve_op("Gaussian"), "origin/main")
-    ]
-    assert "PRE-6" in ids
-    assert ids == sorted(ids, key=lambda name: int(name.split("-")[1]))
-
-
-def test_pre6_reports_manual_when_git_cannot_compare_the_commits(monkeypatch):
-    """A shallow clone must not read as 'refreshed at or after the base' and pass silently."""
-    m = _module()
-    finding = _freshness(
-        monkeypatch,
-        m,
-        last_refresh="a" * 40,
-        is_ancestor=True,
-        changed=["src/cvcuda/priv/legacy/filter.cu"],
-        git_ok=False,
-    )
-    assert finding.status == m.MANUAL
-    assert "could not be determined" in finding.summary
+def test_every_gate_routes_to_an_existing_section():
+    module = _module()
+    source = TOOL.read_text(encoding="utf-8")
+    emitted = set(re.findall(r'"((?:PRE|ODO)-\d+)"', source))
+    assert emitted <= set(module.GATE_GUIDELINES), emitted - set(module.GATE_GUIDELINES)
+    for gate, ref in module.GATE_GUIDELINES.items():
+        path, _, anchor = ref.partition("#")
+        text = (REPO / path).read_text(encoding="utf-8")
+        # Headings inside fenced examples do not render as anchors.
+        prose = re.sub(r"^```.*?^```", "", text, flags=re.M | re.S)
+        slugs = {
+            _github_slug(line.lstrip("#"))
+            for line in prose.splitlines()
+            if re.match(r"#{1,6} ", line)
+        }
+        assert anchor in slugs, f"{gate}: {ref} has no matching heading"

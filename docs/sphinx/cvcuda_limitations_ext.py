@@ -18,7 +18,7 @@
 Two jobs:
 1. Inject a "Limitations" table (sourced from the C API Doxygen XML) under
    every cvcuda.* operator page.
-2. Provide a ``cvcuda-autofunction`` directive that splits pybind11's
+2. Provide a ``cvcuda-autofunction`` directive that splits the binding's
    ``Overloaded function.`` docstring into one ``.. py:function::`` entry per
    overload.  Sphinx autodoc does not split this format natively — it renders
    the numbered list as prose.
@@ -38,19 +38,19 @@ from sphinx.ext.napoleon import Config as NapoleonConfig, GoogleDocstring
 from sphinx.util.docutils import SphinxDirective
 
 # --------------------------------------------------------------------------- #
-# Pybind11 overload splitter                                                   #
+# Binding overload splitter                                                    #
 # --------------------------------------------------------------------------- #
 
-_OVERLOAD_ENTRY = re.compile(r"^\d+\.\s+(\w+\(.*)")
+_OVERLOAD_ENTRY = re.compile(r"^\d+\.\s+`{0,2}(\w+\(.*?)(?:`{0,2})$")
 _NAPOLEON_CONFIG = NapoleonConfig(
     napoleon_use_param=True, napoleon_use_rtype=True, napoleon_use_keyword=True
 )
 
 
-def _parse_pybind11_overloads(
+def _parse_binding_overloads(
     docstring: str,
 ) -> Optional[list[tuple[str, list[str]]]]:
-    """Parse pybind11's ``Overloaded function.`` docstring into (sig, body) pairs."""
+    """Parse numbered binding overload docs into ``(signature, body)`` pairs."""
     if not docstring or "Overloaded function." not in docstring:
         return None
     overloads: list[tuple[str, list[str]]] = []
@@ -77,7 +77,7 @@ def _body_to_rst(body_lines: list[str]) -> str:
 
 
 class CvcudaAutofunctionDirective(SphinxDirective):
-    """Replacement for ``autofunction`` that splits pybind11 overloads.
+    """Replacement for ``autofunction`` that splits binding overloads.
 
     * Single-overload functions delegate to the stock ``autofunction``.
     * Overloaded functions emit one ``.. py:function::`` per overload.
@@ -99,7 +99,7 @@ class CvcudaAutofunctionDirective(SphinxDirective):
             return self._autofunction(fullname)
 
         raw_doc = getattr(func, "__doc__", "") or ""
-        overloads = _parse_pybind11_overloads(raw_doc)
+        overloads = _parse_binding_overloads(raw_doc)
         if not overloads:
             return self._autofunction(fullname)
 

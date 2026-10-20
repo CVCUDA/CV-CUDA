@@ -20,13 +20,13 @@
 
 #include "CAPI.hpp"
 
+#include <common/Binding.hpp>
 #include <common/CheckError.hpp>
 #include <cuda_runtime.h>
-#include <pybind11/pybind11.h>
 
 namespace nvcvpy {
 
-namespace py = ::pybind11;
+namespace py = ::nanobind;
 
 class IKey
 {

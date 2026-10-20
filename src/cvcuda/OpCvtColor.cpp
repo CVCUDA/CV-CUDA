@@ -17,6 +17,7 @@
 
 #include "priv/OpCvtColor.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -50,6 +51,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCvtColorSubmit,
     return nvcv::ProtectCall(
         [&out, &in, &handle, &stream, &code]
         {
+            priv::CheckEnumArg(code, NVCV_COLORCVT_MAX, "color conversion code");
             nvcv::TensorWrapHandle output(out);
             nvcv::TensorWrapHandle input(in);
             priv::ToDynamicRef<priv::CvtColor>(handle)(stream, input.resource(), output.resource(), code);
@@ -64,6 +66,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCvtColorVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &code]
         {
+            priv::CheckEnumArg(code, NVCV_COLORCVT_MAX, "color conversion code");
             nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
             nvcv::ImageBatchVarShapeWrapHandle outWrap(out);
             priv::ToDynamicRef<priv::CvtColor>(handle)(stream, inWrap.resource(), outWrap.resource(), code);

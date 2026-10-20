@@ -20,9 +20,13 @@
  */
 
 #include "CudaDeviceUtils.hpp"
+#include "LegacyFormatClassify.hpp"
 #include "Nvtx.hpp"
 #include "OpResize.hpp"
 #include "PlanarTensorView.hpp"
+#include "TensorAccessValidation.hpp"
+
+#include "ResizeTapCommon.cuh"
 
 #include <cvcuda/cuda_tools/BorderVarShapeWrap.hpp>
 #include <cvcuda/cuda_tools/DropCast.hpp>
@@ -54,36 +58,14 @@ namespace {
 namespace cuda = nvcv::cuda;
 namespace util = nvcv::util;
 
-// Destination pack type given the source and destination type T
-template<typename T>
-using DPT = std::conditional_t<cuda::NumElements<T> == 3, uint3, uint4>;
-
-// Row alignment mask to determine if data pointer is aligned for vectorized write:
-// note that in CUDA, uint3 has 4-byte (uint) alignment.
-template<typename T>
-constexpr uint MSK = (sizeof(DPT<T>) == sizeof(uint3) ? sizeof(uint) : sizeof(DPT<T>)) - 1;
-
-// Number of items in x written by each thread
-template<typename T>
-constexpr int NIX = sizeof(DPT<T>) / sizeof(T);
-
-// Write a pack of N elements of type T as a different pack type DPT
-template<typename T>
-__device__ __forceinline__ void WritePack(T &u, const T (&v)[NIX<T>])
-{
-    reinterpret_cast<DPT<T> &>(u) = reinterpret_cast<const DPT<T> &>(v);
-}
-
-// Check if destination row pointer is aligned for vector writes.
-template<typename T>
-__device__ __forceinline__ bool CheckRowAlign(T *row)
-{
-    return (static_cast<uint>(reinterpret_cast<size_t>(row)) & MSK<T>) == 0;
-}
+using namespace cvcuda::priv::resize;
 
 // Nearest ---------------------------------------------------------------------
 
-template<bool INTERSECT, typename T, class SrcWrapper>
+// HALF_PIXEL selects the sampling convention: true samples the source pixel covering the
+// destination pixel's center (NVCV_INTERP_NEAREST), false drops the offset and biases every
+// sample toward the origin (NVCV_INTERP_NEAREST_FLOOR).
+template<bool INTERSECT, bool HALF_PIXEL, typename T, class SrcWrapper>
 inline __device__ void NearestInterpolatePack(T *dstRow, SrcWrapper src, int3 iSrcCoord, int srcSizeX, int dstCoordX,
                                               int dstSizeX, float scaleRatioX)
 {
@@ -91,11 +73,11 @@ inline __device__ void NearestInterpolatePack(T *dstRow, SrcWrapper src, int3 iS
     T   srcPack;
 
     // Hoist the int->float conversion: each column then costs one add against a literal.
-    const float dstCoordXf = (float)dstCoordX + 0.5f;
+    const float dstCoordXf = HALF_PIXEL ? (float)dstCoordX + 0.5f : (float)dstCoordX;
 
     if (dstCoordX + NIX<T> - 1 < dstSizeX)
     {
-        T dstPack[NIX<T>];
+        alignas(DPT<T>) T dstPack[NIX<T>];
 #pragma unroll
         for (int x = 0; x < NIX<T>; ++x)
         {
@@ -119,14 +101,8 @@ inline __device__ void NearestInterpolatePack(T *dstRow, SrcWrapper src, int3 iS
             }
         }
 
-        if (CheckRowAlign(dstRow))                 // Branch is the same for all threads in warp.
-            WritePack(dstRow[dstCoordX], dstPack); // If row is aligned, write vector pack;
-        else
-        {
-            T *dstPtr = dstRow + dstCoordX; // otherwise, write individual elements.
-#pragma unroll
-            for (uint i = 0; i < NIX<T>; ++i) dstPtr[i] = dstPack[i];
-        }
+        // The whole pack is in range on this branch.
+        StoreOutputPack(dstRow, dstCoordX, dstPack, NIX<T>);
         // writePack(dstRow + dstCoordX, dstPack);
     }
     else
@@ -159,7 +135,7 @@ inline __device__ void NearestInterpolatePack(T *dstRow, SrcWrapper src, int3 iS
     }
 }
 
-template<bool INTERSECT, class SrcWrapper, class DstWrapper>
+template<bool INTERSECT, bool HALF_PIXEL, class SrcWrapper, class DstWrapper>
 __global__ void NearestResize(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, float2 scaleRatio)
 {
     using T = typename DstWrapper::ValueType;
@@ -172,14 +148,15 @@ __global__ void NearestResize(SrcWrapper src, DstWrapper dst, int2 srcSize, int2
     {
         dstCoord.x = (blockIdx.x * blockDim.x + threadIdx.x) * NIX<T>;
 
-        float srcCoordY = ((float)dstCoord.y + 0.5f) * scaleRatio.y;
+        float srcCoordY = (HALF_PIXEL ? (float)dstCoord.y + 0.5f : (float)dstCoord.y) * scaleRatio.y;
         int3  iSrcCoord{0, (int)floor(srcCoordY), dstCoord.z};
 
         iSrcCoord.y = cuda::min(iSrcCoord.y, srcSize.y - 1);
 
         T *dstRow = dst.ptr(dstCoord.z, dstCoord.y);
 
-        NearestInterpolatePack<INTERSECT>(dstRow, src, iSrcCoord, srcSize.x, dstCoord.x, dstSize.x, scaleRatio.x);
+        NearestInterpolatePack<INTERSECT, HALF_PIXEL>(dstRow, src, iSrcCoord, srcSize.x, dstCoord.x, dstSize.x,
+                                                      scaleRatio.x);
     }
 }
 
@@ -328,10 +305,12 @@ inline __device__ void LinearInterpolatePack(T *dstRow, SrcWrapper src, int3 iSr
     // Hoist the int->float conversion: each column then costs one add against a literal.
     const float dstCoordXf = (float)dstCoordX + 0.5f;
 
-    // Row pointers reduce index math for byte-vector LINEAR; float vectors keep wrapper loads
-    // to preserve bit-exact parity with the flattened scalar planar path.
-    constexpr int  NUM_ELEMENTS = cuda::NumElements<T>;
-    constexpr bool USE_ROW_PTR  = NUM_ELEMENTS > 1 && sizeof(cuda::BaseType<T>) == 1;
+    // Row pointers hoist z*sampleStride + y*rowStride out of the NIX-way unrolled body and let the
+    // +1 tap fold into the load's immediate offset. TensorWrap::doGetOffset forms exactly the same
+    // byte address either way -- the variable strides cover z and y, and x contributes the
+    // compile-time sizeof(T) stride -- so the loaded values are unchanged. Float elements keep
+    // wrapper loads: the byte types are the measured beneficiaries.
+    constexpr bool USE_ROW_PTR = kIsByteElem<T>;
 
     const T *srcRow0 = nullptr;
     const T *srcRow1 = nullptr;
@@ -343,7 +322,7 @@ inline __device__ void LinearInterpolatePack(T *dstRow, SrcWrapper src, int3 iSr
 
     if (dstCoordX + NIX<T> - 1 < dstSizeX)
     {
-        T dstPack[NIX<T>];
+        alignas(DPT<T>) T dstPack[NIX<T>];
 #pragma unroll
         for (int x = 0; x < NIX<T>; ++x)
         {
@@ -358,14 +337,8 @@ inline __device__ void LinearInterpolatePack(T *dstRow, SrcWrapper src, int3 iSr
                                                                    iSrcCoord, x, w);
         }
 
-        if (CheckRowAlign(dstRow))                 // Branch is the same for all threads in warp.
-            WritePack(dstRow[dstCoordX], dstPack); // If row is aligned, write vector pack;
-        else
-        {
-            T *dstPtr = dstRow + dstCoordX; // otherwise, write individual elements.
-#pragma unroll
-            for (uint i = 0; i < NIX<T>; ++i) dstPtr[i] = dstPack[i];
-        }
+        // The whole pack is in range on this branch.
+        StoreOutputPack(dstRow, dstCoordX, dstPack, NIX<T>);
         // writePack<true>(dstRow + dstCoordX, dstPack, reinterpret_cast<uint>(dstRow) & DstMask) == 0);
     }
     else
@@ -453,63 +426,101 @@ __global__ void __launch_bounds__(kInterpThreadsPerBlock, kLinearFloatBlocksPerS
     LinearResizeBody<INTERSECT>(src, dst, srcSize, dstSize, scaleRatio);
 }
 
-// Exact-2x bilinear upscale for 1-byte base types, mirroring CubicResizeExpand2x: at dst == 2*src
-// the x/y weights are exactly 0.25f/0.75f (the same fx/fy the general kernel derives), so each
-// thread owns NIX output columns x 2 output rows, stages the shared clamped 3-row x (NIX/2+2)-col
-// source window in registers, and writes two vector packs. Border outputs replicate the general
-// kernel's weight override (w = 0 when iSrc < 0, w = 1 when iSrc > size-2): the overridden weight
-// zeroes the tap whose unclamped-window value differs from the clamped-coordinate load, so the
-// blend -- evaluated with LinearBlend's exact expression -- stays bit-exact.
-template<class SrcWrapper, class DstWrapper>
-__global__ void LinearResizeExpand2x(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize)
+// Exact-2x bilinear upscale, mirroring CubicResizeExpand2x: at dst == 2*src the x/y weights are
+// exactly 0.25f/0.75f (the same fx/fy the general kernel derives), so each thread owns NIX output
+// columns x 2 output rows, stages the shared clamped 3-row x (NIX/2+2)-col source window in
+// registers, and writes two vector packs. Border outputs replicate the general kernel's weight
+// override (w = 0 when iSrc < 0, w = 1 when iSrc > size-2): the overridden weight zeroes the tap
+// whose unclamped-window value differs from the clamped-coordinate load, so the blend -- evaluated
+// with LinearBlend's exact expression -- stays bit-exact.
+//
+// One body serves the byte and the float element types; INTERIOR selects whether the thread's whole
+// footprint is inside the source, and the byte-only weight folding and reductions below are the only
+// dtype-specific parts.
+//
+// On the interior every cuda::clamp is the identity and every border ternary selects its third arm,
+// so INTERIOR=true reads the same taps with the same weights and only drops index math.
+template<bool INTERIOR, class SrcWrapper, class DstWrapper>
+__device__ __forceinline__ void LinearExpand2xBody(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, int k0,
+                                                   int j, int z)
 {
-    using T = typename DstWrapper::ValueType;
+    using T  = typename DstWrapper::ValueType;
+    using FT = nvcv::cuda::ConvertBaseTypeTo<float, T>;
 
     constexpr int KC = NIX<T> / 2; // source columns owned per thread
     constexpr int WC = KC + 2;     // staged window columns (taps k0-1 .. k0+KC)
 
-    const int k0    = (blockIdx.x * blockDim.x + threadIdx.x) * KC; // first owned source column
-    const int j     = blockIdx.y * blockDim.y + threadIdx.y;        // owned source row
-    const int z     = blockIdx.z;
     const int dstX0 = k0 * 2;
     const int dstY0 = j * 2;
-
-    if (dstX0 >= dstSize.x || dstY0 >= dstSize.y)
-        return;
 
     // Clamped source window shared by all 2*NIX outputs: win[r][c] = src[clamp(k0-1+c), clamp(j-1+r)].
     T win[3][WC];
 #pragma unroll
     for (int r = 0; r < 3; ++r)
     {
-        const T *srcRow = src.ptr(z, cuda::clamp(j - 1 + r, 0, srcSize.y - 1));
+        const T *srcRow = src.ptr(z, INTERIOR ? (j - 1 + r) : cuda::clamp(j - 1 + r, 0, srcSize.y - 1));
 #pragma unroll
         for (int c = 0; c < WC; ++c)
         {
-            win[r][c] = srcRow[cuda::clamp(k0 - 1 + c, 0, srcSize.x - 1)];
+            win[r][c] = INTERIOR ? srcRow[k0 - 1 + c] : srcRow[cuda::clamp(k0 - 1 + c, 0, srcSize.x - 1)];
         }
     }
 
     // Even output row 2j: iSrcY = j-1, fy = 0.75 (taps window rows 0,1); odd row 2j+1: iSrcY = j,
     // fy = 0.25 (taps rows 1,2) -- with the general kernel's border overrides.
-    const float wyE = (j - 1 < 0) ? 0.f : ((j - 1 > srcSize.y - 2) ? 1.f : 0.75f);
-    const float wyO = (j > srcSize.y - 2) ? 1.f : 0.25f;
+    //
+    // Dropping the clamps for INTERIOR is pure index math. Folding the surviving weights to literals
+    // is a separate, byte-only step: it lets the compiler fold the four LinearBlend products
+    // (0.5625, 0.1875, 0.1875, 0.0625 -- exactly representable binary fractions) at compile time,
+    // which is bit-identical for a byte source but rounds differently on a float plane (measured:
+    // 1 ULP disagreement with the interleaved float3/float4 reference on exactly the interior
+    // blocks). A float plane keeps the border select, so its blend is evaluated from registers
+    // exactly as the general body does.
+    constexpr bool FOLD_W = INTERIOR && kIsByteElem<T>;
 
-    T out0[NIX<T>], out1[NIX<T>];
+    const float wyE = FOLD_W ? 0.75f : ((j - 1 < 0) ? 0.f : ((j - 1 > srcSize.y - 2) ? 1.f : 0.75f));
+    const float wyO = FOLD_W ? 0.25f : ((j > srcSize.y - 2) ? 1.f : 0.25f);
+
+    // The byte exact-2x blend is exact in either order: weights are multiples of 1/4, so all
+    // intermediate values are multiples of 1/16 with numerator <= 255*16, exactly representable
+    // in float. Float taps retain LinearBlend's expression order.
+    FT vE[WC], vO[WC];
+    if constexpr (kIsByteElem<T>)
+    {
+#pragma unroll
+        for (int c = 0; c < WC; ++c)
+        {
+            vE[c] = win[0][c] * (1.f - wyE) + win[1][c] * wyE;
+            vO[c] = win[1][c] * (1.f - wyO) + win[2][c] * wyO;
+        }
+    }
+
+    alignas(DPT<T>) T out0[NIX<T>], out1[NIX<T>];
 #pragma unroll
     for (int i = 0; i < NIX<T>; ++i)
     {
         const bool  odd   = (i & 1) != 0;
         const int   k     = k0 + i / 2;
         const int   iSrcX = odd ? k : k - 1;
-        const float wx    = (iSrcX < 0) ? 0.f : ((iSrcX > srcSize.x - 2) ? 1.f : (odd ? 0.25f : 0.75f));
+        const float wx    = FOLD_W ? (odd ? 0.25f : 0.75f)
+                                   : ((iSrcX < 0) ? 0.f : ((iSrcX > srcSize.x - 2) ? 1.f : (odd ? 0.25f : 0.75f)));
         const int   cb    = (i / 2) + (odd ? 1 : 0); // window column of the first x tap
 
-        out0[i] = LinearBlend(win[0][cb], win[0][cb + 1], win[1][cb], win[1][cb + 1], float2{wx, wyE});
-        out1[i] = LinearBlend(win[1][cb], win[1][cb + 1], win[2][cb], win[2][cb + 1], float2{wx, wyO});
+        if constexpr (kIsByteElem<T>)
+        {
+            out0[i] = cuda::SaturateCast<T>(vE[cb] * (1.f - wx) + vE[cb + 1] * wx);
+            out1[i] = cuda::SaturateCast<T>(vO[cb] * (1.f - wx) + vO[cb + 1] * wx);
+        }
+        else
+        {
+            out0[i] = LinearBlend(win[0][cb], win[0][cb + 1], win[1][cb], win[1][cb + 1], float2{wx, wyE});
+            out1[i] = LinearBlend(win[1][cb], win[1][cb + 1], win[2][cb], win[2][cb + 1], float2{wx, wyO});
+        }
     }
 
-    const int validCount = cuda::min(NIX<T>, dstSize.x - dstX0);
+    // dstSize.x = 2*srcSize.x and k0 + KC <= srcSize.x - 1 on the interior, so the whole pack is in
+    // range there and validCount is known to be NIX.
+    const int validCount = INTERIOR ? NIX<T> : cuda::min(NIX<T>, dstSize.x - dstX0);
     // dstSize.y = 2*srcSize.y is even, so the odd output row always exists.
 #pragma unroll
     for (int p = 0; p < 2; ++p)
@@ -517,30 +528,176 @@ __global__ void LinearResizeExpand2x(SrcWrapper src, DstWrapper dst, int2 srcSiz
         T *dstRow              = dst.ptr(z, dstY0 + p);
         const T(&outp)[NIX<T>] = p == 0 ? out0 : out1;
 
-        if (validCount == NIX<T> && CheckRowAlign(dstRow)) // uniform across the warp
-            WritePack(dstRow[dstX0], outp);
-        else
-        {
-            T *dstPtr = dstRow + dstX0;
+        StoreOutputPack(dstRow, dstX0, outp, validCount);
+    }
+}
+
+template<class SrcWrapper, class DstWrapper>
+__global__ void LinearResizeExpand2x(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize)
+{
+    using T = typename DstWrapper::ValueType;
+
+    constexpr int KC = NIX<T> / 2;
+
+    const int k0 = (blockIdx.x * blockDim.x + threadIdx.x) * KC; // first owned source column
+    const int j  = blockIdx.y * blockDim.y + threadIdx.y;        // owned source row
+    const int z  = blockIdx.z;
+
+    if (k0 * 2 >= dstSize.x || j * 2 >= dstSize.y)
+        return;
+
+    // Derived from the warp's whole column span, not this thread's, so the predicate is uniform
+    // across the warp: blockDim.x is 32, so a warp covers [kWarp0, kWarpN] and shares threadIdx.y.
+    // A per-thread test would make the two edge warps of each row execute BOTH bodies serially --
+    // and since a warp spans 32*KC source columns, that is 2 of 8 warps at 1080p for uchar1.
+    // Edge warps now take the general body for all 32 lanes, which is correct for interior lanes
+    // too, just slower.
+    const int  kWarp0   = (int)(blockIdx.x * blockDim.x) * KC;
+    const int  kWarpN   = kWarp0 + ((int)blockDim.x - 1) * KC;
+    const bool interior = (kWarp0 >= 1) && (kWarpN + KC <= srcSize.x - 1) && (j >= 1) && (j <= srcSize.y - 2);
+
+    if (interior)
+        LinearExpand2xBody<true>(src, dst, srcSize, dstSize, k0, j, z);
+    else
+        LinearExpand2xBody<false>(src, dst, srcSize, dstSize, k0, j, z);
+}
+
+// Exact-2x bilinear downscale. At src == 2*dst every output has srcCoord = 2*dst + 0.5, so
+// iSrc = 2*dst and both blend weights are exactly 0.5, and the far tap 2*dst + 1 of the last output
+// is src - 1, so no border override ever fires. The general kernel still issues 2*NIX scalar taps
+// per source row per thread at a stride of NIX elements; ncu on the NCHW float4 1920x1080 ->
+// 960x540 row measured L1/TEX throughput 99.67% and Memory 98.52% against DRAM 40.72% and Compute
+// SM 30.37%, i.e. bound by L1 transactions, not by bytes. Staging the 2*NIX consecutive source
+// elements per row as two vector packs -- the shared StageContract2xRows the AREA exact-2x
+// downscale already uses -- removes that pressure.
+//
+// Bit-exact with LinearResize<false> for every element type: the four taps and the order they are
+// summed in are unchanged and the blend is LinearBlend's own expression. Folding the weights to
+// 0.5 literals is safe here, unlike the exact-2x upscale's 0.25/0.75 pair, because scaling by a
+// power of two is exact -- every product and every FMA contraction of this sum lands on the same
+// float as the register-weighted form, and only the summation order could change it.
+template<class SrcWrapper, class DstWrapper>
+__global__ void LinearResizeContract2x(SrcWrapper src, DstWrapper dst, int2 dstSize)
+{
+    using T = typename DstWrapper::ValueType;
+
+    const int z  = blockIdx.z;
+    const int y  = blockIdx.y * blockDim.y + threadIdx.y;
+    const int x0 = (blockIdx.x * blockDim.x + threadIdx.x) * NIX<T>;
+
+    if (y >= dstSize.y || x0 >= dstSize.x)
+        return;
+
+    const T *row0 = src.ptr(z, 2 * y);
+    const T *row1 = src.ptr(z, 2 * y + 1);
+
+    const int sx0        = 2 * x0;
+    const int validCount = cuda::min(NIX<T>, dstSize.x - x0);
+
+    alignas(DPT<T>) T win0[2 * NIX<T>], win1[2 * NIX<T>];
+    StageContract2xRows(row0, row1, sx0, validCount, dstSize.x, win0, win1);
+
+    alignas(DPT<T>) T dstPack[NIX<T>];
 #pragma unroll
-            for (int c = 0; c < NIX<T>; ++c)
-                if (c < validCount)
-                    dstPtr[c] = outp[c];
+    for (int i = 0; i < NIX<T>; ++i)
+    {
+        dstPack[i] = LinearBlend(win0[2 * i], win0[2 * i + 1], win1[2 * i], win1[2 * i + 1], float2{0.5f, 0.5f});
+    }
+
+    StoreOutputPack(dst.ptr(z, y), x0, dstPack, validCount);
+}
+
+// Channel-amortized planar LINEAR resize: one thread owns NIX consecutive output columns of a
+// destination row across ALL channel planes of a sample. The source coordinate, the border-overridden
+// blend weight and the clamped tap column for an output column depend only on (x, y) -- never on the
+// channel -- so they are derived once per thread and reused for every plane, removing the
+// (channels - 1)x redundant coordinate/weight ALU that results from running the single-channel
+// LinearResize over N*C flattened planes.
+//
+// The column loop is OUTER and the channel loop INNER, with CHANNELS a compile-time parameter. The
+// four blend tap coefficients depend only on (x, y), so with a channel-OUTER loop the compiler hoists
+// all of them out of it -- at NIX = 16 that is 4*NIX = 64 loop-carried registers, half the budget,
+// which pinned the kernel at REG 128 / 25% occupancy while ncu showed it latency-exposed (IPC 2.53,
+// DRAM 13.65%). Deriving them per column keeps the same products, the same instruction count and the
+// same rounding, but shrinks their live range from NIX columns to one. CHANNELS must be compile time:
+// out[c][i] and the row-pointer arrays only stay in registers when both loop bounds are constant, and
+// a runtime index would spill them to local memory.
+//
+// The flattened single-channel view maps plane (n, c) to sample index n*channels + c, matching
+// CubicResizePlanar/AreaResizePlanar. Each plane still emits one StoreOutputPack, so the vector store
+// width of the flattened path is preserved. Tap selection, weight values and the blend expression are
+// unchanged, so the result is bit-exact with LinearResize on the same data.
+template<int CHANNELS, class SrcWrapper, class DstWrapper>
+__global__ void LinearResizePlanar(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, float2 scaleRatio)
+{
+    using T = typename DstWrapper::ValueType;
+
+    const int dstY = blockIdx.y * blockDim.y + threadIdx.y;
+    const int x0   = (blockIdx.x * blockDim.x + threadIdx.x) * NIX<T>;
+
+    if (dstY >= dstSize.y || x0 >= dstSize.x)
+        return;
+
+    // Row-invariant y terms, identical to LinearResize's.
+    const float srcCoordY = ((float)dstY + .5f) * scaleRatio.y - .5f;
+    int         iSrcY     = (int)floor(srcCoordY);
+
+    const float wy = ((iSrcY < 0) ? 0 : ((iSrcY > srcSize.y - 2) ? 1 : srcCoordY - iSrcY));
+
+    iSrcY = cuda::max(0, cuda::min(iSrcY, srcSize.y - 2));
+
+    const float wy0 = 1.f - wy; // LinearBlend's own (1.f - w.y)
+    const float wy1 = wy;
+
+    // The channel planes of a sample are consecutive flattened samples.
+    const int base = blockIdx.z * CHANNELS;
+
+    const T *srcRow0[CHANNELS], *srcRow1[CHANNELS];
+#pragma unroll
+    for (int c = 0; c < CHANNELS; ++c)
+    {
+        srcRow0[c] = src.ptr(base + c, iSrcY);
+        srcRow1[c] = src.ptr(base + c, iSrcY + 1);
+    }
+
+    // Match LinearInterpolatePack's coordinate expression before sharing weights across planes.
+    const float dstCoordXf = (float)x0 + .5f;
+
+    alignas(DPT<T>) T out[CHANNELS][NIX<T>];
+#pragma unroll
+    for (int i = 0; i < NIX<T>; ++i)
+    {
+        const float sx = (dstCoordXf + i) * scaleRatio.x - .5f;
+        int         ix = (int)floor(sx);
+
+        const float wx = ((ix < 0) ? 0 : ((ix > srcSize.x - 2) ? 1 : sx - ix));
+
+        ix = cuda::max(0, cuda::min(ix, srcSize.x - 2));
+
+        const float wx0 = 1.f - wx; // the blend's own (1.f - w.x)
+        const float q00 = wx0 * wy0;
+        const float q10 = wx * wy0;
+        const float q01 = wx0 * wy1;
+        const float q11 = wx * wy1;
+
+#pragma unroll
+        for (int c = 0; c < CHANNELS; ++c)
+        {
+            out[c][i] = LinearBlendW(srcRow0[c][ix], srcRow0[c][ix + 1], srcRow1[c][ix], srcRow1[c][ix + 1], q00, q10,
+                                     q01, q11);
         }
+    }
+
+    const int validCount = cuda::min(NIX<T>, dstSize.x - x0);
+
+#pragma unroll
+    for (int c = 0; c < CHANNELS; ++c)
+    {
+        StoreOutputPack(dst.ptr(base + c, dstY), x0, out[c], validCount);
     }
 }
 
 // Cubic -----------------------------------------------------------------------
-
-inline __device__ void GetCubicCoeffs(float delta, float &w0, float &w1, float &w2, float &w3)
-{
-    constexpr float A = -0.75f;
-
-    w0 = ((A * (delta + 1) - 5 * A) * (delta + 1) + 8 * A) * (delta + 1) - 4 * A;
-    w1 = ((A + 2) * delta - (A + 3)) * delta * delta + 1;
-    w2 = ((A + 2) * (1 - delta) - (A + 3)) * (1 - delta) * (1 - delta) + 1;
-    w3 = 1.f - w0 - w1 - w2;
-}
 
 // Each thread owns COLS output columns of a single destination row. The cubic y-axis pipeline
 // (source coordinate, fractional offset, the 4 cubic coefficients, and the 4 clamped tap rows)
@@ -624,59 +781,85 @@ __global__ void CubicResizeSharedExpand(SrcWrapper src, DstWrapper dst, int2 src
     dst[int3{dstX, dstY, z}] = cuda::SaturateCast<T>(sum);
 }
 
-// General cubic upscale for byte and scalar elements with NIX consecutive output columns per
-// thread: for any expand scale the source column index advances by at most one between adjacent
-// outputs, so the 4x4 tap window is kept as work-type floats (float(byte) conversion is exact) and
-// shifted by a single converted column load when it advances -- the grid-strided general kernel
-// re-gathers and re-converts all 16 taps per output. The y coefficients/rows stay hoisted as in
-// CubicResize; x coefficients remain per-output (fractional phases). Tap selection, weight values,
-// and the cy-outer/cx-inner accumulation order match CubicResize, so the result is bit-exact. The
-// exact-2x cases peel off to their phase-fused kernels before this dispatch.
-template<class SrcWrapper, class DstWrapper>
-__global__ void CubicResizeUpscale(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, float2 scaleRatio)
+// General cubic upscale for byte and scalar elements with NIX consecutive output columns and ROWS
+// consecutive output rows per thread: for any expand scale the source column index advances by at
+// most one between adjacent outputs, so the tap window is kept as work-type floats (float(byte)
+// conversion is exact) and shifted by a single converted column load when it advances -- the
+// grid-strided general kernel re-gathers and re-converts all 16 taps per output. The y
+// coefficients/rows stay hoisted as in CubicResize; x coefficients remain per-output (fractional
+// phases). The exact-2x cases peel off to their phase-fused kernels before this dispatch.
+//
+// Both row counts retain CubicResize's tap selection, weight values and cy-outer/cx-inner
+// accumulation order; regrouping byte products can change the final integer rounding.
+//
+// ROWS = 2 additionally blocks a vertical output pair. The entire x pipeline (srcX, iSrcX, fx, the
+// cubic x coefficients) and the whole sliding window depend only on the output column, so the
+// second row reuses them for free; only wy and the accumulation are per-row. On a zoom-in
+// consecutive output rows advance iSrcY by 0 or 1, so the union of both rows' tap rows is 5 and row
+// 1 reads win[base .. base+3]. That is worth doing because the ROWS = 1 form is issue-bound rather
+// than pipe-bound (ncu: Compute SM 85.4% ~ IPC 3.43/4, while the FMA pipe sits at 56.9% and DRAM at
+// 3.3%), and the largest single block of its instruction stream is the conditional sliding window
+// (~37%), which runs at roughly a quarter lane efficiency because each lane sits at a different
+// fractional phase.
+template<int ROWS, class SrcWrapper, class DstWrapper>
+__global__ void CubicResizeUpscaleRows(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, float2 scaleRatio)
 {
     using T  = typename DstWrapper::ValueType;
     using FT = nvcv::cuda::ConvertBaseTypeTo<float, T>;
 
-    const int z    = blockIdx.z;
-    const int dstY = blockIdx.y * blockDim.y + threadIdx.y;
-    const int x0   = (blockIdx.x * blockDim.x + threadIdx.x) * NIX<T>;
+    static_assert(ROWS == 1 || ROWS == 2, "cubic upscale blocks at most a vertical output pair");
 
-    if (dstY >= dstSize.y || x0 >= dstSize.x)
+    constexpr int WR = ROWS + 3; // staged window rows: 4 for one output row, 5 for a pair
+
+    const int z     = blockIdx.z;
+    const int dstY0 = (blockIdx.y * blockDim.y + threadIdx.y) * ROWS;
+    const int x0    = (blockIdx.x * blockDim.x + threadIdx.x) * NIX<T>;
+
+    if (dstY0 >= dstSize.y || x0 >= dstSize.x)
         return;
 
+    const bool hasRow1 = (ROWS == 2) && (dstY0 + 1 < dstSize.y);
+
     // Row-invariant y terms, identical to CubicResize.
-    const float srcY  = ((float)dstY + .5f) * scaleRatio.y - .5f;
-    const int   iSrcY = (int)floor(srcY);
-    const float fy    = srcY - iSrcY;
+    const float srcY0  = ((float)dstY0 + .5f) * scaleRatio.y - .5f;
+    const int   iSrcY0 = (int)floor(srcY0);
 
-    float wy[4];
-    GetCubicCoeffs(fy, wy[0], wy[1], wy[2], wy[3]);
+    float wy0[4], wy1[4];
+    GetCubicCoeffs(srcY0 - iSrcY0, wy0[0], wy0[1], wy0[2], wy0[3]);
 
-    const T *rows[4];
+    int base = 0; // warp-uniform window-row offset of the second output row
+    if constexpr (ROWS == 2)
+    {
+        const float srcY1  = ((float)(dstY0 + 1) + .5f) * scaleRatio.y - .5f;
+        const int   iSrcY1 = (int)floor(srcY1);
+        GetCubicCoeffs(srcY1 - iSrcY1, wy1[0], wy1[1], wy1[2], wy1[3]);
+        base = hasRow1 ? (iSrcY1 - iSrcY0) : 0;
+    }
+
+    // Union of both rows' tap rows: iSrcY0-1 .. iSrcY0+WR-2. Row 0 reads window rows 0..3, which is
+    // exactly CubicResize's rows[].
+    const T *rows[WR];
 #pragma unroll
-    for (int k = 0; k < 4; ++k) rows[k] = src.ptr(z, cuda::clamp(iSrcY + k - 1, 0, srcSize.y - 1));
+    for (int k = 0; k < WR; ++k) rows[k] = src.ptr(z, cuda::clamp(iSrcY0 + k - 1, 0, srcSize.y - 1));
 
-    // Float-cached 4x4 tap window of the current source column set [prevSx-1, prevSx+2].
-    FT  win[4][4];
-    int prevSx = -srcSize.x - 4; // never matches or adjoins a valid first column
+    FT  win[WR][4];              // raw taps of the current column set
+    int prevSx = -srcSize.x - 4; // never matches or adjoins a valid column
 
-    T out[NIX<T>];
+    alignas(DPT<T>) T out0[NIX<T>], out1[NIX<T>];
 #pragma unroll
     for (int i = 0; i < NIX<T>; ++i)
     {
         const int   dstX  = x0 + i;
         const float srcX  = ((float)dstX + .5f) * scaleRatio.x - .5f;
         const int   iSrcX = (int)floor(srcX);
-        const float fx    = srcX - iSrcX;
 
         float wx[4];
-        GetCubicCoeffs(fx, wx[0], wx[1], wx[2], wx[3]);
+        GetCubicCoeffs(srcX - iSrcX, wx[0], wx[1], wx[2], wx[3]);
 
         if (iSrcX == prevSx + 1)
         {
 #pragma unroll
-            for (int cy = 0; cy < 4; ++cy)
+            for (int cy = 0; cy < WR; ++cy)
             {
                 win[cy][0] = win[cy][1];
                 win[cy][1] = win[cy][2];
@@ -687,7 +870,7 @@ __global__ void CubicResizeUpscale(SrcWrapper src, DstWrapper dst, int2 srcSize,
         else if (iSrcX != prevSx)
         {
 #pragma unroll
-            for (int cy = 0; cy < 4; ++cy)
+            for (int cy = 0; cy < WR; ++cy)
             {
 #pragma unroll
                 for (int cx = 0; cx < 4; ++cx)
@@ -698,31 +881,48 @@ __global__ void CubicResizeUpscale(SrcWrapper src, DstWrapper dst, int2 srcSize,
         }
         prevSx = iSrcX;
 
-        FT sum = FT{};
+        FT sum0 = FT{}, sum1 = FT{};
 #pragma unroll
         for (int cy = 0; cy < 4; ++cy)
         {
 #pragma unroll
-            for (int cx = 0; cx < 4; ++cx)
+            for (int cx = 0; cx < 4; ++cx) sum0 += win[cy][cx] * (wx[cx] * wy0[cy]);
+        }
+
+        if constexpr (ROWS == 2)
+        {
+            if (base == 0) // warp-uniform; keeps the window row index compile-time
             {
-                sum += win[cy][cx] * (wx[cx] * wy[cy]);
+#pragma unroll
+                for (int cy = 0; cy < 4; ++cy)
+                {
+#pragma unroll
+                    for (int cx = 0; cx < 4; ++cx) sum1 += win[cy][cx] * (wx[cx] * wy1[cy]);
+                }
+            }
+            else
+            {
+#pragma unroll
+                for (int cy = 0; cy < 4; ++cy)
+                {
+#pragma unroll
+                    for (int cx = 0; cx < 4; ++cx) sum1 += win[cy + 1][cx] * (wx[cx] * wy1[cy]);
+                }
             }
         }
-        out[i] = cuda::SaturateCast<T>(sum);
+
+        out0[i] = cuda::SaturateCast<T>(sum0);
+        if constexpr (ROWS == 2)
+            out1[i] = cuda::SaturateCast<T>(sum1);
     }
 
-    T        *dstRow     = dst.ptr(z, dstY);
     const int validCount = cuda::min(NIX<T>, dstSize.x - x0);
 
-    if (validCount == NIX<T> && CheckRowAlign(dstRow)) // uniform across the warp
-        WritePack(dstRow[x0], out);
-    else
+    StoreOutputPack(dst.ptr(z, dstY0), x0, out0, validCount);
+    if constexpr (ROWS == 2)
     {
-        T *dstPtr = dstRow + x0;
-#pragma unroll
-        for (int c = 0; c < NIX<T>; ++c)
-            if (c < validCount)
-                dstPtr[c] = out[c];
+        if (hasRow1)
+            StoreOutputPack(dst.ptr(z, dstY0 + 1), x0, out1, validCount);
     }
 }
 
@@ -815,8 +1015,14 @@ inline bool UseSharedMemoryCubicExpand()
 // sum += tap * (wx*wy) accumulation order match CubicResize exactly, so the output is bit-exact.
 // All loops fully unroll: window/output indices stay compile-time (runtime register indexing
 // would spill to local memory).
-template<class SrcWrapper, class DstWrapper>
-__global__ void CubicResizeExpand2x(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize)
+// The window/weight body, specialized on whether the thread's whole footprint is interior. On the
+// interior every cuda::clamp is the identity, so each tap's address becomes a compile-time immediate
+// offset from one of the five row bases instead of an independently clamped index -- the general
+// path spends most of its integer work forming those 5*WC addresses. Tap coordinates, weights and
+// the cy-outer/cx-inner accumulation order are untouched, so the result is bit-exact.
+template<bool INTERIOR, class SrcWrapper, class DstWrapper>
+__device__ __forceinline__ void CubicExpand2xBody(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, int k0,
+                                                  int j, int z)
 {
     using T  = typename DstWrapper::ValueType;
     using FT = nvcv::cuda::ConvertBaseTypeTo<float, T>;
@@ -824,25 +1030,19 @@ __global__ void CubicResizeExpand2x(SrcWrapper src, DstWrapper dst, int2 srcSize
     constexpr int KC = NIX<T> / 2; // source columns owned per thread
     constexpr int WC = KC + 4;     // staged window columns (taps k0-2 .. k0+KC+1)
 
-    const int k0    = (blockIdx.x * blockDim.x + threadIdx.x) * KC; // first owned source column
-    const int j     = blockIdx.y * blockDim.y + threadIdx.y;        // owned source row
-    const int z     = blockIdx.z;
     const int dstX0 = k0 * 2;
     const int dstY0 = j * 2;
-
-    if (dstX0 >= dstSize.x || dstY0 >= dstSize.y)
-        return;
 
     // Clamped source window shared by all 2*NIX outputs: win[r][c] = src[clamp(k0-2+c), clamp(j-2+r)].
     T win[5][WC];
 #pragma unroll
     for (int r = 0; r < 5; ++r)
     {
-        const T *srcRow = src.ptr(z, cuda::clamp(j - 2 + r, 0, srcSize.y - 1));
+        const T *srcRow = src.ptr(z, INTERIOR ? (j - 2 + r) : cuda::clamp(j - 2 + r, 0, srcSize.y - 1));
 #pragma unroll
         for (int c = 0; c < WC; ++c)
         {
-            win[r][c] = srcRow[cuda::clamp(k0 - 2 + c, 0, srcSize.x - 1)];
+            win[r][c] = INTERIOR ? srcRow[k0 - 2 + c] : srcRow[cuda::clamp(k0 - 2 + c, 0, srcSize.x - 1)];
         }
     }
 
@@ -854,7 +1054,7 @@ __global__ void CubicResizeExpand2x(SrcWrapper src, DstWrapper dst, int2 srcSize
     GetCubicCoeffs(0.75f, wyE[0], wyE[1], wyE[2], wyE[3]);
     GetCubicCoeffs(0.25f, wyO[0], wyO[1], wyO[2], wyO[3]);
 
-    T out0[NIX<T>], out1[NIX<T>];
+    alignas(DPT<T>) T out0[NIX<T>], out1[NIX<T>];
 #pragma unroll
     for (int i = 0; i < NIX<T>; ++i)
     {
@@ -880,7 +1080,9 @@ __global__ void CubicResizeExpand2x(SrcWrapper src, DstWrapper dst, int2 srcSize
         out1[i] = cuda::SaturateCast<T>(sum1);
     }
 
-    const int validCount = cuda::min(NIX<T>, dstSize.x - dstX0);
+    // dstSize.x = 2*srcSize.x and k0 + KC + 1 <= srcSize.x - 1 on the interior, so the whole pack is
+    // in range there and validCount is known to be NIX.
+    const int validCount = INTERIOR ? NIX<T> : cuda::min(NIX<T>, dstSize.x - dstX0);
     // dstSize.y = 2*srcSize.y is even, so the odd output row always exists.
 #pragma unroll
     for (int p = 0; p < 2; ++p)
@@ -888,17 +1090,44 @@ __global__ void CubicResizeExpand2x(SrcWrapper src, DstWrapper dst, int2 srcSize
         T *dstRow              = dst.ptr(z, dstY0 + p);
         const T(&outp)[NIX<T>] = p == 0 ? out0 : out1;
 
-        if (validCount == NIX<T> && CheckRowAlign(dstRow)) // uniform across the warp
-            WritePack(dstRow[dstX0], outp);
-        else
-        {
-            T *dstPtr = dstRow + dstX0;
-#pragma unroll
-            for (int c = 0; c < NIX<T>; ++c)
-                if (c < validCount)
-                    dstPtr[c] = outp[c];
-        }
+        StoreOutputPack(dstRow, dstX0, outp, validCount);
     }
+}
+
+template<class SrcWrapper, class DstWrapper>
+__global__ void CubicResizeExpand2x(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize)
+{
+    using T = typename DstWrapper::ValueType;
+
+    constexpr int KC = NIX<T> / 2;
+
+    const int k0 = (blockIdx.x * blockDim.x + threadIdx.x) * KC; // first owned source column
+    const int j  = blockIdx.y * blockDim.y + threadIdx.y;        // owned source row
+    const int z  = blockIdx.z;
+
+    if (k0 * 2 >= dstSize.x || j * 2 >= dstSize.y)
+        return;
+
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ == 750 || __CUDA_ARCH__ == 870)
+    // Retain the clamped window for scalar U8/F32 on SM75 and scalar F32 on Orin.
+    if constexpr (kIsScalarFloat<T> || (__CUDA_ARCH__ == 750 && kIsByteElem<T> && cuda::NumElements<T> == 1))
+    {
+        CubicExpand2xBody<false>(src, dst, srcSize, dstSize, k0, j, z);
+        return;
+    }
+#endif
+
+    // Derived from the warp's whole column span so the predicate is uniform across the warp
+    // (blockDim.x is 32, so a warp covers [kWarp0, kWarpN] and shares threadIdx.y). A per-thread
+    // test would make the edge warps of each row execute both bodies serially.
+    const int  kWarp0   = (int)(blockIdx.x * blockDim.x) * KC;
+    const int  kWarpN   = kWarp0 + ((int)blockDim.x - 1) * KC;
+    const bool interior = (kWarp0 >= 2) && (kWarpN + KC + 1 <= srcSize.x - 1) && (j >= 2) && (j <= srcSize.y - 3);
+
+    if (interior)
+        CubicExpand2xBody<true>(src, dst, srcSize, dstSize, k0, j, z);
+    else
+        CubicExpand2xBody<false>(src, dst, srcSize, dstSize, k0, j, z);
 }
 
 template<int COLS, class SrcWrapper, class DstWrapper>
@@ -1055,7 +1284,7 @@ __global__ void AreaResizeVec(SrcWrapper src, DstWrapper dst, int2 dstSize)
     T        *dstRow     = dst.ptr(dstCoord.z, dstCoord.y);
     const int validCount = cuda::min(NIX<T>, dstSize.x - dstCoord.x);
 
-    T dstPack[NIX<T>];
+    alignas(DPT<T>) T dstPack[NIX<T>];
 #pragma unroll
     for (int p = 0; p < NIX<T>; ++p)
     {
@@ -1064,16 +1293,7 @@ __global__ void AreaResizeVec(SrcWrapper src, DstWrapper dst, int2 dstSize)
         dstPack[p] = src[cuda::StaticCast<float>(int3{dstCoord.x + p, dstCoord.y, dstCoord.z})];
     }
 
-    if (validCount == NIX<T> && CheckRowAlign(dstRow)) // uniform across the warp
-        WritePack(dstRow[dstCoord.x], dstPack);
-    else
-    {
-        T *dstPtr = dstRow + dstCoord.x;
-#pragma unroll
-        for (int i = 0; i < NIX<T>; ++i)
-            if (i < validCount)
-                dstPtr[i] = dstPack[i];
-    }
+    StoreOutputPack(dstRow, dstCoord.x, dstPack, validCount);
 }
 
 // Integer-ratio AREA downscale (the is_area_fast case: scale is an exact integer >= 1, e.g. the 2x
@@ -1108,7 +1328,7 @@ __global__ void AreaResizeFastDirect(SrcWrapper src, DstWrapper dst, int2 srcSiz
     T          *dstRow     = dst.ptr(z, dstY);
     const int   validCount = cuda::min(NIX<T>, dstSize.x - dstX0);
 
-    T dstPack[NIX<T>];
+    alignas(DPT<T>) T dstPack[NIX<T>];
 #pragma unroll
     for (int p = 0; p < NIX<T>; ++p)
     {
@@ -1127,16 +1347,7 @@ __global__ void AreaResizeFastDirect(SrcWrapper src, DstWrapper dst, int2 srcSiz
         dstPack[p] = cuda::SaturateCast<T>(acc * invArea);
     }
 
-    if (validCount == NIX<T> && CheckRowAlign(dstRow))
-        WritePack(dstRow[dstX0], dstPack);
-    else
-    {
-        T *dstPtr = dstRow + dstX0;
-#pragma unroll
-        for (int i = 0; i < NIX<T>; ++i)
-            if (i < validCount)
-                dstPtr[i] = dstPack[i];
-    }
+    StoreOutputPack(dstRow, dstX0, dstPack, validCount);
 }
 
 // Exact-2x specialization of AreaResizeFastDirect: every output is the mean of a fully-in-bounds
@@ -1165,30 +1376,10 @@ __global__ void AreaResizeContract2x(SrcWrapper src, DstWrapper dst, int2 dstSiz
     const int sx0        = 2 * x0;
     const int validCount = cuda::min(NIX<T>, dstSize.x - x0);
 
-    T win0[2 * NIX<T>], win1[2 * NIX<T>];
-    if (validCount == NIX<T> && CheckRowAlign(const_cast<T *>(row0) + sx0)
-        && CheckRowAlign(const_cast<T *>(row1) + sx0))
-    {
-#pragma unroll
-        for (int p = 0; p < 2; ++p)
-        {
-            reinterpret_cast<DPT<T> *>(win0)[p] = reinterpret_cast<const DPT<T> *>(row0 + sx0)[p];
-            reinterpret_cast<DPT<T> *>(win1)[p] = reinterpret_cast<const DPT<T> *>(row1 + sx0)[p];
-        }
-    }
-    else
-    {
-        // Source width is exactly 2*dstSize.x, so tail loads stay guarded per element.
-#pragma unroll
-        for (int c = 0; c < 2 * NIX<T>; ++c)
-        {
-            const int sx = sx0 + c;
-            win0[c]      = (sx < 2 * dstSize.x) ? row0[sx] : T{};
-            win1[c]      = (sx < 2 * dstSize.x) ? row1[sx] : T{};
-        }
-    }
+    alignas(DPT<T>) T win0[2 * NIX<T>], win1[2 * NIX<T>];
+    StageContract2xRows(row0, row1, sx0, validCount, dstSize.x, win0, win1);
 
-    T dstPack[NIX<T>];
+    alignas(DPT<T>) T dstPack[NIX<T>];
 #pragma unroll
     for (int i = 0; i < NIX<T>; ++i)
     {
@@ -1201,16 +1392,7 @@ __global__ void AreaResizeContract2x(SrcWrapper src, DstWrapper dst, int2 dstSiz
     }
 
     T *dstRow = dst.ptr(z, y);
-    if (validCount == NIX<T> && CheckRowAlign(dstRow))
-        WritePack(dstRow[x0], dstPack);
-    else
-    {
-        T *dstPtr = dstRow + x0;
-#pragma unroll
-        for (int i = 0; i < NIX<T>; ++i)
-            if (i < validCount)
-                dstPtr[i] = dstPack[i];
-    }
+    StoreOutputPack(dstRow, x0, dstPack, validCount);
 }
 
 inline bool UseContract2xSingleOutputPack()
@@ -1232,7 +1414,7 @@ inline bool UseContract2xSingleOutputPack()
 // top-left, then top-right corner), bottom edge row (columns, then bottom-right, then bottom-left
 // corner), each tap * scale -- so the result is bit-exact with operator[] and with
 // AreaResizePlanar's bounds-sharing path. Integer ratios and zoom-ins keep their existing kernels.
-template<class SrcWrapper, class DstWrapper>
+template<int kMaxC, class SrcWrapper, class DstWrapper>
 __global__ void AreaResizeFractional(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, float2 scaleRatio)
 {
     using T  = typename DstWrapper::ValueType;
@@ -1240,16 +1422,17 @@ __global__ void AreaResizeFractional(SrcWrapper src, DstWrapper dst, int2 srcSiz
 
     // Independent accumulation chains per thread: the serial one-output-at-a-time walk left the
     // kernel memory-latency bound (IPC 0.78, 39 warp cycles per instruction, DRAM 64%). Grouping
-    // GN outputs and bounding the interior box width at compile time (dispatch guarantees
-    // scale < 3, so at most kMaxC interior columns) turns each source row into an unrolled grid of
+    // GN outputs and bounding the interior box width at compile time (dispatch limits both scale
+    // and coordinate magnitude) turns each source row into an unrolled grid of
     // independent guarded loads and FMAs. Per-output term order is unchanged -- interior columns
     // ascending, then left, then right edge per row; top row with its corners; bottom row with its
     // corners -- so the result stays bit-exact with the wrap's AddFractionalArea.
     // Three-channel elements lose more to L1 pressure than they gain from extra chains.
+    //
+    // The host bounds endpoint rounding before selecting kMaxC, so no interior column is omitted.
     constexpr int preferredGN = (cuda::NumElements<T> == 3) ? 2 : 4;
     constexpr int GN          = NIX<T> < preferredGN ? NIX<T> : preferredGN;
-    constexpr int kMaxC       = 3;
-    static_assert(NIX<T> % GN == 0);
+    static_assert(GN >= 1 && NIX<T> % GN == 0, "AREA group width must tile the output pack");
 
     const int z  = blockIdx.z;
     const int y  = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1271,7 +1454,7 @@ __global__ void AreaResizeFractional(SrcWrapper src, DstWrapper dst, int2 srcSiz
     const float wTop   = (float)sy1 - fsy1;
     const float wBot   = fsy2 - (float)sy2;
 
-    T out[NIX<T>];
+    alignas(DPT<T>) T out[NIX<T>];
 
 #pragma unroll
     for (int g = 0; g < NIX<T>; g += GN)
@@ -1367,16 +1550,7 @@ __global__ void AreaResizeFractional(SrcWrapper src, DstWrapper dst, int2 srcSiz
     T        *dstRow     = dst.ptr(z, y);
     const int validCount = cuda::min(NIX<T>, dstSize.x - x0);
 
-    if (validCount == NIX<T> && CheckRowAlign(dstRow)) // uniform across the warp
-        WritePack(dstRow[x0], out);
-    else
-    {
-        T *dstPtr = dstRow + x0;
-#pragma unroll
-        for (int c = 0; c < NIX<T>; ++c)
-            if (c < validCount)
-                dstPtr[c] = out[c];
-    }
+    StoreOutputPack(dstRow, x0, out, validCount);
 }
 
 // Planar area resize: one thread owns an output pixel across ALL channel planes of a sample. The area
@@ -1416,7 +1590,7 @@ void RunResizeInterp(cudaStream_t stream, const nvcv::TensorDataStridedCuda &src
 
     auto srcTW = cuda::CreateTensorWrapNHW<const T, int32_t>(srcData);
     auto dstTW = cuda::CreateTensorWrapNHW<T, int32_t>(dstData);
-    auto srcIW = cuda::CreateInterpolationWrapNHW<const T, NVCV_BORDER_CONSTANT, NVCV_INTERP_AREA, int32_t>(
+    auto srcIW = cuda::CreateInterpolationWrapNHW<const T, NVCV_BORDER_CONSTANT, NVCV_INTERP_AREA, int32_t, true>(
         srcData, T{}, scaleRatio.x, scaleRatio.y);
 
     dim3 threads1(32, kInterpThreadsPerBlock / 32, 1);
@@ -1429,17 +1603,43 @@ void RunResizeInterp(cudaStream_t stream, const nvcv::TensorDataStridedCuda &src
     {
     case NVCV_INTERP_NEAREST:
         if (scaleRatio.x < 1)
-            NearestResize<true><<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+            NearestResize<true, true><<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
         else
-            NearestResize<false><<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+            NearestResize<false, true><<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+        break;
+
+    case NVCV_INTERP_NEAREST_FLOOR:
+        if (scaleRatio.x < 1)
+            NearestResize<true, false><<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+        else
+            NearestResize<false, false><<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
         break;
 
     case NVCV_INTERP_LINEAR:
-        if constexpr (sizeof(cuda::BaseType<T>) == 1)
+        // The exact-2x kernels serve byte elements and scalar float from the same body. Scalar float
+        // is also the flattened planar view of an NCHW float tensor, so gating on it covers every
+        // planar float3/float4 exact-2x resize; the interleaved float3/float4 kernels (against which
+        // planar parity is asserted) are deliberately left on the general path. Scalar float has
+        // NIX = 4, so the staged window is 3 rows x 4 columns -- the register budget that excludes
+        // wide float3/float4 (NIX = 1, and KC = NIX/2 would be 0) does not apply. 16-bit scalars
+        // would be correct by the same argument but are neither benchmarked nor parity-tested, so
+        // they keep the general kernel.
+        if constexpr (kIsByteElem<T> || kIsScalarFloat<T>)
         {
-            // Exact-2x upscale fast path for byte types; the flattened planar view takes it too.
             if (dstSize.x == 2 * srcSize.x && dstSize.y == 2 * srcSize.y)
             {
+                if constexpr (kIsScalarFloat<T>)
+                {
+                    // SM80 retains the measured pinned path, including flattened planar F32.
+                    int sm = 0;
+                    NVCV_CHECK_THROW(cvcuda::priv::GetCurrentDeviceSM(sm));
+                    if (sm == 80)
+                    {
+                        LinearResizePinned<true>
+                            <<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+                        break;
+                    }
+                }
                 dim3 e2Block(32, 4, 1);
                 dim3 e2Grid(util::DivUp(dstSize.x, e2Block.x * NIX<T>), util::DivUp(dstSize.y, e2Block.y * 2),
                             batchSize);
@@ -1447,6 +1647,59 @@ void RunResizeInterp(cudaStream_t stream, const nvcv::TensorDataStridedCuda &src
                 break;
             }
         }
+        if constexpr (kIsScalarFloat<T>)
+        {
+            // Exact-2x downscale. Byte and 16-bit elements have no benchmark row on this scale and
+            // keep the general kernel.
+            if (srcSize.x == 2 * dstSize.x && srcSize.y == 2 * dstSize.y)
+            {
+                LinearResizeContract2x<<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, dstSize);
+                break;
+            }
+        }
+        if constexpr (kIsByteElem<T> || kIsScalarFloat<T>)
+        {
+            // Planar byte and float planes: amortize the per-column coordinate/weight ALU across the
+            // channel planes instead of recomputing it once per flattened plane. grid.z spans
+            // samples. A float plane holds CHANNELS*NIX = 16 output floats and 2*CHANNELS row
+            // pointers at CHANNELS = 4, well inside the budget that forced the byte instantiation
+            // (CHANNELS*16 outputs) into its column-outer nest.
+            //
+            // Float planes take it on a both-axis upscale only. Amortizing removes coordinate ALU but
+            // makes one thread hold CHANNELS concurrent tap streams, so it trades issue slots for
+            // memory-level parallelism. A float upscale is issue-bound and wins; a float downscale is
+            // already near the bandwidth ridge and loses (measured on the anisotropic
+            // 1920x1080 -> 864x480 rows: float4 0.65x at BWUtil 0.87 -> 0.57, float3 0.75x, and
+            // -1.5 to -2.4% on the exact-2x downscales). Byte planes keep the unconditional gate they
+            // were measured with.
+            const bool amortizePlanes = kIsByteElem<T> || (scaleRatio.x < 1.f && scaleRatio.y < 1.f);
+            if (planarChannels > 1 && amortizePlanes)
+            {
+                dim3 blocksLP(util::DivUp(dstSize.x, threads1.x * NIX<T>), util::DivUp(dstSize.y, threads1.y),
+                              batchSize / planarChannels);
+                // Channels are validated to 1..4 upstream and this path needs more than one.
+                if (planarChannels == 2)
+                    LinearResizePlanar<2>
+                        <<<blocksLP, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+                else if (planarChannels == 3)
+                    LinearResizePlanar<3>
+                        <<<blocksLP, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+                else
+                    LinearResizePlanar<4>
+                        <<<blocksLP, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+                break;
+            }
+        }
+        // INTERSECT caches the tap pack and reloads it only when the source column advances. On a
+        // zoom-out that pays for itself, but on a scalar-byte zoom-in the advance is data-dependent
+        // per thread (the phase differs with the thread's first output column) across NIX=16 unrolled
+        // outputs, so the pack update becomes divergently predicated: ncu measured only 20.1 of 32
+        // threads active per warp. Re-reading the taps is uniform and the window is L1-resident
+        // anyway (87.8% hit rate).
+        //
+        // Scalar bytes only. Multi-channel bytes keep INTERSECT: their pack is cached as work-type
+        // floats and NIX is 4, so the update is far less divergent and the cache still pays --
+        // routing uchar4 here cost 4.4% on the anisotropic upscale.
         if constexpr (kPinLinearOccupancy<T>)
         {
             if (scaleRatio.x < 2)
@@ -1454,7 +1707,8 @@ void RunResizeInterp(cudaStream_t stream, const nvcv::TensorDataStridedCuda &src
             else
                 LinearResizePinned<false><<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
         }
-        else if (scaleRatio.x < 2)
+        else if (scaleRatio.x < 2
+                 && !(cuda::NumElements<T> == 1 && kIsByteElem<T> && scaleRatio.x < 1.f && scaleRatio.y < 1.f))
             LinearResize<true><<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
         else
             LinearResize<false><<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
@@ -1478,12 +1732,17 @@ void RunResizeInterp(cudaStream_t stream, const nvcv::TensorDataStridedCuda &src
                 CubicResizeExpand2x<<<e2Grid, e2Block, 0, stream>>>(srcTW, dstTW, srcSize, dstSize);
                 break;
             }
-            // Any other upscale: consecutive columns with the float-cached sliding window.
+            // Any other upscale: consecutive columns with the float-cached sliding window. Scalar
+            // byte and scalar float additionally block a vertical output pair per thread, sharing
+            // the x pipeline and the sliding window between the two rows (see kBlocksRowPairs).
             if (dstSize.x > srcSize.x && dstSize.y > srcSize.y)
             {
-                dim3 upBlock(32, 4, 1);
-                dim3 upGrid(util::DivUp(dstSize.x, upBlock.x * NIX<T>), util::DivUp(dstSize.y, upBlock.y), batchSize);
-                CubicResizeUpscale<<<upGrid, upBlock, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+                constexpr int UP_ROWS = kBlocksRowPairs<T> ? 2 : 1;
+                dim3          upBlock(32, 4, 1);
+                dim3 upGrid(util::DivUp(dstSize.x, upBlock.x * NIX<T>), util::DivUp(dstSize.y, upBlock.y * UP_ROWS),
+                            batchSize);
+                CubicResizeUpscaleRows<UP_ROWS>
+                    <<<upGrid, upBlock, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
                 break;
             }
         }
@@ -1581,15 +1840,26 @@ void RunResizeInterp(cudaStream_t stream, const nvcv::TensorDataStridedCuda &src
         else
         {
             // Fractional zoom-out: every tap is in bounds, so the dedicated kernel replaces the
-            // wrap-based paths (see AreaResizeFractional); zoom-ins keep the wrap kernels, and
-            // wide-float planar planes keep AreaResizePlanar's cross-channel bounds amortization
-            // (routing them here regressed float3/float4 planes 14-28% locally).
-            // The kernel's compile-time interior-column bound (kMaxC) holds for x scales < 3;
-            // larger fractional downscales keep the wrap path.
-            if (scaleRatio.x >= 1.f && scaleRatio.y >= 1.f && scaleRatio.x < 3.f
-                && (planarChannels == 1 || sizeof(cuda::BaseType<T>) == 1))
+            // wrap-based paths (see AreaResizeFractional); zoom-ins keep the wrap kernels.
+            // Wide-float planar planes take it too. They were excluded when the kernel first landed,
+            // because routing them here then cost 14-28%; that predates both the GN independent
+            // accumulation chains and the compile-time interior-column bound, and re-measuring shows
+            // the flattened float plane now beats AreaResizePlanar's cross-channel bounds
+            // amortization by 2.9x.
+            // At source widths <= 2^20, rounding fsx1 + scale adds at most 1/16 to the interval
+            // width, below the 0.1 margins used for kMaxC below. Wider coordinates can round up
+            // to extra whole columns; use the uncapped wrap kernels for those inputs.
+            if (scaleRatio.x >= 1.f && scaleRatio.y >= 1.f && scaleRatio.x < 3.f && srcSize.x <= (1 << 20))
             {
-                AreaResizeFractional<<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+                if (scaleRatio.x < 1.9f)
+                    AreaResizeFractional<1>
+                        <<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+                else if (scaleRatio.x < 2.9f)
+                    AreaResizeFractional<2>
+                        <<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
+                else
+                    AreaResizeFractional<3>
+                        <<<blocks1, threads1, 0, stream>>>(srcTW, dstTW, srcSize, dstSize, scaleRatio);
                 break;
             }
             if constexpr (NIX<T> < 8)
@@ -1684,7 +1954,9 @@ enum class VarShapeScale
 // the columns; the original kernel recomputed all of that per output pixel. Columns are grid-strided
 // by blockDim.x so each store step stays coalesced. The per-pixel index math is byte-identical, so
 // the result is bit-exact. The planar kernel (resize_NN_planar) is separate and unaffected.
-template<int NN_NIX, typename T>
+// HALF_PIXEL selects the sampling convention: true samples the source pixel covering the
+// destination pixel's center (NVCV_INTERP_NEAREST), false drops the offset (NVCV_INTERP_NEAREST_FLOOR).
+template<int NN_NIX, bool HALF_PIXEL, typename T>
 __global__ void resize_NN(cuda::ImageBatchVarShapeWrap<const T> src, cuda::ImageBatchVarShapeWrap<T> dst)
 {
     const int batch_idx = blockIdx.z;
@@ -1702,7 +1974,7 @@ __global__ void resize_NN(cuda::ImageBatchVarShapeWrap<const T> src, cuda::Image
     const float scale_y = static_cast<float>(height) / dstHeight;
 
     // Source row is row-invariant: compute sy and the row pointer once.
-    const int sy     = cuda::min(__float2int_rd((dst_y + 0.5f) * scale_y), height - 1);
+    const int sy     = cuda::min(__float2int_rd((HALF_PIXEL ? dst_y + 0.5f : dst_y) * scale_y), height - 1);
     const T  *srcRow = src.ptr(batch_idx, 0, sy, 0);
 
     const int xBase = blockIdx.x * blockDim.x * NN_NIX + threadIdx.x;
@@ -1714,7 +1986,7 @@ __global__ void resize_NN(cuda::ImageBatchVarShapeWrap<const T> src, cuda::Image
         if (dst_x >= dstWidth)
             continue;
 
-        const int sx                         = cuda::min(__float2int_rd((dst_x + 0.5f) * scale_x), width - 1);
+        const int sx = cuda::min(__float2int_rd((HALF_PIXEL ? dst_x + 0.5f : dst_x) * scale_x), width - 1);
         *dst.ptr(batch_idx, 0, dst_y, dst_x) = srcRow[sx];
     }
 } //resize_NN
@@ -1826,7 +2098,7 @@ __global__ void resize_bilinear_expand2x(cuda::ImageBatchVarShapeWrap<const T> s
     const float fyE = (j - 1 < 0) ? 0.f : 0.75f; // j-1 > height-2 cannot happen (j < height)
     const float fyO = (j > height - 2) ? 1.f : 0.25f;
 
-    T out0[NIX<T>], out1[NIX<T>];
+    alignas(DPT<T>) T out0[NIX<T>], out1[NIX<T>];
 #pragma unroll
     for (int i = 0; i < NIX<T>; ++i)
     {
@@ -1903,7 +2175,7 @@ __global__ void resize_bilinear_pack(cuda::ImageBatchVarShapeWrap<const T> src, 
     FT  a0{}, a1{}, b0{}, b1{};
     int prevSx = -2; // never matches or adjoins a valid first column
 
-    T out[NIX<T>];
+    alignas(DPT<T>) T out[NIX<T>];
 #pragma unroll
     for (int i = 0; i < NIX<T>; ++i)
     {
@@ -2248,13 +2520,13 @@ __device__ __forceinline__ void resizeAreaPlane(const cuda::ImageBatchVarShapeWr
             if (sx1 > fsx1)
             {
                 srcCoord.x = sx1 - 1;
-                out        = out + brd_src[srcCoord] * ((sx1 - fsx1) * scale);
+                out        = out + brd_src.value(srcCoord) * ((sx1 - fsx1) * scale);
             }
 
             if (sx2 < fsx2)
             {
                 srcCoord.x = sx2;
-                out        = out + brd_src[srcCoord] * ((fsx2 - sx2) * scale);
+                out        = out + brd_src.value(srcCoord) * ((fsx2 - sx2) * scale);
             }
         }
 
@@ -2264,7 +2536,7 @@ __device__ __forceinline__ void resizeAreaPlane(const cuda::ImageBatchVarShapeWr
             for (int dx = sx1; dx < sx2; ++dx)
             {
                 srcCoord.x = dx;
-                out        = out + brd_src[srcCoord] * ((sy1 - fsy1) * scale);
+                out        = out + brd_src.value(srcCoord) * ((sy1 - fsy1) * scale);
             }
         }
 
@@ -2274,7 +2546,7 @@ __device__ __forceinline__ void resizeAreaPlane(const cuda::ImageBatchVarShapeWr
             for (int dx = sx1; dx < sx2; ++dx)
             {
                 srcCoord.x = dx;
-                out        = out + brd_src[srcCoord] * ((fsy2 - sy2) * scale);
+                out        = out + brd_src.value(srcCoord) * ((fsy2 - sy2) * scale);
             }
         }
 
@@ -2282,28 +2554,28 @@ __device__ __forceinline__ void resizeAreaPlane(const cuda::ImageBatchVarShapeWr
         {
             srcCoord.y = (sy1 - 1);
             srcCoord.x = (sx1 - 1);
-            out        = out + brd_src[srcCoord] * ((sy1 - fsy1) * (sx1 - fsx1) * scale);
+            out        = out + brd_src.value(srcCoord) * ((sy1 - fsy1) * (sx1 - fsx1) * scale);
         }
 
         if ((sy1 > fsy1) && (sx2 < fsx2))
         {
             srcCoord.y = (sy1 - 1);
             srcCoord.x = sx2;
-            out        = out + brd_src[srcCoord] * ((sy1 - fsy1) * (fsx2 - sx2) * scale);
+            out        = out + brd_src.value(srcCoord) * ((sy1 - fsy1) * (fsx2 - sx2) * scale);
         }
 
         if ((sy2 < fsy2) && (sx2 < fsx2))
         {
             srcCoord.y = sy2;
             srcCoord.x = sx2;
-            out        = out + brd_src[srcCoord] * ((fsy2 - sy2) * (fsx2 - sx2) * scale);
+            out        = out + brd_src.value(srcCoord) * ((fsy2 - sy2) * (fsx2 - sx2) * scale);
         }
 
         if ((sy2 < fsy2) && (sx1 > fsx1))
         {
             srcCoord.y = sy2;
             srcCoord.x = sx1 - 1;
-            out        = out + brd_src[srcCoord] * ((fsy2 - sy2) * (sx1 - fsx1) * scale);
+            out        = out + brd_src.value(srcCoord) * ((fsy2 - sy2) * (sx1 - fsx1) * scale);
         }
 
         *dst.ptr(batch_idx, plane, y, x) = cuda::SaturateCast<T>(out);
@@ -2382,7 +2654,7 @@ __device__ __forceinline__ void resizeAreaContract2xPlane(const cuda::ImageBatch
     // packs per row instead of 4*NIX single-element loads -- the scalar-load version of this
     // body was L1/TEX-transaction-bound (99% L1 SOL, DRAM 70%, SM 29%). The staged values are
     // identical, so the accumulation below is unchanged.
-    T win0[2 * NIX<T>], win1[2 * NIX<T>];
+    alignas(DPT<T>) T win0[2 * NIX<T>], win1[2 * NIX<T>];
     if (validCount == NIX<T> && CheckRowAlign(row0 + sx0) && CheckRowAlign(row1 + sx0))
     {
 #pragma unroll
@@ -2404,7 +2676,7 @@ __device__ __forceinline__ void resizeAreaContract2xPlane(const cuda::ImageBatch
         }
     }
 
-    T out[NIX<T>];
+    alignas(DPT<T>) T out[NIX<T>];
 #pragma unroll
     for (int i = 0; i < NIX<T>; ++i)
     {
@@ -2517,7 +2789,7 @@ __device__ __forceinline__ void ResizeAreaFractionalPackBody(cuda::ImageBatchVar
     const float wTop   = (float)sy1 - fsy1;
     const float wBot   = fsy2 - (float)sy2;
 
-    T out[NIX<T>];
+    alignas(DPT<T>) T out[NIX<T>];
 
 #pragma unroll
     for (int g = 0; g < NIX<T>; g += GN)
@@ -2664,7 +2936,7 @@ __global__ void __launch_bounds__(kVarShapeThreadsPerBlock, kVarShapeAreaBlocksP
 // coordinate math of one thread per (image, plane), and keeps the per-plane result bit-exact with
 // the interleaved path.
 
-template<typename T>
+template<bool HALF_PIXEL, typename T>
 __global__ void resize_NN_planar(cuda::ImageBatchVarShapeWrap<const T> src, cuda::ImageBatchVarShapeWrap<T> dst,
                                  int channels)
 {
@@ -2682,8 +2954,8 @@ __global__ void resize_NN_planar(cuda::ImageBatchVarShapeWrap<const T> src, cuda
 
         const float scale_x = static_cast<float>(width) / dstWidth;
         const float scale_y = static_cast<float>(height) / dstHeight;
-        const int   sx      = cuda::min(__float2int_rd((dst_x + 0.5f) * scale_x), width - 1);
-        const int   sy      = cuda::min(__float2int_rd((dst_y + 0.5f) * scale_y), height - 1);
+        const int   sx      = cuda::min(__float2int_rd((HALF_PIXEL ? dst_x + 0.5f : dst_x) * scale_x), width - 1);
+        const int   sy      = cuda::min(__float2int_rd((HALF_PIXEL ? dst_y + 0.5f : dst_y) * scale_y), height - 1);
 
         for (int plane = 0; plane < channels; ++plane)
         {
@@ -2884,7 +3156,7 @@ __global__ void resize_area_fractional_pack_planar(cuda::ImageBatchVarShapeWrap<
 
     for (int plane = 0; plane < channels; ++plane)
     {
-        T out[NIX<T>];
+        alignas(DPT<T>) T out[NIX<T>];
 #pragma unroll
         for (int i = 0; i < NIX<T>; ++i)
         {
@@ -3065,12 +3337,12 @@ __global__ void resize_area_ocv_align_planar(const cuda::ImageBatchVarShapeWrap<
                 if (sx1 > fsx1)
                 {
                     srcCoord.x = sx1 - 1;
-                    out        = out + brd_src[srcCoord] * ((sx1 - fsx1) * scale);
+                    out        = out + brd_src.value(srcCoord) * ((sx1 - fsx1) * scale);
                 }
                 if (sx2 < fsx2)
                 {
                     srcCoord.x = sx2;
-                    out        = out + brd_src[srcCoord] * ((fsx2 - sx2) * scale);
+                    out        = out + brd_src.value(srcCoord) * ((fsx2 - sx2) * scale);
                 }
             }
             if (sy1 > fsy1)
@@ -3079,7 +3351,7 @@ __global__ void resize_area_ocv_align_planar(const cuda::ImageBatchVarShapeWrap<
                 for (int dx = sx1; dx < sx2; ++dx)
                 {
                     srcCoord.x = dx;
-                    out        = out + brd_src[srcCoord] * ((sy1 - fsy1) * scale);
+                    out        = out + brd_src.value(srcCoord) * ((sy1 - fsy1) * scale);
                 }
             }
             if (sy2 < fsy2)
@@ -3088,32 +3360,32 @@ __global__ void resize_area_ocv_align_planar(const cuda::ImageBatchVarShapeWrap<
                 for (int dx = sx1; dx < sx2; ++dx)
                 {
                     srcCoord.x = dx;
-                    out        = out + brd_src[srcCoord] * ((fsy2 - sy2) * scale);
+                    out        = out + brd_src.value(srcCoord) * ((fsy2 - sy2) * scale);
                 }
             }
             if ((sy1 > fsy1) && (sx1 > fsx1))
             {
                 srcCoord.y = (sy1 - 1);
                 srcCoord.x = (sx1 - 1);
-                out        = out + brd_src[srcCoord] * ((sy1 - fsy1) * (sx1 - fsx1) * scale);
+                out        = out + brd_src.value(srcCoord) * ((sy1 - fsy1) * (sx1 - fsx1) * scale);
             }
             if ((sy1 > fsy1) && (sx2 < fsx2))
             {
                 srcCoord.y = (sy1 - 1);
                 srcCoord.x = sx2;
-                out        = out + brd_src[srcCoord] * ((sy1 - fsy1) * (fsx2 - sx2) * scale);
+                out        = out + brd_src.value(srcCoord) * ((sy1 - fsy1) * (fsx2 - sx2) * scale);
             }
             if ((sy2 < fsy2) && (sx2 < fsx2))
             {
                 srcCoord.y = sy2;
                 srcCoord.x = sx2;
-                out        = out + brd_src[srcCoord] * ((fsy2 - sy2) * (fsx2 - sx2) * scale);
+                out        = out + brd_src.value(srcCoord) * ((fsy2 - sy2) * (fsx2 - sx2) * scale);
             }
             if ((sy2 < fsy2) && (sx1 > fsx1))
             {
                 srcCoord.y = sy2;
                 srcCoord.x = sx1 - 1;
-                out        = out + brd_src[srcCoord] * ((fsy2 - sy2) * (sx1 - fsx1) * scale);
+                out        = out + brd_src.value(srcCoord) * ((fsy2 - sy2) * (sx1 - fsx1) * scale);
             }
             *dst.ptr(batch_idx, plane, y, x) = cuda::SaturateCast<T>(out);
         }
@@ -3193,13 +3465,17 @@ void RunResizeVarShape(const nvcv::ImageBatchVarShapeDataStridedCuda &in,
     switch (interpolation)
     {
     case NVCV_INTERP_NEAREST:
+    case NVCV_INTERP_NEAREST_FLOOR:
     {
         // Each thread handles NN_NIX grid-strided columns, hoisting the scales and source row; the
         // wide float3/float4 elements (already near the bandwidth ridge) keep one column.
         constexpr int NN_NIX = (sizeof(T) <= 4) ? 4 : 1;
         const dim3    nnGrid(util::DivUp(outMaxSize.w, blockSize.x * NN_NIX), util::DivUp(outMaxSize.h, blockSize.y),
                              in.numImages());
-        resize_NN<NN_NIX, T><<<nnGrid, blockSize, 0, stream>>>(src_ptr, dst_ptr);
+        if (interpolation == NVCV_INTERP_NEAREST)
+            resize_NN<NN_NIX, true, T><<<nnGrid, blockSize, 0, stream>>>(src_ptr, dst_ptr);
+        else
+            resize_NN<NN_NIX, false, T><<<nnGrid, blockSize, 0, stream>>>(src_ptr, dst_ptr);
         break;
     }
 
@@ -3332,7 +3608,11 @@ void RunResizeVarShapePlanar(const nvcv::ImageBatchVarShapeDataStridedCuda &in,
     switch (interpolation)
     {
     case NVCV_INTERP_NEAREST:
-        resize_NN_planar<T><<<planarGrid, planarBlock, 0, stream>>>(src_ptr, dst_ptr, channels);
+    case NVCV_INTERP_NEAREST_FLOOR:
+        if (interpolation == NVCV_INTERP_NEAREST)
+            resize_NN_planar<true, T><<<planarGrid, planarBlock, 0, stream>>>(src_ptr, dst_ptr, channels);
+        else
+            resize_NN_planar<false, T><<<planarGrid, planarBlock, 0, stream>>>(src_ptr, dst_ptr, channels);
         break;
 
     case NVCV_INTERP_LINEAR:
@@ -3398,16 +3678,7 @@ enum class VarShapeLayout
 // Both legacy classifiers opened with this check, so it stays at the head of each of their
 // replacements: that keeps the message and the order in which it fires unchanged, including for any
 // future caller that reaches one classifier without the other.
-inline void RequireUniformPlaneDataType(nvcv::ImageFormat fmt)
-{
-    for (int i = 1; i < fmt.numPlanes(); ++i)
-    {
-        if (fmt.planeDataType(i) != fmt.planeDataType(0))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All planes must have the same data type");
-        }
-    }
-}
+using cvcuda::priv::legacy_format::RequireUniformPlaneDataType;
 
 inline VarShapeLayout ClassifyVarShapeLayout(const nvcv::ImageBatchVarShapeDataStridedCuda &data)
 {
@@ -3532,19 +3803,8 @@ void Resize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv:
                         const NVCVInterpolationType interpolation) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::Resize::operator()[Tensor]");
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData  = RequireCudaTensor(in, "Input");
+    auto outData = RequireCudaTensor(out, "Output");
 
     RunResize(stream, *inData, *outData, interpolation);
 }
@@ -3614,16 +3874,8 @@ void Resize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
     else if (allFracZoomOut)
         batchScale = VarShapeScale::kFractionalZoomOut;
 
-    if (!inData->uniqueFormat())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Images in input batch must all have the same format ");
-    }
-    if (!outData->uniqueFormat())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Images in output batch must all have the same format ");
-    }
+    RequireUniqueFormat(*inData, "input");
+    RequireUniqueFormat(*outData, "output");
 
     const VarShapeLayout inLayout  = ClassifyVarShapeLayout(*inData);
     const VarShapeLayout outLayout = ClassifyVarShapeLayout(*outData);
@@ -3666,7 +3918,8 @@ void Resize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
     }
 
     if (!(interpolation == NVCV_INTERP_LINEAR || interpolation == NVCV_INTERP_NEAREST
-          || interpolation == NVCV_INTERP_CUBIC || interpolation == NVCV_INTERP_AREA))
+          || interpolation == NVCV_INTERP_NEAREST_FLOOR || interpolation == NVCV_INTERP_CUBIC
+          || interpolation == NVCV_INTERP_AREA))
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid interpolation %d", (int)interpolation);
     }

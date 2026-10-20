@@ -31,6 +31,7 @@
 
 #include <array>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -587,6 +588,170 @@ TEST(OpFindHomography, degenerate_identical_source_points)
     cvcuda::FindHomography fh(numSamples, numPoints);
     EXPECT_NO_THROW(fh(stream, srcPoints, dstPoints, models));
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpFindHomography, nw_refinement_nonzero_denominator)
+{
+    constexpr int                   numSamples = 1;
+    constexpr int                   numPoints  = 9;
+    constexpr std::array<float, 9>  goldModel  = {1.05f, 0.08f, 0.15f, -0.04f, 0.97f, -0.10f, 0.015f, -0.020f, 1.0f};
+    constexpr std::array<float, 18> srcVec     = {-1.0f, -1.0f, 0.0f, -1.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f,
+                                                  0.0f,  1.0f,  0.0f, -1.0f, 1.0f, 0.0f,  1.0f,  1.0f, 1.0f};
+    std::array<float, 18>           dstVec{};
+
+    for (int point = 0; point < numPoints; ++point)
+    {
+        calculateProjectiveDst(srcVec[2 * point], srcVec[2 * point + 1], &dstVec[2 * point], &dstVec[2 * point + 1],
+                               goldModel.data());
+    }
+
+    nvcv::Tensor srcPoints(
+        {
+            {numSamples, numPoints},
+            "NW"
+    },
+        nvcv::TYPE_2F32);
+    nvcv::Tensor dstPoints(
+        {
+            {numSamples, numPoints},
+            "NW"
+    },
+        nvcv::TYPE_2F32);
+    nvcv::Tensor models = createModelTensor(numSamples);
+
+    auto srcData    = srcPoints.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData    = dstPoints.exportData<nvcv::TensorDataStridedCuda>();
+    auto modelsData = models.exportData<nvcv::TensorDataStridedCuda>();
+
+    std::array<float, 9> estimatedModel{};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(srcData->basePtr(), srcVec.data(), srcVec.size() * sizeof(float),
+                                           cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dstData->basePtr(), dstVec.data(), dstVec.size() * sizeof(float),
+                                           cudaMemcpyHostToDevice, stream));
+
+    cvcuda::FindHomography fh(numSamples, numPoints);
+    EXPECT_NO_THROW(fh(stream, srcPoints, dstPoints, models));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(estimatedModel.data(), sizeof(float) * 3, modelsData->basePtr(),
+                                        modelsData->stride(1), sizeof(float) * 3, 3, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (int point = 0; point < numPoints; ++point)
+    {
+        float projectedX;
+        float projectedY;
+        calculateProjectiveDst(srcVec[2 * point], srcVec[2 * point + 1], &projectedX, &projectedY,
+                               estimatedModel.data());
+        // GPU reductions and FMA contraction are not bit-exact with this independent CPU projection.
+        EXPECT_NEAR(dstVec[2 * point], projectedX, 1e-3f);
+        EXPECT_NEAR(dstVec[2 * point + 1], projectedY, 1e-3f);
+    }
+}
+
+TEST(OpFindHomography, nw_refinement_projective_damping_transition)
+{
+    constexpr int                   numSamples = 1;
+    constexpr int                   numPoints  = 8;
+    constexpr std::array<float, 9>  goldModel  = {1.2f, 0.15f, 0.5f, -0.25f, 0.85f, -0.4f, 0.09f, -0.04f, 1.0f};
+    constexpr std::array<float, 16> srcVec
+        = {-8.0f, -6.0f, 7.0f, -5.0f, -6.0f, 8.0f, 9.0f, 7.0f, -3.0f, -1.0f, 1.0f, 5.0f, 4.0f, -2.0f, -1.0f, 3.0f};
+    std::array<float, 16> dstVec{};
+
+    // Off-grid points and the near-horizon sample leave a measurable projective residual for refinement.
+    for (int point = 0; point < numPoints; ++point)
+    {
+        calculateProjectiveDst(srcVec[2 * point], srcVec[2 * point + 1], &dstVec[2 * point], &dstVec[2 * point + 1],
+                               goldModel.data());
+    }
+
+    nvcv::Tensor srcPoints(
+        {
+            {numSamples, numPoints},
+            "NW"
+    },
+        nvcv::TYPE_2F32);
+    nvcv::Tensor dstPoints(
+        {
+            {numSamples, numPoints},
+            "NW"
+    },
+        nvcv::TYPE_2F32);
+    nvcv::Tensor models = createModelTensor(numSamples);
+
+    auto srcData    = srcPoints.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData    = dstPoints.exportData<nvcv::TensorDataStridedCuda>();
+    auto modelsData = models.exportData<nvcv::TensorDataStridedCuda>();
+
+    std::array<float, 9> estimatedModel{};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(srcData->basePtr(), srcVec.data(), srcVec.size() * sizeof(float),
+                                           cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dstData->basePtr(), dstVec.data(), dstVec.size() * sizeof(float),
+                                           cudaMemcpyHostToDevice, stream));
+
+    cvcuda::FindHomography fh(numSamples, numPoints);
+    EXPECT_NO_THROW(fh(stream, srcPoints, dstPoints, models));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(estimatedModel.data(), sizeof(float) * 3, modelsData->basePtr(),
+                                        modelsData->stride(1), sizeof(float) * 3, 3, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (int point = 0; point < numPoints; ++point)
+    {
+        float projectedX;
+        float projectedY;
+        calculateProjectiveDst(srcVec[2 * point], srcVec[2 * point + 1], &projectedX, &projectedY,
+                               estimatedModel.data());
+        // GPU reductions and FMA contraction are not bit-exact with this independent CPU projection.
+        EXPECT_NEAR(dstVec[2 * point], projectedX, 1e-2f);
+        EXPECT_NEAR(dstVec[2 * point + 1], projectedY, 1e-2f);
+    }
+}
+
+TEST(OpFindHomography, nw_refinement_nonfinite_denominator_guard)
+{
+    constexpr int               numSamples = 1;
+    constexpr int               numPoints  = 8;
+    const float                 nan        = std::numeric_limits<float>::quiet_NaN();
+    const std::array<float, 16> srcVec
+        = {0.0f, 0.0f, 4.0f, 0.0f, 0.0f, 4.0f, 4.0f, 4.0f, 1.0f, 3.0f, 3.0f, 1.0f, 2.0f, 2.0f, nan, 1.0f};
+    constexpr std::array<float, 16> dstVec
+        = {1.0f, 2.0f, 5.0f, 2.0f, 1.0f, 6.0f, 5.0f, 6.0f, 2.0f, 5.0f, 4.0f, 3.0f, 3.0f, 4.0f, 3.0f, 3.0f};
+
+    // The non-finite source coordinate makes the active refinement denominator unordered.
+    nvcv::Tensor srcPoints(
+        {
+            {numSamples, numPoints},
+            "NW"
+    },
+        nvcv::TYPE_2F32);
+    nvcv::Tensor dstPoints(
+        {
+            {numSamples, numPoints},
+            "NW"
+    },
+        nvcv::TYPE_2F32);
+    nvcv::Tensor models = createModelTensor(numSamples);
+
+    auto srcData = srcPoints.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dstPoints.exportData<nvcv::TensorDataStridedCuda>();
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(srcData->basePtr(), srcVec.data(), srcVec.size() * sizeof(float),
+                                           cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dstData->basePtr(), dstVec.data(), dstVec.size() * sizeof(float),
+                                           cudaMemcpyHostToDevice, stream));
+
+    cvcuda::FindHomography fh(numSamples, numPoints);
+    EXPECT_NO_THROW(fh(stream, srcPoints, dstPoints, models));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 

@@ -95,3 +95,9 @@ For detailed documentation, tutorials, and API reference:
   - [Prerequisites](https://cvcuda.github.io/CV-CUDA/installation.html#prerequisites) - System requirements
 
 - **[Interoperability Guide](https://cvcuda.github.io/CV-CUDA/samples/interoperability.html)** - Using CV-CUDA with other frameworks
+
+## Sample data
+
+The images and videos under `assets/` are third-party media redistributed with
+the samples. Their sources and licenses are recorded in [NOTICE.md](NOTICE.md).
+Add an entry there for any asset you add.

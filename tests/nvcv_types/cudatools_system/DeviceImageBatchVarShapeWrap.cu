@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +37,8 @@ __global__ void SetTwos(cuda::ImageBatchVarShapeWrap<PixelType> dst, int numSamp
 {
     int3 coord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
 
-    if (coord.x >= dst.width(coord.z) || coord.y >= dst.height(coord.z) || coord.z >= numSamples)
+    // coord.z must be bounded first: width()/height() do not bound the sample index.
+    if (coord.z >= numSamples || coord.x >= dst.width(coord.z) || coord.y >= dst.height(coord.z))
     {
         return;
     }
@@ -57,7 +58,8 @@ __global__ void SetTwos(cuda::ImageBatchVarShapeWrapNHWC<ChannelType> dst, int n
 {
     int3 coord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
 
-    if (coord.x >= dst.width(coord.z) || coord.y >= dst.height(coord.z) || coord.z >= numSamples)
+    // coord.z must be bounded first: width()/height() do not bound the sample index.
+    if (coord.z >= numSamples || coord.x >= dst.width(coord.z) || coord.y >= dst.height(coord.z))
     {
         return;
     }
@@ -79,6 +81,10 @@ __global__ void SetTwos(cuda::ImageBatchVarShapeWrapNHWC<ChannelType> dst, int n
 template<class DstWrapper>
 void DeviceSetTwos(DstWrapper &dst, int3 maxSize, cudaStream_t &stream)
 {
+    // grid.z rounds up, so an odd maxSize.z over-launches z by up to block.z - 1 samples: SetTwos
+    // must bound coord.z ahead of the width/height accessors. Nothing here asserts that -- the
+    // surplus threads write nothing either way, so a regression is only visible under
+    // compute-sanitizer.
     dim3 block{32, 2, 2};
     dim3 grid{(maxSize.x + block.x - 1) / block.x, (maxSize.y + block.y - 1) / block.y,
               (maxSize.z + block.z - 1) / block.z};

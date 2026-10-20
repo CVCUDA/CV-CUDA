@@ -20,37 +20,37 @@
 
 #include <nvcv/Size.hpp>
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 namespace cvpy = nvcvpy;
 
 template<>
 struct type_caster<nvcv::Size2D>
 {
-    PYBIND11_TYPE_CASTER(nvcv::Size2D, const_name("cvcuda.Size2D"));
+    NB_TYPE_CASTER(nvcv::Size2D, const_name("cvcuda.Size2D"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *)
     {
         if (PyTuple_Check(src.ptr()))
         {
-            tuple t = src.cast<tuple>();
+            nanobind::tuple t = nanobind::borrow<nanobind::tuple>(src);
 
             if (t.size() == 2)
             {
-                value.w = t[0].cast<int>();
-                value.h = t[1].cast<int>();
+                value.w = nanobind::cast<int>(t[0]);
+                value.h = nanobind::cast<int>(t[1]);
                 return true;
             }
         }
         return false;
     }
 
-    static handle cast(nvcv::Size2D size, return_value_policy /* policy */, handle /*parent */)
+    static handle from_cpp(nvcv::Size2D size, rv_policy, cleanup_list *)
     {
-        return make_tuple(size.w, size.h);
+        return make_tuple(size.w, size.h).release();
     }
 };
 
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_SIZE_HPP

@@ -23,41 +23,47 @@
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
 // Thin Python-facing wrappers; the create/guard/submit body lives in UnaryElementwiseOp.hpp.
 // Invert takes no extra parameters, so nothing is forwarded past the stream.
-Tensor InvertInto(Tensor &output, Tensor &input, std::optional<Stream> pstream)
+Tensor &InvertInto(Tensor &output, Tensor &input, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::Invert>(output, input, pstream);
 }
 
-Tensor Invert(Tensor &input, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Invert(Tensor &input, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseTensor<cvcuda::Invert>(input, pstream);
 }
 
-ImageBatchVarShape InvertVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                      std::optional<Stream> pstream)
+ImageBatchVarShape &InvertVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                       std::optional<Stream *> pstream)
 {
     return UnaryElementwiseInto<cvcuda::Invert>(output, input, pstream);
 }
 
-ImageBatchVarShape InvertVarShape(ImageBatchVarShape &input, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> InvertVarShape(ImageBatchVarShape &input, std::optional<Stream *> pstream)
 {
     return UnaryElementwiseVarShape<cvcuda::Invert>(input, pstream);
 }
 
 } // namespace
 
-void ExportOpInvert(py::module &m)
+void ExportOpInvert(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("invert", NvtxTrace("cvcuda.invert", &Invert), "src"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
         Executes the Invert operation on the given cuda stream.
 
         Computes the per-element photometric negative ``out = bound - in``, where ``bound`` is the
-        maximum value of the data type (255 for uint8, 65535 for uint16, 1.0 for float16/float32).
+        maximum representable value for integer types and 1.0 for float16/float32/float64.
+        Signed integer results saturate to the data type maximum for negative inputs.
+        Floating-point subtraction is rounded to the output type.
         Mirrors torchvision.transforms.v2.functional.invert / OpenCV cv::bitwise_not (unsigned).
 
         See also:
@@ -77,7 +83,7 @@ void ExportOpInvert(py::module &m)
     )pbdoc");
 
     m.def("invert_into", NvtxTrace("cvcuda.invert_into", &InvertInto), "dst"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Invert operation on the given cuda stream.
 
@@ -115,7 +121,7 @@ void ExportOpInvert(py::module &m)
     )pbdoc");
 
     m.def("invert_into", NvtxTrace("cvcuda.invert_into", &InvertVarShapeInto), "dst"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Invert operation on the given cuda stream.
 

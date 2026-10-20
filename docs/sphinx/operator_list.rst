@@ -31,7 +31,7 @@
    * - AdjustContrast (:py:func:`cvcuda.adjust_contrast`)
      - Blends an image toward its grayscale mean by a scalar factor (torchvision-compatible)
    * - Advanced Color Format Conversions (:py:func:`cvcuda.advcvtcolor`)
-     - Performs color conversion from interleaved RGB/BGR <-> YUV/YVU and semi planar. Supported standards: BT.601. BT.709. BT.2020
+     - Converts between RGB/BGR and YUV/YVU in interleaved, planar, and semi-planar NV12/NV21 tensors. Supports BT.601, BT.709, and BT.2020, including ``_ER`` spellings; all use full-sample-range arithmetic.
    * - AutoContrast (:py:func:`cvcuda.autocontrast`)
      - Maximizes per-channel contrast by stretching each channel to the full dynamic range
    * - AverageBlur (:py:func:`cvcuda.averageblur`)
@@ -96,6 +96,8 @@
      - Applies a Laplace transform to an image
    * - MedianBlur (:py:func:`cvcuda.median_blur`)
      - Reduces an image's salt-and-pepper noise
+   * - Merge (:py:func:`cvcuda.merge`)
+     - Copies ordered single-channel tensors or variable-shape image batches into interleaved or planar channels without conversion.
    * - MinArea Rect (:py:func:`cvcuda.minarearect`)
      - Finds the minimum area rotated rectangle typically used to draw bounding rectangle with minimum area
    * - MinMaxLoc (:py:func:`cvcuda.min_max_loc`)
@@ -132,10 +134,14 @@
      - Identifies and matches features in images that are invariant to scale rotation and affine distortion.
    * - Solarize (:py:func:`cvcuda.solarize`)
      - Inverts all pixel values at or above a threshold
+   * - Split (:py:func:`cvcuda.split`)
+     - Copies tensor or variable-shape image channels into independent single-channel tensors or image batches in physical storage order.
    * - Stack (:py:func:`cvcuda.stack`)
      - Combines multiple images into a single batch tensor
    * - Thresholding (:py:func:`cvcuda.threshold`)
      - Chooses a global threshold value that is the same for all pixels across the image.
+   * - TvResize (:py:func:`cvcuda.tvresize`)
+     - Resizes interleaved or planar tensors and uniform-format variable-shape image batches with TorchVision-style sampling and optional antialiasing.
    * - WarpAffine (:py:func:`cvcuda.warp_affine`)
      - Applies an affine transformation to an image
    * - WarpPerspective (:py:func:`cvcuda.warp_perspective`)

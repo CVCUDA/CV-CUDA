@@ -18,18 +18,20 @@
 #ifndef CVCUDA_PRIV_ERASE_COPY_POLICY_HPP
 #define CVCUDA_PRIV_ERASE_COPY_POLICY_HPP
 
-#include <string_view>
+#include "CudaDeviceUtils.hpp"
 
 namespace cvcuda::priv {
 
-constexpr bool UseBulkEraseCopyForDevice(int sm, std::string_view deviceName)
+// The bulk copy loses to the per-item copy on Ada: 1.3-3.3% for tensors and 5-12% for var-shape
+// batches, on both L4 and L40S.  It stays the default elsewhere.
+constexpr bool UseBulkEraseCopyForDevice(int sm)
 {
-    return sm != 89 || deviceName != "NVIDIA L4";
+    return !IsAdaDevice(sm);
 }
 
-static_assert(!UseBulkEraseCopyForDevice(89, "NVIDIA L4"));
-static_assert(UseBulkEraseCopyForDevice(89, "NVIDIA L40"));
-static_assert(UseBulkEraseCopyForDevice(90, "NVIDIA L4"));
+static_assert(!UseBulkEraseCopyForDevice(89));
+static_assert(UseBulkEraseCopyForDevice(80));
+static_assert(UseBulkEraseCopyForDevice(90));
 
 } // namespace cvcuda::priv
 

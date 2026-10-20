@@ -24,17 +24,16 @@
 #include "Shape.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorLayout.hpp>
-#include <pybind11/pytypes.h>
-#include <pybind11/stl.h>
 
 #include <cassert>
 #include <optional>
 
 namespace nvcvpy {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 class Tensor
     : public Resource
@@ -49,8 +48,10 @@ public:
 
     static Tensor Create(const nvcv::TensorShape &tshape, nvcv::DataType dtype, int rowalign = 0)
     {
-        PyObject *otensor = capi().Tensor_Create(tshape.size(), &tshape[0], static_cast<NVCVDataType>(dtype),
-                                                 static_cast<NVCVTensorLayout>(tshape.layout()), rowalign);
+        // reinterpret_steal below takes a non-const PyObject *.
+        PyObject *otensor // NOSONAR
+            = capi().Tensor_Create(tshape.size(), &tshape[0], static_cast<NVCVDataType>(dtype),
+                                   static_cast<NVCVTensorLayout>(tshape.layout()), rowalign);
         CheckCAPIError();
         NVCV_ASSERT(otensor != nullptr);
         py::object pytensor = py::reinterpret_steal<py::object>(otensor);
@@ -66,7 +67,8 @@ public:
 
     static Tensor CreateForImageBatch(int numImages, nvcv::Size2D size, nvcv::ImageFormat fmt, int rowalign = 0)
     {
-        PyObject *otensor
+        // reinterpret_steal below takes a non-const PyObject *.
+        PyObject *otensor // NOSONAR
             = capi().Tensor_CreateForImageBatch(numImages, size.w, size.h, static_cast<NVCVImageFormat>(fmt), rowalign);
         CheckCAPIError();
         NVCV_ASSERT(otensor != nullptr);
@@ -98,36 +100,31 @@ inline const nvcv::Tensor &AsNvcvTensor(const std::optional<Tensor> &opt, const 
 
 } // namespace nvcvpy
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 namespace cvpy = nvcvpy;
 
 template<>
-struct type_caster<cvpy::Tensor> : type_caster_base<cvpy::Tensor>
+struct type_caster<cvpy::Tensor>
 {
-    PYBIND11_TYPE_CASTER(cvpy::Tensor, const_name("cvcuda.Tensor"));
+    NB_TYPE_CASTER(cvpy::Tensor, const_name("cvcuda.Tensor"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *)
     {
-        // Does it have the correct object type?
-        const PyTypeObject *srctype = Py_TYPE(src.ptr());
-        if (strcmp(name.text, srctype->tp_name) == 0)
+        if (cvpy::IsFacadeInstance<cvpy::FacadeType::TENSOR>(src.ptr()))
         {
             value = cvpy::Tensor(reinterpret_borrow<object>(src));
             return true;
         }
-        else
-        {
-            return false;
-        }
+        return false;
     }
 
-    static handle cast(cvpy::Tensor tensor, return_value_policy /* policy */, handle /*parent */)
+    static handle from_cpp(cvpy::Tensor tensor, rv_policy, cleanup_list *) noexcept
     {
         return static_cast<object &>(tensor).release();
     }
 };
 
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_TENSOR_HPP

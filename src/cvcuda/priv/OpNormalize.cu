@@ -17,9 +17,13 @@
  * limitations under the License.
  */
 
+#include "LegacyFormatClassify.hpp"
 #include "Nvtx.hpp"
 #include "OpNormalize.hpp"
 
+#include "ElementStreamCommon.cuh"
+
+#include <cudaTypedefs.h>
 #include <cuda_runtime.h>
 #include <cvcuda/OpNormalize.h> // for CVCUDA_NORMALIZE_SCALE_IS_STDDEV
 #include <cvcuda/cuda_tools/DropCast.hpp>
@@ -40,12 +44,14 @@
 #include <nvcv/util/Math.hpp>
 
 #include <cstdint>
+#include <cstring>
 #include <initializer_list>
 #include <type_traits>
 #include <utility>
 
-namespace cuda = nvcv::cuda;
-namespace util = nvcv::util;
+namespace cuda        = nvcv::cuda;
+namespace elem_stream = cvcuda::priv::elem_stream;
+namespace util        = nvcv::util;
 
 namespace {
 
@@ -144,158 +150,13 @@ inline dim3 NormGrid(int width, int height, unsigned int z, dim3 block, int cols
                 util::DivUp(height, static_cast<int>(block.y)), z);
 }
 
-// ---------------------------------------------------------------------------------------------------
-// Layout and element-type classification.
-//
-// These replace the legacy DataFormat / DataType conversions, which classified rather than
-// validated: they threw on anything they had no name for, before any of the operator's own checks
-// ran. Preserving that order preserves every rejection's observable status.
-// ---------------------------------------------------------------------------------------------------
-
-// The batched-vs-single distinction is retained because the operator compared whole formats: an
-// NHWC input with an HWC output was a format mismatch even though both are interleaved.
-enum class ImageLayout
-{
-    kNHWC,
-    kHWC,
-    kNCHW,
-    kCHW
-};
-
-inline bool IsPlanar(ImageLayout layout)
-{
-    return layout == ImageLayout::kNCHW || layout == ImageLayout::kCHW;
-}
-
-inline ImageLayout GetImageLayout(const nvcv::TensorLayout &layout)
-{
-    if (layout == nvcv::TENSOR_NCHW)
-    {
-        return ImageLayout::kNCHW;
-    }
-    if (layout == nvcv::TENSOR_CHW)
-    {
-        return ImageLayout::kCHW;
-    }
-    if (layout == nvcv::TENSOR_NHWC)
-    {
-        return ImageLayout::kNHWC;
-    }
-    if (layout == nvcv::TENSOR_HWC)
-    {
-        return ImageLayout::kHWC;
-    }
-    throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Tensor layout not supported");
-}
-
-inline ImageLayout GetImageLayout(const nvcv::ImageBatchVarShapeDataStridedCuda &batch)
-{
-    nvcv::ImageFormat fmt = batch.uniqueFormat();
-    if (!fmt)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All images must have the same format");
-    }
-
-    for (int i = 1; i < fmt.numPlanes(); ++i)
-    {
-        if (fmt.planeDataType(i) != fmt.planeDataType(0))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All planes must have the same data type");
-        }
-    }
-
-    if (fmt.numPlanes() >= 2)
-    {
-        if (fmt.numPlanes() != fmt.numChannels())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Planar images must have one channel per plane");
-        }
-
-        return batch.numImages() >= 2 ? ImageLayout::kNCHW : ImageLayout::kCHW;
-    }
-
-    return batch.numImages() >= 2 ? ImageLayout::kNHWC : ImageLayout::kHWC;
-}
-
-// Classification is on bits-per-channel plus data kind rather than on the type's identity, so packed
-// types such as TYPE_3U8 are admitted, and every (kind, width) pair with no name here -- 32-/64-bit
-// unsigned, 64-bit signed -- is rejected before reaching the operator's own dtype allow-list.
-enum class ElemType
-{
-    kU8,
-    kS8,
-    kU16,
-    kS16,
-    kS32,
-    kF32,
-    kF64,
-    kF16
-};
-
-inline ElemType ClassifyElemType(const nvcv::DataType &dtype)
-{
-    const auto bpc = dtype.bitsPerChannel();
-
-    // Reachable rather than defensive: NVCV_PACKING_X32_Y24b8 is a real mixed-width packing.
-    for (int i = 1; i < dtype.numChannels(); ++i)
-    {
-        if (bpc[i] != bpc[0])
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All channels must have same bit-depth");
-        }
-    }
-
-    switch (dtype.dataKind())
-    {
-    case nvcv::DataKind::FLOAT:
-        if (bpc[0] == 64)
-            return ElemType::kF64;
-        if (bpc[0] == 32)
-            return ElemType::kF32;
-        if (bpc[0] == 16)
-            return ElemType::kF16;
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for float cuda op type ", bpc[0]);
-
-    case nvcv::DataKind::SIGNED:
-        if (bpc[0] == 8)
-            return ElemType::kS8;
-        if (bpc[0] == 16)
-            return ElemType::kS16;
-        if (bpc[0] == 32)
-            return ElemType::kS32;
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for signed cuda op type ", bpc[0]);
-
-    case nvcv::DataKind::UNSIGNED:
-        if (bpc[0] == 8)
-            return ElemType::kU8;
-        if (bpc[0] == 16)
-            return ElemType::kU16;
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid bpc(%d) for unsigned cuda op type ",
-                              bpc[0]);
-
-    case nvcv::DataKind::COMPLEX:
-    case nvcv::DataKind::UNSPECIFIED:
-        break;
-    }
-    throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                          "Only floating-point, signed integer and unsigned integer data kinds are supported ");
-}
-
-// Plane-dtype uniformity is a precondition: GetImageLayout(batch) enforces it for the format before
-// either var-shape caller classifies it.
-inline ElemType ClassifyElemType(const nvcv::ImageFormat &fmt)
-{
-    return ClassifyElemType(fmt.planeDataType(0));
-}
-
-inline void RequireSupportedElemType(ElemType type)
-{
-    if (type == ElemType::kF64)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid DataType: 64-bit float is not supported");
-    }
-}
+// The classifiers throw on unnamed layouts/types before the operator's own checks, so call order
+// sets the rejection status.
+using cvcuda::priv::legacy_format::ClassifyDataFormat;
+using cvcuda::priv::legacy_format::ClassifyDataType;
+using cvcuda::priv::legacy_format::DataFormatCode;
+using cvcuda::priv::legacy_format::DataTypeCode;
+using cvcuda::priv::legacy_format::IsPlanar;
 
 // A single channel keeps the plain scalar type (uchar, not uchar1), matching the element types the
 // legacy dispatch tables named.
@@ -321,12 +182,19 @@ __device__ __forceinline__ auto InvStdDevMul(S scale, float epsilon)
     return 1.0f / cuda::sqrt(scale * scale + epsilon);
 }
 
+// The interleaved kernels promote F64 implicitly through their wrapped pixel types; the helpers
+// below take a plain scalar, so a hardcoded float would make NCHW disagree with NHWC. The
+// multiplier stays float on both, which is what keeps them agreeing rather than merely both wide.
+template<typename SrcT>
+using NormalizeWorkType = std::conditional_t<std::is_same_v<cuda::BaseType<SrcT>, double>, double, float>;
+
 template<typename OutT, typename SrcT>
 __device__ __forceinline__ OutT ApplyPlanarNormalize(SrcT src_val, float base_val, float scale_val, float global_scale,
                                                      float global_shift, bool is_stddev, float epsilon)
 {
     const float mul = is_stddev ? InvStdDevMul(scale_val, epsilon) : scale_val;
-    return cuda::SaturateCast<OutT>((static_cast<float>(src_val) - base_val) * mul * global_scale + global_shift);
+    return cuda::SaturateCast<OutT>((static_cast<NormalizeWorkType<SrcT>>(src_val) - base_val) * mul * global_scale
+                                    + global_shift);
 }
 
 // SaturateCast<OutT> is the identity for float, so the F32 kernels evaluate exactly the float
@@ -334,7 +202,8 @@ __device__ __forceinline__ OutT ApplyPlanarNormalize(SrcT src_val, float base_va
 template<typename OutT, typename RawT>
 __device__ __forceinline__ OutT ApplyNormalize(RawT raw, float baseV, float mul, float global_scale, float global_shift)
 {
-    return cuda::SaturateCast<OutT>((static_cast<float>(raw) - baseV) * mul * global_scale + global_shift);
+    return cuda::SaturateCast<OutT>((static_cast<NormalizeWorkType<RawT>>(raw) - baseV) * mul * global_scale
+                                    + global_shift);
 }
 
 // Per-thread broadcast context for the interleaved vectorized inverse-std-dev kernels: the batch and
@@ -507,7 +376,7 @@ __global__ void normalizePlanarKernel(const cuda::Tensor4DWrap<T, int32_t> src, 
                                   *scale.ptr(s.x, s.y, s.z, s.w), global_scale, global_shift, is_stddev, epsilon);
 }
 
-// Requires 4-byte-aligned (16 for F32) plane/row/sample strides, caller-guarded.
+// Requires Vec4-aligned rows/planes/samples and base pointers, caller-guarded for F16.
 template<int NGROUP, typename T, typename BaseWrap, typename ScaleWrap>
 __global__ void normalizePlanarVec4Kernel(const cuda::Tensor4DWrap<T, int32_t> src, const BaseWrap base,
                                           const ScaleWrap scale, cuda::Tensor4DWrap<T, int32_t> dst, int4 inout_size,
@@ -625,6 +494,41 @@ inline unsigned int PlanarGridZ(int numSamples, int numChannels)
     return static_cast<unsigned int>(planes);
 }
 
+bool IsCurrentDeviceL4NameOnly(); // Avoid a missing-declarations warning in nvcc's host compilation.
+
+// Query only the name: a per-submission bulk properties query is costly on the measured L4 host.
+bool IsCurrentDeviceL4NameOnly()
+{
+    int device;
+    NVCV_CHECK_THROW(cudaGetDevice(&device));
+    void                           *getDeviceEntry = nullptr, *getNameEntry = nullptr;
+    cudaDriverEntryPointQueryResult deviceStatus, nameStatus;
+#if CUDART_VERSION >= 13000
+    NVCV_CHECK_THROW(
+        cudaGetDriverEntryPointByVersion("cuDeviceGet", &getDeviceEntry, 2000, cudaEnableDefault, &deviceStatus));
+    NVCV_CHECK_THROW(
+        cudaGetDriverEntryPointByVersion("cuDeviceGetName", &getNameEntry, 2000, cudaEnableDefault, &nameStatus));
+#else
+    NVCV_CHECK_THROW(cudaGetDriverEntryPoint("cuDeviceGet", &getDeviceEntry, cudaEnableDefault, &deviceStatus));
+    NVCV_CHECK_THROW(cudaGetDriverEntryPoint("cuDeviceGetName", &getNameEntry, cudaEnableDefault, &nameStatus));
+#endif
+    if (deviceStatus != cudaDriverEntryPointSuccess || nameStatus != cudaDriverEntryPointSuccess
+        || getDeviceEntry == nullptr || getNameEntry == nullptr)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INTERNAL, "CUDA device identity entry points are unavailable");
+    }
+    CUdevice driverDevice;
+    char     name[256];
+    if (reinterpret_cast<PFN_cuDeviceGet_v2000>(getDeviceEntry)(&driverDevice, device) != CUDA_SUCCESS
+        || reinterpret_cast<PFN_cuDeviceGetName_v2000>(getNameEntry)(name, sizeof(name), driverDevice) != CUDA_SUCCESS)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INTERNAL, "CUDA device identity query failed");
+    }
+    return std::strcmp(name, "NVIDIA L4") == 0;
+}
+
+struct PlanarConstParamWrap;
+
 // base/scale are generic wrappers so the parameter-tensor and by-value callers share every launch
 // decision; only the wrapper type differs.
 template<typename T, typename BaseWrap, typename ScaleWrap>
@@ -637,19 +541,36 @@ void LaunchPlanar(const cuda::Tensor4DWrap<T, int32_t> &srcWrap, const cuda::Ten
 
     dim3 block(32, 8);
 
-    // 2-byte, F16 and S32 have no vector body and always take the scalar kernel.
     constexpr bool kIsByte = sizeof(T) == 1;
     constexpr bool kIsF32  = std::is_same_v<T, float>;
+    constexpr bool kIsF16  = std::is_same_v<T, __half>;
 
-    if constexpr (kIsByte || kIsF32)
+    if constexpr (kIsByte || kIsF32 || kIsF16)
     {
-        constexpr int64_t kAlign  = kIsByte ? 4 : 16;
-        constexpr int     kNGroup = kIsByte ? kNormalizePlanarILPNGroup : kNormalizePlanarF32ILPNGroup;
+        constexpr int64_t kAlign  = sizeof(cuda::MakeType<T, 4>);
+        constexpr int     kNGroup = kIsF16 ? 2 : (kIsByte ? kNormalizePlanarILPNGroup : kNormalizePlanarF32ILPNGroup);
 
         const bool aligned = inAccess.rowStride() % kAlign == 0 && inAccess.chStride() % kAlign == 0
                           && inAccess.sampleStride() % kAlign == 0 && outAccess.rowStride() % kAlign == 0
-                          && outAccess.chStride() % kAlign == 0 && outAccess.sampleStride() % kAlign == 0;
-        if (aligned)
+                          && outAccess.chStride() % kAlign == 0 && outAccess.sampleStride() % kAlign == 0
+                          && (!kIsF16
+                              || (reinterpret_cast<uintptr_t>(inAccess.sampleData(0)) % kAlign == 0
+                                  && reinterpret_cast<uintptr_t>(outAccess.sampleData(0)) % kAlign == 0));
+        bool useVec4 = aligned;
+        if constexpr (kIsF16)
+        {
+            const bool spatialBroadcast
+                = base_size.z == 1 && base_size.w == 1 && scale_size.z == 1 && scale_size.w == 1;
+            if (aligned && spatialBroadcast
+                && (!p.isStdDev
+                    || std::is_same_v<BaseWrap, PlanarConstParamWrap>)&&elem_stream::DeviceComputeCapability()
+                       == 89)
+            {
+                // Native L4 measurements favor the scalar kernel for these spatially invariant modes.
+                useVec4 = !IsCurrentDeviceL4NameOnly();
+            }
+        }
+        if (useVec4)
         {
             dim3 vgrid = NormGrid(inout_size.w, inout_size.z, planes, block, 4 * kNGroup);
             normalizePlanarVec4Kernel<kNGroup, T>
@@ -1036,6 +957,172 @@ void normalizeInvStdDevVec(const TensorArgs &a)
                                              a.p.globalScale, a.p.shift, a.p.epsilon);
     }
     NVCV_CHECK_THROW(cudaGetLastError());
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Tensor path: interleaved element stream.
+//
+// The pixel-shaped kernels above access one pixel per thread, so their transaction width is the pixel
+// width: an RGB8 pixel is three 1-byte accesses and an RGBf32 pixel three 4-byte ones. The stream
+// moves 16 bytes per access regardless, which for a three-channel image means a carrier is not a whole
+// number of pixels -- 16 bytes is 5 1/3 RGB8 pixels -- so the carrier has to know which channel its
+// first element belongs to. That is what the shared header's Position and RotateLanes are for: the
+// per-channel (base, multiplier) set is resolved once per thread and then rotated by the carrier's
+// phase, leaving every element's channel index a compile-time constant inside the unrolled group.
+//
+// The per-element expression is ApplyNormalize on the same operands with the same association as
+// normalizeKernel and normalizeInvStdDevKernel, so the output is bit-identical. Applies only when
+// base and scale do not vary spatially, which is what lets them be resolved once per thread; the
+// pixel-shaped kernels keep every other case.
+// ---------------------------------------------------------------------------------------------------
+
+// A 1-byte carrier holds 16 elements, each needing an integer/float conversion pair; a 4-byte one
+// holds 4 needing none, so the narrower element type saturates its memory-level parallelism sooner.
+template<typename T>
+inline constexpr int kNormalizeStreamGroups = sizeof(T) == 1 ? 4 : 8;
+
+template<typename T, int C>
+struct NormalizeStreamCarrier
+{
+    static constexpr bool kPositionAware = true;
+    static constexpr int  kElems         = elem_stream::kCarrierBytes / static_cast<int>(sizeof(T));
+
+    using type = uint4;
+
+    // Pointers rather than values: a per-channel parameter lives in device memory. `stride` is 0 when
+    // one value serves every channel, which is how a scalar base or scale broadcasts.
+    struct Param
+    {
+        const float *base;
+        const float *scale;
+        int          baseStride;
+        int          scaleStride;
+        int64_t      baseSampleStride;
+        int64_t      scaleSampleStride;
+        float        globalScale, shift, epsilon;
+        bool         isStdDev;
+    };
+
+    struct Context
+    {
+        float base[C];
+        float mul[C];
+        float globalScale, shift;
+    };
+
+    inline static __device__ Context MakeContext(const Param &p, elem_stream::Position pos)
+    {
+        Context c;
+#pragma unroll
+        for (int k = 0; k < C; ++k)
+        {
+            const float s = p.scale[pos.sample * p.scaleSampleStride + k * p.scaleStride];
+            c.base[k]     = p.base[pos.sample * p.baseSampleStride + k * p.baseStride];
+            c.mul[k]      = p.isStdDev ? InvStdDevMul(s, p.epsilon) : s;
+        }
+        c.globalScale = p.globalScale;
+        c.shift       = p.shift;
+        return c;
+    }
+
+    union Group
+    {
+        type wide;
+        T    elem[kElems];
+    };
+
+    inline static __device__ type Apply(type v, const Context &c, elem_stream::Position pos)
+    {
+        const int phase = elem_stream::ChannelPhase<kElems, C>(pos.carrier);
+
+        float base[C], mul[C];
+        elem_stream::RotateLanes<C>(c.base, phase, base);
+        elem_stream::RotateLanes<C>(c.mul, phase, mul);
+
+        Group in, out;
+        in.wide = v;
+#pragma unroll
+        for (int e = 0; e < kElems; ++e)
+        {
+            out.elem[e] = ApplyNormalize<T>(in.elem[e], base[e % C], mul[e % C], c.globalScale, c.shift);
+        }
+        return out.wide;
+    }
+
+    // At most one carrier per run is partial, so this stays a runtime loop indexed by the unrotated
+    // set rather than replicating the group body for it.
+    inline static __device__ void Tail(const unsigned char *s, unsigned char *d, int bytes, const Context &c,
+                                       elem_stream::Position pos)
+    {
+        const int phase = elem_stream::ChannelPhase<kElems, C>(pos.carrier);
+        const T  *se    = reinterpret_cast<const T *>(s);
+        T        *de    = reinterpret_cast<T *>(d);
+        for (int e = 0; e < bytes / static_cast<int>(sizeof(T)); ++e)
+        {
+            const int k = (phase + e) % C;
+            de[e]       = ApplyNormalize<T>(se[e], c.base[k], c.mul[k], c.globalScale, c.shift);
+        }
+    }
+};
+
+template<typename T, int C>
+bool TryNormalizeStreamAs(const TensorArgs &a, int baseStride, int scaleStride)
+{
+    // The stream only pays where a pixel does not already fill a native vector access. Measured on an
+    // A100 against the pixel-shaped kernels: 1.36x for RGB8 and 1.13x for RGBA8, but 0.99x for both
+    // RGBf32 and RGBAf32, where a 4-byte element already coalesces and the carrier's channel rotation
+    // is pure overhead. Same boundary, and same reason, as the CvtColor stream's element-width limit.
+    if constexpr (sizeof(T) > 2)
+    {
+        return false;
+    }
+    else
+    {
+        using Carrier = NormalizeStreamCarrier<T, C>;
+
+        typename Carrier::Param param{
+            reinterpret_cast<const float *>(a.base.basePtr()),
+            reinterpret_cast<const float *>(a.scale.basePtr()),
+            baseStride,
+            scaleStride,
+            a.baseAccess.numSamples() == 1 ? 0 : a.baseAccess.sampleStride() / static_cast<int64_t>(sizeof(float)),
+            a.scaleAccess.numSamples() == 1 ? 0 : a.scaleAccess.sampleStride() / static_cast<int64_t>(sizeof(float)),
+            a.p.globalScale,
+            a.p.shift,
+            a.p.epsilon,
+            a.p.isStdDev};
+
+        constexpr int64_t pixelBytes = C * sizeof(T);
+        elem_stream::Plan plan;
+        if (!elem_stream::MakePlanBytes(a.inAccess, a.outAccess, pixelBytes, pixelBytes, false, plan))
+        {
+            return false;
+        }
+        if (param.baseSampleStride || param.scaleSampleStride)
+        {
+            const int64_t samples = a.inAccess.numSamples();
+            if (samples > elem_stream::kMaxGridYZ)
+            {
+                return false;
+            }
+            // Each sample needs its own parameter context, even when image storage is dense.
+            if (plan.numSamples == 1 && samples > 1)
+            {
+                plan.runBytes /= samples;
+                plan.dstRunBytes /= samples;
+                plan.numSamples      = static_cast<int>(samples);
+                plan.srcSampleStride = a.inAccess.sampleStride();
+                plan.dstSampleStride = a.outAccess.sampleStride();
+            }
+        }
+        if (!elem_stream::IsPlanAligned(a.in.basePtr(), a.out.basePtr(), plan, alignof(uint4), alignof(uint4)))
+        {
+            return false;
+        }
+        elem_stream::LaunchPlan<kNormalizeStreamGroups<T>, Carrier>(a.p.stream, a.in.basePtr(), a.out.basePtr(), plan,
+                                                                    param);
+        return true;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -1450,6 +1537,7 @@ void normPlanar(const VarShapeArgs &a)
 
     constexpr bool kIsByte = sizeof(T) == 1 && sizeof(out_T) == 1;
     constexpr bool kIsF32  = std::is_same_v<T, float> && std::is_same_v<out_T, float>;
+    constexpr bool kIsF16  = std::is_same_v<T, __half> && std::is_same_v<out_T, __half>;
 
     if constexpr (kIsByte)
     {
@@ -1467,7 +1555,7 @@ void normPlanar(const VarShapeArgs &a)
     }
 
     // Plain vectorization only -- loads-first ILP regressed the 1-byte planar var-shape path.
-    if constexpr (kIsByte || kIsF32)
+    if constexpr (kIsByte || kIsF32 || kIsF16)
     {
         dim3 vgrid = NormGrid(max_width, max_height, gridZ, block, 4);
         normPlanarVec4Kernel<T, out_T>
@@ -1491,52 +1579,55 @@ void normPlanar(const VarShapeArgs &a)
 template<int N>
 using IntTag = std::integral_constant<int, N>;
 
-// F64 names no kernel: the validation rejects it before reaching here.
 template<class F>
-void DispatchElemType(ElemType type, F &&f)
+void DispatchElemType(DataTypeCode type, F &&f)
 {
     switch (type)
     {
-    case ElemType::kU8:
+    case DataTypeCode::kU8:
         f(uchar{});
         return;
-    case ElemType::kS8:
+    case DataTypeCode::kS8:
         f(schar{});
         return;
-    case ElemType::kU16:
+    case DataTypeCode::kU16:
         f(ushort{});
         return;
-    case ElemType::kS16:
+    case DataTypeCode::kS16:
         f(short{});
         return;
-    case ElemType::kS32:
+    case DataTypeCode::kS32:
         f(int{});
         return;
-    case ElemType::kF32:
+    case DataTypeCode::kF32:
         f(float{});
         return;
-    case ElemType::kF16:
+    case DataTypeCode::kF16:
         f(__half{});
         return;
-    case ElemType::kF64:
-        break;
+    case DataTypeCode::kF64:
+        f(double{});
+        return;
     }
     throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid DataType");
 }
 
 template<class F>
-void DispatchVarShapeOutType(ElemType type, F &&f)
+void DispatchVarShapeOutType(DataTypeCode type, F &&f)
 {
     switch (type)
     {
-    case ElemType::kU8:
+    case DataTypeCode::kU8:
         f(uchar{});
         return;
-    case ElemType::kF32:
+    case DataTypeCode::kF32:
         f(float{});
         return;
-    case ElemType::kF16:
+    case DataTypeCode::kF16:
         f(__half{});
+        return;
+    case DataTypeCode::kF64:
+        f(double{});
         return;
     default:
         break;
@@ -1571,6 +1662,51 @@ void DispatchChannels(int channels, F &&f)
     throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid channel number %d", channels);
 }
 
+// False when the stream does not apply and the caller must keep the pixel-shaped kernels.
+inline bool TryNormalizeStream(const TensorArgs &a, DataTypeCode elemType, int channels)
+{
+    // Spatially varying parameters cannot be resolved once per thread.
+    const int3 base_size  = ParamExtents(a.baseAccess);
+    const int3 scale_size = ParamExtents(a.scaleAccess);
+    if (base_size.x != 1 || base_size.y != 1)
+    {
+        return false;
+    }
+    if (scale_size.x != 1 || scale_size.y != 1)
+    {
+        return false;
+    }
+
+    // A per-channel parameter is read as a flat float array from its base pointer, so its channels
+    // must be adjacent; a single-channel parameter broadcasts and needs no stride.
+    constexpr int64_t kFloat     = sizeof(float);
+    const bool        basePerCh  = a.baseAccess.numChannels() != 1;
+    const bool        scalePerCh = a.scaleAccess.numChannels() != 1;
+    if ((basePerCh && a.baseAccess.chStride() != kFloat) || (scalePerCh && a.scaleAccess.chStride() != kFloat))
+    {
+        return false;
+    }
+    if (a.base.dtype() != nvcv::TYPE_F32 || a.scale.dtype() != nvcv::TYPE_F32)
+    {
+        return false;
+    }
+
+    const int baseStride  = basePerCh ? 1 : 0;
+    const int scaleStride = scalePerCh ? 1 : 0;
+
+    bool launched = false;
+    DispatchElemType(
+        elemType,
+        [&](auto elem)
+        {
+            using T = decltype(elem);
+            DispatchChannels<false>(
+                channels, [&](auto ncTag)
+                { launched = TryNormalizeStreamAs<T, decltype(ncTag)::value>(a, baseStride, scaleStride); });
+        });
+    return launched;
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Validation and operator bodies.
 // ---------------------------------------------------------------------------------------------------
@@ -1588,7 +1724,7 @@ inline bool CheckParamShape(const DataShape &input_shape, const DataShape &param
 // identically.
 inline void RequirePlanarParamLayout(const nvcv::TensorDataStridedCuda &param, const Access &access, const char *name)
 {
-    if (!IsPlanar(GetImageLayout(param.layout())) && access.numChannels() != 1)
+    if (!IsPlanar(ClassifyDataFormat(param.layout())) && access.numChannels() != 1)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "%s layout is not compatible with planar input; use NCHW/CHW (or a scalar layout)", name);
@@ -1605,11 +1741,13 @@ inline Access RequireImageAccess(const nvcv::TensorDataStridedCuda &data, const 
     return *access;
 }
 
+// Whole formats are compared, so an NHWC input with an HWC output is a format mismatch even though
+// both are interleaved.
 inline bool RequireMatchingLayout(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                                   const char *message)
 {
-    const ImageLayout inLayout = GetImageLayout(inData.layout());
-    if (inLayout != GetImageLayout(outData.layout()))
+    const DataFormatCode inLayout = ClassifyDataFormat(inData.layout());
+    if (inLayout != ClassifyDataFormat(outData.layout()))
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "%s", message);
     }
@@ -1654,12 +1792,11 @@ inline void RunNormalize(cudaStream_t stream, const nvcv::TensorDataStridedCuda 
         RequirePlanarParamLayout(scaleData, scaleAccess, "scale");
     }
 
-    const ElemType  elemType    = ClassifyElemType(inData.dtype());
-    const DataShape input_shape = GetDataShape(inAccess);
-    const int       channels    = input_shape.C;
+    const DataTypeCode elemType    = ClassifyDataType(inData.dtype());
+    const DataShape    input_shape = GetDataShape(inAccess);
+    const int          channels    = input_shape.C;
 
     RequireChannelCount(channels);
-    RequireSupportedElemType(elemType);
 
     auto requireParamShape = [&](const char *name, const DataShape &shape)
     {
@@ -1689,12 +1826,12 @@ inline void RunNormalize(cudaStream_t stream, const nvcv::TensorDataStridedCuda 
 
     // For 8-bit, prefer the 16-wide uint4 path when the strides allow it, to maximize bytes in flight
     // per request; else the 4-wide path; else the scalar kernel. F32 has the float4 path only.
-    if (params.isStdDev && channels == 1 && (elemType == ElemType::kU8 || elemType == ElemType::kF32))
+    if (params.isStdDev && channels == 1 && (elemType == DataTypeCode::kU8 || elemType == DataTypeCode::kF32))
     {
         const bool aligned16 = inAccess.rowStride() % 16 == 0 && inAccess.sampleStride() % 16 == 0
                             && outAccess.rowStride() % 16 == 0 && outAccess.sampleStride() % 16 == 0;
 
-        if (elemType == ElemType::kF32)
+        if (elemType == DataTypeCode::kF32)
         {
             if (aligned16)
             {
@@ -1713,6 +1850,12 @@ inline void RunNormalize(cudaStream_t stream, const nvcv::TensorDataStridedCuda 
             normalizeInvStdDevVec<uchar, 1, 4>(args);
             return;
         }
+    }
+
+    // Tried after the measured single-channel arms above, which keep their own tuned launch shapes.
+    if (TryNormalizeStream(args, elemType, channels))
+    {
+        return;
     }
 
     DispatchElemType(elemType,
@@ -1736,16 +1879,15 @@ inline void RunNormalizeScalar(cudaStream_t stream, const nvcv::TensorDataStride
     const auto inAccess  = RequireImageAccess(inData, "input");
     const auto outAccess = RequireImageAccess(outData, "output");
 
-    const ElemType  elemType    = ClassifyElemType(inData.dtype());
-    const DataShape input_shape = GetDataShape(inAccess);
-    const int       channels    = input_shape.C;
+    const DataTypeCode elemType    = ClassifyDataType(inData.dtype());
+    const DataShape    input_shape = GetDataShape(inAccess);
+    const int          channels    = input_shape.C;
 
     RequireChannelCount(channels);
-    RequireSupportedElemType(elemType);
 
     // The kernels bounds-check against the input extents only, so a mismatched output would be
     // written out of bounds (or with the wrong element type) through its wrap.
-    if (elemType != ClassifyElemType(outData.dtype()))
+    if (elemType != ClassifyDataType(outData.dtype()))
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "DataType of input and output must be equal");
     }
@@ -1817,8 +1959,8 @@ inline void RunNormalizeVarShape(cudaStream_t stream, const nvcv::ImageBatchVarS
                               "Images in the output batch must all have the same format");
     }
 
-    const ImageLayout inLayout  = GetImageLayout(inData);
-    const ImageLayout outLayout = GetImageLayout(outData);
+    const DataFormatCode inLayout  = ClassifyDataFormat(inData);
+    const DataFormatCode outLayout = ClassifyDataFormat(outData);
     if (inLayout != outLayout)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -1827,17 +1969,17 @@ inline void RunNormalizeVarShape(cudaStream_t stream, const nvcv::ImageBatchVarS
 
     const bool isPlanar = IsPlanar(inLayout);
 
-    const ElemType inType = ClassifyElemType(inData.uniqueFormat());
-    RequireSupportedElemType(inType);
+    const DataTypeCode inType = ClassifyDataType(inData.uniqueFormat());
 
     // The var-shape path converts the output dtype independently of the input dtype, but only to
-    // these three.
-    const ElemType outType = ClassifyElemType(outData.uniqueFormat());
-    if (outType != ElemType::kU8 && outType != ElemType::kF32 && outType != ElemType::kF16)
+    // these types.
+    const DataTypeCode outType = ClassifyDataType(outData.uniqueFormat());
+    if (outType != DataTypeCode::kU8 && outType != DataTypeCode::kF32 && outType != DataTypeCode::kF16
+        && outType != DataTypeCode::kF64)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Invalid Output DataType: only 8-bit unsigned, 32-bit float and 16-bit float outputs "
-                              "are supported");
+                              "Invalid Output DataType: only 8-bit unsigned, 16-bit float, 32-bit float and 64-bit "
+                              "float outputs are supported");
     }
 
     const int channels = inData.uniqueFormat().numChannels();

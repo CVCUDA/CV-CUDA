@@ -35,6 +35,8 @@ TEMPLATES=(
     tests/requirements.tests.cu13.template
     tests/requirements.tests.numpy1.template
     tests/requirements.tests.numpy2.template
+    tests/requirements.tests.torchvision.cu12.template
+    tests/requirements.tests.torchvision.cu13.template
     bench/python/requirements.bench.common.template
     bench/python/requirements.bench.cu12.template
     bench/python/requirements.bench.cu13.template

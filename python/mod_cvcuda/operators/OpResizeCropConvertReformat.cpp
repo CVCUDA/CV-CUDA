@@ -15,34 +15,31 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpResizeCropConvertReformat.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/python/Image.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 namespace cvcudapy {
 
 namespace {
-Tensor ResizeCropConvertReformatInto(Tensor &dst, Tensor &src, const std::tuple<int, int> resizeDim,
-                                     NVCVInterpolationType interp, const std::tuple<int, int> cropPos,
-                                     const NVCVChannelManip manip, const float scale, const float offset,
-                                     const bool srcCast, std::optional<Stream> pstream)
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
+Tensor &ResizeCropConvertReformatInto(Tensor &dst, Tensor &src, const std::tuple<int, int> resizeDim,
+                                      NVCVInterpolationType interp, const std::tuple<int, int> cropPos,
+                                      const NVCVChannelManip manip, const float scale, const float offset,
+                                      const bool srcCast, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto resize = CreateOperator<cvcuda::ResizeCropConvertReformat>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {src});
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*resize});
@@ -51,18 +48,21 @@ Tensor ResizeCropConvertReformatInto(Tensor &dst, Tensor &src, const std::tuple<
     int2         crop_xy{std::get<0>(cropPos), std::get<1>(cropPos)};
 
     guard.run(
-        [&resize, &pstream, &src, &dst, &size_wh, &interp, &crop_xy, &manip, &scale, &offset, &srcCast]()
-        { resize->submit(pstream->cudaHandle(), src, dst, size_wh, interp, crop_xy, manip, scale, offset, srcCast); });
+        [&resize, &stream, &src, &dst, &size_wh, &interp, &crop_xy, &manip, &scale, &offset, &srcCast]() {
+            resize->submit(stream.handle(), src.impl(), dst.impl(), size_wh, interp, crop_xy, manip, scale, offset,
+                           srcCast);
+        });
 
-    return std::move(dst);
+    return dst;
 }
 
-Tensor ResizeCropConvertReformat(Tensor &src, const std::tuple<int, int> resizeDim, NVCVInterpolationType interp,
-                                 const NVCVRectI cropRect, const char *layout, nvcv::DataType dataType,
-                                 const NVCVChannelManip manip, const float scale, const float offset,
-                                 const bool srcCast, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> ResizeCropConvertReformat(Tensor &src, const std::tuple<int, int> resizeDim,
+                                                  NVCVInterpolationType interp, const NVCVRectI cropRect,
+                                                  const char *layout, nvcv::DataType dataType,
+                                                  const NVCVChannelManip manip, const float scale, const float offset,
+                                                  const bool srcCast, std::optional<Stream *> pstream)
 {
-    nvcv::TensorLayout srcLayout = src.layout();
+    nvcv::TensorLayout srcLayout = src.impl().layout();
 
     if (srcLayout != NVCV_TENSOR_HWC && srcLayout != NVCV_TENSOR_NHWC && srcLayout != NVCV_TENSOR_CHW
         && srcLayout != NVCV_TENSOR_NCHW)
@@ -90,7 +90,7 @@ Tensor ResizeCropConvertReformat(Tensor &src, const std::tuple<int, int> resizeD
                               "Output tensor must have layout 'HWC', 'NHWC', 'CHW', or 'NCHW'.");
     }
 
-    nvcv::TensorShape srcShape = Permute(src.shape(), nvcv::TensorLayout{NVCV_TENSOR_NHWC});
+    nvcv::TensorShape srcShape = Permute(src.impl().shape(), nvcv::TensorLayout{NVCV_TENSOR_NHWC});
 
     nvcv::TensorShape::ShapeType shape = srcShape.shape();
 
@@ -99,26 +99,25 @@ Tensor ResizeCropConvertReformat(Tensor &src, const std::tuple<int, int> resizeD
 
     nvcv::TensorShape dstShape = Permute(nvcv::TensorShape(shape, nvcv::TensorLayout{NVCV_TENSOR_NHWC}), dstLayout);
 
-    Tensor dst = Tensor::Create(dstShape, dataType);
+    auto dst = native::CreateTensor(dstShape, dataType);
 
     const std::tuple<int, int> cropPos = std::make_tuple(cropRect.x, cropRect.y);
 
-    return ResizeCropConvertReformatInto(dst, src, resizeDim, interp, cropPos, manip, scale, offset, srcCast, pstream);
+    ResizeCropConvertReformatInto(*dst, src, resizeDim, interp, cropPos, manip, scale, offset, srcCast, pstream);
+    return dst;
 }
 
-Tensor ResizeCropConvertReformatVarShapeInto(Tensor &dst, ImageBatchVarShape &src, const std::tuple<int, int> resizeDim,
-                                             NVCVInterpolationType interp, const std::tuple<int, int> cropPos,
-                                             const NVCVChannelManip manip, const float scale, const float offset,
-                                             const bool srcCast, std::optional<Stream> pstream)
+Tensor &ResizeCropConvertReformatVarShapeInto(Tensor &dst, ImageBatchVarShape &src,
+                                              const std::tuple<int, int> resizeDim, NVCVInterpolationType interp,
+                                              const std::tuple<int, int> cropPos, const NVCVChannelManip manip,
+                                              const float scale, const float offset, const bool srcCast,
+                                              std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto resize = CreateOperator<cvcuda::ResizeCropConvertReformat>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {src});
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*resize});
@@ -127,18 +126,22 @@ Tensor ResizeCropConvertReformatVarShapeInto(Tensor &dst, ImageBatchVarShape &sr
     int2         crop_xy{std::get<0>(cropPos), std::get<1>(cropPos)};
 
     guard.run(
-        [&resize, &pstream, &src, &dst, &size_wh, &interp, &crop_xy, &manip, &scale, &offset, &srcCast]()
-        { resize->submit(pstream->cudaHandle(), src, dst, size_wh, interp, crop_xy, manip, scale, offset, srcCast); });
+        [&resize, &stream, &src, &dst, &size_wh, &interp, &crop_xy, &manip, &scale, &offset, &srcCast]() {
+            resize->submit(stream.handle(), src.impl(), dst.impl(), size_wh, interp, crop_xy, manip, scale, offset,
+                           srcCast);
+        });
 
-    return std::move(dst);
+    return dst;
 }
 
-Tensor ResizeCropConvertReformatVarShape(ImageBatchVarShape &src, const std::tuple<int, int> resizeDim,
-                                         NVCVInterpolationType interp, const NVCVRectI cropRect, const char *layout,
-                                         nvcv::DataType dataType, const NVCVChannelManip manip, const float scale,
-                                         const float offset, const bool srcCast, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> ResizeCropConvertReformatVarShape(ImageBatchVarShape &src, const std::tuple<int, int> resizeDim,
+                                                          NVCVInterpolationType interp, const NVCVRectI cropRect,
+                                                          const char *layout, nvcv::DataType dataType,
+                                                          const NVCVChannelManip manip, const float scale,
+                                                          const float offset, const bool srcCast,
+                                                          std::optional<Stream *> pstream)
 {
-    const nvcv::ImageFormat srcFrmt = src.uniqueFormat();
+    const nvcv::ImageFormat srcFrmt = src.impl().uniqueFormat();
     if (!srcFrmt)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have same format across all images.");
@@ -190,22 +193,23 @@ Tensor ResizeCropConvertReformatVarShape(ImageBatchVarShape &src, const std::tup
         }
     }
 
-    Tensor dst = Tensor::Create(shape, dataType);
+    auto dst = native::CreateTensor(shape, dataType);
 
     const std::tuple<int, int> cropPos = std::make_tuple(cropRect.x, cropRect.y);
 
-    return ResizeCropConvertReformatVarShapeInto(dst, src, resizeDim, interp, cropPos, manip, scale, offset, srcCast,
-                                                 pstream);
+    ResizeCropConvertReformatVarShapeInto(*dst, src, resizeDim, interp, cropPos, manip, scale, offset, srcCast,
+                                          pstream);
+    return dst;
 }
 
 } // namespace
 
-void ExportOpResizeCropConvertReformat(py::module &m)
+void ExportOpResizeCropConvertReformat(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("resize_crop_convert_reformat", NvtxTrace("cvcuda.resize_crop_convert_reformat", &ResizeCropConvertReformat),
-          "src"_a, "resize_dim"_a, "interp"_a, "crop_rect"_a, py::kw_only(), "layout"_a = "",
+          "src"_a, "resize_dim"_a, "interp"_a, "crop_rect"_a.lock(), py::kw_only(), "layout"_a = "",
           "data_type"_a = NVCV_DATA_TYPE_NONE, "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0,
           "srcCast"_a = true, "stream"_a = nullptr,
           R"pbdoc(
@@ -244,7 +248,7 @@ void ExportOpResizeCropConvertReformat(py::module &m)
     m.def("resize_crop_convert_reformat_into",
           NvtxTrace("cvcuda.resize_crop_convert_reformat_into", &ResizeCropConvertReformatInto), "dst"_a, "src"_a,
           "resize_dim"_a, "interp"_a, "cropPos"_a, py::kw_only(), "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0,
-          "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr, R"pbdoc(
+          "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
 
 
@@ -278,7 +282,7 @@ void ExportOpResizeCropConvertReformat(py::module &m)
 
     m.def("resize_crop_convert_reformat",
           NvtxTrace("cvcuda.resize_crop_convert_reformat", &ResizeCropConvertReformatVarShape), "src"_a, "resize_dim"_a,
-          "interp"_a, "crop_rect"_a, py::kw_only(), "layout"_a = "", "data_type"_a = NVCV_DATA_TYPE_NONE,
+          "interp"_a, "crop_rect"_a.lock(), py::kw_only(), "layout"_a = "", "data_type"_a = NVCV_DATA_TYPE_NONE,
           "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr,
           R"pbdoc(
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
@@ -317,7 +321,8 @@ void ExportOpResizeCropConvertReformat(py::module &m)
     m.def("resize_crop_convert_reformat_into",
           NvtxTrace("cvcuda.resize_crop_convert_reformat_into", &ResizeCropConvertReformatVarShapeInto), "dst"_a,
           "src"_a, "resize_dim"_a, "interp"_a, "cropPos"_a, py::kw_only(), "manip"_a = NVCV_CHANNEL_NO_OP,
-          "scale"_a = 1.0, "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr, R"pbdoc(
+          "scale"_a = 1.0, "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
 
 

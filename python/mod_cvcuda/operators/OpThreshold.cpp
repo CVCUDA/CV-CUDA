@@ -15,17 +15,14 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpThreshold.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 #include <stdexcept>
 
@@ -33,82 +30,84 @@ namespace cvcudapy {
 
 namespace {
 
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
 class ThresholdError : public std::runtime_error
 {
 public:
     using std::runtime_error::runtime_error;
 };
 
-Tensor ThresholdInto(Tensor &output, Tensor &input, Tensor &thresh, Tensor &maxval, uint32_t type,
-                     std::optional<Stream> pstream)
+Tensor &ThresholdInto(Tensor &output, Tensor &input, Tensor &thresh, Tensor &maxval, uint32_t type,
+                      std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     // HWC inputs (rank 3) have no N dim, so shape[0] is H — fall back to 1.
-    int  batchSize = (input.shape().size() == 4) ? (int)input.shape()[0] : 1;
-    auto threshold = CreateOperator<cvcuda::Threshold>(type, batchSize);
+    const nvcv::TensorShape &inputShape = input.impl().shape();
+    int                      batchSize  = inputShape.rank() == 4 ? static_cast<int>(inputShape[0]) : 1;
+    auto                     threshold  = CreateOperator<cvcuda::Threshold>(type, batchSize);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, thresh, maxval});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*threshold});
 
-    guard.run([&thresh, &threshold, &pstream, &input, &output, &maxval]()
-              { threshold->submit(pstream->cudaHandle(), input, output, thresh, maxval); });
+    guard.run([&thresh, &threshold, &stream, &input, &output, &maxval]()
+              { threshold->submit(stream.handle(), input.impl(), output.impl(), thresh.impl(), maxval.impl()); });
 
     return output;
 }
 
-Tensor Threshold(Tensor &input, Tensor &thresh, Tensor &maxval, uint32_t type, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Threshold(Tensor &input, Tensor &thresh, Tensor &maxval, uint32_t type,
+                                  std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return ThresholdInto(output, input, thresh, maxval, type, pstream);
+    ThresholdInto(*output, input, thresh, maxval, type, pstream);
+    return output;
 }
 
-ImageBatchVarShape ThresholdVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &thresh,
-                                         Tensor &maxval, uint32_t type, std::optional<Stream> pstream)
+ImageBatchVarShape &ThresholdVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &thresh,
+                                          Tensor &maxval, uint32_t type, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto threshold = CreateOperator<cvcuda::Threshold>(type, input.numImages());
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, thresh, maxval});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*threshold});
 
-    guard.run([&thresh, &threshold, &pstream, &input, &output, &maxval]()
-              { threshold->submit(pstream->cudaHandle(), input, output, thresh, maxval); });
+    guard.run([&thresh, &threshold, &stream, &input, &output, &maxval]()
+              { threshold->submit(stream.handle(), input.impl(), output.impl(), thresh.impl(), maxval.impl()); });
 
     return output;
 }
 
-ImageBatchVarShape ThresholdVarShape(ImageBatchVarShape &input, Tensor &thresh, Tensor &maxval, uint32_t type,
-                                     std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> ThresholdVarShape(ImageBatchVarShape &input, Tensor &thresh, Tensor &maxval,
+                                                      uint32_t type, std::optional<Stream *> pstream)
 {
-    auto format = input.uniqueFormat();
+    auto format = GetUniqueFormat(input);
     if (!format)
     {
         throw ThresholdError("All images in input must have the same format.");
     }
 
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input, format, input.numImages());
+    auto output = CreateSameShapeImageBatch(input, *format, input.numImages());
 
-    return ThresholdVarShapeInto(output, input, thresh, maxval, type, pstream);
+    ThresholdVarShapeInto(*output, input, thresh, maxval, type, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpThreshold(py::module &m)
+void ExportOpThreshold(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("threshold", NvtxTrace("cvcuda.threshold", &Threshold), "src"_a, "thresh"_a, "maxval"_a, "type"_a,
           py::kw_only(), "stream"_a = nullptr,
@@ -131,7 +130,7 @@ void ExportOpThreshold(py::module &m)
     )pbdoc");
 
     m.def("threshold_into", NvtxTrace("cvcuda.threshold_into", &ThresholdInto), "dst"_a, "src"_a, "thresh"_a,
-          "maxval"_a, "type"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "maxval"_a, "type"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Threshold operation on the given cuda stream.
 
 
@@ -169,7 +168,7 @@ void ExportOpThreshold(py::module &m)
     )pbdoc");
 
     m.def("threshold_into", NvtxTrace("cvcuda.threshold_into", &ThresholdVarShapeInto), "dst"_a, "src"_a, "thresh"_a,
-          "maxval"_a, "type"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "maxval"_a, "type"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Threshold operation on the given cuda stream.
 
 

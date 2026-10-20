@@ -167,6 +167,7 @@ struct HandleManager<Interface>::Impl
 
     static_assert(std::atomic<ResourceBase *>::is_always_lock_free);
 
+    bool            isClearing    = false;
     bool            hasFixedSize  = false;
     int             totalCapacity = 0;
     std::atomic_int usedCount     = 0;
@@ -191,6 +192,11 @@ int HandleManager<Interface>::decRef(HandleType handle)
 {
     if (!handle)
         return 0; // "destruction" of a null handle is a no-op
+
+    // Forced pool cleanup owns every object, including dependencies whose handles
+    // are no longer valid once the pool list has been detached.
+    if (pimpl->isClearing)
+        return 0;
 
     if (ResourceBase *res = this->getValidResource(handle))
     {
@@ -377,8 +383,10 @@ void HandleManager<Interface>::clear()
         }
     }
 
+    pimpl->isClearing = true;
     pimpl->freeResources.clear();
     pimpl->resourceStack.clear();
+    pimpl->isClearing = false;
 }
 
 template<typename Interface>

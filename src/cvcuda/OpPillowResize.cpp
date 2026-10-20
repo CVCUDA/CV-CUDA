@@ -17,6 +17,7 @@
 
 #include "cvcuda/OpPillowResize.h"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/OpPillowResize.hpp"
 #include "priv/SymbolVersioning.hpp"
@@ -99,15 +100,17 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaPillowResizeSubmit,
                    NVCVTensorHandle out, const NVCVInterpolationType interpolation))
 {
     CVCUDA_NVTX_RANGE("cvcudaPillowResizeSubmit");
-    if (!isPillowResizeInterpolationValid(interpolation))
-        return NVCV_ERROR_INVALID_ARGUMENT;
-
     if (!ws)
         return NVCV_ERROR_INVALID_ARGUMENT;
 
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &ws, &interpolation]
         {
+            priv::CheckEnumArg(interpolation, NVCV_INTERP_BOX, "interpolation type");
+            if (!isPillowResizeInterpolationValid(interpolation))
+            {
+                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid interpolation type");
+            }
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
             priv::ToDynamicRef<priv::PillowResize>(handle)(stream, *ws, input.resource(), output.resource(),
@@ -120,15 +123,17 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaPillowResizeVarShapeSubmit,
                    NVCVImageBatchHandle out, const NVCVInterpolationType interpolation))
 {
     CVCUDA_NVTX_RANGE("cvcudaPillowResizeVarShapeSubmit");
-    if (!isPillowResizeInterpolationValid(interpolation))
-        return NVCV_ERROR_INVALID_ARGUMENT;
-
     if (!ws)
         return NVCV_ERROR_INVALID_ARGUMENT;
 
     return nvcv::ProtectCall(
         [&in, &out, &handle, &stream, &ws, &interpolation]
         {
+            priv::CheckEnumArg(interpolation, NVCV_INTERP_BOX, "interpolation type");
+            if (!isPillowResizeInterpolationValid(interpolation))
+            {
+                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid interpolation type");
+            }
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::ImageBatchVarShapeWrapHandle output(out);
             priv::ToDynamicRef<priv::PillowResize>(handle)(stream, *ws, input.resource(), output.resource(),

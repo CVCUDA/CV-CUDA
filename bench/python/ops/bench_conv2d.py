@@ -66,7 +66,7 @@ def conv2d(state):
 
     device_id = state.get_device()
 
-    kernel_h, kernel_w = map(int, kernel_size_str.split("x"))
+    kernel_w, kernel_h = map(int, kernel_size_str.split("x"))
 
     dtype_size = get_dtype_size(dtype_str)
     state.add_global_memory_reads(N * H * W * dtype_size)

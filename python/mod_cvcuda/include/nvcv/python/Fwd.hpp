@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,7 @@
 #ifndef NVCV_PYTHON_FWD_HPP
 #define NVCV_PYTHON_FWD_HPP
 
-namespace pybind11 {
+namespace nanobind {
 class tuple;
 }
 
@@ -34,7 +34,7 @@ class Array;
 class Stream;
 class ResourceGuard;
 enum LockMode : uint8_t;
-using Shape = pybind11::tuple;
+class Shape;
 } // namespace nvcvpy
 
 #endif // NVCV_PYTHON_FWD_HPP

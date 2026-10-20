@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sysconfig
+import gc
 import re
+import weakref
 
 import numpy as np
 import pytest as t
@@ -151,6 +154,27 @@ def test_tensorbatch_subscript():
             assert batch[i] is tensorsA[i]
 
 
+def test_tensorbatch_iterator_is_lazy_and_keeps_batch_alive():
+    tensors = random_tensors(3, np.float32, 3, "HWC")
+    replacement = random_tensors(1, np.float32, 3, "HWC")[0]
+    batch = cvcuda.TensorBatch(3)
+    batch.pushback(tensors)
+
+    iterator = iter(batch)
+    batch[0] = replacement
+    if sysconfig.get_config_var("Py_GIL_DISABLED"):
+        with t.raises(RuntimeError, match="structurally modified"):
+            next(iterator)
+        iterator = iter(batch)
+    assert next(iterator) is replacement
+
+    batch_ref = weakref.ref(batch)
+    del batch
+    gc.collect()
+    assert batch_ref() is not None
+    assert list(iterator) == tensors[1:]
+
+
 def test_tensorbatch_wrap_buffers():
     # from cuda buffer, without layout
     buffers = [
@@ -256,3 +280,27 @@ def test_tensorbatch_size_in_bytes():
     pt_img = cupy.asarray(np.ndarray((16, 32, 4), dtype=np.float32))
     batch_as_tensors = cvcuda.as_tensors([pt_img])
     assert cvcuda.internal.nbytes_in_cache(batch_as_tensors) > 0
+
+
+@t.mark.parametrize("arg", util.NON_BUFFER_SCALARS)
+def test_as_tensors_scalar_rejects_without_crash(arg):
+    """as_tensors must raise for a non-buffer scalar rather than segfault.
+
+    The registration carries keep_alive<0, 1>, and a non-buffer argument makes
+    the binding fall through to the next overload. A binding layer that runs the
+    postcall policy on that failed overload dereferences its try-next sentinel
+    and takes the process down instead of raising, so assert the rejection.
+    """
+    with t.raises(TypeError):
+        cvcuda.as_tensors(arg)
+
+
+# The list itself is accepted by the signature, so both rejections come from
+# inside the wrap rather than from overload resolution, and from two different
+# guards: an empty list trips the batch's own emptiness check, a list of
+# non-buffers trips ExternalBuffer::load.
+@t.mark.parametrize("arg", [[], [42]])
+def test_as_tensors_bad_list_rejects_without_crash(arg):
+    """as_tensors([non-buffer]) must raise rather than segfault."""
+    with t.raises(RuntimeError):
+        cvcuda.as_tensors(arg)

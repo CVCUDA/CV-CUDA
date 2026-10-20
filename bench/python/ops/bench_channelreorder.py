@@ -31,7 +31,41 @@ from python_bench_utils import (  # noqa: E402
     create_image_batch_varshape,
     create_stream_cache,
     run_benchmark,
+    _checkerboard_fill_image,
 )
+
+
+def _create_misaligned_batch(shape, img_format, device_id, fill_input):
+    """Own offset-one images with exactly one extra byte per row in both drivers."""
+    n, height, width, channels = shape
+    row_pitch = width * channels + 1
+    batch = cvcuda.ImageBatchVarShape(n)
+    owners = []
+    with cp.cuda.Device(device_id):
+        for _ in range(n):
+            allocation = cp.zeros(1 + row_pitch * height, dtype=cp.uint8)
+            pixels = cp.ndarray(
+                (height, width, channels),
+                dtype=cp.uint8,
+                memptr=allocation.data + 1,
+                strides=(row_pitch, channels, 1),
+            )
+            if fill_input:
+                _checkerboard_fill_image(pixels)
+            image = cvcuda.as_image(pixels, img_format)
+            exported = cp.from_dlpack(image.cuda())
+            if exported.data.ptr != allocation.data.ptr + 1 or exported.strides != (
+                row_pitch,
+                channels,
+                1,
+            ):
+                raise RuntimeError(
+                    "ChannelReorder misaligned fixture changed offset or row pitch"
+                )
+            batch.pushback(image)
+            owners.append((allocation, pixels, image))
+        cp.cuda.get_current_stream().synchronize()
+    return batch, owners
 
 
 def channelreorder(state):
@@ -56,6 +90,15 @@ def channelreorder(state):
         state.skip("Fake-planar (NCHW_FAKE) ChannelReorder benchmark is tensor-only")
         return None
 
+    misaligned = order_pattern == "rotate_misaligned"
+    if misaligned and (
+        input_kind != "VarShape"
+        or layout != "NHWC"
+        or dtype_str not in ("U8x3", "U8x4", "uchar3", "uchar4")
+    ):
+        state.skip("rotate_misaligned requires NHWC VarShape RGB8 or RGBA8")
+        return None
+
     device_id = state.get_device()
 
     num_channels = get_num_channels(dtype_str)
@@ -65,7 +108,7 @@ def channelreorder(state):
     state.add_global_memory_reads(3 * bytes_ if is_fake_planar else bytes_)
     state.add_global_memory_writes(3 * bytes_ if is_fake_planar else bytes_)
 
-    if order_pattern == "rotate":
+    if order_pattern in ("rotate", "rotate_misaligned"):
         host_order = [(c + 1) % num_channels for c in range(num_channels)]
     elif order_pattern == "zero_fill":
         host_order = [-1 if c == 1 else c for c in range(num_channels)]
@@ -121,7 +164,7 @@ def channelreorder(state):
     # Deterministic patterns mirroring the C++ bench exactly.
     with cp.cuda.Device(device_id):
         n_idx, c_idx = cp.indices((N, 4), dtype=cp.int32)
-        if order_pattern == "rotate":
+        if order_pattern in ("rotate", "rotate_misaligned"):
             order_data = (n_idx + c_idx) % num_channels
         elif order_pattern == "zero_fill":
             order_data = cp.where(c_idx == 1, -1, c_idx % num_channels).astype(cp.int32)
@@ -130,6 +173,19 @@ def channelreorder(state):
             return None
         order = cvcuda.as_tensor(order_data, "NC")
     img_format = get_format_from_dtype(dtype_str, num_channels, planar=is_planar)
+
+    if misaligned:
+        src, src_owners = _create_misaligned_batch(
+            (N, H, W, num_channels), img_format, device_id, True
+        )
+        dst, dst_owners = _create_misaligned_batch(
+            (N, H, W, num_channels), img_format, device_id, False
+        )
+
+        def run_misaligned(launch, owners=(src_owners, dst_owners)):
+            cvcuda.channelreorder_into(dst, src, order, stream=get_stream(launch))
+
+        return run_misaligned
 
     src = create_image_batch_varshape(
         (N, H, W, num_channels),

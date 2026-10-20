@@ -7,9 +7,11 @@ Utility functions for CV-CUDA Python benchmarks using nvbench.
 Python equivalent of C++ CppBenchUtils.hpp
 """
 
+import os
+import re
 import sys
 from pathlib import Path
-from typing import Tuple, Union
+from typing import NoReturn, Tuple, Union
 
 # Workaround for cuda-pathfinder >= 1.4 rejecting 'nvperf_target' and
 # 'nvperf_host' as unknown library names.  cuda.bench.__init__ tries to
@@ -31,6 +33,14 @@ except ImportError:
     pass
 
 import cvcuda
+
+# A100/H100 bins are 15 MHz apart. Keep this paired with kToleranceMHz in
+# BenchClockProbe.cu.
+_SM_CLOCK_MEASUREMENT_TOLERANCE_MHZ = 7
+_SM_CLOCK_THREADS = 256
+_SM_CLOCK_BLOCKS_PER_SM = 4
+# Match the C++ probe's ``int`` range so both reject the same inputs.
+_EXPECTED_SM_CLOCK_INT_MAX = 2_147_483_647
 
 # Add config directory to path for imports (handles both source and build layouts)
 _this_dir = Path(__file__).resolve().parent
@@ -121,6 +131,22 @@ def parse_shape(shape_str: str, delimiter: str = "x") -> Tuple[int, ...]:
         raise ValueError(f"Invalid shape string '{shape_str}': {e}")
 
 
+def get_positive_square_or_shape(value: str) -> Tuple[int, int] | None:
+    """Parse one positive ASCII dimension or an exact ``HxW`` pair."""
+    dimensions = value.split("x")
+    if len(dimensions) not in (1, 2) or any(
+        not dimension.isascii() or not dimension.isdecimal() for dimension in dimensions
+    ):
+        return None
+    try:
+        output = parse_shape(value)
+    except ValueError:
+        return None
+    if any(dimension <= 0 or dimension > (1 << 31) - 1 for dimension in output):
+        return None
+    return output if len(output) == 2 else (output[0], output[0])
+
+
 def get_resize_output_shape(shape: Tuple[int, int, int], resize_type: str):
     """Resolve legacy relative resize modes or an exact ``TARGET_HxW`` size."""
     N, H, W = shape
@@ -172,6 +198,10 @@ def get_dtype(dtype_str: str):
         "uint8": cvcuda.Type.U8,
         "uint16": cvcuda.Type.U16,
         "uint32": cvcuda.Type.U32,
+        "uint64": cvcuda.Type.U64,
+        "ulonglong": cvcuda.Type.U64,
+        "int64": cvcuda.Type.S64,
+        "longlong": cvcuda.Type.S64,
         "int8": cvcuda.Type.S8,
         "int16": cvcuda.Type.S16,
         "int32": cvcuda.Type.S32,
@@ -263,6 +293,8 @@ def get_dtype_size(dtype) -> int:
         cvcuda.Type.S32: 4,
         cvcuda.Type.F32: 4,
         cvcuda.Type.F64: 8,
+        cvcuda.Type.S64: 8,
+        cvcuda.Type.U64: 8,
     }
     num_channels = get_num_channels(dtype) if isinstance(dtype, str) else 1
     return (
@@ -331,6 +363,36 @@ def get_format_from_dtype(
 
     if key in format_map:
         return format_map[key]
+    if key == (cvcuda.Type.U8, 2) or (
+        base_dtype
+        in (
+            cvcuda.Type.S8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.S32,
+            cvcuda.Type.F64,
+            cvcuda.Type.S64,
+        )
+        and num_channels in (3, 4)
+    ):
+        import cupy as cp
+
+        buffer_dtype = {
+            cvcuda.Type.U8: cp.uint8,
+            cvcuda.Type.U16: cp.uint16,
+            cvcuda.Type.S16: cp.int16,
+            cvcuda.Type.S32: cp.int32,
+            cvcuda.Type.S8: cp.int8,
+            cvcuda.Type.S64: cp.int64,
+            cvcuda.Type.F64: cp.float64,
+        }[base_dtype]
+        if planar:
+            return cvcuda.as_image(
+                [cp.empty((1, 1, 1), dtype=buffer_dtype) for _ in range(num_channels)]
+            ).format
+        return cvcuda.as_image(
+            cp.empty((1, 1, num_channels), dtype=buffer_dtype)
+        ).format
     raise ValueError(
         f"Unsupported {'planar ' if planar else ''}format for "
         f"{dtype_str} with {num_channels} channels"
@@ -393,9 +455,9 @@ def create_stream_cache():
         def run(launch):
             operator(..., stream=get_cached_stream(launch))
 
-        # Warmup (launch will be None)
-        run_warmup(run, warmup_iterations)
-        state.exec(run, sync=True)
+        # Return run from the benchmark function; run_benchmark handles warmup
+        # and timed execution.
+        return run
     """
     warmup_stream = [None]
     measure_stream = [None, None]  # [stream, addr]
@@ -433,27 +495,125 @@ def run_warmup(run_fn, iterations: int):
                 will return the current CUDA stream.
         iterations: Number of warmup iterations to execute
 
-    Usage in benchmarks:
-        get_stream = create_stream_cache()
-
-        def run(launch):
-            operator(..., stream=get_stream(launch))
-
-        # Run warmup before measurement (pass None as launch during warmup)
-        run_warmup(run, config.warmup_iterations)
-        state.exec(run, sync=True)
+    Benchmark authors return their run function to ``run_benchmark``, which
+    calls this helper before timed execution. Direct callers may pass that run
+    function here with the desired warmup iteration count.
     """
     iterations = resolve_warmup_iterations(iterations)
     if iterations <= 0:
         return
 
-    import torch
-
     for _ in range(iterations):
         run_fn(None)  # Pass None as launch during warmup (no timing needed)
 
     # Synchronize to ensure all warmup work is complete
-    torch.cuda.synchronize()
+    cvcuda.Stream.current.sync()
+
+
+# Installed Python benchmarks contain this script but not the C++ benchmark
+# sources, so the runtime-compiled RawKernel must remain embedded here. Keep its
+# workload and timing constants aligned with BenchClockProbe.cu.
+_SM_CLOCK_SRC = r"""
+extern "C" __global__ void measure_sm_clock(double *clock_mhz)
+{
+    unsigned long long settle_start_ns, start_ns, end_ns;
+    unsigned int work = blockIdx.x * blockDim.x + threadIdx.x + 1;
+    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(settle_start_ns));
+    do {
+        work = work * 1664525U + 1013904223U;
+        asm volatile("" : "+r"(work));
+        asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(start_ns));
+    } while (start_ns - settle_start_ns < 5000000ULL);
+    const unsigned long long start_cycles = clock64();
+    do {
+        work = work * 1664525U + 1013904223U;
+        asm volatile("" : "+r"(work));
+        asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(end_ns));
+    } while (end_ns - start_ns < 1000000ULL);
+    const unsigned long long end_cycles = clock64();
+    if (blockIdx.x == 0 && threadIdx.x == 0) {
+        *clock_mhz = (double)(end_cycles - start_cycles) * 1000.0
+                   / (double)(end_ns - start_ns);
+    }
+}
+"""
+_sm_clock_kernel_obj = None
+
+_SM_CLOCK_VERIFIED_PREFIX = "SM clock verified:"
+_SM_CLOCK_MISMATCH_PREFIX = "SM clock mismatch:"
+_SM_CLOCK_VERIFICATION_ERROR_PREFIX = "SM clock verification error:"
+_SM_CLOCK_DEVICE_ERROR_PREFIX = "SM clock device error:"
+
+
+def _sm_clock_kernel():
+    global _sm_clock_kernel_obj
+
+    import cupy as cp
+
+    if _sm_clock_kernel_obj is None:
+        _sm_clock_kernel_obj = cp.RawKernel(_SM_CLOCK_SRC, "measure_sm_clock")
+    return _sm_clock_kernel_obj
+
+
+def _verify_expected_sm_clock():
+    raw_expected = os.environ.get("CVCUDA_BENCH_EXPECT_SM_CLOCK_MHZ")
+    if raw_expected is None:
+        return
+
+    def fail(message, *, prefix=_SM_CLOCK_VERIFICATION_ERROR_PREFIX) -> NoReturn:
+        # pynvbench converts exceptions into skipped rows and still exits successfully.
+        print(f"{prefix} {message}" if prefix else message, file=sys.stderr, flush=True)
+        os._exit(1)
+
+    normalized_expected = raw_expected.strip()
+    if re.fullmatch(r"[+-]?[0-9]+", normalized_expected) is None:
+        fail(f"invalid expected clock '{raw_expected}'")
+    expected = int(normalized_expected)
+    if expected <= 0 or expected > _EXPECTED_SM_CLOCK_INT_MAX:
+        fail(f"invalid expected clock '{raw_expected}'")
+    try:
+        import cupy as cp
+    except Exception as exc:
+        fail(f"probe setup failed: {exc}")
+
+    synchronize = getattr(getattr(cp.cuda, "runtime", None), "deviceSynchronize", None)
+    if synchronize is None:
+        fail("probe setup failed: CUDA runtime synchronization unavailable")
+    try:
+        synchronize()
+    except Exception as exc:
+        fail(f"Pre-existing CUDA error: {exc}", prefix=None)
+
+    try:
+        kernel = _sm_clock_kernel()
+    except Exception as exc:
+        fail(f"probe setup failed: {exc}")
+
+    try:
+        result = cp.zeros(1, dtype=cp.float64)
+        sm_count = cp.cuda.Device().attributes["MultiProcessorCount"]
+        if sm_count <= 0:
+            fail(
+                f"invalid multiprocessor count: {sm_count}",
+                prefix=_SM_CLOCK_DEVICE_ERROR_PREFIX,
+            )
+        kernel(
+            (sm_count * _SM_CLOCK_BLOCKS_PER_SM,),
+            (_SM_CLOCK_THREADS,),
+            (result,),
+        )
+        measured = int(float(result.get()[0]) + 0.5)
+    except Exception as exc:
+        fail(f"device probe could not run: {exc}")
+    if measured <= 0:
+        fail(f"device probe returned {measured} MHz")
+    if abs(measured - expected) > _SM_CLOCK_MEASUREMENT_TOLERANCE_MHZ:
+        fail(
+            f"expected {expected} MHz, measured {measured} MHz "
+            f"(tolerance {_SM_CLOCK_MEASUREMENT_TOLERANCE_MHZ} MHz)",
+            prefix=_SM_CLOCK_MISMATCH_PREFIX,
+        )
+    print(f"{_SM_CLOCK_VERIFIED_PREFIX} {measured} MHz", flush=True)
 
 
 def as_torch_cuda_stream(cuda_stream, device_id: int = 0):
@@ -517,6 +677,7 @@ def run_benchmark(operator_name: str, benchmark_func):
             run_fn = benchmark_func(state)
             if run_fn is not None:
                 run_warmup(run_fn, warmup_iterations)
+                _verify_expected_sm_clock()
                 state.exec(run_fn, sync=True)
         finally:
             run_fn = None
@@ -566,7 +727,7 @@ def get_border_type(border_str: str):
     Equivalent to C++ GetBorderType function.
 
     Args:
-        border_str: String like "CONSTANT", "REPLICATE", "REFLECT", "WRAP", "REFLECT101"
+        border_str: String like "CONSTANT", "REPLICATE", "REFLECT", "WRAP", "REFLECT101", "CONSTANT_COVERAGE"
 
     Returns:
         CV-CUDA border type (NVCV_BORDER_*)
@@ -577,6 +738,7 @@ def get_border_type(border_str: str):
         "REFLECT": cvcuda.Border.REFLECT,
         "WRAP": cvcuda.Border.WRAP,
         "REFLECT101": cvcuda.Border.REFLECT101,
+        "CONSTANT_COVERAGE": cvcuda.Border.CONSTANT_COVERAGE,
     }
     if border_str not in border_map:
         raise ValueError(
@@ -606,6 +768,8 @@ _LCG_TYPE_SPECS = (
     ("i8", "int8", "signed char", False, None),
     ("i16", "int16", "short", False, None),
     ("i32", "int32", "int", False, None),
+    ("i64", "int64", "long long", False, None),
+    ("u64", "uint64", "unsigned long long", False, None),
     ("f32", "float32", "float", True, "2.0f / 4294967295.0f"),
     ("f64", "float64", "double", True, "2.0 / 4294967295.0"),
     ("f16", "float16", "__half", True, None),  # dedicated source below
@@ -677,6 +841,16 @@ def _lcg_kernel_for(dtype):
         else:
             tmpl = _LCG_SRC_FLT if is_float else _LCG_SRC_INT
             src = tmpl.format(tag=tag, T=T, kInv_lit=kInv_lit or "")
+            if tag in ("i64", "u64"):
+                src = src.replace(
+                    f"data[idx] = ({T})s;",
+                    "unsigned long long seed2 = seed ^ 0xd1b54a32d192ed03ULL;\n"
+                    "    unsigned int lo = (unsigned int)(seed2 ^ idx) ^ (unsigned int)(seed2 >> 32);\n"
+                    "    lo = lo * 1664525u + 1013904223u;\n"
+                    "    lo = lo * 1664525u + 1013904223u;\n"
+                    "    lo = lo * 1664525u + 1013904223u;\n"
+                    f"    data[idx] = ({T})(((unsigned long long)s << 32) | lo);",
+                )
         _lcg_kernel_cache[tag] = cp.RawKernel(src, f"lcg_fill_{tag}")
     return _lcg_kernel_cache[tag]
 
@@ -704,6 +878,8 @@ _CHECKERBOARD_TYPE_SPECS = (
     ("i8", "int8", "signed char", "127"),
     ("i16", "int16", "short", "32767"),
     ("i32", "int32", "int", "2147483647"),
+    ("i64", "int64", "long long", "9223372036854775807LL"),
+    ("u64", "uint64", "unsigned long long", "18446744073709551615ULL"),
     ("f32", "float32", "float", "1.0f"),
     ("f64", "float64", "double", "1.0"),
     # __half needs cuda_fp16.h and an explicit float->half conversion; handled by a
@@ -829,6 +1005,8 @@ def create_tensor(
     device: int = 0,
     layout: str = "NHWC",
     fill_mode: Union[str, float, int, Tuple, list] = "random",
+    *,
+    native_allocation: bool = False,
 ) -> cvcuda.Tensor:
     """
     Create a tensor for benchmarking with specified fill pattern.
@@ -845,6 +1023,8 @@ def create_tensor(
             - "random": Random values (0-255 for uint8, 0-1 for float)
             - numeric value: Fill with specific constant
             - tuple/list: Broadcast to shape (e.g., [3, 5] for shape (N, 2) creates N rows of [3, 5])
+
+        native_allocation: Allocate through NVCV to match C++ tensor row padding.
 
     Returns:
         CV-CUDA tensor with data filled according to fill_mode
@@ -865,6 +1045,8 @@ def create_tensor(
         cvcuda.Type.S8: cp.int8,
         cvcuda.Type.S16: cp.int16,
         cvcuda.Type.S32: cp.int32,
+        cvcuda.Type.S64: cp.int64,
+        cvcuda.Type.U64: cp.uint64,
         cvcuda.Type.F16: cp.float16,
         cvcuda.Type.F32: cp.float32,
         cvcuda.Type.F64: cp.float64,
@@ -879,6 +1061,8 @@ def create_tensor(
         cvcuda.Type.S8,
         cvcuda.Type.S16,
         cvcuda.Type.S32,
+        cvcuda.Type.S64,
+        cvcuda.Type.U64,
     ]
 
     # Set CuPy device
@@ -952,6 +1136,13 @@ def create_tensor(
         else:
             # Fill with constant value
             array = cp.full(shape, fill_mode, dtype=cupy_dtype)
+
+        if native_allocation:
+            tensor = cvcuda.Tensor(shape, cvcuda_dtype, layout)
+            cp.copyto(cp.asarray(tensor.cuda()), array)
+            # Native tensors do not track writes submitted through CuPy.
+            cp.cuda.get_current_stream().synchronize()
+            return tensor
 
     return cvcuda.as_tensor(array, layout)
 
@@ -1032,6 +1223,8 @@ def create_image_batch_varshape(
         cvcuda.Type.S8: cp.int8,
         cvcuda.Type.S16: cp.int16,
         cvcuda.Type.S32: cp.int32,
+        cvcuda.Type.S64: cp.int64,
+        cvcuda.Type.U64: cp.uint64,
         cvcuda.Type.F16: cp.float16,
         cvcuda.Type.F32: cp.float32,
         cvcuda.Type.F64: cp.float64,
@@ -1046,6 +1239,8 @@ def create_image_batch_varshape(
         cvcuda.Type.S8,
         cvcuda.Type.S16,
         cvcuda.Type.S32,
+        cvcuda.Type.S64,
+        cvcuda.Type.U64,
     ]
 
     # Helper to calculate image size for each index (matches C++ FillImageBatch)

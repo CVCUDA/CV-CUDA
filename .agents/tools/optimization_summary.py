@@ -23,26 +23,11 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from pathlib import Path
-from statistics import median
-from typing import Any, Iterable, Mapping, Sequence
+from decimal import Decimal
+from typing import Any, Mapping, Sequence
 
-
-REPO = Path(__file__).resolve().parents[2]
-BENCH = REPO / "bench"
-if str(BENCH) not in sys.path:
-    sys.path.insert(0, str(BENCH))
-
-from _internal.baselines import (  # noqa: E402
-    BaselineError,
-    expected_case_keys_for_entry,
-    fake_planar_pairing_issues,
-    parse_case_key,
-)
-
+import optimization_evidence as evidence_mod
 
 CHECKLIST_LABELS = (
     "Pixelwise equality to reference",
@@ -56,125 +41,50 @@ SECTION_HEADINGS = (
     "Scope",
     "Impact",
     "Layout comparison",
+    "Generalization review",
     "Evidence checklist",
     "Top learnings",
 )
-START_TOKEN = "cvcuda-optimize-summary:v1"
-END_MARKER = "<!-- /cvcuda-optimize-summary:v1 -->"
+GENERALIZATION_AREAS = (
+    "Layouts / input kinds",
+    "Dtypes / channels",
+    "Shapes / parameters",
+    "Shared code / sibling operators",
+)
+SUMMARY_TITLE = "Optimization summary"
+# Fixed by the contract, not by whoever writes the description: a tunable
+# threshold is a knob for making a change look better than it measured.
+MOVED_PCT = 5.0
+ALL_SCOPE = "All configurations"
+IMPROVED_SCOPE = "Improved"
+REGRESSED_SCOPE = "Regressed"
+IMPACT_SCOPES = (ALL_SCOPE, IMPROVED_SCOPE, REGRESSED_SCOPE)
+LAYOUT_COMPARISONS = ("Interleaved / Planar", "FakePlanar / Planar")
+START_TOKEN = "cvcuda-optimize-summary:v3"
+END_MARKER = "<!-- /cvcuda-optimize-summary:v3 -->"
 MAX_DESCRIPTION_BYTES = 2_000_000
 MAX_BLOCK_BYTES = 400_000
-MAX_OPTIMIZED_CASES = 10_000
-MAX_SECONDARY_OPERATORS = 64
+MAX_OPERATORS = 64
 NA_STATS = "n/a — no matched equivalent configurations"
-DEFAULT_LEARNING = "No optimization attempt has been accepted or rejected yet."
+AMBIGUOUS_STATS = "n/a — ambiguous layout signatures"
+LAYOUT_NOTES = (NA_STATS, AMBIGUOUS_STATS)
+DEFAULT_LEARNING = "No optimization attempt has been recorded yet."
+PROFILE_PENDING = "No Nsight Compute profile has been recorded yet."
+BOTTLENECK_PENDING = "Not yet profiled"
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _OPERATOR_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,127}$")
-_START_RE = re.compile(r"^<!-- cvcuda-optimize-summary:v1 (\{.*\}) -->\s*$")
+_START_RE = re.compile(r"^<!-- " + re.escape(START_TOKEN) + r" (\{.*\}) -->\s*$")
 _FACTOR_RE = re.compile(r"^(\d{1,9}\.\d{2})x$")
 _STATS_RE = re.compile(r"^(\d{1,9}\.\d{2})x / (\d{1,9}\.\d{2})x / (\d{1,9}\.\d{2})x$")
 _DURATION_STATS_RE = re.compile(
     r"^(-?\d{1,9}\.\d{2}) µs / (-?\d{1,9}\.\d{2}) µs / " r"(-?\d{1,9}\.\d{2}) µs$"
 )
+# An identifier immediately before "<" makes it C++ template syntax, not an
+# unfilled "<...>" placeholder.
 _PLACEHOLDER_RE = re.compile(
-    r"<[^>]+>|\b(?:todo|tbd|placeholder|add hard evidence|add one concise)\b",
+    r"(?<![\w>])<[^>]+>|\b(?:todo|tbd|placeholder|add hard evidence|add one concise)\b",
     re.IGNORECASE,
 )
-
-# These exact checked-in config aliases predate unique-workload enforcement.
-# Keep them readable without double-weighting summaries, but reject every new
-# alias pair. Remove entries as the owning operator configs are migrated.
-_LEGACY_DUPLICATE_CONFIG_ALIASES = {
-    "brightnesscontrast": {
-        (
-            "brightnesscontrast_fakeplanar_nchw_float3_advanced",
-            "brightnesscontrast_fakeplanar_rgb_f32_nchw_1080p_advanced",
-        ),
-        (
-            "brightnesscontrast_fakeplanar_nchw_uchar3_advanced",
-            "brightnesscontrast_fakeplanar_rgb_u8_nchw_1080p_advanced",
-        ),
-        (
-            "brightnesscontrast_float3_varshape_advanced",
-            "brightnesscontrast_rgb_f32_1080p_advanced",
-        ),
-        (
-            "brightnesscontrast_planar_nchw_float3_varshape_advanced",
-            "brightnesscontrast_planar_rgb_f32_nchw_1080p_advanced",
-        ),
-    },
-    "centercrop": {
-        (
-            "centercrop_fakeplanar_nchw_float3_advanced",
-            "centercrop_fakeplanar_nchw_rgb_f32_1080p_advanced",
-        ),
-    },
-    "clahe": {
-        ("clahe_clip20_advanced", "clahe_tiles8_varshape_1080p_advanced"),
-    },
-    "colortwist": {
-        (
-            "colortwist_fakeplanar_nchw_advanced",
-            "colortwist_fakeplanar_nchw_rgb_u8_1080p_advanced",
-        ),
-        (
-            "colortwist_fakeplanar_nchw_advanced",
-            "colortwist_fakeplanar_nchw_rgba_u8_1080p_advanced",
-        ),
-    },
-    "copymakeborder": {
-        (
-            "copymakeborder_fake_planar_rgb_u8_reflect101_1080p_advanced",
-            "copymakeborder_fake_planar_uchar3_advanced",
-        ),
-    },
-    "customcrop": {
-        (
-            "customcrop_fakeplanar_nchw_float3_advanced",
-            "customcrop_fakeplanar_nchw_rgb_f32_full_1080p_advanced",
-        ),
-        (
-            "customcrop_fakeplanar_nchw_rgb_u8_full_1080p_advanced",
-            "customcrop_fakeplanar_nchw_uchar3_advanced",
-        ),
-    },
-    "normalize": {
-        (
-            "normalize_fakeplanar_nchw_1080p_float3_advanced",
-            "normalize_fakeplanar_rgb_f32_nchw_1080p_advanced",
-        ),
-        ("normalize_float3_advanced", "normalize_rgb_f32_1080p_advanced"),
-        (
-            "normalize_planar_nchw_1080p_float3_advanced",
-            "normalize_planar_rgb_f32_nchw_1080p_advanced",
-        ),
-    },
-    "pillowresize": {
-        (
-            "pillowresize_fakeplanar_nchw_contract_cubic_1080p_float3_advanced",
-            "pillowresize_fakeplanar_nchw_contract_cubic_1080p_varshape_float3_advanced",
-        ),
-        (
-            "pillowresize_fakeplanar_nchw_contract_cubic_1080p_float4_advanced",
-            "pillowresize_fakeplanar_nchw_contract_cubic_1080p_varshape_float4_advanced",
-        ),
-        (
-            "pillowresize_fakeplanar_nchw_contract_cubic_1080p_uchar3_advanced",
-            "pillowresize_fakeplanar_nchw_contract_cubic_1080p_varshape_uchar3_advanced",
-        ),
-        (
-            "pillowresize_fakeplanar_nchw_contract_cubic_1080p_uchar4_advanced",
-            "pillowresize_fakeplanar_nchw_contract_cubic_1080p_varshape_uchar4_advanced",
-        ),
-        (
-            "pillowresize_planar_nchw_contract_cubic_1080p_float4_advanced",
-            "pillowresize_planar_nchw_contract_cubic_1080p_varshape_float4_advanced",
-        ),
-        (
-            "pillowresize_planar_nchw_contract_cubic_1080p_uchar4_advanced",
-            "pillowresize_planar_nchw_contract_cubic_1080p_varshape_uchar4_advanced",
-        ),
-    },
-}
 
 
 class SummaryError(ValueError):
@@ -183,19 +93,25 @@ class SummaryError(ValueError):
 
 @dataclass(frozen=True)
 class SummaryMetadata:
-    operator: str
+    operators: tuple[str, ...]
     state: str
     baseline_commit: str
     candidate_commit: str
-    optimized_cases: tuple[str, ...]
     impact_metric: str = "cpp_time"
-    secondary_operators: tuple[str, ...] = ()
+    baseline_retention: str | None = None
+    evidence: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "optimized_cases", tuple(self.optimized_cases))
-        if isinstance(self.secondary_operators, (str, bytes)):
-            raise SummaryError("metadata secondary_operators must be an array")
-        object.__setattr__(self, "secondary_operators", tuple(self.secondary_operators))
+        if isinstance(self.operators, (str, bytes)):
+            raise SummaryError("metadata operators must be an array")
+        object.__setattr__(self, "operators", tuple(self.operators))
+        if self.evidence is None:
+            object.__setattr__(self, "evidence", evidence_mod.empty())
+
+    @property
+    def primary(self) -> str:
+        """The operator that scope authorization and the evidence gates key on."""
+        return self.operators[0]
 
 
 @dataclass(frozen=True)
@@ -206,7 +122,16 @@ class ChecklistItem:
 
 
 @dataclass(frozen=True)
+class ScopeRow:
+    operator: str
+    configurations: int
+    improved: int
+    regressed: int
+
+
+@dataclass(frozen=True)
 class ImpactRow:
+    operator: str
     sku: str
     scope: str
     configurations: int
@@ -217,6 +142,7 @@ class ImpactRow:
 
 @dataclass(frozen=True)
 class PythonOverheadImpactRow:
+    operator: str
     sku: str
     scope: str
     configurations: int
@@ -227,10 +153,19 @@ class PythonOverheadImpactRow:
 
 @dataclass(frozen=True)
 class LayoutRow:
+    operator: str
     sku: str
     comparison: str
     before: tuple[Decimal, Decimal, Decimal] | None
     after: tuple[Decimal, Decimal, Decimal] | None
+    note: str = NA_STATS
+
+
+@dataclass(frozen=True)
+class GeneralizationRow:
+    area: str
+    assessment: str
+    decision: str
 
 
 @dataclass(frozen=True)
@@ -240,16 +175,14 @@ class OptimizationSummary:
     block: str
     prefix: str
     suffix: str
-    title_operator: str
     status_line: str
     warnings: tuple[str, ...]
     bottleneck: str
     profile_evidence: str
-    optimized_count: int
-    total_count: int
-    categories: tuple[str, ...]
+    scope_rows: tuple[ScopeRow, ...]
     impact_rows: tuple[ImpactRow | PythonOverheadImpactRow, ...]
     layout_rows: tuple[LayoutRow, ...]
+    generalization_rows: tuple[GeneralizationRow, ...]
     checklist: tuple[ChecklistItem, ...]
     learnings: tuple[str, ...]
 
@@ -270,27 +203,8 @@ class ValidationResult:
         return not self.errors
 
 
-@dataclass(frozen=True)
-class _Case:
-    key: str
-    tier: str
-    axes: tuple[tuple[str, str], ...]
-    baselines: Mapping[str, Any]
-
-    @property
-    def axis_map(self) -> dict[str, str]:
-        return dict(self.axes)
-
-
-@dataclass(frozen=True)
-class _ConfigSurface:
-    benchmark: str
-    cases: Mapping[str, _Case]
-    skus: tuple[str, ...]
-
-
 def parse_summary(description: str) -> OptimizationSummary:
-    """Parse exactly one live v1 block from an untrusted MR description."""
+    """Parse exactly one live summary block from an untrusted MR description."""
 
     if not isinstance(description, str):
         raise SummaryError("MR description must be text")
@@ -343,14 +257,15 @@ def parse_summary(description: str) -> OptimizationSummary:
 def validate_summary(
     summary_or_description: OptimizationSummary | str,
     *,
-    baseline_config: Mapping[str, Any] | None = None,
-    candidate_config: Mapping[str, Any] | None = None,
-    sku_map: Mapping[str, Any] | None = None,
-    expected_operator: str | None = None,
+    scope_rows: Sequence[ScopeRow] | None = None,
+    impact_rows: Sequence[ImpactRow | PythonOverheadImpactRow] | None = None,
+    layout_rows: Sequence[LayoutRow] | None = None,
+    reference_skus: Sequence[str] | None = None,
+    expected_operators: Sequence[str] | None = None,
     expected_candidate_commit: str | None = None,
-    evidence_results: Mapping[str, str] | None = None,
+    retention_detail: str | None = None,
 ) -> ValidationResult:
-    """Validate structure and, when supplied, all artifact-derived claims."""
+    """Validate structure, recorded evidence, and, when rows are supplied, figures."""
 
     errors: list[ValidationIssue] = []
     warnings: list[ValidationIssue] = []
@@ -364,19 +279,16 @@ def validate_summary(
         return ValidationResult((ValidationIssue("parse", str(exc)),), ())
 
     meta = summary.metadata
-    if expected_operator and meta.operator.casefold() != expected_operator.casefold():
-        errors.append(
-            ValidationIssue(
-                "operator-mismatch",
-                f"metadata operator {meta.operator!r} does not match {expected_operator!r}",
+    if expected_operators is not None:
+        declared = [operator.casefold() for operator in meta.operators]
+        if declared != [operator.casefold() for operator in expected_operators]:
+            errors.append(
+                ValidationIssue(
+                    "operator-mismatch",
+                    f"metadata operators {list(meta.operators)} do not match "
+                    f"{list(expected_operators)}",
+                )
             )
-        )
-    if summary.title_operator != meta.operator:
-        errors.append(
-            ValidationIssue(
-                "title-operator", "visible title does not match metadata operator"
-            )
-        )
     if expected_candidate_commit and meta.candidate_commit != expected_candidate_commit:
         errors.append(
             ValidationIssue(
@@ -404,119 +316,151 @@ def validate_summary(
                 )
             )
 
-    if not _profile_is_measured(summary.profile_evidence):
-        issue = ValidationIssue(
-            "profile-evidence",
-            "primary bottleneck requires a measured profiler metric and named signal",
-        )
-        (errors if meta.state == "final" else warnings).append(issue)
-
-    if summary.optimized_count != len(meta.optimized_cases):
-        errors.append(
-            ValidationIssue(
-                "optimized-count",
-                "visible optimized count does not match hidden exact case keys",
-            )
-        )
+    _validate_rendered_evidence(summary, retention_detail, errors, warnings)
     _validate_visible_tables(summary, errors)
-    _validate_checklist(summary, evidence_results, errors, warnings)
-    _validate_learnings(summary, errors, warnings)
+    (errors if meta.state == "final" else warnings).extend(
+        validate_generalization_rows(summary.generalization_rows, meta.evidence)
+    )
 
-    supplied = [
-        baseline_config is not None,
-        candidate_config is not None,
-        sku_map is not None,
-    ]
-    if any(supplied) and not all(supplied):
-        errors.append(
-            ValidationIssue(
-                "artifact-inputs",
-                "baseline config, candidate config, and SKU map must be supplied together",
+    for label, reported, expected in (
+        ("scope", summary.scope_rows, scope_rows),
+        ("impact", summary.impact_rows, impact_rows),
+        ("layout", summary.layout_rows, layout_rows),
+    ):
+        if expected is not None and tuple(reported) != tuple(expected):
+            errors.append(
+                ValidationIssue(
+                    f"{label}-statistics",
+                    f"{label} rows do not match the committed baselines",
+                )
             )
-        )
-    elif all(supplied):
-        try:
-            _validate_artifact_claims(
-                summary,
-                baseline_config or {},
-                candidate_config or {},
-                sku_map or {},
-                errors,
-                warnings,
+
+    if reference_skus is not None and meta.state == "final":
+        reported_skus = {row.sku for row in summary.impact_rows}
+        missing = [sku for sku in reference_skus if sku not in reported_skus]
+        if missing:
+            errors.append(
+                ValidationIssue(
+                    "reference-coverage",
+                    "final summary lacks reference SKU(s): " + ", ".join(missing),
+                )
             )
-        except SummaryError as exc:
-            errors.append(ValidationIssue("benchmark-surface", str(exc)))
+        local = sorted(reported_skus - set(reference_skus))
+        warning_text = "\n".join(summary.warnings)
+        for sku in local:
+            if sku not in warning_text:
+                errors.append(
+                    ValidationIssue(
+                        "local-sku-warning",
+                        f"non-reference SKU {sku} is reported without the required "
+                        "warning",
+                    )
+                )
 
     return ValidationResult(tuple(errors), tuple(warnings))
+
+
+def lead_exhaustion(
+    metadata: SummaryMetadata, generalization_rows: Sequence[GeneralizationRow]
+) -> "evidence_mod.GateResult":
+    """Recorded ridge/strikes, or reviewed deferral of every remaining opportunity."""
+
+    evidence = metadata.evidence
+    result = evidence_mod.lead_exhaustion(
+        evidence.get("attempts", ()), evidence.get("profile")
+    )
+    if result.status == evidence_mod.PASS:
+        return result
+    if remaining_generalizations_deferred(generalization_rows, evidence):
+        return evidence_mod.GateResult(
+            evidence_mod.PASS,
+            "Remaining generalizations deferred; see Generalization review.",
+        )
+    return result
+
+
+def rendered_fields(
+    metadata: SummaryMetadata,
+    *,
+    generalization_rows: Sequence[GeneralizationRow] = (),
+    candidate: str | None = None,
+    retention_detail: str | None = None,
+) -> dict[str, Any]:
+    """Every evidence-bearing field, derived only from recorded evidence."""
+
+    evidence = metadata.evidence
+    profile = evidence.get("profile")
+    rows = evidence_mod.checklist(
+        evidence,
+        checklist_labels(metadata),
+        candidate=candidate or metadata.candidate_commit,
+        retention_detail=retention_detail,
+        exhaustion=lead_exhaustion(metadata, generalization_rows),
+    )
+    return {
+        "bottleneck": (
+            evidence_mod.derive_bottleneck(profile) if profile else BOTTLENECK_PENDING
+        ),
+        "profile_evidence": (
+            evidence_mod.render_profile(profile) if profile else PROFILE_PENDING
+        ),
+        "checklist": tuple(ChecklistItem(*row) for row in rows),
+        "learnings": evidence_mod.draft_learnings(evidence.get("attempts", ()))
+        or (DEFAULT_LEARNING,),
+        "memory": (
+            evidence_mod.render_memory(evidence["memory"])
+            if "memory" in evidence
+            else None
+        ),
+    }
 
 
 def generate_summary(
     metadata: SummaryMetadata,
     *,
-    baseline_config: Mapping[str, Any],
-    candidate_config: Mapping[str, Any],
-    sku_map: Mapping[str, Any],
-    bottleneck: str,
-    profile_evidence: str,
-    checklist: Mapping[str, Any] | Sequence[ChecklistItem] | None = None,
-    learnings: Sequence[str] = (),
+    scope_rows: Sequence[ScopeRow],
+    impact_rows: Sequence[ImpactRow | PythonOverheadImpactRow],
+    layout_rows: Sequence[LayoutRow],
+    local_skus: Sequence[str] = (),
+    generalization_rows: Sequence[GeneralizationRow] | None = None,
+    retention_detail: str | None = None,
     prefix: str = "",
     suffix: str = "",
 ) -> str:
-    """Render a summary, deriving every numerical field from benchmark data."""
+    """Render a summary from measured rows and recorded evidence.
+
+    This module owns the block's shape, not its arithmetic. Callers supply rows
+    derived from committed baselines, and every evidence line is rendered from
+    ``metadata.evidence``, so no figure or claim here can originate with
+    whoever is writing the description.
+    """
 
     _validate_metadata(metadata)
-    if bottleneck not in {"Memory-bound", "Compute-bound"}:
-        raise SummaryError("bottleneck must be Memory-bound or Compute-bound")
-    baseline = _config_surface(baseline_config, "baseline")
-    candidate = _config_surface(candidate_config, "candidate")
-    if candidate.benchmark.casefold() != metadata.operator.casefold():
-        raise SummaryError(
-            f"candidate benchmark {candidate.benchmark!r} does not match operator {metadata.operator!r}"
+    _require_rows_cover_operators(metadata, scope_rows, impact_rows, layout_rows)
+
+    review_rows = (
+        tuple(generalization_rows)
+        if generalization_rows is not None
+        else tuple(
+            GeneralizationRow(
+                area,
+                "<opportunity or reason none applies; cite code/config/profile>",
+                "<Applied: validation; Deferred: scope reason; Not applicable: reason>",
+            )
+            for area in GENERALIZATION_AREAS
         )
-    if baseline.benchmark.casefold() != candidate.benchmark.casefold():
-        raise SummaryError("baseline and candidate benchmark identities differ")
-    _assert_comparable_surfaces(baseline, candidate)
-    optimized = _optimized_cases(metadata, candidate)
-    references = _reference_skus(sku_map)
-    skus = _complete_skus(baseline, candidate, metadata.impact_metric)
-    if metadata.state == "final":
-        missing = [stem for stem in references if stem not in skus]
-        if missing:
-            coverage = (
-                "C++ timing"
-                if metadata.impact_metric == "cpp_time"
-                else "Python/C++ timing"
-            )
-            raise SummaryError(
-                f"final summary lacks full before/after {coverage} coverage for reference SKU(s): "
-                + ", ".join(missing)
-            )
-    if not skus:
-        raise SummaryError("no SKU has full before/after C++ timing coverage")
-
-    categories = _categories(optimized)
-    impact_rows = _expected_impact_rows(
-        baseline,
-        candidate,
-        optimized,
-        skus,
-        references,
-        metadata.impact_metric,
     )
-    layout_rows = _expected_layout_rows(baseline, candidate, skus, references)
-    checklist_items = _normalize_checklist(checklist)
-    learning_items = tuple(learnings) or (DEFAULT_LEARNING,)
-    local_skus = [stem for stem in skus if stem not in references]
-
+    fields = rendered_fields(
+        metadata, generalization_rows=review_rows, retention_detail=retention_detail
+    )
     metadata_payload = {
-        "operator": metadata.operator,
+        "operators": list(metadata.operators),
+        "state": metadata.state,
         **(
-            {"secondary_operators": list(metadata.secondary_operators)}
-            if metadata.secondary_operators
+            {"baseline_retention": metadata.baseline_retention}
+            if metadata.baseline_retention
             else {}
         ),
-        "state": metadata.state,
         **(
             {"impact_metric": metadata.impact_metric}
             if metadata.impact_metric != "cpp_time"
@@ -524,136 +468,188 @@ def generate_summary(
         ),
         "baseline_commit": metadata.baseline_commit,
         "candidate_commit": metadata.candidate_commit,
-        "optimized_cases": list(metadata.optimized_cases),
+        "evidence": metadata.evidence,
     }
     metadata_json = json.dumps(
-        metadata_payload,
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-    impact_explanation, impact_header, impact_separator = _impact_table_schema(
-        metadata.impact_metric
+        metadata_payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
     )
     status = (
         "Final reference-hardware evidence"
         if metadata.state == "final"
         else "Provisional local evidence"
     )
+    repair = metadata.evidence.get("reference_repair")
+    if repair:
+        status += " · " + repair["status_qualification"]
     lines = [
         f"<!-- {START_TOKEN} {metadata_json} -->",
-        f"## {metadata.operator} optimization summary",
+        f"## {SUMMARY_TITLE}",
         "",
-        f"> {status} · base `{metadata.baseline_commit[:12]}` · candidate `{metadata.candidate_commit[:12]}`",
+        f"> {status} · base `{metadata.baseline_commit[:12]}` · candidate "
+        f"`{metadata.candidate_commit[:12]}`",
     ]
-    for stem in local_skus:
-        required = (
-            " and ".join(_sku_label(item) for item in references) or "reference-SKU"
-        )
+    for sku in local_skus:
         lines.extend(
             [
                 "",
                 "> ⚠️ **Non-reference local GPU:** Results from "
-                f"{_sku_label(stem)} are provisional and cannot satisfy final readiness; "
-                f"final {required} statistics are still required.",
+                f"{sku} are provisional and cannot satisfy final readiness; "
+                "final reference-SKU statistics are still required.",
             ]
         )
     lines.extend(
         [
             "",
-            f"**Primary bottleneck: {bottleneck}**",
+            f"**Primary bottleneck: {fields['bottleneck']}**",
             "",
-            profile_evidence.strip(),
+            fields["profile_evidence"],
             "",
             "### Scope",
             "",
-            f"**Configurations optimized:** {len(optimized)} / {len(candidate.cases)} total",
-            "",
-            "**Optimized categories:**",
-            "",
-            *[f"- `{category}`" for category in categories],
+            *render_scope_table(scope_rows),
             "",
             "### Impact",
             "",
-            impact_explanation,
-            "",
-            impact_header,
-            impact_separator,
-            *[_render_impact_row(row) for row in impact_rows],
+            *render_impact_table(impact_rows, metadata.impact_metric),
             "",
             "### Layout comparison",
             "",
-            "Timing ratio is `numerator / Planar`; values above `1.00x` mean Planar is faster.",
+            *render_layout_table(layout_rows),
             "",
-            "| SKU | Comparison | Before min / median / max | After min / median / max |",
-            "|---|---|---:|---:|",
-            *[_render_layout_row(row) for row in layout_rows],
+            "### Generalization review",
+            "",
+            "| Area | Assessment | Decision |",
+            "|---|---|---|",
+            *[
+                f"| {row.area} | {row.assessment} | {row.decision} |"
+                for row in review_rows
+            ],
             "",
             "### Evidence checklist",
             "",
             *[
                 f"- [{'x' if item.checked else ' '}] **{item.label}** — {item.evidence}"
-                for item in checklist_items
+                for item in fields["checklist"]
             ],
             "",
             "### Top learnings",
             "",
-            *[f"- {item.strip()}" for item in learning_items],
+            *[f"- {item}" for item in fields["learnings"]],
             END_MARKER,
         ]
     )
-    block = "\n".join(lines)
-    rendered = _join_description(prefix, block, suffix)
-    if metadata.state == "final":
-        validation = validate_summary(
-            rendered,
-            baseline_config=baseline_config,
-            candidate_config=candidate_config,
-            sku_map=sku_map,
+    suffix = _replace_memory_section(suffix, fields["memory"])
+    rendered = _join_description(prefix, "\n".join(lines), suffix)
+    validation = validate_summary(
+        rendered,
+        scope_rows=scope_rows,
+        impact_rows=impact_rows,
+        layout_rows=layout_rows,
+        retention_detail=retention_detail,
+    )
+    if not validation.ok and metadata.state == "final":
+        detail = "; ".join(
+            f"{item.code}: {item.message}" for item in validation.errors[:6]
         )
-        if not validation.ok:
-            detail = "; ".join(
-                f"{item.code}: {item.message}" for item in validation.errors[:6]
-            )
-            raise SummaryError("cannot render an invalid final summary: " + detail)
+        raise SummaryError("cannot render an invalid final summary: " + detail)
     return rendered
+
+
+_MEMORY_SECTION_RE = re.compile(
+    r"(?:^|\n)## Memory footprint\n(?:[^\n#][^\n]*\n?)*", re.MULTILINE
+)
+
+
+def _replace_memory_section(suffix: str, rendered: str | None) -> str:
+    """Keep exactly one rendered memory section after the bounded block."""
+
+    body = _MEMORY_SECTION_RE.sub("\n", suffix).strip("\n")
+    if rendered is None:
+        return ("\n" + body + "\n") if body else suffix
+    return "\n\n" + rendered + "\n" + (("\n" + body + "\n") if body else "")
+
+
+def memory_sections(description: str) -> list[str]:
+    return [
+        match.group(0).strip("\n") for match in _MEMORY_SECTION_RE.finditer(description)
+    ]
+
+
+def _require_rows_cover_operators(
+    metadata: SummaryMetadata,
+    scope_rows: Sequence[ScopeRow],
+    impact_rows: Sequence[Any],
+    layout_rows: Sequence[LayoutRow],
+) -> None:
+    """Every declared operator must appear in every table, in declaration order."""
+
+    declared = list(metadata.operators)
+    for label, rows in (
+        ("Scope", scope_rows),
+        ("Impact", impact_rows),
+        ("Layout comparison", layout_rows),
+    ):
+        seen = _operators_reported(rows)
+        if seen != declared:
+            raise SummaryError(
+                f"{label} rows must cover every declared operator exactly once, "
+                f"in declaration order; declared {declared}, reported {seen}"
+            )
+
+
+def _operators_reported(rows: Sequence[Any]) -> list[str]:
+    """Operator names a table reports, in first-seen order."""
+
+    seen: list[str] = []
+    for row in rows:
+        if row.operator not in seen:
+            seen.append(row.operator)
+    return seen
 
 
 def refresh_summary(
     description: str,
     *,
-    baseline_config: Mapping[str, Any],
-    candidate_config: Mapping[str, Any],
-    sku_map: Mapping[str, Any],
+    scope_rows: Sequence[ScopeRow],
+    impact_rows: Sequence[ImpactRow | PythonOverheadImpactRow],
+    layout_rows: Sequence[LayoutRow],
     state: str | None = None,
     candidate_commit: str | None = None,
-    impact_metric: str | None = None,
-    secondary_operators: Sequence[str] | None = None,
+    local_skus: Sequence[str] = (),
+    evidence: Mapping[str, Any] | None = None,
+    retention_detail: str | None = None,
 ) -> str:
-    """Regenerate derived fields while preserving bounded human-authored fields."""
+    """Regenerate every derived field; only the generalization review is authored."""
 
     old = parse_summary(description)
+    expected_row = (
+        PythonOverheadImpactRow
+        if old.metadata.impact_metric == "python_overhead"
+        else ImpactRow
+    )
+    if any(not isinstance(row, expected_row) for row in impact_rows):
+        raise SummaryError(
+            f"impact rows do not match the {old.metadata.impact_metric!r} "
+            "impact metric this summary declares"
+        )
     metadata = SummaryMetadata(
-        operator=old.metadata.operator,
+        operators=old.metadata.operators,
         state=state or old.metadata.state,
         baseline_commit=old.metadata.baseline_commit,
         candidate_commit=candidate_commit or old.metadata.candidate_commit,
-        optimized_cases=old.metadata.optimized_cases,
-        impact_metric=impact_metric or old.metadata.impact_metric,
-        secondary_operators=(
-            tuple(secondary_operators)
-            if secondary_operators is not None
-            else old.metadata.secondary_operators
-        ),
+        impact_metric=old.metadata.impact_metric,
+        baseline_retention=old.metadata.baseline_retention,
+        evidence=evidence if evidence is not None else old.metadata.evidence,
     )
     return generate_summary(
         metadata,
-        baseline_config=baseline_config,
-        candidate_config=candidate_config,
-        sku_map=sku_map,
-        bottleneck=old.bottleneck,
-        profile_evidence=old.profile_evidence,
-        checklist=old.checklist,
-        learnings=old.learnings,
+        scope_rows=scope_rows,
+        impact_rows=impact_rows,
+        layout_rows=layout_rows,
+        local_skus=local_skus,
+        # Missing or empty reviews need the template to make incomplete evidence visible.
+        generalization_rows=old.generalization_rows or None,
+        retention_detail=retention_detail,
         prefix=old.prefix,
         suffix=old.suffix,
     )
@@ -684,36 +680,28 @@ def _parse_metadata(blob: str) -> SummaryMetadata:
         data = json.loads(blob, object_pairs_hook=_unique_json_object)
     except (json.JSONDecodeError, RecursionError) as exc:
         raise SummaryError(f"metadata is not valid JSON: {exc}") from exc
-    required = {
-        "operator",
-        "state",
-        "baseline_commit",
-        "candidate_commit",
-        "optimized_cases",
-    }
-    allowed = required | {"impact_metric", "secondary_operators"}
+    required = {"operators", "state", "baseline_commit", "candidate_commit", "evidence"}
+    allowed = required | {"impact_metric", "baseline_retention"}
     if (
         not isinstance(data, dict)
         or not required.issubset(data)
         or not set(data).issubset(allowed)
     ):
         raise SummaryError(
-            "metadata must contain exactly operator, state, baseline_commit, "
-            "candidate_commit, and optimized_cases, with optional impact_metric "
-            "and secondary_operators"
+            "metadata must contain exactly operators, state, baseline_commit, "
+            "candidate_commit, and evidence, with optional impact_metric and "
+            "baseline_retention"
         )
-    if not isinstance(data["optimized_cases"], list):
-        raise SummaryError("metadata optimized_cases must be an array")
-    if not isinstance(data.get("secondary_operators", []), list):
-        raise SummaryError("metadata secondary_operators must be an array")
+    if not isinstance(data["operators"], list):
+        raise SummaryError("metadata operators must be an array")
     metadata = SummaryMetadata(
-        operator=data["operator"],
+        operators=tuple(data["operators"]),
         state=data["state"],
         baseline_commit=data["baseline_commit"],
         candidate_commit=data["candidate_commit"],
-        optimized_cases=tuple(data["optimized_cases"]),
         impact_metric=data.get("impact_metric", "cpp_time"),
-        secondary_operators=tuple(data.get("secondary_operators", [])),
+        baseline_retention=data.get("baseline_retention"),
+        evidence=data["evidence"],
     )
     _validate_metadata(metadata)
     return metadata
@@ -729,10 +717,22 @@ def _unique_json_object(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def _validate_metadata(metadata: SummaryMetadata) -> None:
-    if not isinstance(metadata.operator, str) or not _OPERATOR_RE.fullmatch(
-        metadata.operator
+    if metadata.baseline_retention is not None and (
+        not isinstance(metadata.baseline_retention, str)
+        or not re.fullmatch(r"[a-z][a-z0-9-]{0,95}", metadata.baseline_retention)
     ):
-        raise SummaryError("metadata operator is invalid")
+        raise SummaryError("metadata baseline_retention must name a reviewed policy")
+    operators = metadata.operators
+    if not 1 <= len(operators) <= MAX_OPERATORS:
+        raise SummaryError(f"metadata operators must contain 1..{MAX_OPERATORS} names")
+    if any(
+        not isinstance(operator, str) or not _OPERATOR_RE.fullmatch(operator)
+        for operator in operators
+    ):
+        raise SummaryError("metadata operators contains an invalid operator")
+    normalized = [operator.casefold() for operator in operators]
+    if len(set(normalized)) != len(normalized):
+        raise SummaryError("metadata operators contains duplicate operators")
     if not isinstance(metadata.state, str) or metadata.state not in {
         "provisional",
         "final",
@@ -743,24 +743,6 @@ def _validate_metadata(metadata: SummaryMetadata) -> None:
         "python_overhead",
     }:
         raise SummaryError("metadata impact_metric must be cpp_time or python_overhead")
-    secondary = metadata.secondary_operators
-    if len(secondary) > MAX_SECONDARY_OPERATORS:
-        raise SummaryError(
-            "metadata secondary_operators may contain at most "
-            f"{MAX_SECONDARY_OPERATORS} names"
-        )
-    if any(
-        not isinstance(operator, str) or not _OPERATOR_RE.fullmatch(operator)
-        for operator in secondary
-    ):
-        raise SummaryError("metadata secondary_operators contains an invalid operator")
-    normalized_secondary = [operator.casefold() for operator in secondary]
-    if len(set(normalized_secondary)) != len(normalized_secondary):
-        raise SummaryError("metadata secondary_operators contains duplicate operators")
-    if metadata.operator.casefold() in normalized_secondary:
-        raise SummaryError(
-            "metadata secondary_operators must not repeat the primary operator"
-        )
     for field, value in (
         ("baseline_commit", metadata.baseline_commit),
         ("candidate_commit", metadata.candidate_commit),
@@ -769,15 +751,12 @@ def _validate_metadata(metadata: SummaryMetadata) -> None:
             raise SummaryError(
                 f"metadata {field} must be a full lowercase 40-character commit SHA"
             )
-    cases = metadata.optimized_cases
-    if not cases or len(cases) > MAX_OPTIMIZED_CASES:
-        raise SummaryError(
-            f"metadata optimized_cases must contain 1..{MAX_OPTIMIZED_CASES} keys"
-        )
-    if any(not isinstance(case, str) or not case or len(case) > 4096 for case in cases):
-        raise SummaryError("metadata contains an invalid optimized case key")
-    if len(set(cases)) != len(cases):
-        raise SummaryError("metadata optimized_cases contains duplicate keys")
+    if metadata.baseline_commit == metadata.candidate_commit:
+        raise SummaryError("metadata baseline_commit must precede candidate_commit")
+    try:
+        evidence_mod.validate(metadata.evidence)
+    except evidence_mod.EvidenceError as exc:
+        raise SummaryError(f"metadata evidence is invalid: {exc}") from exc
 
 
 def _parse_body(body: str, metadata: SummaryMetadata) -> dict[str, Any]:
@@ -785,9 +764,10 @@ def _parse_body(body: str, metadata: SummaryMetadata) -> dict[str, Any]:
         (match.group(1), match.group(2), match.start(), match.end())
         for match in re.finditer(r"^(#{2,3})\s+(.+?)\s*$", body, re.MULTILINE)
     ]
-    expected = [f"{metadata.operator} optimization summary", *SECTION_HEADINGS]
-    actual = [text for _, text, _, _ in headings]
-    if actual != expected:
+    expected = [SUMMARY_TITLE, *SECTION_HEADINGS]
+    if not any(text == "Generalization review" for _, text, _, _ in headings):
+        expected.remove("Generalization review")
+    if [text for _, text, _, _ in headings] != expected:
         raise SummaryError(
             "visible headings must appear exactly once in canonical order: "
             + " -> ".join(expected)
@@ -795,13 +775,13 @@ def _parse_body(body: str, metadata: SummaryMetadata) -> dict[str, Any]:
     if headings[0][0] != "##" or any(item[0] != "###" for item in headings[1:]):
         raise SummaryError("summary title must be ## and section headings must be ###")
 
-    preamble = body[slice(headings[0][3], headings[1][2])].strip()
-    scope = body[slice(headings[1][3], headings[2][2])].strip()
-    impact = body[slice(headings[2][3], headings[3][2])].strip()
-    layout = body[slice(headings[3][3], headings[4][2])].strip()
-    checklist_text = body[slice(headings[4][3], headings[5][2])].strip()
-    learnings_text = body[slice(headings[5][3], None)].strip()
+    bounds = [item[2] for item in headings[1:]] + [len(body)]
+    sections = {
+        name: body[slice(headings[index][3], bounds[index])].strip()
+        for index, name in enumerate(expected)
+    }
 
+    preamble = sections[SUMMARY_TITLE]
     status_lines = [
         line.strip() for line in preamble.splitlines() if line.startswith("> ")
     ]
@@ -812,83 +792,110 @@ def _parse_body(body: str, metadata: SummaryMetadata) -> dict[str, Any]:
         raise SummaryError("summary preamble must contain exactly one status line")
     bottleneck_matches = list(
         re.finditer(
-            r"^\*\*Primary bottleneck: (Memory-bound|Compute-bound)\*\*$",
+            r"^\*\*Primary bottleneck: "
+            r"(Memory-bound|Compute-bound|Not yet profiled)\*\*$",
             preamble,
             re.MULTILINE,
         )
     )
     if len(bottleneck_matches) != 1:
         raise SummaryError("summary requires one exact Primary bottleneck line")
-    bottleneck_match = bottleneck_matches[0]
-    profile = preamble[slice(bottleneck_match.end(), None)].strip()
+    profile = preamble[slice(bottleneck_matches[0].end(), None)].strip()
     if not profile:
         raise SummaryError("Primary bottleneck must be followed by profiler evidence")
-    warnings = tuple(line for line in status_lines if "Non-reference local GPU" in line)
 
-    count_match = re.search(
-        r"^\*\*Configurations optimized:\*\* (\d{1,9}) / (\d{1,9}) total$",
-        scope,
-        re.MULTILINE,
-    )
-    if not count_match:
-        raise SummaryError("Scope has no canonical Configurations optimized count")
-    categories = tuple(re.findall(r"^- `([^`\r\n]+)`\s*$", scope, re.MULTILINE))
-    if not categories or len(categories) != len(set(categories)):
-        raise SummaryError("Scope requires unique Container Layout Type categories")
-    scope_lines = [line.strip() for line in scope.splitlines() if line.strip()]
-    expected_scope_lines = [
-        count_match.group(0),
-        "**Optimized categories:**",
-        *[f"- `{category}`" for category in categories],
-    ]
-    if scope_lines != expected_scope_lines:
-        raise SummaryError(
-            "Scope may contain only the canonical count and category list"
-        )
-
-    impact_rows = _parse_impact_table(impact, metadata.impact_metric)
-    layout_rows = _parse_layout_table(layout)
-    checklist = _parse_checklist(checklist_text)
+    learnings_text = sections["Top learnings"]
     learnings = tuple(
         match.group(1).strip()
         for match in re.finditer(r"^- (.+?)\s*$", learnings_text, re.MULTILINE)
     )
     if not 1 <= len(learnings) <= 5:
         raise SummaryError("Top learnings must contain one to five bullets")
-    nonblank = [line for line in learnings_text.splitlines() if line.strip()]
-    if len(nonblank) != len(learnings):
+    if len([line for line in learnings_text.splitlines() if line.strip()]) != len(
+        learnings
+    ):
         raise SummaryError("Top learnings may contain only bullet lines")
 
     return {
-        "title_operator": metadata.operator,
         "status_line": ordinary_status[0],
-        "warnings": warnings,
-        "bottleneck": bottleneck_match.group(1),
+        "warnings": tuple(
+            line for line in status_lines if "Non-reference local GPU" in line
+        ),
+        "bottleneck": bottleneck_matches[0].group(1),
         "profile_evidence": profile,
-        "optimized_count": int(count_match.group(1)),
-        "total_count": int(count_match.group(2)),
-        "categories": categories,
-        "impact_rows": impact_rows,
-        "layout_rows": layout_rows,
-        "checklist": checklist,
+        "scope_rows": _parse_scope_table(sections["Scope"]),
+        "impact_rows": _parse_impact_table(sections["Impact"], metadata.impact_metric),
+        "layout_rows": _parse_layout_table(sections["Layout comparison"]),
+        "generalization_rows": (
+            parse_generalization_review(sections["Generalization review"])
+            if "Generalization review" in sections
+            else ()
+        ),
+        "checklist": _parse_checklist(sections["Evidence checklist"], metadata),
         "learnings": learnings,
     }
+
+
+def _scope_table_schema() -> tuple[str, str, str]:
+    return (
+        "Counted per configuration, not per measurement; Improved and Regressed "
+        f"count configurations that moved at least {MOVED_PCT:g}% on any "
+        "reported SKU.",
+        "| Operator | Configurations | Improved | Regressed |",
+        "|---|---:|---:|---:|",
+    )
+
+
+def _parse_scope_table(section: str) -> tuple[ScopeRow, ...]:
+    rows = _validated_table_rows(section, _scope_table_schema(), "Scope")
+    parsed = []
+    for cells in rows[1:]:
+        if len(cells) != 4:
+            raise SummaryError("Scope table contains a malformed row")
+        try:
+            parsed.append(
+                ScopeRow(cells[0], int(cells[1]), int(cells[2]), int(cells[3]))
+            )
+        except ValueError as exc:
+            raise SummaryError(
+                f"Scope table contains a malformed value: {exc}"
+            ) from exc
+    if not parsed:
+        raise SummaryError("Scope table must contain at least one operator")
+    return tuple(parsed)
+
+
+def _header_cells(header: str) -> tuple[str, ...]:
+    return tuple(cell.strip() for cell in header.strip().strip("|").split("|"))
+
+
+def _validated_table_rows(
+    section: str, schema: tuple[str, str, str], label: str
+) -> list[tuple[str, ...]]:
+    """Check a section carries only its canonical explanation and header."""
+
+    explanation, header, _ = schema
+    _require_table_only_section(section, explanation)
+    rows = _table_rows(section)
+    if not rows or rows[0] != _header_cells(header):
+        raise SummaryError(f"{label} table header does not match the v2 schema")
+    return rows
 
 
 def _impact_table_schema(impact_metric: str) -> tuple[str, str, str]:
     if impact_metric == "cpp_time":
         return (
             "Speedup is `before / after`; `2.00x` means twice as fast.",
-            "| SKU | Configuration scope | Configurations | Min | Median | Max |",
-            "|---|---|---:|---:|---:|---:|",
+            "| Operator | SKU | Scope | Configurations | Min | Median | Max |",
+            "|---|---|---|---:|---:|---:|---:|",
         )
     if impact_metric == "python_overhead":
         return (
             "Python overhead is `gpu_time_us_python - gpu_time_us_cpp`; "
             "reduction is `before - after`, so positive values mean less overhead.",
-            "| SKU | Configuration scope | Configurations | Before min / median / max | "
+            "| Operator | SKU | Scope | Configurations | Before min / median / max | "
             "After min / median / max | Reduction min / median / max |",
-            "|---|---|---:|---:|---:|---:|",
+            "|---|---|---|---:|---:|---:|---:|",
         )
     raise SummaryError(f"unsupported impact metric {impact_metric!r}")
 
@@ -896,17 +903,10 @@ def _impact_table_schema(impact_metric: str) -> tuple[str, str, str]:
 def _parse_impact_table(
     section: str, impact_metric: str
 ) -> tuple[ImpactRow | PythonOverheadImpactRow, ...]:
-    explanation, header, _ = _impact_table_schema(impact_metric)
-    _require_table_only_section(section, explanation)
-    rows = _table_rows(section)
-    expected_header = tuple(
-        cell.strip() for cell in header.strip().strip("|").split("|")
-    )
-    if not rows or rows[0] != expected_header:
-        raise SummaryError("Impact table header does not match the v1 schema")
+    rows = _validated_table_rows(section, _impact_table_schema(impact_metric), "Impact")
     parsed = []
     for cells in rows[1:]:
-        if len(cells) != 6 or cells[1] not in {"Optimized", "Full operator"}:
+        if len(cells) != len(rows[0]) or cells[2] not in IMPACT_SCOPES:
             raise SummaryError("Impact table contains a malformed row")
         try:
             if impact_metric == "cpp_time":
@@ -914,10 +914,11 @@ def _parse_impact_table(
                     ImpactRow(
                         cells[0],
                         cells[1],
-                        int(cells[2]),
-                        _parse_factor(cells[3]),
+                        cells[2],
+                        int(cells[3]),
                         _parse_factor(cells[4]),
                         _parse_factor(cells[5]),
+                        _parse_factor(cells[6]),
                     )
                 )
             else:
@@ -925,10 +926,11 @@ def _parse_impact_table(
                     PythonOverheadImpactRow(
                         cells[0],
                         cells[1],
-                        int(cells[2]),
-                        _parse_duration_stats(cells[3]),
+                        cells[2],
+                        int(cells[3]),
                         _parse_duration_stats(cells[4]),
                         _parse_duration_stats(cells[5]),
+                        _parse_duration_stats(cells[6]),
                     )
                 )
         except ValueError as exc:
@@ -936,48 +938,68 @@ def _parse_impact_table(
                 f"Impact table contains a malformed value: {exc}"
             ) from exc
     if not parsed:
-        raise SummaryError("Impact table must contain at least one SKU")
+        raise SummaryError("Impact table must contain at least one operator")
     return tuple(parsed)
+
+
+def _layout_table_schema() -> tuple[str, str, str]:
+    return (
+        "Timing ratio is `numerator / Planar`; values above `1.00x` mean Planar "
+        "is faster.",
+        "| Operator | SKU | Comparison | Before min / median / max | "
+        "After min / median / max |",
+        "|---|---|---|---:|---:|",
+    )
 
 
 def _parse_layout_table(section: str) -> tuple[LayoutRow, ...]:
-    _require_table_only_section(
-        section,
-        "Timing ratio is `numerator / Planar`; values above `1.00x` mean Planar is faster.",
-    )
-    rows = _table_rows(section)
-    expected_header = (
-        "SKU",
-        "Comparison",
-        "Before min / median / max",
-        "After min / median / max",
-    )
-    if not rows or rows[0] != expected_header:
-        raise SummaryError(
-            "Layout comparison table header does not match the v1 schema"
-        )
+    rows = _validated_table_rows(section, _layout_table_schema(), "Layout comparison")
     parsed = []
     for cells in rows[1:]:
-        if len(cells) != 4 or cells[1] not in {
-            "Interleaved / Planar",
-            "FakePlanar / Planar",
-        }:
+        if len(cells) != 5 or cells[2] not in LAYOUT_COMPARISONS:
             raise SummaryError("Layout comparison table contains a malformed row")
-        before = _parse_stats(cells[2])
-        after = _parse_stats(cells[3])
+        before = _parse_stats(cells[3])
+        after = _parse_stats(cells[4])
         if (before is None) != (after is None):
             raise SummaryError("layout n/a must appear in both before and after cells")
-        parsed.append(LayoutRow(cells[0], cells[1], before, after))
+        if before is None and cells[3] != cells[4]:
+            raise SummaryError(
+                "layout n/a note must be identical in the before and after cells"
+            )
+        note = cells[3] if before is None else NA_STATS
+        parsed.append(LayoutRow(cells[0], cells[1], cells[2], before, after, note))
     if not parsed:
-        raise SummaryError("Layout comparison table must contain at least one SKU")
+        raise SummaryError("Layout comparison table must contain at least one operator")
     return tuple(parsed)
+
+
+def parse_generalization_review(section: str) -> tuple[GeneralizationRow, ...]:
+    """Read the canonical review table, with an optional section heading."""
+
+    lines = [line.strip() for line in section.splitlines() if line.strip()]
+    if lines and lines[0] == "### Generalization review":
+        lines = lines[1:]
+    if any(not line.startswith("|") for line in lines):
+        raise SummaryError("Generalization review may contain only its table")
+    rows = _table_rows("\n".join(lines))
+    if not rows or rows[0] != ("Area", "Assessment", "Decision"):
+        raise SummaryError(
+            "Generalization review table header must be Area | Assessment | Decision"
+        )
+    if len(_header_cells(lines[1])) != 3:
+        raise SummaryError(
+            "Generalization review table separator must have three columns"
+        )
+    if any(len(cells) != 3 for cells in rows[1:]):
+        raise SummaryError("Generalization review table contains a malformed row")
+    return tuple(GeneralizationRow(*cells) for cells in rows[1:])
 
 
 def _table_rows(section: str) -> list[tuple[str, ...]]:
     table_lines = [
         line for line in section.splitlines() if line.strip().startswith("|")
     ]
-    if len(table_lines) < 3:
+    if len(table_lines) < 2:
         return []
     separator = tuple(
         cell.strip() for cell in table_lines[1].strip().strip("|").split("|")
@@ -986,7 +1008,11 @@ def _table_rows(section: str) -> list[tuple[str, ...]]:
         raise SummaryError("Markdown table separator is malformed")
     rows = []
     for line in [table_lines[0], *table_lines[2:]]:
-        rows.append(tuple(cell.strip() for cell in line.strip().strip("|").split("|")))
+        rows.append(
+            tuple(
+                cell.strip() for cell in re.split(r"(?<!\\)\|", line.strip().strip("|"))
+            )
+        )
     return rows
 
 
@@ -1002,12 +1028,25 @@ def _require_table_only_section(section: str, explanation: str) -> None:
         )
 
 
-def _parse_checklist(section: str) -> tuple[ChecklistItem, ...]:
+def checklist_labels(metadata: SummaryMetadata) -> tuple[str, ...]:
+    return tuple(
+        (
+            "Baselines verified unchanged"
+            if metadata.baseline_retention and label == "Baselines updated"
+            else label
+        )
+        for label in CHECKLIST_LABELS
+    )
+
+
+def _parse_checklist(
+    section: str, metadata: SummaryMetadata
+) -> tuple[ChecklistItem, ...]:
     pattern = re.compile(
         r"^- \[([ xX])\] \*\*([^*\r\n]+)\*\* — (.+?)\s*$", re.MULTILINE
     )
     matches = list(pattern.finditer(section))
-    if [match.group(2) for match in matches] != list(CHECKLIST_LABELS):
+    if [match.group(2) for match in matches] != list(checklist_labels(metadata)):
         raise SummaryError(
             "Evidence checklist labels must appear exactly once in canonical order"
         )
@@ -1032,7 +1071,7 @@ def _parse_factor(value: str) -> Decimal:
 
 
 def _parse_stats(value: str) -> tuple[Decimal, Decimal, Decimal] | None:
-    if value == NA_STATS:
+    if value in LAYOUT_NOTES:
         return None
     match = _STATS_RE.fullmatch(value)
     if not match:
@@ -1049,583 +1088,50 @@ def _parse_duration_stats(value: str) -> tuple[Decimal, Decimal, Decimal]:
     return tuple(Decimal(item) for item in match.groups())  # type: ignore[return-value]
 
 
-def _config_surface(config: Mapping[str, Any], label: str) -> _ConfigSurface:
-    if not isinstance(config, Mapping):
-        raise SummaryError(f"{label} benchmark config must be an object")
-    benchmark = config.get("benchmark")
-    entries = config.get("configs")
-    if not isinstance(benchmark, str) or not benchmark:
-        raise SummaryError(f"{label} benchmark config has no benchmark identity")
-    if not isinstance(entries, Mapping) or not entries:
-        raise SummaryError(f"{label} benchmark config has no configs")
-    cases: dict[str, _Case] = {}
-    workload_identities: dict[
-        tuple[str, tuple[tuple[str, str], ...]], tuple[str, str]
-    ] = {}
-    for config_key, raw_entry in entries.items():
-        if not isinstance(config_key, str) or not isinstance(raw_entry, Mapping):
-            raise SummaryError(f"{label} config entries must be named objects")
-        entry = dict(raw_entry)
-        tier = entry.get("tier")
-        if tier not in {"basic", "advanced"}:
-            raise SummaryError(
-                f"{label} config {config_key!r} has invalid or missing tier {tier!r}"
-            )
-        try:
-            expected = expected_case_keys_for_entry(config_key, entry)
-        except BaselineError as exc:
-            raise SummaryError(f"{label} config {config_key!r}: {exc}") from exc
-        baselines = entry.get("baselines")
-        if not isinstance(baselines, Mapping):
-            raise SummaryError(
-                f"{label} config {config_key!r} baselines must be an object"
-            )
-        expected_set = set(expected)
-        actual_set = set(baselines)
-        if expected_set != actual_set:
-            missing = sorted(expected_set - actual_set)
-            extra = sorted(actual_set - expected_set)
-            detail = []
-            if missing:
-                detail.append(
-                    f"missing {len(missing)} expanded case(s), e.g. {missing[0]}"
-                )
-            if extra:
-                detail.append(f"has {len(extra)} undeclared case(s), e.g. {extra[0]}")
-            raise SummaryError(f"{label} config {config_key!r} " + "; ".join(detail))
-        for key in expected:
-            if key in cases:
-                raise SummaryError(f"{label} expanded case key is duplicated: {key}")
-            payload = baselines[key]
-            if not isinstance(payload, Mapping):
-                raise SummaryError(
-                    f"{label} case {key!r} SKU payload must be an object"
-                )
-            try:
-                _, axes = parse_case_key(key)
-            except BaselineError as exc:
-                raise SummaryError(f"{label} case {key!r}: {exc}") from exc
-            workload_identity = (tier, tuple(sorted(axes)))
-            previous = workload_identities.get(workload_identity)
-            if previous is not None:
-                previous_config, previous_key = previous
-                alias_pair = tuple(sorted((previous_config, config_key)))
-                if alias_pair not in _LEGACY_DUPLICATE_CONFIG_ALIASES.get(
-                    benchmark, set()
-                ):
-                    raise SummaryError(
-                        f"{label} duplicate expanded workload identity "
-                        f"(tier, complete raw axes): {previous_key!r} and {key!r}"
-                    )
-                # This is a transitional compatibility path only. Keeping one
-                # canonical case prevents the legacy alias from double-weighting
-                # Full operator statistics while its config cleanup is pending.
-                if previous_config == alias_pair[0]:
-                    continue
-                cases.pop(previous_key)
-            workload_identities[workload_identity] = (config_key, key)
-            cases[key] = _Case(key, tier, axes, payload)
-    skus = {str(stem) for case in cases.values() for stem in case.baselines}
-    for axis in ("layout", "inputKind"):
-        presence = {axis in case.axis_map for case in cases.values()}
-        if len(presence) > 1:
-            raise SummaryError(
-                f"{label} benchmark mixes cases with and without the {axis} axis"
-            )
-    try:
-        pairing_issues = fake_planar_pairing_issues(entries)
-    except BaselineError as exc:
-        raise SummaryError(
-            f"{label} FakePlanar pairing cannot be evaluated: {exc}"
-        ) from exc
-    if pairing_issues:
-        raise SummaryError(
-            f"{label} benchmark has {len(pairing_issues)} unmatched FakePlanar case "
-            "signature(s); every FakePlanar case must be advanced Tensor and have "
-            "exactly one same-tier otherwise-identical native NCHW/CHW case; "
-            + pairing_issues[0]
-        )
-    return _ConfigSurface(benchmark, cases, tuple(sorted(skus)))
+def render_scope_table(rows: Sequence[ScopeRow]) -> list[str]:
+    """Render the Scope section body: explanation, header, and rows."""
+    explanation, header, separator = _scope_table_schema()
+    return [explanation, "", header, separator, *[_render_scope_row(r) for r in rows]]
 
 
-def _optimized_cases(
-    metadata: SummaryMetadata, candidate: _ConfigSurface
-) -> tuple[_Case, ...]:
-    unknown = [key for key in metadata.optimized_cases if key not in candidate.cases]
-    if unknown:
-        raise SummaryError(
-            f"optimized_cases contains {len(unknown)} unknown key(s), e.g. {unknown[0]}"
-        )
-    optimized = tuple(candidate.cases[key] for key in metadata.optimized_cases)
-    fake = [
-        case.key for case in optimized if case.axis_map.get("layout") == "NCHW_FAKE"
-    ]
-    if fake:
-        raise SummaryError(
-            "layout-conversion reference cases cannot be optimization targets, e.g. "
-            + fake[0]
-        )
-    return optimized
-
-
-def _reference_skus(sku_map: Mapping[str, Any]) -> tuple[str, ...]:
-    entries = sku_map.get("entries") if isinstance(sku_map, Mapping) else None
-    if not isinstance(entries, list):
-        raise SummaryError("SKU map must contain an entries array")
-    stems = []
-    for entry in entries:
-        if not isinstance(entry, Mapping) or not isinstance(entry.get("stem"), str):
-            raise SummaryError("SKU map entries must contain string stems")
-        stems.append(entry["stem"])
-    if len(stems) != len(set(stems)):
-        raise SummaryError("SKU map contains duplicate stems")
-    return tuple(sorted(stems, key=_sku_label))
-
-
-def _complete_skus(
-    baseline: _ConfigSurface,
-    candidate: _ConfigSurface,
+def render_impact_table(
+    rows: Sequence[ImpactRow | PythonOverheadImpactRow],
     impact_metric: str = "cpp_time",
-) -> tuple[str, ...]:
-    timing_fields = (
-        ("gpu_time_us_cpp",)
-        if impact_metric == "cpp_time"
-        else ("gpu_time_us_cpp", "gpu_time_us_python")
-    )
-    complete = []
-    for stem in sorted(set(baseline.skus) | set(candidate.skus)):
-        missing = [
-            key
-            for key, case in candidate.cases.items()
-            if key not in baseline.cases
-            or any(
-                _timing(baseline.cases[key], stem, field) is None
-                or _timing(case, stem, field) is None
-                for field in timing_fields
-            )
-        ]
-        if missing:
-            fields = " and ".join(timing_fields)
-            raise SummaryError(
-                f"SKU {stem!r} lacks full before/after {fields} coverage "
-                f"for {len(missing)} expanded case(s), e.g. {missing[0]}"
-            )
-        complete.append(stem)
-    return tuple(complete)
+) -> list[str]:
+    """Render the Impact section body: explanation, header, and rows."""
+    explanation, header, separator = _impact_table_schema(impact_metric)
+    return [explanation, "", header, separator, *[_render_impact_row(r) for r in rows]]
 
 
-def _assert_comparable_surfaces(
-    baseline: _ConfigSurface, candidate: _ConfigSurface
-) -> None:
-    baseline_keys = set(baseline.cases)
-    candidate_keys = set(candidate.cases)
-    if baseline_keys != candidate_keys:
-        missing = sorted(baseline_keys - candidate_keys)
-        added = sorted(candidate_keys - baseline_keys)
-        detail = []
-        if missing:
-            detail.append(
-                f"candidate omits {len(missing)} baseline case(s), e.g. {missing[0]}"
-            )
-        if added:
-            detail.append(
-                f"candidate adds {len(added)} case(s) without before data, e.g. {added[0]}"
-            )
-        raise SummaryError(
-            "baseline and candidate expanded benchmark surfaces differ: "
-            + "; ".join(detail)
-        )
-    tier_changes = [
-        key
-        for key in candidate_keys
-        if baseline.cases[key].tier != candidate.cases[key].tier
-    ]
-    if tier_changes:
-        raise SummaryError(
-            "baseline and candidate tier assignments differ, e.g. " + tier_changes[0]
-        )
+def render_layout_table(rows: Sequence[LayoutRow]) -> list[str]:
+    """Render the Layout comparison section body: explanation, header, and rows."""
+    explanation, header, separator = _layout_table_schema()
+    return [explanation, "", header, separator, *[_render_layout_row(r) for r in rows]]
 
 
-def _timing(case: _Case, stem: str, field: str = "gpu_time_us_cpp") -> Decimal | None:
-    payload = case.baselines.get(stem)
-    if not isinstance(payload, Mapping):
-        return None
-    value = payload.get(field)
-    try:
-        result = Decimal(str(value))
-    except (InvalidOperation, ValueError):
-        return None
-    if not result.is_finite() or result <= 0:
-        return None
-    return result
-
-
-def _categories(cases: Sequence[_Case]) -> tuple[str, ...]:
-    return tuple(sorted({_category(case) for case in cases}))
-
-
-def _category(case: _Case) -> str:
-    axes = case.axis_map
-    container = axes.get("inputKind", "Tensor")
-    if container not in {"Tensor", "TensorBatch", "VarShape"}:
-        raise SummaryError(f"unsupported inputKind {container!r} in {case.key}")
-    layout = {
-        "NHWC": "Interleaved",
-        "HWC": "Interleaved",
-        "NCHW": "Planar",
-        "CHW": "Planar",
-        "NCHW_FAKE": "FakePlanar",
-        "NW": "NoLayout",
-        "NWC": "NoLayout",
-        None: "NoLayout",
-    }.get(axes.get("layout"))
-    if layout is None:
-        raise SummaryError(f"unsupported layout {axes.get('layout')!r} in {case.key}")
-    if not axes.get("InOutDataType"):
-        raise SummaryError(f"case has no InOutDataType axis: {case.key}")
-    return f"{container} {layout} {_logical_type(axes)}"
-
-
-def _logical_type(axes: Mapping[str, str]) -> str:
-    dtype = axes["InOutDataType"]
-    code = axes.get("code")
-    if code:
-        return _color_conversion(code, dtype)
-
-    channels = _vector_width(dtype)
-    num_channels = axes.get("numChannels")
-    if num_channels:
-        channels = int(num_channels)
-    source = _friendly_type_with_width(dtype, channels)
-
-    output_dtype = axes.get("outDataType")
-    if output_dtype:
-        output = _friendly_type_with_width(output_dtype, channels)
-        return f"{source}→{output}"
-
-    output_channels = axes.get("outChannels")
-    if output_channels:
-        output = _friendly_type_with_width(dtype, int(output_channels))
-        return source if output == source else f"{source}→{output}"
-    return source
-
-
-def _friendly_type(dtype: str) -> str:
-    names = {
-        "uchar3": "RGB8",
-        "uchar4": "RGBA8",
-        "float3": "RGBF32",
-        "float4": "RGBAF32",
-        "uint8": "U8",
-        "uint16": "U16",
-        "uint32": "U32",
-        "int16": "S16",
-        "int32": "S32",
-        "float32": "F32",
-        "short2": "2S16",
-        "short4": "4S16",
-    }
-    if dtype in names:
-        return names[dtype]
-    if "->" in dtype:
-        return "→".join(_friendly_type(item.strip()) for item in dtype.split("->"))
-    return dtype.upper()
-
-
-def _vector_width(dtype: str) -> int:
-    match = re.fullmatch(r"(?:uchar|float|short)([234])", dtype)
-    return int(match.group(1)) if match else 1
-
-
-def _friendly_type_with_width(dtype: str, width: int) -> str:
-    scalar = {
-        "uint8": "U8",
-        "uchar3": "U8",
-        "uchar4": "U8",
-        "uint16": "U16",
-        "uint32": "U32",
-        "int16": "S16",
-        "int32": "S32",
-        "short2": "S16",
-        "short4": "S16",
-        "float32": "F32",
-        "float3": "F32",
-        "float4": "F32",
-    }.get(dtype, _friendly_type(dtype))
-    if width == 3 and scalar == "U8":
-        return "RGB8"
-    if width == 4 and scalar == "U8":
-        return "RGBA8"
-    if width == 3 and scalar == "F32":
-        return "RGBF32"
-    if width == 4 and scalar == "F32":
-        return "RGBAF32"
-    return scalar if width == 1 else f"{width}{scalar}"
-
-
-def _color_conversion(code: str, dtype: str) -> str:
-    if "2" not in code:
-        raise SummaryError(f"unsupported color conversion code {code!r}")
-    source, target = code.split("2", 1)
-    nv_format = None
-    for suffix in ("_NV12", "_NV21"):
-        if target.endswith(suffix):
-            target = target[: -len(suffix)]
-            nv_format = suffix[1:]
-            break
-    width = _vector_width(dtype)
-    if nv_format and source == "YUV":
-        source = nv_format
-    elif nv_format and target == "YUV":
-        target = nv_format
-
-    def endpoint(name: str, *, vector_endpoint: bool) -> str:
-        if name in {"NV12", "NV21"}:
-            return name
-        if name in {"RGB", "BGR"} and vector_endpoint and width == 4:
-            name += "A"
-        return name + "8"
-
+def _render_scope_row(row: ScopeRow) -> str:
     return (
-        f"{endpoint(source, vector_endpoint=not source.startswith('NV'))}→"
-        f"{endpoint(target, vector_endpoint=not target.startswith('NV'))}"
+        f"| {row.operator} | {row.configurations} | {row.improved} | {row.regressed} |"
     )
-
-
-def _expected_impact_rows(
-    baseline: _ConfigSurface,
-    candidate: _ConfigSurface,
-    optimized: Sequence[_Case],
-    skus: Sequence[str],
-    references: Sequence[str],
-    impact_metric: str = "cpp_time",
-) -> tuple[ImpactRow | PythonOverheadImpactRow, ...]:
-    rows = []
-    ordered_skus = _ordered_skus(skus, references)
-    full = tuple(candidate.cases.values())
-    for stem in ordered_skus:
-        for scope, cases in (("Optimized", optimized), ("Full operator", full)):
-            if impact_metric == "cpp_time":
-                stats = _stats(_speedups(baseline, cases, stem))
-                rows.append(
-                    ImpactRow(
-                        _sku_label(stem),
-                        scope,
-                        len(cases),
-                        stats[0],
-                        stats[1],
-                        stats[2],
-                    )
-                )
-            else:
-                before, after, reduction = _python_overhead_values(
-                    baseline, cases, stem
-                )
-                rows.append(
-                    PythonOverheadImpactRow(
-                        _sku_label(stem),
-                        scope,
-                        len(cases),
-                        _stats(before),
-                        _stats(after),
-                        _stats(reduction),
-                    )
-                )
-    return tuple(rows)
-
-
-def _speedups(
-    baseline: _ConfigSurface, cases: Sequence[_Case], stem: str
-) -> tuple[Decimal, ...]:
-    values = []
-    for candidate_case in cases:
-        baseline_case = baseline.cases.get(candidate_case.key)
-        before = _timing(baseline_case, stem) if baseline_case else None
-        after = _timing(candidate_case, stem)
-        if before is None or after is None:
-            raise SummaryError(
-                f"missing positive gpu_time_us_cpp for {candidate_case.key} on {stem}"
-            )
-        values.append(before / after)
-    return tuple(values)
-
-
-def _python_overhead_values(
-    baseline: _ConfigSurface, cases: Sequence[_Case], stem: str
-) -> tuple[tuple[Decimal, ...], tuple[Decimal, ...], tuple[Decimal, ...]]:
-    before_values = []
-    after_values = []
-    reductions = []
-    for candidate_case in cases:
-        baseline_case = baseline.cases.get(candidate_case.key)
-        timings = (
-            _timing(baseline_case, stem, "gpu_time_us_cpp") if baseline_case else None,
-            (
-                _timing(baseline_case, stem, "gpu_time_us_python")
-                if baseline_case
-                else None
-            ),
-            _timing(candidate_case, stem, "gpu_time_us_cpp"),
-            _timing(candidate_case, stem, "gpu_time_us_python"),
-        )
-        if any(value is None for value in timings):
-            raise SummaryError(
-                "missing positive gpu_time_us_cpp or gpu_time_us_python for "
-                f"{candidate_case.key} on {stem}"
-            )
-        before_cpp, before_python, after_cpp, after_python = timings
-        before_gap = before_python - before_cpp
-        after_gap = after_python - after_cpp
-        before_values.append(before_gap)
-        after_values.append(after_gap)
-        reductions.append(before_gap - after_gap)
-    return tuple(before_values), tuple(after_values), tuple(reductions)
-
-
-def _expected_layout_rows(
-    baseline: _ConfigSurface,
-    candidate: _ConfigSurface,
-    skus: Sequence[str],
-    references: Sequence[str],
-) -> tuple[LayoutRow, ...]:
-    rows = []
-    pairs = {
-        "Interleaved / Planar": _layout_pairs(candidate, "Interleaved"),
-        "FakePlanar / Planar": _layout_pairs(candidate, "FakePlanar"),
-    }
-    for stem in _ordered_skus(skus, references):
-        for comparison in ("Interleaved / Planar", "FakePlanar / Planar"):
-            matched = pairs[comparison]
-            if not matched:
-                before = after = None
-            else:
-                before_values = []
-                after_values = []
-                for numerator_key, planar_key in matched:
-                    before_values.append(
-                        _ratio_for_pair(baseline, numerator_key, planar_key, stem)
-                    )
-                    after_values.append(
-                        _ratio_for_pair(candidate, numerator_key, planar_key, stem)
-                    )
-                before = _stats(before_values)
-                after = _stats(after_values)
-            rows.append(LayoutRow(_sku_label(stem), comparison, before, after))
-    return tuple(rows)
-
-
-def _layout_pairs(
-    surface: _ConfigSurface, numerator: str
-) -> tuple[tuple[str, str], ...]:
-    groups: dict[tuple[Any, ...], dict[str, list[str]]] = {}
-    layout_names = {
-        "NHWC": "Interleaved",
-        "HWC": "Interleaved",
-        "NCHW": "Planar",
-        "CHW": "Planar",
-        "NCHW_FAKE": "FakePlanar",
-    }
-    for case in surface.cases.values():
-        axes = case.axis_map
-        kind = layout_names.get(axes.get("layout"))
-        if kind is None:
-            continue
-        identity = (
-            case.tier,
-            tuple(
-                sorted((name, value) for name, value in case.axes if name != "layout")
-            ),
-        )
-        groups.setdefault(identity, {}).setdefault(kind, []).append(case.key)
-    pairs = []
-    for identity, layouts in groups.items():
-        numerator_keys = layouts.get(numerator, [])
-        planar_keys = layouts.get("Planar", [])
-        if not numerator_keys or not planar_keys:
-            continue
-        duplicates = {
-            kind: layouts[kind]
-            for kind in (numerator, "Planar")
-            if len(layouts.get(kind, [])) > 1
-        }
-        if duplicates:
-            sample = next(iter(duplicates.values()))
-            raise SummaryError(
-                "ambiguous layout comparison signature "
-                f"{identity!r}; multiple same-layout cases include {sample[:2]}"
-            )
-        if len(numerator_keys) == 1 and len(planar_keys) == 1:
-            pairs.append((numerator_keys[0], planar_keys[0]))
-    return tuple(sorted(pairs))
-
-
-def _ratio_for_pair(
-    surface: _ConfigSurface, numerator_key: str, planar_key: str, stem: str
-) -> Decimal:
-    numerator = surface.cases.get(numerator_key)
-    planar = surface.cases.get(planar_key)
-    if numerator is None or planar is None:
-        raise SummaryError(
-            f"baseline/candidate layout surfaces differ for pair {numerator_key!r} / {planar_key!r}"
-        )
-    numerator_time = _timing(numerator, stem)
-    planar_time = _timing(planar, stem)
-    if numerator_time is None or planar_time is None:
-        raise SummaryError(f"layout pair lacks gpu_time_us_cpp on {stem}")
-    return numerator_time / planar_time
-
-
-def _stats(values: Iterable[Decimal]) -> tuple[Decimal, Decimal, Decimal]:
-    ordered = sorted(values)
-    if not ordered:
-        raise SummaryError("cannot calculate statistics for an empty case set")
-    return (_round(ordered[0]), _round(median(ordered)), _round(ordered[-1]))
-
-
-def _round(value: Decimal) -> Decimal:
-    rounded = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return Decimal("0.00") if rounded == 0 else rounded
-
-
-def _sku_label(stem: str) -> str:
-    has_cuda12_suffix = stem.upper().endswith("_CUDA12")
-    base_stem = stem[:-7] if has_cuda12_suffix else stem
-    match = re.match(r"^((?:A|H)\d+)(?:_|$)", base_stem, re.IGNORECASE)
-    label = match.group(1).upper() if match else base_stem.replace("_", " ")
-    return f"{label} CUDA 12" if has_cuda12_suffix else label
-
-
-def _ordered_skus(skus: Sequence[str], references: Sequence[str]) -> tuple[str, ...]:
-    present = set(skus)
-    ordered = tuple(
-        [stem for stem in references if stem in present]
-        + sorted(present - set(references), key=_sku_label)
-    )
-    labels = [_sku_label(stem) for stem in ordered]
-    if len(labels) != len(set(labels)):
-        raise SummaryError(
-            "reported SKU stems do not have unique human-readable labels"
-        )
-    return ordered
 
 
 def _render_impact_row(row: ImpactRow | PythonOverheadImpactRow) -> str:
     if isinstance(row, PythonOverheadImpactRow):
         return (
-            f"| {row.sku} | {row.scope} | {row.configurations} | "
+            f"| {row.operator} | {row.sku} | {row.scope} | {row.configurations} | "
             f"{_duration_stats_cell(row.before)} | {_duration_stats_cell(row.after)} | "
             f"{_duration_stats_cell(row.reduction)} |"
         )
     return (
-        f"| {row.sku} | {row.scope} | {row.configurations} | "
+        f"| {row.operator} | {row.sku} | {row.scope} | {row.configurations} | "
         f"{_factor(row.minimum)} | {_factor(row.median)} | {_factor(row.maximum)} |"
     )
 
 
 def _render_layout_row(row: LayoutRow) -> str:
     return (
-        f"| {row.sku} | {row.comparison} | {_stats_cell(row.before)} | "
-        f"{_stats_cell(row.after)} |"
+        f"| {row.operator} | {row.sku} | {row.comparison} | "
+        f"{_stats_cell(row.before, row.note)} | {_stats_cell(row.after, row.note)} |"
     )
 
 
@@ -1633,41 +1139,16 @@ def _factor(value: Decimal) -> str:
     return f"{value:.2f}x"
 
 
-def _stats_cell(values: tuple[Decimal, Decimal, Decimal] | None) -> str:
+def _stats_cell(
+    values: tuple[Decimal, Decimal, Decimal] | None, note: str = NA_STATS
+) -> str:
     if values is None:
-        return NA_STATS
+        return note
     return " / ".join(_factor(value) for value in values)
 
 
 def _duration_stats_cell(values: tuple[Decimal, Decimal, Decimal]) -> str:
     return " / ".join(f"{value:.2f} µs" for value in values)
-
-
-def _normalize_checklist(
-    checklist: Mapping[str, Any] | Sequence[ChecklistItem] | None,
-) -> tuple[ChecklistItem, ...]:
-    if checklist is None:
-        return tuple(
-            ChecklistItem(label, False, "<add hard evidence before checking>")
-            for label in CHECKLIST_LABELS
-        )
-    if isinstance(checklist, Mapping):
-        items = []
-        for label in CHECKLIST_LABELS:
-            value = checklist.get(label)
-            if isinstance(value, ChecklistItem):
-                items.append(value)
-            elif isinstance(value, (tuple, list)) and len(value) == 2:
-                items.append(ChecklistItem(label, bool(value[0]), str(value[1])))
-            elif isinstance(value, str):
-                items.append(ChecklistItem(label, False, value))
-            else:
-                raise SummaryError(f"checklist is missing {label!r}")
-        return tuple(items)
-    items = tuple(checklist)
-    if [item.label for item in items] != list(CHECKLIST_LABELS):
-        raise SummaryError("checklist labels are incomplete or out of order")
-    return items
 
 
 def _join_description(prefix: str, block: str, suffix: str) -> str:
@@ -1682,31 +1163,43 @@ def _join_description(prefix: str, block: str, suffix: str) -> str:
     return result
 
 
-def _profile_is_measured(evidence: str) -> bool:
-    return bool(
-        re.search(r"\d+(?:\.\d+)?\s*%", evidence)
-        and re.search(
-            r"\b(?:SOL|BWUtil|DRAM|compute|memory|stall|scoreboard|throughput|occupancy)\b",
-            evidence,
-            re.IGNORECASE,
-        )
-    )
-
-
 def _validate_visible_tables(
     summary: OptimizationSummary, errors: list[ValidationIssue]
 ) -> None:
-    impact_by_sku: dict[str, list[ImpactRow | PythonOverheadImpactRow]] = {}
+    """Check the tables against each other and against the declared operators."""
+
+    declared = list(summary.metadata.operators)
+    for label, rows in (
+        ("scope", summary.scope_rows),
+        ("impact", summary.impact_rows),
+        ("layout", summary.layout_rows),
+    ):
+        if _operators_reported(rows) != declared:
+            errors.append(
+                ValidationIssue(
+                    f"{label}-operators",
+                    f"{label} table must report every declared operator exactly "
+                    "once, in declaration order",
+                )
+            )
+
+    scope_by_operator = {row.operator: row for row in summary.scope_rows}
     for row in summary.impact_rows:
-        impact_by_sku.setdefault(row.sku, []).append(row)
-        expected_count = (
-            summary.optimized_count if row.scope == "Optimized" else summary.total_count
-        )
-        if row.configurations != expected_count:
+        scope = scope_by_operator.get(row.operator)
+        if scope is None:
+            continue
+        ceiling = {
+            ALL_SCOPE: scope.configurations,
+            IMPROVED_SCOPE: scope.improved,
+            REGRESSED_SCOPE: scope.regressed,
+        }[row.scope]
+        if row.configurations > ceiling:
             errors.append(
                 ValidationIssue(
                     "impact-count",
-                    f"{row.sku} {row.scope} count does not match Scope",
+                    f"{row.operator} {row.sku} {row.scope} counts "
+                    f"{row.configurations} configurations, more than the "
+                    f"{ceiling} Scope reports for the operator",
                 )
             )
         statistics = (
@@ -1718,243 +1211,210 @@ def _validate_visible_tables(
                 ("reduction", row.reduction),
             )
         )
-        for label, values in statistics:
+        for name, values in statistics:
             if not values[0] <= values[1] <= values[2]:
                 errors.append(
                     ValidationIssue(
                         "impact-order",
-                        f"{row.sku} {row.scope} {label} statistics are not ordered",
+                        f"{row.operator} {row.sku} {row.scope} {name} statistics "
+                        "are not ordered",
                     )
                 )
-    for sku, rows in impact_by_sku.items():
-        if [row.scope for row in rows] != ["Optimized", "Full operator"]:
+
+    for row in summary.scope_rows:
+        if row.improved + row.regressed > row.configurations:
             errors.append(
                 ValidationIssue(
-                    "impact-rows",
-                    f"{sku} must have exactly Optimized then Full operator rows",
+                    "scope-count",
+                    f"{row.operator} reports more moved configurations than it has",
                 )
             )
 
-    layout_by_sku: dict[str, list[LayoutRow]] = {}
+    layout_seen: dict[tuple[str, str], list[str]] = {}
     for row in summary.layout_rows:
-        layout_by_sku.setdefault(row.sku, []).append(row)
-        for label, values in (("before", row.before), ("after", row.after)):
+        layout_seen.setdefault((row.operator, row.sku), []).append(row.comparison)
+        for name, values in (("before", row.before), ("after", row.after)):
             if values is not None and not values[0] <= values[1] <= values[2]:
                 errors.append(
                     ValidationIssue(
                         "layout-order",
-                        f"{row.sku} {row.comparison} {label} statistics are not ordered",
+                        f"{row.operator} {row.sku} {row.comparison} {name} "
+                        "statistics are not ordered",
                     )
                 )
-    for sku, rows in layout_by_sku.items():
-        if [row.comparison for row in rows] != [
-            "Interleaved / Planar",
-            "FakePlanar / Planar",
-        ]:
+    for (operator, sku), comparisons in layout_seen.items():
+        if comparisons != list(LAYOUT_COMPARISONS):
             errors.append(
                 ValidationIssue(
                     "layout-rows",
-                    f"{sku} must have exactly both canonical layout-comparison rows",
+                    f"{operator} {sku} must have exactly both canonical "
+                    "layout-comparison rows",
                 )
             )
-    if list(impact_by_sku) != list(layout_by_sku):
+
+    for label, rows, key in (
+        ("impact", summary.impact_rows, lambda r: (r.operator, r.sku, r.scope)),
+        ("layout", summary.layout_rows, lambda r: (r.operator, r.sku, r.comparison)),
+        ("scope", summary.scope_rows, lambda r: (r.operator,)),
+    ):
+        keys = [key(row) for row in rows]
+        if len(set(keys)) != len(keys):
+            errors.append(
+                ValidationIssue(
+                    f"{label}-duplicate-rows",
+                    f"{label} table repeats a row for the same operator and scope",
+                )
+            )
+
+    impact_pairs = {(row.operator, row.sku) for row in summary.impact_rows}
+    if impact_pairs != set(layout_seen):
         errors.append(
             ValidationIssue(
-                "sku-rows", "Impact and Layout comparison must report the same SKUs"
+                "sku-rows",
+                "Impact and Layout comparison must report the same operator/SKU pairs",
             )
         )
 
 
-def _validate_checklist(
+def _validate_rendered_evidence(
     summary: OptimizationSummary,
-    evidence_results: Mapping[str, str] | None,
+    retention_detail: str | None,
     errors: list[ValidationIssue],
     warnings: list[ValidationIssue],
 ) -> None:
-    for item in summary.checklist:
-        if summary.metadata.state == "final" and not item.checked:
-            errors.append(
-                ValidationIssue("checklist-unchecked", f"{item.label} is unchecked")
-            )
-        if item.checked and not _hard_evidence(item.evidence):
+    """The visible evidence must be exactly what the records render to."""
+
+    meta = summary.metadata
+    fields = rendered_fields(
+        meta,
+        generalization_rows=summary.generalization_rows,
+        retention_detail=retention_detail,
+    )
+    final = meta.state == "final"
+    for code, visible, expected in (
+        ("bottleneck", summary.bottleneck, fields["bottleneck"]),
+        ("profile-evidence", summary.profile_evidence, fields["profile_evidence"]),
+        ("checklist", summary.checklist, fields["checklist"]),
+        ("learnings", summary.learnings, fields["learnings"]),
+    ):
+        if visible != expected:
             errors.append(
                 ValidationIssue(
-                    "checklist-evidence",
-                    f"{item.label} is checked without concrete hard evidence",
+                    f"{code}-rendering",
+                    f"visible {code} differs from its rendering of the embedded "
+                    "evidence; regenerate the summary instead of editing it",
                 )
             )
-        if evidence_results is not None and item.checked:
-            status = evidence_results.get(item.label)
-            if status != "PASS":
+    sections = memory_sections(summary.suffix)
+    expected_memory = [fields["memory"]] if fields["memory"] else []
+    if sections != expected_memory:
+        errors.append(
+            ValidationIssue(
+                "memory-rendering",
+                "Memory footprint section differs from its rendering of the "
+                "embedded memory record",
+            )
+        )
+    if meta.evidence.get("profile") is None:
+        (errors if final else warnings).append(
+            ValidationIssue("profile-missing", "no Nsight Compute profile is recorded")
+        )
+    if final:
+        for item in summary.checklist:
+            if not item.checked:
                 errors.append(
                     ValidationIssue(
-                        "checklist-gate",
-                        f"{item.label} is checked but its hard gate is {status or 'missing'}",
+                        "checklist-unchecked", f"{item.label}: {item.evidence}"
                     )
                 )
-        if not item.checked and _PLACEHOLDER_RE.search(item.evidence):
-            target = errors if summary.metadata.state == "final" else warnings
-            target.append(
-                ValidationIssue(
-                    "checklist-placeholder",
-                    f"{item.label} still contains a placeholder",
-                )
+        if summary.learnings == (DEFAULT_LEARNING,):
+            errors.append(
+                ValidationIssue("learnings-missing", "no attempt has been recorded")
             )
 
 
-def _hard_evidence(evidence: str) -> bool:
-    text = evidence.strip()
-    if len(text) < 20 or _PLACEHOLDER_RE.search(text):
-        return False
-    if text.casefold() in {"pass", "passed", "yes", "done", "n/a"}:
-        return False
-    named = bool(
-        re.search(
-            r"(?:\b\w+\.py\b|\b\w+_test\w*\b|\bODO-\d+\b|`[^`]+`|"
-            r"\b(?:baseline|artifact|benchmark|run_bench|EXPECT_(?:EQ|NEAR)|"
-            r"ncu|nsys|commit|SHA)\b)",
-            text,
+def applied_decision(evidence: Mapping[str, Any]) -> str | None:
+    """The only accepted Applied disposition: the recorded passing test run."""
+
+    tests = evidence.get("tests")
+    if not tests:
+        return None
+    return f"Applied: validated by the recorded test run at `{tests['commit'][:12]}`."
+
+
+def validate_generalization_rows(
+    rows: Sequence[GeneralizationRow],
+    evidence: Mapping[str, Any] | None = None,
+) -> tuple[ValidationIssue, ...]:
+    """Require an evidenced assessment and disposition for every review area."""
+
+    issues = []
+    present = {row.area for row in rows}
+    for area in GENERALIZATION_AREAS:
+        if area not in present:
+            issues.append(
+                ValidationIssue(
+                    "generalization-area", f"Generalization review is missing {area}"
+                )
+            )
+    for row in rows:
+        if row.area not in GENERALIZATION_AREAS:
+            issues.append(
+                ValidationIssue(
+                    "generalization-area",
+                    f"Unknown generalization review area: {row.area}",
+                )
+            )
+        if _PLACEHOLDER_RE.search(row.assessment) or not re.search(
+            r"`[^`\r\n]+`|\b[\w/-]+\.(?:cu|cuh|cpp|hpp|h|py|json)\b|"
+            r"\b(?:ncu|nsys)\b[^\n]*\d+(?:\.\d+)?\s*(?:%|(?:us|µs|ms|x)\b)",
+            row.assessment,
             re.IGNORECASE,
+        ):
+            issues.append(
+                ValidationIssue(
+                    "generalization-assessment",
+                    f"{row.area} requires a concrete assessment citing code, "
+                    "configuration, or profile evidence",
+                )
+            )
+        decision = re.fullmatch(
+            r"(Applied|Deferred|Not applicable):\s*(.+)", row.decision
         )
+        if (
+            not decision
+            or not decision.group(2).strip()
+            or _PLACEHOLDER_RE.search(row.decision)
+            or decision.group(2).strip().rstrip(".!;").casefold()
+            in {"none", "n/a", "not applicable", "nothing to do", "no opportunities"}
+        ):
+            issues.append(
+                ValidationIssue(
+                    "generalization-decision",
+                    f"{row.area} requires Applied: validation, Deferred: scope reason, "
+                    "or Not applicable: reason",
+                )
+            )
+        elif decision.group(1) == "Applied" and (
+            evidence is None or row.decision != applied_decision(evidence)
+        ):
+            issues.append(
+                ValidationIssue(
+                    "generalization-validation",
+                    f"{row.area} Applied decision must cite the recorded test run: "
+                    f"{applied_decision(evidence or {}) or 'no tests recorded'}",
+                )
+            )
+    return tuple(issues)
+
+
+def remaining_generalizations_deferred(
+    rows: Sequence[GeneralizationRow], evidence: Mapping[str, Any]
+) -> bool:
+    """A completed review that explicitly defers at least one opportunity."""
+
+    return (
+        bool(rows)
+        and not validate_generalization_rows(rows, evidence)
+        and any(row.decision.startswith("Deferred:") for row in rows)
     )
-    result = bool(
-        re.search(
-            r"\b(?:pass(?:ed)?|green|zero regressions?|no regressions?|\d+\s*/\s*\d+|"
-            r"at[- ]?ridge|strikes?|recommendations?|updated|imported|committed)\b",
-            text,
-            re.IGNORECASE,
-        )
-    )
-    return named and result
-
-
-def _validate_learnings(
-    summary: OptimizationSummary,
-    errors: list[ValidationIssue],
-    warnings: list[ValidationIssue],
-) -> None:
-    for learning in summary.learnings:
-        if learning == DEFAULT_LEARNING:
-            target = errors if summary.metadata.state == "final" else warnings
-            target.append(
-                ValidationIssue(
-                    "learning-placeholder",
-                    "Top learnings still contains the provisional default",
-                )
-            )
-            continue
-        if len(learning) > 500 or _PLACEHOLDER_RE.search(learning):
-            errors.append(
-                ValidationIssue(
-                    "learning-placeholder",
-                    "Top learnings contains a placeholder or oversized item",
-                )
-            )
-            continue
-        if not re.search(r"[.!?]$", learning):
-            errors.append(
-                ValidationIssue(
-                    "learning-sentence", "Each top learning must be one sentence"
-                )
-            )
-        if re.search(r"[!?]\s+\S|\.\s+[A-Z]", learning[:-1]):
-            errors.append(
-                ValidationIssue(
-                    "learning-sentence", "Each top learning must be one sentence"
-                )
-            )
-
-
-def _validate_artifact_claims(
-    summary: OptimizationSummary,
-    baseline_config: Mapping[str, Any],
-    candidate_config: Mapping[str, Any],
-    sku_map: Mapping[str, Any],
-    errors: list[ValidationIssue],
-    warnings: list[ValidationIssue],
-) -> None:
-    baseline = _config_surface(baseline_config, "baseline")
-    candidate = _config_surface(candidate_config, "candidate")
-    if baseline.benchmark.casefold() != candidate.benchmark.casefold():
-        raise SummaryError("baseline and candidate benchmark identities differ")
-    _assert_comparable_surfaces(baseline, candidate)
-    if candidate.benchmark.casefold() != summary.metadata.operator.casefold():
-        raise SummaryError(
-            "metadata operator does not match candidate benchmark identity"
-        )
-    optimized = _optimized_cases(summary.metadata, candidate)
-    if summary.total_count != len(candidate.cases):
-        errors.append(
-            ValidationIssue(
-                "full-count",
-                "visible total is not the full expanded basic+advanced operator case set",
-            )
-        )
-    expected_categories = _categories(optimized)
-    if summary.categories != expected_categories:
-        errors.append(
-            ValidationIssue(
-                "categories",
-                "optimized categories do not match exact Container Layout Type derivation",
-            )
-        )
-
-    references = _reference_skus(sku_map)
-    complete_skus = _complete_skus(baseline, candidate, summary.metadata.impact_metric)
-    missing_references = [stem for stem in references if stem not in complete_skus]
-    if summary.metadata.state == "final" and missing_references:
-        errors.append(
-            ValidationIssue(
-                "reference-coverage",
-                "final summary lacks full basic+advanced timing coverage for reference SKU(s): "
-                + ", ".join(missing_references),
-            )
-        )
-    if not complete_skus:
-        raise SummaryError("no SKU has timings for every expanded candidate case")
-
-    expected_impact = _expected_impact_rows(
-        baseline,
-        candidate,
-        optimized,
-        complete_skus,
-        references,
-        summary.metadata.impact_metric,
-    )
-    if summary.impact_rows != expected_impact:
-        errors.append(
-            ValidationIssue(
-                "impact-statistics",
-                "Impact rows/counts/min/median/max do not match the selected impact metric",
-            )
-        )
-    expected_layout = _expected_layout_rows(
-        baseline, candidate, complete_skus, references
-    )
-    if summary.layout_rows != expected_layout:
-        errors.append(
-            ValidationIssue(
-                "layout-statistics",
-                "Layout rows or before/after min/median/max do not match full matched pairs",
-            )
-        )
-
-    local_labels = {
-        _sku_label(stem) for stem in complete_skus if stem not in set(references)
-    }
-    warning_text = "\n".join(summary.warnings)
-    for label in sorted(local_labels):
-        if label not in warning_text:
-            errors.append(
-                ValidationIssue(
-                    "local-sku-warning",
-                    f"non-reference SKU {label} is reported without the required warning",
-                )
-            )
-    if not local_labels and summary.warnings:
-        errors.append(
-            ValidationIssue(
-                "local-sku-warning",
-                "non-reference warning is present without a local SKU row",
-            )
-        )

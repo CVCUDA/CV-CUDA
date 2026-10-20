@@ -70,6 +70,7 @@ OPERATOR_NAME_SUFFIXES = tuple(
             "_var_shape",
             "CopyPolicy",
             "Policy",
+            "Config",
             "_utils",
             "_util",
             "_common",
@@ -83,24 +84,30 @@ OPERATOR_NAME_SUFFIXES = tuple(
 
 SHARED_KERNEL_SOURCES = MappingProxyType(
     {
-        # Same-shape validation/dispatch preamble, shared by the four operators that previously
-        # defined it verbatim. Registered so refactor_summary's numstat books the header's lines
-        # against the operators that gained it, rather than reporting a pure win it cannot see.
-        # Deliberately not registered for brightnesscontrast, which only reuses GetCoordForLayout.
-        # Channel-axis validation/dispatch preamble (scalar dtype, channels on the C axis), the
-        # sibling of SameShapeCommon.cuh. Registered on the same LOC-honesty grounds.
+        # Shared headers are registered so refactor_summary's numstat books their lines against
+        # the operators that include them, rather than reporting a pure win it cannot see.
+        # Channel-axis validation/dispatch preamble (scalar dtype, channels on the C axis).
         "adjusthue": ("ChannelAxisCommon.cuh",),
         "adjustsaturation": ("ChannelAxisCommon.cuh",),
         "jpegcompressiondistortion": ("ChannelAxisCommon.cuh",),
+        # Same-shape validation/dispatch preamble. Deliberately not registered for
+        # brightnesscontrast, which only reuses GetCoordForLayout.
         "invert": ("SameShapeCommon.cuh", "PhotometricBound.cuh"),
         "posterize": ("SameShapeCommon.cuh",),
         "solarize": ("SameShapeCommon.cuh", "PhotometricBound.cuh"),
         "adjustsharpness": ("SameShapeCommon.cuh",),
-        "conv2d": ("legacy/filter_var_shape.cu",),
-        "gaussian": ("legacy/filter.cu", "legacy/filter_var_shape.cu"),
-        "histogram": ("legacy/calc_hist.cu",),
-        "warpaffine": ("legacy/warp.cu", "legacy/warp_var_shape.cu"),
-        "warpperspective": ("legacy/warp.cu", "legacy/warp_var_shape.cu"),
+        # Window math, validation and dispatch shared by the two bilateral filters, which are the
+        # same operator up to where the range weight is read from.
+        "bilateralfilter": ("BilateralFilterCommon.cuh",),
+        "jointbilateralfilter": ("BilateralFilterCommon.cuh",),
+        "conv2d": ("FilterCommon.cuh",),
+        "gaussian": ("FilterCommon.cuh",),
+        # The cuOSD rasterizer and its command/context model, shared by the two operators that
+        # draw through it.
+        "osd": ("OsdRenderer.cu", "OsdRenderer.hpp", "OsdContext.hpp"),
+        "bndbox": ("OsdRenderer.cu", "OsdRenderer.hpp", "OsdContext.hpp"),
+        "warpaffine": ("WarpCommon.cuh",),
+        "warpperspective": ("WarpCommon.cuh",),
         "hqresize": (
             "OpHQResize2D.cu",
             "OpHQResize3D.cu",
@@ -111,8 +118,10 @@ SHARED_KERNEL_SOURCES = MappingProxyType(
             "OpHQResizePlanar.cuh",
         ),
         "stack": ("OpStackKernels.cu", "OpStackKernels.hpp"),
-        "averageblur": ("legacy/filter.cu", "legacy/filter_var_shape.cu"),
-        "laplacian": ("legacy/filter.cu", "legacy/filter_var_shape.cu"),
+        "split": ("ChannelCopy.cu", "ChannelCopy.hpp"),
+        "merge": ("ChannelCopy.cu", "ChannelCopy.hpp"),
+        "averageblur": ("FilterCommon.cuh",),
+        "laplacian": ("FilterCommon.cuh",),
     }
 )
 
@@ -125,13 +134,6 @@ SHARED_KERNEL_SOURCES = MappingProxyType(
 # booked against its consumers. Here the question is only "whose benchmarks can this change
 # move", so the consumer set is what matters. A trailing "/" makes an entry a directory prefix.
 # Each set was derived from the including translation units, not guessed.
-_FILTER_UTILS_OPS = (
-    "adaptivethreshold",
-    "averageblur",
-    "conv2d",
-    "gaussian",
-    "laplacian",
-)
 _HQRESIZE_KERNEL_FILES = (
     "OpHQResize2D.cu",
     "OpHQResize3D.cu",
@@ -144,6 +146,8 @@ _HQRESIZE_KERNEL_FILES = (
 
 MULTI_OP_SOURCES = MappingProxyType(
     {
+        "bench/cpp/ops/BenchChannelCopy.hpp": ("split", "merge"),
+        "src/cvcuda/priv/ChannelCopy.cu": ("split", "merge"),
         # Bodies that name their operator only obliquely, so no suffix rule reaches them.
         "src/cvcuda/priv/OpEraseRegion.cu": ("erase",),
         "src/cvcuda/priv/OpStackKernels.cu": ("stack",),
@@ -157,25 +161,10 @@ MULTI_OP_SOURCES = MappingProxyType(
         # path, so a change there moves their timings too. Re-derive with:
         #   grep -rn "legacy::OSD\\|std::make_unique<Reformat>" src/cvcuda/priv
         "src/cvcuda/priv/OpReformat.cu": ("bndbox", "histogram", "osd", "reformat"),
-        "src/cvcuda/priv/legacy/osd.cu": ("bndbox", "osd"),
-        # Legacy kernels implementing operators their filenames do not name.
-        "src/cvcuda/priv/legacy/calc_hist.cu": ("histogram",),
-        "src/cvcuda/priv/legacy/filter.cu": ("averageblur", "gaussian", "laplacian"),
-        "src/cvcuda/priv/legacy/filter_utils.cu": _FILTER_UTILS_OPS,
-        "src/cvcuda/priv/legacy/filter_var_shape.cu": (
-            "averageblur",
-            "conv2d",
-            "gaussian",
-            "laplacian",
-        ),
-        "src/cvcuda/priv/legacy/warp.cu": ("warpaffine", "warpperspective"),
-        "src/cvcuda/priv/legacy/warp_var_shape.cu": ("warpaffine", "warpperspective"),
-        # The one header the include graph cannot reach: its only includer is CvCudaLegacy.h,
-        # which attributes to no operator, so the traversal stops there. BndBox and OSD both
-        # build on legacy::OSD (see OpBndBox.cpp / OpOSD.cpp), and BoxBlur draws through the
-        # same path.
-        "src/cvcuda/priv/legacy/CvCudaOSD.hpp": ("bndbox", "boxblur", "osd"),
-        "src/cvcuda/priv/legacy/textbackend/": ("bndbox", "boxblur", "osd"),
+        "src/cvcuda/priv/OsdRenderer.cu": ("bndbox", "osd"),
+        # Reached through OpBndBox.cu / OpOSD.cu -> OsdRenderer.hpp.
+        "src/cvcuda/priv/OsdContext.hpp": ("bndbox", "osd"),
+        "src/cvcuda/priv/textbackend/": ("bndbox", "osd"),
     }
 )
 
@@ -209,30 +198,29 @@ BROAD_SOURCES = frozenset(
         "src/cvcuda/priv/WorkspaceAllocator.hpp",
         "src/cvcuda/priv/WorkspaceEstimator.hpp",
         "src/cvcuda/priv/WorkspaceUtil.hpp",
-        "src/cvcuda/priv/legacy/CvCudaLegacyHelpers.cpp",
-        "src/cvcuda/priv/legacy/CvCudaLegacyHelpers.hpp",
-        "src/cvcuda/priv/legacy/CvCudaUtils.cuh",
         "src/cvcuda/include/cvcuda/Workspace.hpp",
         "bench/run_bench.py",
         "bench/compare_to_baseline.py",
     }
 )
 
-# Files in the operator tree that intentionally attribute to no operator: build wiring and the
-# operator-agnostic base class. Listing them keeps the completeness test meaningful - a new
-# unattributable file has to be classified here on purpose rather than defaulting to silence.
+# Files in the operator tree that intentionally attribute to no operator: build wiring, the
+# operator-agnostic base class, and scheduling gates. Listing them keeps the completeness test
+# meaningful - a new unattributable file has to be classified here on purpose rather than
+# defaulting to silence. Entries here win over BROAD_SOURCES/BROAD_PREFIXES.
 UNOWNED_SOURCES = frozenset(
     {
         "src/cvcuda/Operator.cpp",
         "src/cvcuda/include/cvcuda/Operator.h",
         # Declarations only: ExportOp<Name> prototypes, changed whenever an operator is added.
         "python/mod_cvcuda/operators/Operators.hpp",
-        # Declarations only: one `class <Op>` block per legacy operator, plus the shared enums
-        # and structs. An operator's block is read by that operator's own translation unit,
-        # which attributes on its own, so editing this header adds no operator the diff does
-        # not already name. Treating it as broad made every legacy-layer removal - which
-        # deletes exactly one operator's block - run the advanced sweep for all 61 operators.
-        "src/cvcuda/priv/legacy/CvCudaLegacy.h",
+        # Decides whether a node may run benchmarks at all, never what they measure. Sweeping
+        # every operator would add no signal: a gate that wrongly admits a node fails the leg
+        # whatever it measures, and one that wrongly rejects runs nothing. Its neighbours stay
+        # broad for two reasons this file meets neither of - run_bench.py imports them, and they
+        # consume per-operator data. This one is a standalone script whose only config is the
+        # operator-agnostic sku_map.json.
+        "bench/_internal/check_bench_sku.py",
     }
 )
 
@@ -363,6 +351,8 @@ def normalize_repo_path(path):
 def is_broad_source(path):
     """Whether a change to `path` can affect every operator."""
     path = normalize_repo_path(path)
+    if path in UNOWNED_SOURCES:
+        return False
     return path in BROAD_SOURCES or path.startswith(BROAD_PREFIXES)
 
 

@@ -15,81 +15,76 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpAutoContrast.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
-inline Tensor tensorLike(Tensor &src)
+inline std::shared_ptr<Tensor> tensorLike(Tensor &src)
 {
-    Shape dstShape = nvcvpy::CreateShape(src.shape());
-    return Tensor::Create(dstShape, src.dtype(), src.layout());
+    return Tensor::CreateFromReqs(nvcv::Tensor::CalcRequirements(src.impl().shape(), src.dtype()));
 }
 
 template<typename Container>
-Container AutoContrastIntoImpl(Container &output, Container &input, std::optional<Stream> pstream)
+Container &AutoContrastIntoImpl(Container &output, Container &input, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<cvcuda::AutoContrast>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     // The operator allocates a per-(image, channel) min/max scratch buffer accessed by the device,
     // so the operator object must outlive the kernels: lock it READWRITE rather than NONE.
     guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
 
-    guard.run([&op, &pstream, &input, &output]() { op->submit(pstream->cudaHandle(), input, output); });
+    guard.run([&op, &stream, &input, &output]() { op->submit(stream.handle(), input.impl(), output.impl()); });
 
-    return std::move(output);
+    return output;
 }
 
-Tensor AutoContrastInto(Tensor &output, Tensor &input, std::optional<Stream> pstream)
+Tensor &AutoContrastInto(Tensor &output, Tensor &input, std::optional<Stream *> pstream)
 {
     return AutoContrastIntoImpl(output, input, pstream);
 }
 
-Tensor AutoContrast(Tensor &input, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> AutoContrast(Tensor &input, std::optional<Stream *> pstream)
 {
-    Tensor output = tensorLike(input);
+    auto output = tensorLike(input);
 
-    return AutoContrastInto(output, input, pstream);
+    AutoContrastInto(*output, input, pstream);
+    return output;
 }
 
-ImageBatchVarShape VarShapeAutoContrastInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                            std::optional<Stream> pstream)
+ImageBatchVarShape &VarShapeAutoContrastInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                             std::optional<Stream *> pstream)
 {
     return AutoContrastIntoImpl(output, input, pstream);
 }
 
-ImageBatchVarShape VarShapeAutoContrast(ImageBatchVarShape &input, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> VarShapeAutoContrast(ImageBatchVarShape &input, std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        output.pushBackImage(Image::Create(input[i].size(), input[i].format()));
-    }
+    auto output = CreateSameShapeImageBatch(input);
 
-    return VarShapeAutoContrastInto(output, input, pstream);
+    VarShapeAutoContrastInto(*output, input, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpAutoContrast(py::module &m)
+void ExportOpAutoContrast(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("autocontrast", NvtxTrace("cvcuda.autocontrast", &AutoContrast), "src"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
@@ -120,7 +115,7 @@ void ExportOpAutoContrast(py::module &m)
     )pbdoc");
 
     m.def("autocontrast_into", NvtxTrace("cvcuda.autocontrast_into", &AutoContrastInto), "dst"_a, "src"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Auto Contrast operation on the given cuda stream.
 
@@ -163,7 +158,7 @@ void ExportOpAutoContrast(py::module &m)
     )pbdoc");
 
     m.def("autocontrast_into", NvtxTrace("cvcuda.autocontrast_into", &VarShapeAutoContrastInto), "dst"_a, "src"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
 
         Executes the Auto Contrast operation on a batch of variable-shaped images.
 

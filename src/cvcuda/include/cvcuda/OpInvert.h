@@ -21,13 +21,13 @@
  * @brief Inverts an image — the photometric negative @f$ out = bound - in @f$, per element.
  *
  * Invert computes the per-element photometric negative @f$ out = bound - in @f$, where @p bound
- * is the maximum representable value of the data type (255 for 8-bit unsigned, 65535 for 16-bit
- * unsigned, and 1.0 for 16- and 32-bit float). The operation is element-wise and
- * channel-independent.
+ * is the maximum representable value for integer types and 1.0 for 16-, 32-, and 64-bit float.
+ * Unsigned integer subtraction is exact. Signed integer results saturate to the data type maximum
+ * for negative inputs. Floating-point subtraction is rounded to the output type. The operation is
+ * element-wise and channel-independent.
  *
  * Reference: mimics torchvision.transforms.v2.functional.invert (equivalently OpenCV
- * cv::bitwise_not for the unsigned-integer cases). The mapping is exactly invertible, so the
- * result is bit-exact with no rounding.
+ * cv::bitwise_not for the unsigned-integer cases).
  *
  * @defgroup NVCV_C_ALGORITHM__INVERT Invert
  * @{
@@ -74,12 +74,14 @@ CVCUDA_PUBLIC NVCVStatus cvcudaInvertCreate(NVCVOperatorHandle *handle);
  *       8bit  Unsigned | Yes
  *       8bit  Signed   | No
  *       16bit Unsigned | Yes
- *       16bit Signed   | No
+ *       16bit Signed   | Yes
  *       32bit Unsigned | No
- *       32bit Signed   | No
+ *       32bit Signed   | Yes
+ *       64bit Unsigned | No
+ *       64bit Signed   | Yes
  *       16bit Float    | Yes
  *       32bit Float    | Yes
- *       64bit Float    | No
+ *       64bit Float    | Yes
  *
  *  Output:
  *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
@@ -90,12 +92,14 @@ CVCUDA_PUBLIC NVCVStatus cvcudaInvertCreate(NVCVOperatorHandle *handle);
  *       8bit  Unsigned | Yes
  *       8bit  Signed   | No
  *       16bit Unsigned | Yes
- *       16bit Signed   | No
+ *       16bit Signed   | Yes
  *       32bit Unsigned | No
- *       32bit Signed   | No
+ *       32bit Signed   | Yes
+ *       64bit Unsigned | No
+ *       64bit Signed   | Yes
  *       16bit Float    | Yes
  *       32bit Float    | Yes
- *       64bit Float    | No
+ *       64bit Float    | Yes
  *
  *  Input/Output dependency
  *

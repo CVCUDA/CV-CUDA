@@ -23,6 +23,8 @@
 
 #include <nvbench/nvbench.cuh>
 
+#include <array>
+
 inline uint32_t GetCropFlipNormalizeReformatFlags(const std::string &flagsMode)
 {
     if (flagsMode == "normal")
@@ -41,13 +43,16 @@ template<typename T>
 inline void cropflipnormalizereformat(nvbench::state &state, nvbench::type_list<T>)
 try
 {
-    long3                       srcShape  = benchutils::GetShape<3>(state.get_string("shape"));
-    auto                        cropMode  = state.get_string("cropMode");
-    auto                        flagsMode = state.get_string("flagsMode");
-    const benchutils::InputKind inputKind = benchutils::GetInputKind(state.get_string("inputKind"));
-    const std::string           srcLayout = state.get_string("srcLayout");
-    const std::string           dstLayout = state.get_string("layout");
-    long3                       dstShape  = srcShape;
+    long3                       srcShape      = benchutils::GetShape<3>(state.get_string("shape"));
+    auto                        cropMode      = state.get_string("cropMode");
+    auto                        flagsMode     = state.get_string("flagsMode");
+    const benchutils::InputKind inputKind     = benchutils::GetInputKind(state.get_string("inputKind"));
+    const std::string           srcLayout     = state.get_string("srcLayout");
+    const std::string           dstLayout     = state.get_string("layout");
+    const std::string           outType       = state.get_string("outType");
+    const std::string           outShape      = state.get_string("outShape");
+    const auto                  paramChannels = state.get_int64("paramChannels");
+    long3                       dstShape      = srcShape;
 
     if (cropMode != "full" && cropMode != "padded16")
     {
@@ -57,6 +62,23 @@ try
     using BT = typename nvcv::cuda::BaseType<T>;
 
     int ch = nvcv::cuda::NumElements<T>;
+
+    if ((outType != "same" && outType != "float32") || (paramChannels != 1 && paramChannels != ch))
+    {
+        throw std::invalid_argument("Invalid output type or normalization channel count");
+    }
+    if (outShape != "same")
+    {
+        const long2 size = benchutils::GetShape<2>(outShape);
+        if (cropMode != "full" || size.x <= 0 || size.y <= 0 || size.x > srcShape.y || size.y > srcShape.z)
+        {
+            throw std::invalid_argument("Output shape must fit the full source crop");
+        }
+        dstShape.y = size.x;
+        dstShape.z = size.y;
+    }
+    const auto dstType       = outType == "same" ? benchutils::GetDataType<BT>() : nvcv::TYPE_F32;
+    const auto dstPixelBytes = ch * (outType == "same" ? sizeof(BT) : sizeof(float));
 
     if ((srcLayout != "NHWC" && srcLayout != "NCHW") || (dstLayout != "NHWC" && dstLayout != "NCHW"))
     {
@@ -80,24 +102,24 @@ try
     long3 scaleShape{srcShape.x, 1, 1};
     long3 cropShape{srcShape.x, 1, 1};
 
-    state.add_global_memory_reads(srcShape.x * srcShape.y * srcShape.z * sizeof(T)
-                                  + baseShape.x * baseShape.y * baseShape.z * sizeof(float)
-                                  + scaleShape.x * scaleShape.y * scaleShape.z * sizeof(float)
+    state.add_global_memory_reads(dstShape.x * dstShape.y * dstShape.z * sizeof(T)
+                                  + baseShape.x * baseShape.y * baseShape.z * paramChannels * sizeof(float)
+                                  + scaleShape.x * scaleShape.y * scaleShape.z * paramChannels * sizeof(float)
                                   + cropShape.x * cropShape.y * cropShape.z * sizeof(int) * 4);
-    state.add_global_memory_writes(dstShape.x * dstShape.y * dstShape.z * sizeof(T));
+    state.add_global_memory_writes(dstShape.x * dstShape.y * dstShape.z * dstPixelBytes);
 
     cvcuda::CropFlipNormalizeReformat op;
 
     // clang-format off
 
     nvcv::Tensor dst = dstPlanar
-        ? nvcv::Tensor({{dstShape.x, ch, dstShape.y, dstShape.z}, "NCHW"}, benchutils::GetDataType<BT>())
-        : nvcv::Tensor({{dstShape.x, dstShape.y, dstShape.z, ch}, "NHWC"}, benchutils::GetDataType<BT>());
+        ? nvcv::Tensor({{dstShape.x, ch, dstShape.y, dstShape.z}, "NCHW"}, dstType)
+        : nvcv::Tensor({{dstShape.x, dstShape.y, dstShape.z, ch}, "NHWC"}, dstType);
 
     nvcv::Tensor flipCode({{srcShape.x}, "N"}, nvcv::TYPE_S32);
 
-    nvcv::Tensor base({{baseShape.x, baseShape.y, baseShape.z, 1}, "NHWC"}, nvcv::TYPE_F32);
-    nvcv::Tensor scale({{scaleShape.x, scaleShape.y, scaleShape.z, 1}, "NHWC"}, nvcv::TYPE_F32);
+    nvcv::Tensor base({{baseShape.x, baseShape.y, baseShape.z, paramChannels}, "NHWC"}, nvcv::TYPE_F32);
+    nvcv::Tensor scale({{scaleShape.x, scaleShape.y, scaleShape.z, paramChannels}, "NHWC"}, nvcv::TYPE_F32);
 
     nvcv::Tensor crop({{cropShape.x, cropShape.y, cropShape.z, 4}, "NHWC"}, nvcv::TYPE_S32);
 
@@ -109,27 +131,11 @@ try
     benchutils::FillTensor<float>(base, benchutils::LcgValues<float>());
     benchutils::FillTensor<float>(scale, benchutils::LcgValues<float>());
 
-    // Always crop entire source image for easy bandwidth calculations
-    benchutils::FillTensor<int>(crop, [&srcShape, &cropMode](const long4_16a &c)
-    {
-        if (c.w == 0)
-        {
-            return cropMode == "padded16" ? -16 : 0;
-        }
-        else if (c.w == 1)
-        {
-            return cropMode == "padded16" ? -16 : 0;
-        }
-        else if (c.w == 2)
-        {
-            return (int)srcShape.z;
-        }
-        else if (c.w == 3)
-        {
-            return (int)srcShape.y;
-        }
-        return 0;
-    });
+    const std::array<int, 4> cropRect{
+        cropMode == "padded16" ? -16 : (int)((srcShape.z - dstShape.z) / 2),
+        cropMode == "padded16" ? -16 : (int)((srcShape.y - dstShape.y) / 2),
+        (int)dstShape.z, (int)dstShape.y};
+    benchutils::FillTensor<int>(crop, [cropRect](const long4_16a &c) { return cropRect[c.w]; });
 
     if (inputKind == benchutils::InputKind::Tensor)
     {

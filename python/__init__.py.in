@@ -16,6 +16,24 @@
 # Import the C++ extension module directly
 # Python automatically selects the correct .so file based on ABI (SOABI suffix)
 # Imports from _cvcuda.cpython-3xx-....so
+import sys as _sys
+
+_extension_name = f"{__name__}._@PACKAGE_NAME@"
+_extension_cache_name = "_@PACKAGE_NAME@_extension"
+if _extension_cache_name in _sys.modules:
+    _sys.modules[_extension_name] = _sys.modules[_extension_cache_name]
+
 @EXTRA_IMPORTS@
 from ._@PACKAGE_NAME@ import *  # noqa: F401, F403
 from ._@PACKAGE_NAME@ import __version__  # noqa: F401
+
+# nanobind keeps registered C++ types for the life of the interpreter, so a
+# second execution of the extension initializer is invalid. Keep an alias
+# outside the package namespace so deleting and reimporting this package
+# reuses the already-initialized extension.
+_sys.modules.setdefault(_extension_cache_name, _sys.modules[_extension_name])
+
+# Attach the pure-Python torchvision-compatibility subpackage so that
+# ``cvcuda.tv`` resolves after a bare ``import cvcuda`` (it is staged into the
+# wheel as cvcuda/tv by cmake/BuildPython.cmake).
+from . import tv  # noqa: F401

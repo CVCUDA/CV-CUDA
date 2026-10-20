@@ -15,17 +15,12 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpRandomResizedCrop.hpp>
-#include <nvcv/python/Image.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 #include <stdexcept>
 
@@ -33,73 +28,75 @@ namespace cvcudapy {
 
 namespace {
 
+using native::Image;
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
 class RandomResizedCropError : public std::runtime_error
 {
 public:
     using std::runtime_error::runtime_error;
 };
 
-Tensor RandomResizedCropInto(Tensor &output, Tensor &input, double min_scale, double max_scale, double min_ratio,
-                             double max_ratio, NVCVInterpolationType interp, uint32_t seed,
-                             std::optional<Stream> pstream)
+Tensor &RandomResizedCropInto(Tensor &output, Tensor &input, double min_scale, double max_scale, double min_ratio,
+                              double max_ratio, NVCVInterpolationType interp, uint32_t seed,
+                              std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     // HWC inputs (rank 3) have no N dim, so shape[0] is H — fall back to 1.
-    int32_t batchSize = (input.shape().size() == 4) ? static_cast<int32_t>(input.shape()[0]) : 1;
+    int32_t batchSize = input.rank() == 4 ? static_cast<int32_t>(input.impl().shape()[0]) : 1;
     auto    randomResizedCrop
         = CreateOperator<cvcuda::RandomResizedCrop>(min_scale, max_scale, min_ratio, max_ratio, batchSize, seed);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*randomResizedCrop});
 
-    guard.run([&randomResizedCrop, &pstream, &input, &output, &interp]()
-              { randomResizedCrop->submit(pstream->cudaHandle(), input, output, interp); });
-
-    return std::move(output);
-}
-
-Tensor RandomResizedCrop(Tensor &input, const Shape &out_shape, double min_scale, double max_scale, double min_ratio,
-                         double max_ratio, NVCVInterpolationType interp, uint32_t seed, std::optional<Stream> pstream)
-{
-    Tensor output = Tensor::Create(out_shape, input.dtype(), input.shape().layout());
-
-    return RandomResizedCropInto(output, input, min_scale, max_scale, min_ratio, max_ratio, interp, seed, pstream);
-}
-
-ImageBatchVarShape RandomResizedCropVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                                 double min_scale, double max_scale, double min_ratio, double max_ratio,
-                                                 NVCVInterpolationType interp, uint32_t seed,
-                                                 std::optional<Stream> pstream)
-{
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
-
-    auto randomResizedCrop
-        = CreateOperator<cvcuda::RandomResizedCrop>(min_scale, max_scale, min_ratio, max_ratio, input.capacity(), seed);
-
-    ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_MODE_READ, {input});
-    guard.add(LockMode::LOCK_MODE_WRITE, {output});
-    guard.add(LockMode::LOCK_MODE_READWRITE, {*randomResizedCrop});
-
-    guard.run([&randomResizedCrop, &pstream, &input, &output, &interp]()
-              { randomResizedCrop->submit(pstream->cudaHandle(), input, output, interp); });
+    guard.run([&randomResizedCrop, &stream, &input, &output, &interp]()
+              { randomResizedCrop->submit(stream.handle(), input.impl(), output.impl(), interp); });
 
     return output;
 }
 
-ImageBatchVarShape RandomResizedCropVarShape(ImageBatchVarShape                      &input,
-                                             const std::vector<std::tuple<int, int>> &out_size, double min_scale,
-                                             double max_scale, double min_ratio, double max_ratio,
-                                             NVCVInterpolationType interp, uint32_t seed, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> RandomResizedCrop(Tensor &input, const Shape &out_shape, double min_scale, double max_scale,
+                                          double min_ratio, double max_ratio, NVCVInterpolationType interp,
+                                          uint32_t seed, std::optional<Stream *> pstream)
+{
+    auto output = Tensor::Create(out_shape, input.dtype(), input.layout(), 0);
+
+    RandomResizedCropInto(*output, input, min_scale, max_scale, min_ratio, max_ratio, interp, seed, pstream);
+    return output;
+}
+
+ImageBatchVarShape &RandomResizedCropVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                                  double min_scale, double max_scale, double min_ratio,
+                                                  double max_ratio, NVCVInterpolationType interp, uint32_t seed,
+                                                  std::optional<Stream *> pstream)
+{
+    Stream &stream = native::GetStream(pstream);
+
+    auto randomResizedCrop
+        = CreateOperator<cvcuda::RandomResizedCrop>(min_scale, max_scale, min_ratio, max_ratio, input.capacity(), seed);
+
+    ResourceGuard guard(stream);
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*randomResizedCrop});
+
+    guard.run([&randomResizedCrop, &stream, &input, &output, &interp]()
+              { randomResizedCrop->submit(stream.handle(), input.impl(), output.impl(), interp); });
+
+    return output;
+}
+
+std::shared_ptr<ImageBatchVarShape> RandomResizedCropVarShape(ImageBatchVarShape                      &input,
+                                                              const std::vector<std::tuple<int, int>> &out_size,
+                                                              double min_scale, double max_scale, double min_ratio,
+                                                              double max_ratio, NVCVInterpolationType interp,
+                                                              uint32_t seed, std::optional<Stream *> pstream)
 {
     if (input.numImages() != (int)out_size.size())
     {
@@ -107,17 +104,24 @@ ImageBatchVarShape RandomResizedCropVarShape(ImageBatchVarShape                 
             "Number of input images must be equal to the number of elements in output size list ");
     }
 
-    ImageBatchVarShape output = CreateSizedImageBatch(input, out_size);
+    auto output = ImageBatchVarShape::Create(input.capacity());
+    auto image  = input.begin();
+    for (const auto &[width, height] : out_size)
+    {
+        auto resized = Image::Create({width, height}, (*image)->format(), 0);
+        output->pushBack(*resized);
+        ++image;
+    }
 
-    return RandomResizedCropVarShapeInto(output, input, min_scale, max_scale, min_ratio, max_ratio, interp, seed,
-                                         pstream);
+    RandomResizedCropVarShapeInto(*output, input, min_scale, max_scale, min_ratio, max_ratio, interp, seed, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpRandomResizedCrop(py::module &m)
+void ExportOpRandomResizedCrop(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("random_resized_crop", NvtxTrace("cvcuda.random_resized_crop", &RandomResizedCrop), "src"_a, "shape"_a,
           "min_scale"_a = 0.08, "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
@@ -144,7 +148,8 @@ void ExportOpRandomResizedCrop(py::module &m)
 
     m.def("random_resized_crop_into", NvtxTrace("cvcuda.random_resized_crop_into", &RandomResizedCropInto), "dst"_a,
           "src"_a, "min_scale"_a = 0.08, "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
-          "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the RandomResizedCrop operation on the given cuda stream.
 
 
@@ -189,7 +194,7 @@ void ExportOpRandomResizedCrop(py::module &m)
     m.def("random_resized_crop_into", NvtxTrace("cvcuda.random_resized_crop_into", &RandomResizedCropVarShapeInto),
           "dst"_a, "src"_a, "min_scale"_a = 0.08, "max_scale"_a = 1.0, "min_ratio"_a = 0.75,
           "max_ratio"_a = 1.3333333333333333, "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the RandomResizedCrop operation on the given cuda stream.
 
 

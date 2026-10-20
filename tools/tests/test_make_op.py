@@ -150,6 +150,14 @@ def test_bench_dtype_canon():
     }
     for name, canon in cases.items():
         assert make_op.bench_dtype_canon(name) == canon, name
+    for name, canon in {
+        "rgb8": "u8",
+        "rgbaf32": "f32",
+        "uchar": "u8",
+        "u16": "u16",
+    }.items():
+        assert make_op.bench_dtype_canon(name, exact=True) == canon, name
+    assert make_op.bench_dtype_canon("interp", exact=True) is None
 
 
 def test_fmt_channels_inference():
@@ -157,6 +165,15 @@ def test_fmt_channels_inference():
     assert make_op.fmt_channels("nvcv::TYPE_F32") == {1}
     assert 4 in make_op.fmt_channels("FMT_RGBAf32")
     assert 3 in make_op.fmt_channels("FMT_BGRf32")
+
+
+def test_fmt_channels_numbered_noncolor_formats():
+    assert make_op.fmt_channels("nvcv::FMT_2F32") == {2}
+    assert make_op.fmt_channels("nvcv::FMT_2S16 nvcv::FMT_RGB8 nvcv::TYPE_U8") == {
+        1,
+        2,
+        3,
+    }
 
 
 def test_dtype_token_detection():

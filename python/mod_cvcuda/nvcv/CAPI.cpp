@@ -17,24 +17,25 @@
 
 #include "CAPI.hpp"
 
+#include "../operators/NativeResourceGuard.hpp"
 #include "Array.hpp"
 #include "Cache.hpp"
 #include "DataType.hpp"
 #include "Image.hpp"
 #include "ImageBatch.hpp"
+#include "PythonObjectAdapters.hpp"
 #include "Stream.hpp"
 #include "Tensor.hpp"
 #include "TensorBatch.hpp"
 
 #include <common/Assert.hpp>
+#include <common/Binding.hpp>
 #include <nvcv/python/CAPI.hpp>
 #include <nvcv/python/Cache.hpp>
 #include <nvcv/python/Container.hpp>
-#include <pybind11/stl.h>
 
 #include <memory>
 #include <stdexcept>
-#include <unordered_map>
 
 namespace nvcvpy::priv {
 
@@ -44,6 +45,72 @@ class CAPIResourceError : public std::runtime_error
 {
 public:
     using std::runtime_error::runtime_error;
+};
+
+class ExternalCacheProbeKey final : public IKey
+{
+private:
+    size_t doGetHash() const override
+    {
+        return 0x435643554441ULL;
+    }
+
+    bool doIsCompatible(const IKey &) const override
+    {
+        return true;
+    }
+};
+
+class ExternalCacheProbeItem final : public ICacheItem
+{
+public:
+    const IKey &key() const override
+    {
+        return m_key;
+    }
+
+    py::object container() const override
+    {
+        return py::none();
+    }
+
+private:
+    ExternalCacheProbeKey m_key;
+};
+
+class ExternalResourceProbeKey final : public nvcvpy::IKey
+{
+public:
+    ExternalResourceProbeKey() = default;
+
+private:
+    size_t doGetHash() const override
+    {
+        return 0;
+    }
+
+    bool doIsCompatible(const nvcvpy::IKey &) const override
+    {
+        return true;
+    }
+};
+
+class ExternalResourceProbe final // NOSONAR: depth is imposed by the nanobind facade hierarchy it must extend.
+    : public nvcvpy::Container
+{
+public:
+    const nvcvpy::IKey &key() const override
+    {
+        return m_key;
+    }
+
+    py::object container() const override
+    {
+        return py::none();
+    }
+
+private:
+    ExternalResourceProbeKey m_key;
 };
 
 // We need to catch any exceptions and set the appropriate PyError prior to crossing any C API boundry
@@ -69,37 +136,16 @@ public:
 // like a real failure. Plain bools: both the toggles and every injected
 // callback run under the GIL.
 
-struct TestFailureInjection
-{
-    bool streamHoldResources     = false;
-    bool resourcesSubmitSyncOnly = false;
-    bool resourcesSyncAndHold    = false;
-};
-
-TestFailureInjection &testFailureInjection()
-{
-    static TestFailureInjection injection;
-    return injection;
-}
-
-void ThrowIfInjected(bool armed, const char *what)
-{
-    if (armed)
-    {
-        throw CAPIResourceError(what);
-    }
-}
-
 template<class T>
 std::shared_ptr<T> ToSharedObj(PyObject *obj)
 {
-    return py::reinterpret_borrow<py::object>(obj).cast<std::shared_ptr<T>>();
+    return py::cast<std::shared_ptr<T>>(py::reinterpret_borrow<py::object>(obj));
 }
 
 template<class T>
 T ToObj(PyObject *obj)
 {
-    return py::reinterpret_borrow<py::object>(obj).cast<T>();
+    return py::cast<T>(py::reinterpret_borrow<py::object>(obj));
 }
 
 PyObject *ImplDataType_ToPython(NVCVDataType p)
@@ -107,7 +153,7 @@ PyObject *ImplDataType_ToPython(NVCVDataType p)
     try
     {
         py::object obj = py::cast(nvcv::DataType(p));
-        return obj.ptr();
+        return obj.release().ptr();
     }
     CATCH_RETURN_DEFAULT(nullptr, "Casting PyObject from NVCVDataType failed")
 }
@@ -121,12 +167,32 @@ NVCVDataType ImplDataType_FromPython(PyObject *obj)
     CATCH_RETURN_DEFAULT(0, "Casting nvcv::DataType from PyObject failed")
 }
 
+PyTypeObject *ImplFacade_GetType(nvcvpy::FacadeType type) noexcept
+{
+    switch (type)
+    {
+    case nvcvpy::FacadeType::TENSOR:
+        return reinterpret_cast<PyTypeObject *>(py::type<Tensor>().ptr());
+    case nvcvpy::FacadeType::IMAGE:
+        return reinterpret_cast<PyTypeObject *>(py::type<Image>().ptr());
+    case nvcvpy::FacadeType::ARRAY:
+        return reinterpret_cast<PyTypeObject *>(py::type<Array>().ptr());
+    case nvcvpy::FacadeType::TENSOR_BATCH:
+        return reinterpret_cast<PyTypeObject *>(py::type<TensorBatch>().ptr());
+    case nvcvpy::FacadeType::IMAGE_BATCH_VAR_SHAPE:
+        return reinterpret_cast<PyTypeObject *>(py::type<ImageBatchVarShape>().ptr());
+    case nvcvpy::FacadeType::STREAM:
+        return reinterpret_cast<PyTypeObject *>(py::type<Stream>().ptr());
+    }
+    return nullptr;
+}
+
 PyObject *ImplImageFormat_ToPython(NVCVImageFormat p)
 {
     try
     {
         py::object obj = py::cast(nvcv::ImageFormat(p));
-        return obj.ptr();
+        return obj.release().ptr();
     }
     CATCH_RETURN_DEFAULT(nullptr, "Casting PyObject from NVCVImageFormat failed")
 }
@@ -183,171 +249,6 @@ LockMode ToLockMode(PyObject *_mode)
     }
 }
 
-// ----- Resource-pointer cache (weakref-invalidated) -------------------------
-//
-// Inside the per-resource hot loop of Resources_SyncAndHold, the dominant
-// per-item cost is the pybind11 reverse-cast `ToSharedObj<Resource>(PyObject*)`
-// — a type-registry lookup plus holder extraction, on the order of ~1 us per
-// resource. Bench-style workloads call the same op repeatedly with the same
-// Tensor / ImageBatch wrappers, so caching by raw PyObject* skips the cast on
-// repeats.
-//
-// The hazard with raw PyObject* keys is identity reuse: when a wrapper is
-// destroyed, Python's allocator can recycle its memory address for an
-// unrelated new object. A naive cache would then return a stale Resource for
-// the new wrapper. We block this by registering a weakref-with-callback on
-// each cached PyObject; the callback fires inside the wrapper's tp_dealloc,
-// *before* the address can be reused, and erases the cache entry.
-//
-// All access happens under the GIL (this code is reachable only from C-API
-// entrypoints invoked by Python), so no extra synchronization is required.
-
-// Self-decref'ing PyObject reference holder (for weakref strong refs).
-struct PyRef
-{
-    PyObject *p = nullptr;
-
-    PyRef() = default;
-
-    explicit PyRef(PyObject *x)
-        : p(x)
-    {
-    }
-
-    ~PyRef()
-    {
-        if (p)
-        {
-            Py_DECREF(p);
-        }
-    }
-
-    PyRef(const PyRef &)            = delete;
-    PyRef &operator=(const PyRef &) = delete;
-
-    PyRef(PyRef &&o) noexcept
-        : p(o.p)
-    {
-        o.p = nullptr;
-    }
-
-    PyRef &operator=(PyRef &&o) noexcept
-    {
-        if (this != &o)
-        {
-            if (p)
-            {
-                Py_DECREF(p);
-            }
-            p   = o.p;
-            o.p = nullptr;
-        }
-        return *this;
-    }
-};
-
-struct ResCacheEntry
-{
-    std::shared_ptr<Resource> res;
-    PyRef                     weakref; // owns a strong ref; ~PyRef -> Py_DECREF on erase
-};
-
-std::unordered_map<PyObject *, ResCacheEntry> &ResCache()
-{
-    static std::unordered_map<PyObject *, ResCacheEntry> cache;
-    return cache;
-}
-
-std::unordered_map<PyObject *, PyObject *> &WeakrefToObj()
-{
-    // weakref* -> tracked obj* (borrowed)
-    static std::unordered_map<PyObject *, PyObject *> cache;
-    return cache;
-}
-
-PyObject *ImplResCache_Invalidate(PyObject * /*self*/, PyObject *weakref)
-{
-    auto &weakrefToObj = WeakrefToObj();
-    if (auto wrIt = weakrefToObj.find(weakref); wrIt != weakrefToObj.end())
-    {
-        // Erasing the cache entry destroys the ResCacheEntry, whose ~PyRef
-        // releases our strong ref on `weakref`. CPython's weakref machinery
-        // bumps the weakref refcount before invoking us, so the implied
-        // decref-to-zero here cannot dangle the object we're inside of.
-        ResCache().erase(wrIt->second);
-        weakrefToObj.erase(wrIt);
-    }
-    Py_RETURN_NONE;
-}
-
-PyMethodDef &InvalidateMethodDef()
-{
-    static PyMethodDef methodDef = {"_resCache_invalidate", ImplResCache_Invalidate, METH_O, nullptr};
-    return methodDef;
-}
-
-PyObject *GetResCacheInvalidateCallback()
-{
-    static PyObject *cb = []()
-    {
-        // Module-lifetime, never released. PyCFunction_NewEx requires a
-        // module-or-None reference; nullptr is fine for our purposes.
-        return PyCFunction_NewEx(&InvalidateMethodDef(), nullptr, nullptr);
-    }();
-    return cb;
-}
-
-// Cache-aware Resource extractor. On miss, performs the pybind11 reverse cast
-// and registers a weakref so the entry self-invalidates when the wrapper is
-// destroyed. Falls back to plain extraction if weakrefs aren't supported.
-std::shared_ptr<Resource> ExtractResourceCached(PyObject *obj)
-{
-    auto &resCache = ResCache();
-    if (auto it = resCache.find(obj); it != resCache.end())
-    {
-        return it->second.res;
-    }
-    auto      res    = ToSharedObj<Resource>(obj);
-    PyObject *cb     = GetResCacheInvalidateCallback();
-    PyObject *wr_raw = (cb != nullptr) ? PyWeakref_NewRef(obj, cb) : nullptr;
-    if (wr_raw == nullptr)
-    {
-        // Wrapper type doesn't support weakrefs (or callback init failed).
-        // Skip caching to preserve correctness; pay the cast every call.
-        PyErr_Clear();
-        return res;
-    }
-
-    // Take RAII ownership of the new weakref reference immediately so any
-    // throw between here and the successful inserts cleans it up.
-    PyRef wr_holder{wr_raw};
-    auto &weakrefToObj = WeakrefToObj();
-    try
-    {
-        // Reverse map first so the order matches the natural cleanup path:
-        // if the second emplace below throws, we erase this entry in the
-        // catch block.
-        weakrefToObj.try_emplace(wr_raw, obj);
-        // Move ownership of the weakref ref into the cache entry.  If the
-        // emplace fails, the temporary ResCacheEntry's destructor (~PyRef)
-        // decrefs wr_raw — wr_holder is then moved-from and is a no-op at
-        // its own destruction.
-        resCache.try_emplace(obj, ResCacheEntry{res, std::move(wr_holder)});
-    }
-    catch (...)
-    {
-        // erase() by key is safe even when the entry was never inserted
-        // (no-op) and even when wr_raw is now a dangling pointer (we don't
-        // dereference it — the unordered_map only hashes/compares the
-        // pointer value).
-        weakrefToObj.erase(wr_raw);
-        throw;
-    }
-    return res;
-}
-
-// ----- end of Resource-pointer cache ----------------------------------------
-
 void ImplResource_SubmitSync(PyObject *res, PyObject *stream)
 {
     try
@@ -357,46 +258,98 @@ void ImplResource_SubmitSync(PyObject *res, PyObject *stream)
     CATCH_RETURN_DEFAULT(, "Submit sync failed")
 }
 
+void DoStream_HoldResources(PyObject *stream, PyObject *resourceList, int submissionDevice)
+{
+    ThrowIfResourceGuardFailureInjected(GetResourceGuardFailureInjection().streamHoldResources,
+                                        "injected Stream_HoldResources failure");
+
+    auto pyStream = ToSharedObj<Stream>(stream);
+
+    py::list resList = ToObj<py::list>(resourceList);
+
+    ResourceBag    resVector;
+    PythonOwnerBag pythonOwners;
+    resVector.reserve(resList.size());
+    pythonOwners.reserve(resList.size());
+
+    const PyObject *lastModePtr = nullptr;
+    LockMode        lastMode    = LockMode::LOCK_MODE_NONE;
+
+    for (py::handle h : resList)
+    {
+        py::tuple t = py::cast<py::tuple>(h);
+        if (t.size() != 2)
+        {
+            throw CAPIResourceError("ResourcePerMode tuple must have two elements");
+        }
+
+        PyObject *modePtr = t[0].ptr();
+        LockMode  lockMode;
+        if (modePtr == lastModePtr)
+        {
+            lockMode = lastMode;
+        }
+        else
+        {
+            lockMode    = ToLockMode(modePtr);
+            lastModePtr = modePtr;
+            lastMode    = lockMode;
+        }
+
+        (void)lockMode;
+        PyObject *resource = t[1].ptr();
+        resVector.emplace_back(ToSharedObj<Resource>(resource));
+        pythonOwners.emplace_back(py::reinterpret_borrow<py::object>(resource));
+    }
+
+    pyStream->holdResources(std::move(resVector), std::move(pythonOwners), submissionDevice);
+}
+
 void ImplStream_HoldResources(PyObject *stream, PyObject *resourceList)
 {
     try
     {
-        ThrowIfInjected(testFailureInjection().streamHoldResources, "injected Stream_HoldResources failure");
+        auto pyStream = ToSharedObj<Stream>(stream);
+        DoStream_HoldResources(stream, resourceList, pyStream->submissionDeviceId());
+    }
+    CATCH_RETURN_DEFAULT(, "Hold resources failed")
+}
 
-        py::list resList = ToObj<py::list>(resourceList);
-
-        LockResources resVector;
-
-        const PyObject *lastModePtr = nullptr;
-        LockMode        lastMode    = LockMode::LOCK_MODE_NONE;
-
-        for (py::handle h : resList)
+void ImplResources_SubmitSyncOnlyRaw(PyObject *stream, PyObject *const *resources, size_t count)
+{
+    try
+    {
+        ThrowIfResourceGuardFailureInjected(GetResourceGuardFailureInjection().resourcesSubmitSyncOnly,
+                                            "injected Resources_SubmitSyncOnly failure");
+        auto    pyStream         = ToSharedObj<Stream>(stream);
+        int     submissionDevice = pyStream->submissionDeviceId();
+        Stream &streamRef        = *pyStream;
+        pyStream->ensureNotCapturing(submissionDevice);
+        for (size_t i = 0; i < count; ++i)
         {
-            py::tuple t = h.cast<py::tuple>();
-            if (t.size() != 2)
-            {
-                throw CAPIResourceError("ResourcePerMode tuple must have two elements");
-            }
-
-            PyObject *modePtr = t[0].ptr();
-            LockMode  lockMode;
-            if (modePtr == lastModePtr)
-            {
-                lockMode = lastMode;
-            }
-            else
-            {
-                lockMode    = ToLockMode(modePtr);
-                lastModePtr = modePtr;
-                lastMode    = lockMode;
-            }
-
-            auto res = ExtractResourceCached(t[1].ptr());
-
-            resVector.emplace(lockMode, res);
+            ToSharedObj<Resource>(resources[i])->submitSync(streamRef, submissionDevice);
         }
+    }
+    CATCH_RETURN_DEFAULT(, "Submit sync only failed")
+}
 
-        ToSharedObj<Stream>(stream)->holdResources(std::move(resVector));
+void ImplStream_HoldResourcesRaw(PyObject *stream, PyObject *const *resources, size_t count)
+{
+    try
+    {
+        ThrowIfResourceGuardFailureInjected(GetResourceGuardFailureInjection().streamHoldResources,
+                                            "injected Stream_HoldResources failure");
+        auto           pyStream = ToSharedObj<Stream>(stream);
+        ResourceBag    owners;
+        PythonOwnerBag pythonOwners;
+        owners.reserve(count);
+        pythonOwners.reserve(count);
+        for (size_t i = 0; i < count; ++i)
+        {
+            owners.emplace_back(ToSharedObj<Resource>(resources[i]));
+            pythonOwners.emplace_back(py::reinterpret_borrow<py::object>(resources[i]));
+        }
+        pyStream->holdResources(std::move(owners), std::move(pythonOwners), pyStream->submissionDeviceId());
     }
     CATCH_RETURN_DEFAULT(, "Hold resources failed")
 }
@@ -409,92 +362,108 @@ void ImplStream_HoldResources(PyObject *stream, PyObject *resourceList)
 // be enqueued before the kernel it's meant to gate — the previous combined
 // Resources_SyncAndHold (called at guard destruction) ran AFTER the kernel
 // and was therefore a no-op for the kernel it was supposed to protect.
+void DoResources_SubmitSyncOnly(PyObject *stream, PyObject *resourceList, int submissionDevice)
+{
+    ThrowIfResourceGuardFailureInjected(GetResourceGuardFailureInjection().resourcesSubmitSyncOnly,
+                                        "injected Resources_SubmitSyncOnly failure");
+
+    py::list resList   = ToObj<py::list>(resourceList);
+    auto     pyStream  = ToSharedObj<Stream>(stream);
+    Stream  &streamRef = *pyStream;
+
+    pyStream->ensureNotCapturing(submissionDevice);
+
+    for (py::handle h : resList)
+    {
+        py::tuple t = py::cast<py::tuple>(h);
+        if (t.size() != 2)
+        {
+            throw CAPIResourceError("ResourcePerMode tuple must have two elements");
+        }
+
+        ToSharedObj<Resource>(t[1].ptr())->submitSync(streamRef, submissionDevice);
+    }
+}
+
 void ImplResources_SubmitSyncOnly(PyObject *stream, PyObject *resourceList)
 {
     try
     {
-        ThrowIfInjected(testFailureInjection().resourcesSubmitSyncOnly, "injected Resources_SubmitSyncOnly failure");
-
-        py::list resList   = ToObj<py::list>(resourceList);
-        auto     pyStream  = ToSharedObj<Stream>(stream);
-        Stream  &streamRef = *pyStream;
-
-        for (py::handle h : resList)
-        {
-            py::tuple t = h.cast<py::tuple>();
-            if (t.size() != 2)
-            {
-                throw CAPIResourceError("ResourcePerMode tuple must have two elements");
-            }
-
-            // Per-resource cast goes through the weakref-invalidated cache so
-            // repeat ops on the same wrapper skip the pybind11 holder lookup.
-            auto res = ExtractResourceCached(t[1].ptr());
-            res->submitSync(streamRef);
-        }
+        auto pyStream = ToSharedObj<Stream>(stream);
+        DoResources_SubmitSyncOnly(stream, resourceList, pyStream->submissionDeviceId());
     }
     CATCH_RETURN_DEFAULT(, "Submit sync only failed")
 }
 
 // Batched equivalent of "for r in list: Resource_SubmitSync(r, stream)" followed
-// by Stream_HoldResources, executed entirely in C++. Saves N pybind11/C-ABI
-// boundary crossings on ops that track many resources. Per-resource cast goes
-// through ExtractResourceCached which dedups repeat lookups for the same
-// PyObject; see the cache section above for the identity-reuse safety story.
+// by Stream_HoldResources, executed entirely in C++. Saves N nanobind/C-ABI
+// boundary crossings on ops that track many resources.
 //
 // NOTE: this combined call is retained for backward compatibility with
 // out-of-tree consumers that haven't migrated to the run()-based pattern.
 // New code should use Resources_SubmitSyncOnly + Stream_HoldResources via
 // ResourceGuard::run().
+void DoResources_SyncAndHold(PyObject *stream, PyObject *resourceList, int submissionDevice)
+{
+    ThrowIfResourceGuardFailureInjected(GetResourceGuardFailureInjection().resourcesSyncAndHold,
+                                        "injected Resources_SyncAndHold failure");
+
+    py::list resList   = ToObj<py::list>(resourceList);
+    auto     pyStream  = ToSharedObj<Stream>(stream);
+    Stream  &streamRef = *pyStream;
+
+    pyStream->ensureNotCapturing(submissionDevice);
+
+    ResourceBag    resVector;
+    PythonOwnerBag pythonOwners;
+    resVector.reserve(resList.size());
+    pythonOwners.reserve(resList.size());
+
+    // Within a single commit() call, contiguous items typically share the
+    // same py::str instance for their lock mode (one .add(mode, {...})
+    // call -> N items with the same mode). A one-slot last-seen cache
+    // skips the string parse on those.
+    const PyObject *lastModePtr = nullptr;
+    LockMode        lastMode    = LockMode::LOCK_MODE_NONE;
+
+    for (py::handle h : resList)
+    {
+        py::tuple t = py::cast<py::tuple>(h);
+        if (t.size() != 2)
+        {
+            throw CAPIResourceError("ResourcePerMode tuple must have two elements");
+        }
+
+        PyObject *modePtr = t[0].ptr();
+        LockMode  lockMode;
+        if (modePtr == lastModePtr)
+        {
+            lockMode = lastMode;
+        }
+        else
+        {
+            lockMode    = ToLockMode(modePtr);
+            lastModePtr = modePtr;
+            lastMode    = lockMode;
+        }
+
+        PyObject *resource = t[1].ptr();
+        auto      res      = ToSharedObj<Resource>(resource);
+        res->submitSync(streamRef, submissionDevice);
+        (void)lockMode;
+        resVector.emplace_back(std::move(res));
+        pythonOwners.emplace_back(py::reinterpret_borrow<py::object>(resource));
+    }
+
+    pyStream->holdResources(std::move(resVector), std::move(pythonOwners), submissionDevice);
+}
+
 void ImplResources_SyncAndHold(PyObject *stream, PyObject *resourceList)
 {
     try
     {
-        ThrowIfInjected(testFailureInjection().resourcesSyncAndHold, "injected Resources_SyncAndHold failure");
-
-        py::list resList   = ToObj<py::list>(resourceList);
-        auto     pyStream  = ToSharedObj<Stream>(stream);
-        Stream  &streamRef = *pyStream;
-
-        LockResources resVector;
-
-        // Within a single commit() call, contiguous items typically share the
-        // same py::str instance for their lock mode (one .add(mode, {...})
-        // call -> N items with the same mode). A one-slot last-seen cache
-        // skips the string parse on those.
-        const PyObject *lastModePtr = nullptr;
-        LockMode        lastMode    = LockMode::LOCK_MODE_NONE;
-
-        for (py::handle h : resList)
-        {
-            py::tuple t = h.cast<py::tuple>();
-            if (t.size() != 2)
-            {
-                throw CAPIResourceError("ResourcePerMode tuple must have two elements");
-            }
-
-            PyObject *modePtr = t[0].ptr();
-            LockMode  lockMode;
-            if (modePtr == lastModePtr)
-            {
-                lockMode = lastMode;
-            }
-            else
-            {
-                lockMode    = ToLockMode(modePtr);
-                lastModePtr = modePtr;
-                lastMode    = lockMode;
-            }
-
-            auto res = ExtractResourceCached(t[1].ptr());
-
-            // Per-resource stream-ordering registration.
-            res->submitSync(streamRef);
-
-            resVector.emplace(lockMode, res);
-        }
-
-        pyStream->holdResources(std::move(resVector));
+        auto pyStream = ToSharedObj<Stream>(stream);
+        DoResources_SyncAndHold(stream, resourceList, pyStream->submissionDeviceId());
     }
     CATCH_RETURN_DEFAULT(, "Sync and hold resources failed")
 }
@@ -731,9 +700,70 @@ void ImplCache_RemoveAllNotInUseMatching(const IKey *pkey)
 
 } // namespace
 
+ResourceGuardFailureInjection &GetResourceGuardFailureInjection()
+{
+    static ResourceGuardFailureInjection injection;
+    return injection;
+}
+
+void ThrowIfResourceGuardFailureInjected(bool armed, const char *what)
+{
+    if (armed)
+    {
+        throw std::invalid_argument(what);
+    }
+}
+
+#ifdef NB_FREE_THREADED
+namespace {
+struct CapiSubmission
+{
+    std::vector<BatchMutex *>                      mutexes;
+    std::unique_ptr<BatchLockScope>                batches;
+    std::unique_ptr<cvcudapy::NativeResourceGuard> guard;
+};
+
+void *BeginSubmission(PyObject *stream, PyObject *const *resources, const uint8_t *modes, size_t count)
+{
+    try
+    {
+        auto                    submission = std::make_unique<CapiSubmission>();
+        // The caller retains these Python arguments until Begin returns.
+        std::vector<Resource *> borrowedResources;
+        for (size_t i = 0; i < count; ++i)
+        {
+            auto &resource = ToObj<Resource &>(resources[i]);
+            if (auto *mutex = resource.submissionBatchMutex())
+                submission->mutexes.push_back(mutex);
+            borrowedResources.push_back(&resource);
+        }
+        if (!submission->mutexes.empty())
+            submission->batches
+                = std::make_unique<BatchLockScope>(submission->mutexes.data(), submission->mutexes.size());
+        submission->guard = std::make_unique<cvcudapy::NativeResourceGuard>(ToObj<Stream &>(stream));
+        for (size_t i = 0; i < count; ++i)
+            submission->guard->add(static_cast<LockMode>(modes[i]), {*borrowedResources[i]});
+        submission->guard->begin();
+        return submission.release();
+    }
+    CATCH_RETURN_DEFAULT(nullptr, "Begin submission failed")
+}
+
+void EndSubmission(void *token)
+{
+    try
+    {
+        std::unique_ptr<CapiSubmission> submission(static_cast<CapiSubmission *>(token));
+        submission->guard->finish();
+    }
+    CATCH_RETURN_DEFAULT(, "End submission failed")
+}
+} // namespace
+#endif
+
 // Note these functions will set a PyError if an exception is thrown, this must be then checked by calling
 // CheckCAPIError() before returning to Python.
-void ExportCAPI(py::module &m)
+void ExportCAPI(py::module_ &m)
 {
     static CAPI capi = {
         .DataType_ToPython               = &ImplDataType_ToPython,
@@ -767,16 +797,84 @@ void ExportCAPI(py::module &m)
         .TensorBatch_Clear               = &ImplTensorBatch_Clear,
         .Resources_SyncAndHold           = &ImplResources_SyncAndHold,
         .Resources_SubmitSyncOnly        = &ImplResources_SubmitSyncOnly,
+        .Resources_SubmitSyncOnlyRaw     = &ImplResources_SubmitSyncOnlyRaw,
+        .Stream_HoldResourcesRaw         = &ImplStream_HoldResourcesRaw,
+        .Facade_GetType                  = &ImplFacade_GetType,
     };
 
-    m.add_object("_C_API", py::capsule(&capi, "cvcuda._C_API"));
+    m.attr("_C_API") = py::capsule(&capi, "cvcuda._C_API");
+#ifdef NB_FREE_THREADED
+    static const SubmissionCAPI submissionApi{&BeginSubmission, &EndSubmission};
+    m.attr("_C_API_submission") = py::capsule(&submissionApi, "cvcuda._cvcuda._C_API_submission");
+#endif
 }
 
-void ExportCAPITestHooks(py::module &m)
+void ExportCAPITestHooks(py::module_ &m)
 {
-    m.def("fail_hold_resources", [](bool armed) { testFailureInjection().streamHoldResources = armed; });
-    m.def("fail_submit_sync_only", [](bool armed) { testFailureInjection().resourcesSubmitSyncOnly = armed; });
-    m.def("fail_sync_and_hold", [](bool armed) { testFailureInjection().resourcesSyncAndHold = armed; });
+    m.def("external_cache_capi_round_trip",
+          []
+          {
+              auto item = std::make_shared<ExternalCacheProbeItem>();
+              nvcvpy::Cache::removeAllNotInUseMatching(item->key());
+              size_t cacheItems = Cache::Instance().size();
+              nvcvpy::Cache::add(*item);
+
+              std::vector<std::shared_ptr<ICacheItem>> fetched = nvcvpy::Cache::fetch(item->key());
+              bool exactMatch = fetched.size() == 1 && fetched.front().get() == item.get();
+              fetched.clear();
+              nvcvpy::Cache::removeAllNotInUseMatching(item->key());
+
+              if (!exactMatch || Cache::Instance().size() != cacheItems)
+              {
+                  throw CAPIResourceError("external cache C API round trip failed");
+              }
+          });
+    m.def("external_resource_capi_round_trip",
+          []
+          {
+              ExternalResourceProbe facade;
+              auto                  resource = ToSharedObj<Resource>(facade.ptr());
+              if (!resource)
+              {
+                  throw CAPIResourceError("external Resource C API round trip failed");
+              }
+              return resource->id();
+          });
+    m.def("capi_legacy_hold_resources",
+          [](py::object stream, py::object resources)
+          {
+              ImplStream_HoldResources(stream.ptr(), resources.ptr());
+              CheckCAPIError();
+          });
+    m.def("capi_legacy_submit_sync_only",
+          [](py::object stream, py::object resources)
+          {
+              ImplResources_SubmitSyncOnly(stream.ptr(), resources.ptr());
+              CheckCAPIError();
+          });
+    m.def("capi_legacy_sync_and_hold",
+          [](py::object stream, py::object resources)
+          {
+              ImplResources_SyncAndHold(stream.ptr(), resources.ptr());
+              CheckCAPIError();
+          });
+    m.def("fail_hold_resources", [](bool armed) { GetResourceGuardFailureInjection().streamHoldResources = armed; });
+    m.def("fail_submit_sync_only",
+          [](bool armed) { GetResourceGuardFailureInjection().resourcesSubmitSyncOnly = armed; });
+    m.def("fail_sync_and_hold", [](bool armed) { GetResourceGuardFailureInjection().resourcesSyncAndHold = armed; });
+    m.def("hold_resources_on_device",
+          [](const std::shared_ptr<Stream> &stream, const py::list &resources, int submissionDevice)
+          {
+              ResourceBag owners;
+              owners.reserve(resources.size());
+              for (py::handle resource : resources)
+              {
+                  owners.push_back(py::cast<std::shared_ptr<Resource>>(resource));
+              }
+              stream->holdResources(std::move(owners), submissionDevice);
+          });
+    m.def("ensure_not_capturing_on_device", [](const std::shared_ptr<Stream> &stream, int submissionDevice)
+          { stream->ensureNotCapturing(submissionDevice); });
 }
 
 } // namespace nvcvpy::priv

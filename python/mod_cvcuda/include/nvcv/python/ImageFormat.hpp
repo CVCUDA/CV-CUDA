@@ -22,16 +22,16 @@
 
 #include <nvcv/ImageFormat.hpp>
 
-namespace pybind11::detail {
+namespace nanobind::detail {
 
 namespace cvpy = nvcvpy;
 
 template<>
 struct type_caster<nvcv::ImageFormat>
 {
-    PYBIND11_TYPE_CASTER(nvcv::ImageFormat, const_name("cvcuda.Format"));
+    NB_TYPE_CASTER(nvcv::ImageFormat, const_name("cvcuda.Format"));
 
-    bool load(handle src, bool)
+    bool from_python(handle src, uint32_t, cleanup_list *)
     {
         NVCVImageFormat p = cvpy::capi().ImageFormat_FromPython(src.ptr());
         cvpy::CheckCAPIError();
@@ -39,7 +39,7 @@ struct type_caster<nvcv::ImageFormat>
         return true;
     }
 
-    static handle cast(nvcv::ImageFormat type, return_value_policy /* policy */, handle /*parent */)
+    static handle from_cpp(nvcv::ImageFormat type, rv_policy, cleanup_list *)
     {
         handle out = cvpy::capi().ImageFormat_ToPython(static_cast<NVCVImageFormat>(type));
         cvpy::CheckCAPIError();
@@ -47,6 +47,6 @@ struct type_caster<nvcv::ImageFormat>
     }
 };
 
-} // namespace pybind11::detail
+} // namespace nanobind::detail
 
 #endif // NVCV_PYTHON_IMAGEFORMAT_HPP

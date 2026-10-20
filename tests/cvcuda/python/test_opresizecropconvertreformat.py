@@ -18,6 +18,7 @@ import pytest
 
 import cvcuda
 import cvcuda_tools as cv_tools
+import cvcuda_util
 import cupy
 
 # NOTE: The following tests for resize_crop_convert_reformat DO NOT TEST:
@@ -320,7 +321,9 @@ def test_op_resize_crop_convert_reformat(
     is_positive_test,
 ):
 
-    inputTensor = cvcuda.Tensor(*tensor_params)
+    inputTensor = cvcuda_util.create_tensor(
+        *tensor_params, rng=np.random.default_rng(0)
+    )
     out_layout = out_layout if out_layout else str(inputTensor.layout)
     out_dtype = out_dtype if out_dtype else inputTensor.dtype
 
@@ -356,7 +359,7 @@ def test_op_resize_crop_convert_reformat(
             inputTensor,
             resize_dim,
             resize_interpolation,
-            [crop_rect_params[1], crop_rect_params[0]],
+            crop_rect_params[:2],
             manip=manip,
             scale=scale_norm,
             offset=offset_norm,
@@ -557,7 +560,7 @@ def test_op_resize_crop_convert_reformat_varshape(
             inputVarShape,
             resize_dim,
             resize_interpolation,
-            [crop_rect_params[1], crop_rect_params[0]],
+            crop_rect_params[:2],
             manip=manip,
         )
     except Exception as e:

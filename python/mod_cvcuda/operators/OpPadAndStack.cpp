@@ -15,20 +15,20 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpPadAndStack.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 #include <stdexcept>
 
 namespace cvcudapy {
 
 namespace {
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
 
 class PadAndStackError : public std::runtime_error
 {
@@ -36,46 +36,47 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-Tensor PadAndStackInto(Tensor &output, ImageBatchVarShape &input, Tensor &top, Tensor &left, NVCVBorderType border,
-                       float borderValue, std::optional<Stream> pstream)
+Tensor &PadAndStackInto(Tensor &output, ImageBatchVarShape &input, Tensor &top, Tensor &left, NVCVBorderType border,
+                        float borderValue, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto padstack = CreateOperator<cvcuda::PadAndStack>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, top, left});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*padstack});
 
-    guard.run([&padstack, &pstream, &input, &output, &top, &left, &border, &borderValue]()
-              { padstack->submit(pstream->cudaHandle(), input, output, top, left, border, borderValue); });
+    guard.run(
+        [&padstack, &stream, &input, &output, &top, &left, &border, &borderValue]() {
+            padstack->submit(stream.handle(), input.impl(), output.impl(), top.impl(), left.impl(), border,
+                             borderValue);
+        });
 
-    return std::move(output);
+    return output;
 }
 
-Tensor PadAndStack(ImageBatchVarShape &input, Tensor &top, Tensor &left, NVCVBorderType border, float borderValue,
-                   std::optional<Stream> pstream)
+std::shared_ptr<Tensor> PadAndStack(ImageBatchVarShape &input, Tensor &top, Tensor &left, NVCVBorderType border,
+                                    float borderValue, std::optional<Stream *> pstream)
 {
-    nvcv::ImageFormat fmt = input.uniqueFormat();
+    nvcv::ImageFormat fmt = input.impl().uniqueFormat();
     if (fmt == nvcv::FMT_NONE)
     {
         throw PadAndStackError("All images in the input must have the same format");
     }
 
-    Tensor output = Tensor::CreateForImageBatch(input.numImages(), input.maxSize(), fmt);
+    auto output = native::CreateTensorForImageBatch(input.numImages(), input.impl().maxSize(), fmt);
 
-    return PadAndStackInto(output, input, top, left, border, borderValue, pstream);
+    PadAndStackInto(*output, input, top, left, border, borderValue, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpPadAndStack(py::module &m)
+void ExportOpPadAndStack(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("padandstack", NvtxTrace("cvcuda.padandstack", &PadAndStack), "src"_a, "top"_a, "left"_a,
           "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -96,7 +97,8 @@ void ExportOpPadAndStack(py::module &m)
     )pbdoc");
 
     m.def("padandstack_into", NvtxTrace("cvcuda.padandstack_into", &PadAndStackInto), "dst"_a, "src"_a, "top"_a,
-          "left"_a, "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "left"_a, "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Pad and Stack operation on the given cuda stream.
 
 

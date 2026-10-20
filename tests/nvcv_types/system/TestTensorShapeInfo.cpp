@@ -21,6 +21,8 @@
 #include <common/ValueTests.hpp>
 #include <nvcv/TensorShapeInfo.hpp>
 
+#include <limits>
+
 namespace test = nvcv::test;
 namespace t    = ::testing;
 
@@ -48,6 +50,59 @@ TEST_P(TensorShapeInfo_NumBatch_ExecTests, works)
     auto info = nvcv::TensorShapeInfo::Create(input);
     ASSERT_TRUE(info);
     EXPECT_EQ(gold, info->numSamples());
+}
+
+TEST(TensorShapeInfo, RejectsSampleCountThatWrapsToOne)
+{
+    const nvcv::TensorShape input{
+        {(int64_t{1} << 32) + 1, 1, 1, 1},
+        "NHWC"
+    };
+    NVCV_EXPECT_THROW_STATUS(NVCV_ERROR_OVERFLOW, nvcv::TensorShapeInfo::Create(input));
+}
+
+TEST(TensorShapeInfo, SampleCountInt32Boundaries)
+{
+    constexpr int64_t kMax = std::numeric_limits<int32_t>::max();
+    constexpr int64_t kMin = std::numeric_limits<int32_t>::min();
+
+    auto info = nvcv::TensorShapeInfo::Create(nvcv::TensorShape{
+        {kMax, 1, 1, 1},
+        "NHWC"
+    });
+    ASSERT_TRUE(info);
+    EXPECT_EQ(kMax, info->numSamples());
+
+    NVCV_EXPECT_THROW_STATUS(NVCV_ERROR_OVERFLOW, nvcv::TensorShapeInfo::Create(nvcv::TensorShape{
+                                                      {kMax + 1, 1, 1, 1},
+                                                      "NHWC"
+    }));
+    NVCV_EXPECT_THROW_STATUS(NVCV_ERROR_OVERFLOW, nvcv::TensorShapeInfo::Create(nvcv::TensorShape{
+                                                      {kMin - 1, 1, 1, 1},
+                                                      "NHWC"
+    }));
+}
+
+TEST(TensorShapeInfoImage, RejectsDimensionsThatWrapToOne)
+{
+    const int64_t oversized = (int64_t{1} << 32) + 1;
+    NVCV_EXPECT_THROW_STATUS(NVCV_ERROR_OVERFLOW, nvcv::TensorShapeInfoImage::Create(nvcv::TensorShape{
+                                                      {1, 1, oversized, 1},
+                                                      "NHWC"
+    }));
+    NVCV_EXPECT_THROW_STATUS(NVCV_ERROR_OVERFLOW, nvcv::TensorShapeInfoImage::Create(nvcv::TensorShape{
+                                                      {1, oversized, 1, 1},
+                                                      "NHWC"
+    }));
+    NVCV_EXPECT_THROW_STATUS(NVCV_ERROR_OVERFLOW, nvcv::TensorShapeInfoImage::Create(nvcv::TensorShape{
+                                                      {1, 1, 1, oversized},
+                                                      "NHWC"
+    }));
+    // The base-class channel check throws first, so this only pins that planar Create() propagates it.
+    NVCV_EXPECT_THROW_STATUS(NVCV_ERROR_OVERFLOW, nvcv::TensorShapeInfoImagePlanar::Create(nvcv::TensorShape{
+                                                      {1, oversized, 1, 1},
+                                                      "NCHW"
+    }));
 }
 
 // TensorShapeInfoImage::numChannels ========================

@@ -21,9 +21,10 @@
 
 namespace cvcudapy {
 
-void ExportNormType(py::module &m)
+void ExportNormType(py::module_ &m)
 {
-    py::enum_<NVCVNormType>(m, "Norm", "Vector norm types for distance and similarity computation.", py::arithmetic())
+    py::enum_compat<NVCVNormType>(m, "Norm", "Vector norm types for distance and similarity computation.",
+                                  py::is_arithmetic())
         .value("HAMMING", NVCV_NORM_HAMMING, "Hamming distance")
         .value("L1", NVCV_NORM_L1, "Manhattan distance")
         .value("L2", NVCV_NORM_L2, "Euclidean distance");

@@ -26,58 +26,59 @@
 // Python-facing wrappers (with op-specific argument names) plus the m.def docstrings. The extra
 // scalar parameters are forwarded through the variadic `Args...` to the operator's submit().
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
-
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 #include <optional>
 
 namespace cvcudapy {
 
+using NativeImageBatchVarShape = native::ImageBatchVarShape;
+using NativeStream             = native::Stream;
+using NativeTensor             = native::Tensor;
+
 // Run a unary element-wise operator into a caller-provided output (Tensor or ImageBatchVarShape).
 // `Args...` are forwarded verbatim as the trailing submit() parameters (none for Invert, the
 // threshold for Solarize, the bit count for Posterize, …).
 template<class Op, class InOut, class... Args>
-InOut UnaryElementwiseInto(InOut &output, InOut &input, std::optional<Stream> pstream, Args... args)
+InOut &UnaryElementwiseInto(InOut &output, InOut &input, std::optional<NativeStream *> pstream, Args... args)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    NativeStream &stream = native::GetStream(pstream);
 
     auto op = CreateOperator<Op>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    guard.run([&op, &pstream, &input, &output, &args...]()
-              { op->submit(pstream->cudaHandle(), input, output, args...); });
+    guard.run([&op, &stream, &input, &output, &args...]()
+              { op->submit(stream.handle(), input.impl(), output.impl(), args...); });
 
     return output;
 }
 
 // Tensor convenience overload: allocate an output matching the input's shape/dtype/layout.
 template<class Op, class... Args>
-Tensor UnaryElementwiseTensor(Tensor &input, std::optional<Stream> pstream, Args... args)
+std::shared_ptr<NativeTensor> UnaryElementwiseTensor(NativeTensor &input, std::optional<NativeStream *> pstream,
+                                                     Args... args)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = NativeTensor::CreateFromReqs(nvcv::Tensor::CalcRequirements(input.impl().shape(), input.dtype()));
 
-    return UnaryElementwiseInto<Op>(output, input, pstream, args...);
+    UnaryElementwiseInto<Op>(*output, input, pstream, args...);
+    return output;
 }
 
 // ImageBatchVarShape convenience overload: allocate an output matching the input batch.
 template<class Op, class... Args>
-ImageBatchVarShape UnaryElementwiseVarShape(ImageBatchVarShape &input, std::optional<Stream> pstream, Args... args)
+std::shared_ptr<NativeImageBatchVarShape> UnaryElementwiseVarShape(NativeImageBatchVarShape     &input,
+                                                                   std::optional<NativeStream *> pstream, Args... args)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return UnaryElementwiseInto<Op>(output, input, pstream, args...);
+    UnaryElementwiseInto<Op>(*output, input, pstream, args...);
+    return output;
 }
 
 } // namespace cvcudapy

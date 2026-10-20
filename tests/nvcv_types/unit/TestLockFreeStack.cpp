@@ -20,6 +20,9 @@
 #include <nvcv/src/priv/LockFreeStack.hpp>
 
 #include <array>
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 namespace priv = nvcv::priv;
 
@@ -120,4 +123,116 @@ TEST(LockFreeStack, smoke_release)
     EXPECT_EQ(nn.data() + 1, nn[0].next);
     EXPECT_EQ(nn.data() + 2, nn[1].next);
     EXPECT_EQ(nullptr, nn[2].next);
+}
+
+TEST(LockFreeStack, publishes_nodes_between_threads)
+{
+    constexpr int kNumNodes = 1000;
+
+    priv::LockFreeStack<Node>   stack;
+    std::array<Node, kNumNodes> nodes;
+    std::atomic<bool>           valid{true};
+
+    std::jthread producer(
+        [&nodes, &stack]
+        {
+            for (int i = 0; i < kNumNodes; ++i)
+            {
+                nodes[i].value = i + 1;
+                stack.push(&nodes[i]);
+            }
+        });
+
+    std::jthread consumer(
+        [&stack, &valid]
+        {
+            std::array<bool, kNumNodes> seen{};
+            const auto                  deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            for (int count = 0; count < kNumNodes;)
+            {
+                const Node *node = stack.pop();
+                if (node == nullptr)
+                {
+                    if (std::chrono::steady_clock::now() >= deadline)
+                    {
+                        FAIL() << "consumer received only " << count << " of " << seen.size()
+                               << " published nodes before the deadline";
+                        return;
+                    }
+                    std::this_thread::yield();
+                    continue;
+                }
+
+                if (node->value < 1 || node->value > kNumNodes || seen[node->value - 1])
+                {
+                    valid.store(false, std::memory_order_relaxed); // NOSONAR: observed only after join.
+                }
+                else
+                {
+                    seen[node->value - 1] = true;
+                }
+                ++count;
+            }
+        });
+
+    producer.join();
+    consumer.join();
+
+    EXPECT_TRUE(valid.load(std::memory_order_relaxed)); // NOSONAR: producer and consumer are joined.
+    EXPECT_TRUE(stack.empty());
+}
+
+TEST(LockFreeStack, publishes_detached_stack_between_threads)
+{
+    constexpr int kNumNodes = 1000;
+
+    priv::LockFreeStack<Node>   stack;
+    std::array<Node, kNumNodes> nodes;
+    std::atomic<bool>           valid{true};
+
+    std::jthread producer(
+        [&nodes, &stack]
+        {
+            for (int i = 0; i < kNumNodes; ++i)
+            {
+                nodes[i].value = i + 1;
+                nodes[i].next  = i + 1 < kNumNodes ? &nodes[i + 1] : nullptr;
+            }
+            stack.pushStack(nodes.data(), &nodes.back());
+        });
+
+    std::jthread consumer(
+        [&stack, &valid]
+        {
+            // S1121: keep the release out of the loop condition.
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            Node      *node     = stack.release();
+            while (node == nullptr)
+            {
+                if (std::chrono::steady_clock::now() >= deadline)
+                {
+                    FAIL() << "consumer received no detached stack before the deadline";
+                    return;
+                }
+                std::this_thread::yield();
+                node = stack.release();
+            }
+
+            for (int expected = 1; expected <= kNumNodes; ++expected)
+            {
+                if (node == nullptr || node->value != expected)
+                {
+                    valid.store(false, std::memory_order_relaxed); // NOSONAR: observed only after join.
+                    return;
+                }
+                node = node->next;
+            }
+            valid.store(node == nullptr, std::memory_order_relaxed); // NOSONAR: observed only after join.
+        });
+
+    producer.join();
+    consumer.join();
+
+    EXPECT_TRUE(valid.load(std::memory_order_relaxed)); // NOSONAR: producer and consumer are joined.
+    EXPECT_TRUE(stack.empty());
 }

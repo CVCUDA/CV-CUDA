@@ -21,14 +21,17 @@
 
 namespace cvcudapy {
 
-void ExportBorderType(py::module &m)
+void ExportBorderType(py::module_ &m)
 {
-    py::enum_<NVCVBorderType>(m, "Border", "Border padding modes for image operations.")
+    py::enum_compat<NVCVBorderType>(m, "Border", "Border padding modes for image operations.")
         .value("CONSTANT", NVCV_BORDER_CONSTANT, "Constant border")
         .value("REPLICATE", NVCV_BORDER_REPLICATE, "Replicate border")
         .value("REFLECT", NVCV_BORDER_REFLECT, "Reflect border")
         .value("WRAP", NVCV_BORDER_WRAP, "Wrap border")
-        .value("REFLECT101", NVCV_BORDER_REFLECT101, "Reflect 101 border");
+        .value("REFLECT101", NVCV_BORDER_REFLECT101, "Reflect 101 border")
+        .value("CONSTANT_COVERAGE", NVCV_BORDER_CONSTANT_COVERAGE,
+               "Constant border blended in by sampling coverage, at full precision and rounded "
+               "once; tensor paths of interpolating operators only");
 }
 
 } // namespace cvcudapy

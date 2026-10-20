@@ -83,6 +83,84 @@ def test_op_convertto_round_mode():
     np.testing.assert_array_equal(convert(), [3, -3, 3, -3])  # default == NEAREST
 
 
+@pytest.mark.parametrize(
+    "dtype,round_mode,inputs,expected",
+    [
+        # Values straddling every boundary that matters: in-range, just past the top, a full
+        # period past the top, negative, and the half-way ties that distinguish the two modes.
+        (
+            cvcuda.Type.U16,
+            cvcuda.Round.TRUNCATE_WRAP,
+            [92414.59, 70000.0, -5000.0, -70000.0, 65535.9, 32768.0, 3.5, 2.5],
+            # Unsigned maps negatives to zero, truncates (so 65535.9→65535, 3.5→3, 2.5→2),
+            # and reduces positives modulo 65536.
+            [26878, 4464, 0, 0, 65535, 32768, 3, 2],
+        ),
+        (
+            cvcuda.Type.S16,
+            cvcuda.Round.NEAREST_WRAP,
+            [92414.59, 70000.0, -5000.0, -70000.0, 65535.9, 32768.0, 3.5, 2.5],
+            # Signed wraps in both directions; nearest ties-to-even (3.5→4, 2.5→2).
+            [26879, 4464, -5000, -4464, 0, -32768, 4, 2],
+        ),
+        (
+            cvcuda.Type.U8,
+            cvcuda.Round.TRUNCATE_WRAP,
+            # Use values outside [0, 255] to exercise wrapping; span=256.
+            [300.0, 256.0, -50.0, -300.0, 255.0, 255.9, 3.5, 2.5],
+            # 300→44, 256→0, negatives→0, 255→255, 255.9 truncated→255, 3.5→3, 2.5→2.
+            [44, 0, 0, 0, 255, 255, 3, 2],
+        ),
+        (
+            cvcuda.Type.S8,
+            cvcuda.Round.NEAREST_WRAP,
+            # span=256, half=128; 200→-56; -200→56; 100→100; -50→-50; 127→127; -128→-128.
+            [200.0, -200.0, 100.0, -50.0, 127.0, -128.0, 3.5, 2.5],
+            [-56, 56, 100, -50, 127, -128, 4, 2],
+        ),
+    ],
+)
+def test_op_convertto_wrap_round_modes(dtype, round_mode, inputs, expected):
+    src = util.to_cvcuda_tensor(
+        np.array([[inputs]], dtype=np.float32).reshape(1, len(inputs), 1),
+        "HWC",
+    )
+    out = cvcuda.convertto(src, dtype, round=round_mode)
+    np.testing.assert_array_equal(cupy.asarray(out.cuda()).get().reshape(-1), expected)
+
+
+def test_op_convertto_wrap_saturates_elsewhere():
+    """The saturating modes are untouched by the addition of the wrapping ones."""
+    src = util.to_cvcuda_tensor(
+        np.array([[[92414.59], [-5000.0]]], dtype=np.float32), "HWC"
+    )
+    out = cvcuda.convertto(src, cvcuda.Type.U16, round=cvcuda.Round.NEAREST)
+    np.testing.assert_array_equal(
+        cupy.asarray(out.cuda()).get().reshape(-1), [65535, 0]
+    )
+
+
+@pytest.mark.parametrize(
+    "round_mode", [cvcuda.Round.NEAREST_WRAP, cvcuda.Round.TRUNCATE_WRAP]
+)
+def test_op_gamma_contrast_rejects_wrap_round_modes(round_mode):
+    """gamma_contrast shares NVCVRoundMode but implements only the saturating modes."""
+    src = util.to_cvcuda_tensor(np.zeros((4, 4, 3), dtype=np.uint8), "HWC")
+    with pytest.raises(RuntimeError):
+        cvcuda.gamma_contrast(src, 1.0, round=round_mode)
+
+
+@pytest.mark.parametrize(
+    "round_mode", [cvcuda.Round.NEAREST_WRAP, cvcuda.Round.TRUNCATE_WRAP]
+)
+def test_op_convertto_wrap_rejects_s32_destination(round_mode):
+    """Wrap modes are rejected for S32: float32 working arithmetic cannot represent the
+    2^31 wrap period without quantization error."""
+    src = util.to_cvcuda_tensor(np.zeros((1, 4, 1), dtype=np.float32), "HWC")
+    with pytest.raises(RuntimeError):
+        cvcuda.convertto(src, cvcuda.Type.S32, round=round_mode)
+
+
 def _is_float(dt):
     return np.issubdtype(dt, np.floating)
 

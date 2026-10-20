@@ -17,6 +17,7 @@
 
 #include "priv/OpCopyMakeBorder.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -50,6 +51,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCopyMakeBorderSubmit,
     return nvcv::ProtectCall(
         [&out, &in, &handle, &stream, &top, &left, &borderMode, &borderValue]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::TensorWrapHandle output(out);
             nvcv::TensorWrapHandle input(in);
             priv::ToDynamicRef<priv::CopyMakeBorder>(handle)(stream, input.resource(), output.resource(), top, left,
@@ -65,6 +67,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCopyMakeBorderVarShapeSubmit,
     return nvcv::ProtectCall(
         [&out, &in, &top, &left, &handle, &stream, &borderMode, &borderValue]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::ImageBatchWrapHandle output(out);
             nvcv::ImageBatchWrapHandle input(in);
             nvcv::TensorWrapHandle     topVec(top);
@@ -83,6 +86,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCopyMakeBorderVarShapeStackSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &top, &left, &handle, &stream, &borderMode, &borderValue]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::ImageBatchWrapHandle input(in);
             nvcv::TensorWrapHandle     output(out);
             nvcv::TensorWrapHandle     topVec(top);

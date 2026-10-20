@@ -67,8 +67,10 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCustomCropCreate(NVCVOperatorHandle *handle);
  *       8bit  Signed   | Yes
  *       16bit Unsigned | Yes
  *       16bit Signed   | Yes
- *       32bit Unsigned | No
+ *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
+ *       64bit Unsigned | Yes
+ *       64bit Signed   | Yes
  *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | Yes
@@ -83,8 +85,10 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCustomCropCreate(NVCVOperatorHandle *handle);
  *       8bit  Signed   | Yes
  *       16bit Unsigned | Yes
  *       16bit Signed   | Yes
- *       32bit Unsigned | No
+ *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
+ *       64bit Unsigned | Yes
+ *       64bit Signed   | Yes
  *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | Yes

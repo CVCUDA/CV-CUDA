@@ -13,31 +13,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_subdirectory(legacy)
 
 set(CV_CUDA_PRIV_FILES IOperator.cpp)
 
 set(CV_CUDA_PRIV_OP_FILES
+    ChannelCopy.cu
+    OpMerge.cpp
+    OpSplit.cpp
+    OpTvResize.cu
+    OpAdaptiveThreshold.cu
+    OpAverageBlur.cu
+    OpBilateralFilter.cu
+    OpBndBox.cu
+    OpConv2D.cu
+    OpGaussian.cu
+    OpInpaint.cu
+    OpJointBilateralFilter.cu
     OpJpegCompressionDistortion.cu
     OpAdjustHue.cu
     OpAdjustSaturation.cu
     OpAdjustSharpness.cu
     OpAdjustContrast.cu
     OpInvert.cu
+    OpLaplacian.cu
+    OpMedianBlur.cu
+    OpOSD.cu
+    OpPillowResize.cu
+    OpRandomResizedCrop.cu
     OpSolarize.cu
     OpPosterize.cu
     OpAutoContrast.cu
     OpCLAHE.cu
-    OpOSD.cpp
-    OpHistogramEq.cpp
+    OpHistogramEq.cu
     OpAdvCvtColor.cu
     OpCvtColor.cu
     OpSIFT.cu
     OpMinMaxLoc.cu
-    OpHistogram.cpp
+    OpHistogram.cu
     OpMinAreaRect.cu
-    OpBndBox.cpp
-    OpBoxBlur.cpp
+    OpBoxBlur.cu
     OpBrightnessContrast.cu
     OpRemap.cu
     OpColorTwist.cu
@@ -48,48 +62,39 @@ set(CV_CUDA_PRIV_OP_FILES
     OpNonMaximumSuppression.cu
     OpReformat.cu
     OpResize.cu
-    OpCustomCrop.cpp
+    OpCustomCrop.cu
     OpNormalize.cu
-    OpPadAndStack.cpp
+    OpPadAndStack.cu
     OpConvertTo.cu
-    OpCopyMakeBorder.cpp
+    OpCopyMakeBorder.cu
     OpCenterCrop.cu
-    OpRotate.cpp
-    OpLaplacian.cpp
-    OpGaussian.cpp
+    OpRotate.cu
     OpErase.cu
     OpEraseRegion.cu
-    OpAverageBlur.cpp
-    OpConv2D.cpp
-    OpMedianBlur.cpp
-    OpMorphology.cpp
-    OpBilateralFilter.cpp
-    OpJointBilateralFilter.cpp
-    OpWarpAffine.cpp
-    OpWarpPerspective.cpp
-    OpComposite.cpp
+    OpMorphology.cu
+    OpComposite.cu
     OpChannelReorder.cu
     OpFlip.cu
-    OpGammaContrast.cpp
-    OpPillowResize.cpp
+    OpGammaContrast.cu
     OpThreshold.cu
-    OpAdaptiveThreshold.cpp
-    OpRandomResizedCrop.cpp
     OpGaussianNoise.cu
-    OpInpaint.cpp
     OpLabel.cu
     OpPairwiseMatcher.cu
     OpStack.cpp
     OpStackKernels.cu
     OpFindHomography.cu
     OpResizeCropConvertReformat.cu
+    OpWarpAffine.cu
+    OpWarpPerspective.cu
+    OsdRenderer.cu
+    textbackend/backend.cpp
+    textbackend/stb.cpp
 )
 
 # filter only one that matches the patern (case insensitive), should be set on the global level
 # usage:
 # set(CV_CUDA_SRC_PATERN medianblur median_blur"
 #
-# will compile only files relevant to themedian blur op "OpMedianBlur.cpp"
 if (NOT "${CV_CUDA_SRC_PATERN}" STREQUAL "")
     foreach(PATTERN ${CV_CUDA_SRC_PATERN})
         string(TOLOWER ${PATTERN} PATTERN)
@@ -117,14 +122,18 @@ cvcuda_add_targeted_cuda_architectures_to_sources(
         OpMinMaxLoc.cu
         OpReformat.cu
         OpResize.cu
+        OpRotate.cu
     SELECTED_SOURCES_VAR CV_CUDA_PRIV_FILES
+    PARENT_SOURCES_VAR CV_CUDA_PRIV_OP_FILES
 )
 
 cvcuda_add_targeted_cuda_architectures_to_sources(
     ARCHITECTURES 86
     SOURCES
+        OpGammaContrast.cu
         OpResizeCropConvertReformat.cu
     SELECTED_SOURCES_VAR CV_CUDA_PRIV_FILES
+    PARENT_SOURCES_VAR CV_CUDA_PRIV_OP_FILES
 )
 
 cvcuda_add_targeted_cuda_architectures_to_sources(
@@ -133,7 +142,10 @@ cvcuda_add_targeted_cuda_architectures_to_sources(
         OpBrightnessContrast.cu
         OpFlip.cu
         OpPairwiseMatcher.cu
+        OpWarpAffine.cu
+        OpWarpPerspective.cu
     SELECTED_SOURCES_VAR CV_CUDA_PRIV_FILES
+    PARENT_SOURCES_VAR CV_CUDA_PRIV_OP_FILES
 )
 
 add_library(cvcuda_priv STATIC
@@ -146,7 +158,6 @@ target_link_libraries(cvcuda_priv
         nvcv_util
         cvcuda_headers
         nvcv_util_sanitizer
-        cvcuda_legacy
         CUDA::cudart_static
 	    CUDA::cusolver_static
         CUDA::cublas_static
@@ -155,3 +166,6 @@ target_link_libraries(cvcuda_priv
 )
 
 target_link_libraries(cvcuda_priv PRIVATE cvcuda_nvtx_config)
+# The stb-based text rasterizer under textbackend/ is the OSD operator's glyph backend.
+add_compile_definitions(ENABLE_TEXT_BACKEND_STB)
+# will compile only files relevant to themedian blur op "OpMedianBlur.cu"

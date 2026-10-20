@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,13 +25,14 @@
 #define CVCUDA_PRIV_PILLOW_RESIZE_HPP
 
 #include "IOperator.hpp"
+#include "cvcuda/Types.h"
 #include "cvcuda/Workspace.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/ImageBatch.hpp>
+#include <nvcv/ImageFormat.h>
+#include <nvcv/Size.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -51,10 +52,6 @@ public:
 
     void operator()(cudaStream_t stream, const Workspace &ws, const nvcv::ImageBatchVarShape &in,
                     const nvcv::ImageBatchVarShape &out, const NVCVInterpolationType interpolation) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::PillowResize>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::PillowResizeVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

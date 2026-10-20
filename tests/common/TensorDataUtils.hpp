@@ -47,6 +47,23 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+// Completes the default-stream transfers issued by the host-to-device setters below.
+//
+// A pageable cudaMemcpy/cudaMemcpy2D to device memory only guarantees that the host source buffer
+// has been consumed when it returns; the transfer itself finishes asynchronously on the default
+// stream. Streams created with cudaStreamNonBlocking are explicitly not ordered against the default
+// stream, so an operator submitted on one can otherwise read the tensor's previous contents.
+inline void WaitForHostToDeviceCopies()
+{
+    // nullptr is the default stream the pageable copies below complete on.
+    if (cudaError_t err = cudaStreamSynchronize(nullptr); err != cudaSuccess)
+    {
+        // std::format is C++20.
+        throw CudaMemcpyError(std::string("cudaStreamSynchronize after a host to device copy failed with ") // NOSONAR
+                              + cudaGetErrorName(err) + " (" + std::to_string(err) + "): " + cudaGetErrorString(err));
+    }
+}
+
 enum chflags
 {
     C0 = 0x1 << 0,
@@ -405,7 +422,7 @@ static void SetTensorTo(const TensorData &tensorData, DT data, int sample)
         }
     }
 
-    return;
+    WaitForHostToDeviceCopies();
 }
 
 template<typename DT>
@@ -445,7 +462,7 @@ static void SetTensorToRandomValueFloat(const TensorData &tensorData, DT minVal,
             throw TensorDataUtilsError("CudaMemcpy failed");
         }
     }
-    return;
+    WaitForHostToDeviceCopies();
 }
 
 template<>
@@ -497,7 +514,7 @@ static void SetTensorToRandomValue(const TensorData &tensorData, DT minVal, DT m
         }
     }
 
-    return;
+    WaitForHostToDeviceCopies();
 }
 
 template<typename DT>
@@ -534,7 +551,7 @@ static void SetTensorFromVector(const TensorData &tensorData, std::vector<DT> &d
         }
     }
 
-    return;
+    WaitForHostToDeviceCopies();
 }
 
 template<typename DT>
@@ -599,6 +616,8 @@ static void SetImageTensorFromVectorPlanar(const TensorData &tensorData, std::ve
         }
     else
         copyToGpu(sample);
+
+    WaitForHostToDeviceCopies();
 }
 
 template<typename DT>
@@ -637,6 +656,8 @@ static void SetImageTensorFromVector(const TensorData &tensorData, std::vector<D
         }
     else
         copyToGpu(sample);
+
+    WaitForHostToDeviceCopies();
 }
 
 template<typename DT>

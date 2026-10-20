@@ -21,10 +21,10 @@
 
 namespace cvcudapy {
 
-void ExportColorConversionCode(py::module &m)
+void ExportColorConversionCode(py::module_ &m)
 {
-    py::enum_<NVCVColorConversionCode>(m, "ColorConversion",
-                                       "Color space conversion codes (mirrors OpenCV convention).")
+    py::enum_compat<NVCVColorConversionCode>(m, "ColorConversion",
+                                             "Color space conversion codes (mirrors OpenCV convention).")
         .value("BGR2BGRA", NVCV_COLOR_BGR2BGRA)
         .value("RGB2RGBA", NVCV_COLOR_RGB2RGBA)
         .value("BGRA2BGR", NVCV_COLOR_BGRA2BGR)
@@ -233,7 +233,17 @@ void ExportColorConversionCode(py::module &m)
         .value("RGBA2YUV_NV21", NVCV_COLOR_RGBA2YUV_NV21)
         .value("RGBA2YUV420sp", NVCV_COLOR_RGBA2YUV420sp)
         .value("BGRA2YUV_NV21", NVCV_COLOR_BGRA2YUV_NV21)
-        .value("BGRA2YUV420sp", NVCV_COLOR_BGRA2YUV420sp);
+        .value("BGRA2YUV420sp", NVCV_COLOR_BGRA2YUV420sp)
+        .value("RGB2GRAY_TV", NVCV_COLOR_RGB2GRAY_TV,
+               "Grayscale bit-exact with torchvision.transforms.v2.functional.rgb_to_grayscale: "
+               "Y = 0.2989*R + 0.587*G + 0.114*B (BT.601 luma with the MATLAB/TensorFlow rounding "
+               "torchvision follows). The weights sum to 0.9999, so white maps to 254 for uint8. "
+               "Integer outputs truncate toward zero. RGB2GRAY uses 0.299 and rounds to nearest instead.")
+        .value("BGR2GRAY_TV", NVCV_COLOR_BGR2GRAY_TV, "RGB2GRAY_TV for BGR channel order.")
+        .value("RGBA2GRAY_TV", NVCV_COLOR_RGBA2GRAY_TV,
+               "RGB2GRAY_TV for RGBA input; alpha is ignored. torchvision accepts only three channels.")
+        .value("BGRA2GRAY_TV", NVCV_COLOR_BGRA2GRAY_TV,
+               "RGB2GRAY_TV for BGRA input; alpha is ignored. torchvision accepts only three channels.");
 }
 
 } // namespace cvcudapy

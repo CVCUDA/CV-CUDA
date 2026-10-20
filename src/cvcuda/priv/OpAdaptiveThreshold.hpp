@@ -24,12 +24,16 @@
 #ifndef CVCUDA_PRIV_ADAPTIVETHRESHOLD_HPP
 #define CVCUDA_PRIV_ADAPTIVETHRESHOLD_HPP
 
+#include "AdaptiveThresholdPolicy.hpp"
 #include "IOperator.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <cvcuda/Types.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
+
+#include <cstdint>
 
 namespace cvcuda::priv {
 
@@ -46,8 +50,44 @@ public:
                     const NVCVThresholdType thresholdType, const nvcv::Tensor &blockSize, const nvcv::Tensor &c) const;
 
 private:
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::AdaptiveThreshold>         m_legacyOp;
-    mutable PerDeviceResource<nvcv::legacy::cuda_op::AdaptiveThresholdVarShape> m_legacyOpVarShape;
+    // Persistent device scratch for the convolution coefficients, sized once from the constructor
+    // arguments and freed in the destructor -- the allocation strategy the legacy operators used.
+    struct TensorState
+    {
+        TensorState(int32_t maxBlockSize, AdaptiveThresholdKernelPolicy policy);
+        ~TensorState();
+
+        TensorState(const TensorState &)            = delete;
+        TensorState &operator=(const TensorState &) = delete;
+
+        const AdaptiveThresholdKernelPolicy kernelPolicy;
+        float                              *kernel = nullptr;
+
+        // Coefficients currently resident in `kernel`; an unchanged pair skips the recompute.
+        int blockSize      = -1;
+        int adaptiveMethod = -1;
+    };
+
+    struct VarShapeState
+    {
+        VarShapeState(int32_t maxBlockSize, int32_t maxVarShapeBatchSize, AdaptiveThresholdKernelPolicy policy);
+        ~VarShapeState();
+
+        VarShapeState(const VarShapeState &)            = delete;
+        VarShapeState &operator=(const VarShapeState &) = delete;
+
+        const AdaptiveThresholdKernelPolicy kernelPolicy;
+        float                              *kernel = nullptr;
+    };
+
+    int32_t m_maxBlockSize;
+    int32_t m_maxVarShapeBatchSize;
+
+    // The coefficient buffers are plain device allocations, usable only on the device that
+    // allocated them, so PerDeviceResource holds one state -- and one resolved kernel policy --
+    // per CUDA device.
+    mutable PerDeviceResource<TensorState>   m_tensorState;
+    mutable PerDeviceResource<VarShapeState> m_varShapeState;
 };
 
 } // namespace cvcuda::priv

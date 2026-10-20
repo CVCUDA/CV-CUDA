@@ -24,6 +24,27 @@ import cvcuda_tools as cv_tools
 RNG = np.random.default_rng(0)
 
 
+def test_op_warp_perspective_constant_coverage_tensor_only():
+    src = cvcuda.Tensor((1, 4, 4, 1), cvcuda.Type.U8, "NHWC")
+    xform = np.eye(3, dtype=np.float32)
+    kwargs = {
+        "flags": cvcuda.Interp.LINEAR,
+        "border_mode": cvcuda.Border.CONSTANT_COVERAGE,
+        "border_value": [0.5],
+    }
+    assert isinstance(cvcuda.warp_perspective(src, xform, **kwargs), cvcuda.Tensor)
+    dst = cvcuda.Tensor(src.shape, src.dtype, src.layout)
+    assert cvcuda.warp_perspective_into(dst, src, xform, **kwargs) is dst
+
+    batch = util.create_image_batch(1, cvcuda.Format.U8, size=(4, 4))
+    batch_dst = util.clone_image_batch(batch)
+    batch_xform = util.to_cvcuda_tensor(xform.reshape(1, 9), "NC")
+    with pytest.raises(RuntimeError):
+        cvcuda.warp_perspective(batch, batch_xform, **kwargs)
+    with pytest.raises(RuntimeError):
+        cvcuda.warp_perspective_into(batch_dst, batch, batch_xform, **kwargs)
+
+
 @pytest.mark.parametrize(
     "input_args, xform, flags, border_mode, border_value",
     [

@@ -15,88 +15,88 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpRotate.hpp>
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 namespace cvcudapy {
 
 namespace {
-Tensor RotateInto(Tensor &output, Tensor &input, double angleDeg, const std::tuple<double, double> &shift,
-                  NVCVInterpolationType interpolation, std::optional<Stream> pstream)
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
+Tensor &RotateInto(Tensor &output, Tensor &input, double angleDeg, const std::tuple<double, double> &shift,
+                   NVCVInterpolationType interpolation, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto rotate = CreateOperator<cvcuda::Rotate>(0);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*rotate});
 
     double2 shiftArg{std::get<0>(shift), std::get<1>(shift)};
 
-    guard.run([&rotate, &pstream, &input, &output, &angleDeg, &shiftArg, &interpolation]()
-              { rotate->submit(pstream->cudaHandle(), input, output, angleDeg, shiftArg, interpolation); });
+    guard.run([&rotate, &stream, &input, &output, &angleDeg, &shiftArg, &interpolation]()
+              { rotate->submit(stream.handle(), input.impl(), output.impl(), angleDeg, shiftArg, interpolation); });
 
     return output;
 }
 
-Tensor Rotate(Tensor &input, double angleDeg, const std::tuple<double, double> &shift,
-              const NVCVInterpolationType interpolation, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Rotate(Tensor &input, double angleDeg, const std::tuple<double, double> &shift,
+                               const NVCVInterpolationType interpolation, std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return RotateInto(output, input, angleDeg, shift, interpolation, pstream);
+    RotateInto(*output, input, angleDeg, shift, interpolation, pstream);
+    return output;
 }
 
-ImageBatchVarShape VarShapeRotateInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &angleDeg,
-                                      Tensor &shift, NVCVInterpolationType interpolation, std::optional<Stream> pstream)
+ImageBatchVarShape &VarShapeRotateInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &angleDeg,
+                                       Tensor &shift, NVCVInterpolationType interpolation,
+                                       std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto rotate = CreateOperator<cvcuda::Rotate>(input.capacity());
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, angleDeg, shift});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*rotate});
 
-    guard.run([&rotate, &pstream, &input, &output, &angleDeg, &shift, &interpolation]()
-              { rotate->submit(pstream->cudaHandle(), input, output, angleDeg, shift, interpolation); });
+    guard.run(
+        [&rotate, &stream, &input, &output, &angleDeg, &shift, &interpolation]() {
+            rotate->submit(stream.handle(), input.impl(), output.impl(), angleDeg.impl(), shift.impl(), interpolation);
+        });
 
     return output;
 }
 
-ImageBatchVarShape VarShapeRotate(ImageBatchVarShape &input, Tensor &angleDeg, Tensor &shift,
-                                  NVCVInterpolationType interpolation, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> VarShapeRotate(ImageBatchVarShape &input, Tensor &angleDeg, Tensor &shift,
+                                                   NVCVInterpolationType interpolation, std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return VarShapeRotateInto(output, input, angleDeg, shift, interpolation, pstream);
+    VarShapeRotateInto(*output, input, angleDeg, shift, interpolation, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpRotate(py::module &m)
+void ExportOpRotate(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("rotate", NvtxTrace("cvcuda.rotate", &Rotate), "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a,
           py::kw_only(), "stream"_a = nullptr,
@@ -117,7 +117,7 @@ void ExportOpRotate(py::module &m)
     )pbdoc");
 
     m.def("rotate_into", NvtxTrace("cvcuda.rotate_into", &RotateInto), "dst"_a, "src"_a, "angle_deg"_a, "shift"_a,
-          "interpolation"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "interpolation"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Rotate operation on the given cuda stream.
 
 
@@ -151,7 +151,8 @@ void ExportOpRotate(py::module &m)
     )pbdoc");
 
     m.def("rotate_into", NvtxTrace("cvcuda.rotate_into", &VarShapeRotateInto), "dst"_a, "src"_a, "angle_deg"_a,
-          "shift"_a, "interpolation"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "shift"_a, "interpolation"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference,
+          R"pbdoc(
         Executes the Rotate operation on the given cuda stream.
 
 

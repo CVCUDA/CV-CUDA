@@ -17,9 +17,11 @@
  * limitations under the License.
  */
 
+#include "LegacyFormatClassify.hpp"
 #include "Nvtx.hpp"
 #include "OpGaussianNoise.hpp"
 #include "SafeSize.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cuda_fp16.h>
 #include <curand_kernel.h>
@@ -906,34 +908,15 @@ inline NoiseLayout GetNoiseLayout(const nvcv::TensorLayout &layout)
     throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Tensor layout not supported");
 }
 
-inline void ThrowIfPlaneDataTypesDiffer(const nvcv::ImageFormat &fmt)
-{
-    for (int i = 1; i < fmt.numPlanes(); ++i)
-    {
-        if (fmt.planeDataType(i) != fmt.planeDataType(0))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All planes must have the same data type");
-        }
-    }
-}
+using cvcuda::priv::legacy_format::RequireUniformPlaneDataType;
+using cvcuda::priv::legacy_format::RequireUniformVarShapeFormat;
 
 inline NoiseLayout GetNoiseLayout(const nvcv::ImageBatchVarShapeDataStridedCuda &batch)
 {
-    nvcv::ImageFormat fmt = batch.uniqueFormat();
-    if (!fmt)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "All images must have the same format");
-    }
-
-    ThrowIfPlaneDataTypesDiffer(fmt);
+    nvcv::ImageFormat fmt = RequireUniformVarShapeFormat(batch);
 
     if (fmt.numPlanes() >= 2)
     {
-        if (fmt.numPlanes() != fmt.numChannels())
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Planar images must have one channel per plane");
-        }
         return NoiseLayout::kNCHW;
     }
     return NoiseLayout::kNHWC;
@@ -993,7 +976,7 @@ inline NoiseDataType GetNoiseDataType(const nvcv::DataType &dtype)
 
 inline NoiseDataType GetNoiseDataType(const nvcv::ImageFormat &fmt)
 {
-    ThrowIfPlaneDataTypesDiffer(fmt);
+    RequireUniformPlaneDataType(fmt);
     return GetNoiseDataType(fmt.planeDataType(0));
 }
 
@@ -1420,32 +1403,10 @@ void GaussianNoise::operator()(cudaStream_t stream, const nvcv::Tensor &in, cons
                                unsigned long long seed) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::GaussianNoise::operator()[Tensor]");
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto muData = mu.exportData<nvcv::TensorDataStridedCuda>();
-    if (muData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "mu must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto sigmaData = sigma.exportData<nvcv::TensorDataStridedCuda>();
-    if (sigmaData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "sigma must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData    = RequireCudaTensor(in, "Input");
+    auto outData   = RequireCudaTensor(out, "Output");
+    auto muData    = RequireCudaTensor(mu, "mu");
+    auto sigmaData = RequireCudaTensor(sigma, "sigma");
 
     const NoiseLayout inLayout  = GetNoiseLayout(inData->layout());
     const NoiseLayout outLayout = GetNoiseLayout(outData->layout());
@@ -1528,19 +1489,8 @@ void GaussianNoise::operator()(cudaStream_t stream, const nvcv::Tensor &in, cons
                                float sigma, bool per_channel, unsigned long long seed, bool reseed, bool clip) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::GaussianNoise::operator()[Tensor scalar]");
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData  = RequireCudaTensor(in, "Input");
+    auto outData = RequireCudaTensor(out, "Output");
 
     const NoiseLayout inLayout  = GetNoiseLayout(inData->layout());
     const NoiseLayout outLayout = GetNoiseLayout(outData->layout());
@@ -1646,18 +1596,8 @@ void GaussianNoise::operator()(cudaStream_t stream, const nvcv::ImageBatchVarSha
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output must be varshape image batch");
     }
 
-    auto muData = mu.exportData<nvcv::TensorDataStridedCuda>();
-    if (muData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "mu must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto sigmaData = sigma.exportData<nvcv::TensorDataStridedCuda>();
-    if (sigmaData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "sigma must be cuda-accessible, pitch-linear tensor");
-    }
+    auto muData    = RequireCudaTensor(mu, "mu");
+    auto sigmaData = RequireCudaTensor(sigma, "sigma");
 
     const NoiseLayout inLayout  = GetNoiseLayout(*inData);
     const NoiseLayout outLayout = GetNoiseLayout(*outData);

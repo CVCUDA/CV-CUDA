@@ -15,83 +15,87 @@
  * limitations under the License.
  */
 
+#include "../nvcv/ImageBatch.hpp"
+#include "../nvcv/Tensor.hpp"
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpFlip.hpp>
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 namespace cvcudapy {
 
 namespace {
-Tensor FlipInto(Tensor &output, Tensor &input, int32_t flipCode, std::optional<Stream> pstream)
+nvcvpy::priv::Tensor &FlipInto(nvcvpy::priv::Tensor &output, nvcvpy::priv::Tensor &input, int32_t flipCode,
+                               std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    nvcvpy::priv::Stream &stream = pstream && *pstream ? **pstream : nvcvpy::priv::Stream::Current();
 
-    auto Flip = CreateOperator<cvcuda::Flip>(0);
+    auto flip = CreateOperator<cvcuda::Flip>(0);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
-    guard.add(LockMode::LOCK_MODE_NONE, {*Flip});
+    guard.add(LockMode::LOCK_MODE_NONE, {*flip});
 
-    guard.run([&Flip, &pstream, &input, &output, &flipCode]()
-              { Flip->submit(pstream->cudaHandle(), input, output, flipCode); });
+    guard.run([&flip, &stream, &input, &output, &flipCode]()
+              { flip->submit(stream.handle(), input.impl(), output.impl(), flipCode); });
 
     return output;
 }
 
-Tensor Flip(Tensor &input, int32_t flipCode, std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::Tensor> Flip(nvcvpy::priv::Tensor &input, int32_t flipCode,
+                                           std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto stream = native::GetStream(pstream).sharedStream();
+    auto output = nvcvpy::priv::Tensor::CreateFromReqs(
+        nvcv::Tensor::CalcRequirements(input.impl().shape(), input.dtype()), stream.get());
 
-    return FlipInto(output, input, flipCode, pstream);
+    FlipInto(*output, input, flipCode, stream.get());
+    return output;
 }
 
-ImageBatchVarShape FlipVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &flipCode,
-                                    std::optional<Stream> pstream)
+nvcvpy::priv::ImageBatchVarShape &FlipVarShapeInto(nvcvpy::priv::ImageBatchVarShape     &output,
+                                                   nvcvpy::priv::ImageBatchVarShape     &input,
+                                                   nvcvpy::priv::Tensor                 &flipCode,
+                                                   std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    nvcvpy::priv::Stream &stream = pstream && *pstream ? **pstream : nvcvpy::priv::Stream::Current();
 
     auto flip = CreateOperator<cvcuda::Flip>(0);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, flipCode});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*flip});
 
-    guard.run([&flip, &pstream, &input, &output, &flipCode]()
-              { flip->submit(pstream->cudaHandle(), input, output, flipCode); });
+    guard.run([&flip, &stream, &input, &output, &flipCode]()
+              { flip->submit(stream.handle(), input.impl(), output.impl(), flipCode.impl()); });
 
     return output;
 }
 
-ImageBatchVarShape FlipVarShape(ImageBatchVarShape &input, Tensor &flipCode, std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::ImageBatchVarShape> FlipVarShape(nvcvpy::priv::ImageBatchVarShape     &input,
+                                                               nvcvpy::priv::Tensor                 &flipCode,
+                                                               std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto stream = native::GetStream(pstream).sharedStream();
+    auto output = CreateSameShapeImageBatch(input, *stream);
 
-    return FlipVarShapeInto(output, input, flipCode, pstream);
+    FlipVarShapeInto(*output, input, flipCode, stream.get());
+    return output;
 }
 
 } // namespace
 
-void ExportOpFlip(py::module &m)
+void ExportOpFlip(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("flip", NvtxTrace("cvcuda.flip", &Flip), "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Flip operation on the given cuda stream.
@@ -111,7 +115,7 @@ void ExportOpFlip(py::module &m)
     )pbdoc");
 
     m.def("flip_into", NvtxTrace("cvcuda.flip_into", &FlipInto), "dst"_a, "src"_a, "flipCode"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Flip operation on the given cuda stream.
 
 
@@ -147,7 +151,7 @@ void ExportOpFlip(py::module &m)
     )pbdoc");
 
     m.def("flip_into", NvtxTrace("cvcuda.flip_into", &FlipVarShapeInto), "dst"_a, "src"_a, "flipCode"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Flip operation on the given cuda stream.
 
 

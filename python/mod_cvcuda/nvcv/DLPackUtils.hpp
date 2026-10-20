@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,14 +18,14 @@
 #ifndef NVCV_PYTHON_PRIV_DLPACKUTILS_HPP
 #define NVCV_PYTHON_PRIV_DLPACKUTILS_HPP
 
+#include <common/Binding.hpp>
 #include <dlpack/dlpack.h>
 #include <nvcv/ArrayData.hpp>
 #include <nvcv/TensorData.hpp>
-#include <pybind11/buffer_info.h>
 
 namespace nvcvpy::priv {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 class DLPackTensor final
 {
@@ -54,6 +54,7 @@ private:
 
 nvcv::DataType ToNVCVDataType(const DLDataType &dtype);
 DLDataType     ToDLDataType(const nvcv::DataType &dataType);
+DLDataType     ToDLDataType(nvcv::DataKind kind, int bits, int lanes);
 bool           IsCudaAccessible(DLDeviceType devType);
 
 } // namespace nvcvpy::priv

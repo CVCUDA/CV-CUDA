@@ -5,11 +5,8 @@
 
 The single source of truth for the per-operator refactoring / redundancy-reduction harness. It is
 **implemented by** `tools/refactor_op.py` (the deterministic checker) and **cited by** the thin
-skill wrapper (`.agents/skills/refactor-op/SKILL.md`). The catalog substance lives here once; tools
-delegate to it instead of duplicating the workflow.
-
-This document does not restate house policy; it *cites* the authoritative docs and turns their
-requirements into concrete, machine-checkable items: `AGENTS.md` ("Follow existing local patterns",
+skill dispatcher (`.agents/skills/op-tools/skills/refactor-op/SKILL.md`). It turns these docs
+into machine-checkable items: `AGENTS.md` ("Follow existing local patterns",
 "do not mix unrelated refactors into functional changes", SPDX),
 `.agents/guidance/REVIEW_OP_GUIDELINES.md` (the support/test matrices reused for parity), and
 `.agents/guidance/OPTIMIZATION_GUIDELINES.md` (bit-exact default).
@@ -116,7 +113,7 @@ a wrapper-level flag that emphasizes the `fix` actions — the Python checker **
 
 | id | check | probe | status | fix |
 |----|-------|-------|--------|-----|
-| RED-6 | Duplicated binding bodies (Tensor↔VarShape, allocating↔`_into`) | shingle-hash the function/lambda bodies in `Op<Op>.cpp`; report `jaccard ≥ threshold` | `RECOMMENDATION`; `PASS` if none | Extract a shared submit helper for the Tensor/VarShape & allocating/`_into` paths; reuse `VarShapeUtils.hpp` (`CreateSameShapeImageBatch`). |
+| RED-6 | Duplicated binding bodies (Tensor↔VarShape, allocating↔`_into`) | shingle-hash the function/lambda bodies in `Op<Op>.cpp`; report `jaccard ≥ threshold` | `RECOMMENDATION`; `PASS` if none | Extract a shared submit helper for the Tensor/VarShape & allocating/`_into` paths; reuse `NativeVarShapeUtils.hpp` (`CreateSameShapeImageBatch`). |
 
 ## Domain: xcut  (cross-cutting)
 
@@ -127,7 +124,7 @@ a wrapper-level flag that emphasizes the `fix` actions — the Python checker **
 | RED-12 | Shared util reimplemented under a different name | match the *shape* of a canonical utility rather than its name (RED-10 is name-only, so it is blind whenever the local spelling differs — the usual case) | `MANUAL` per matched shape; else `PASS` | Replace the local reimplementation with the canonical `cuda_tools` utility. |
 
 Source: `AGENTS.md` (reuse shared utilities; don't mix refactors into functional changes),
-the `cuda_tools` accessor/cast headers, and `python/mod_cvcuda/operators/VarShapeUtils.hpp`.
+the `cuda_tools` accessor/cast headers, and `python/mod_cvcuda/operators/NativeVarShapeUtils.hpp`.
 
 ---
 
@@ -172,8 +169,7 @@ not accepted. A non-empty diff is not a failure; an *unexplained* non-empty diff
 isolate the cause with a control compile (`--revert <file>`, then narrow to the hunk) and name it.
 
 Stronger tiers exist and should be preferred when a build is available: comparing the built object's
-device symbol table (`cuobjdump --dump-elf-symbols`, the `MIG-11` identity proof in
-`.agents/guidance/MODERNIZE_OP_GUIDELINES.md`) covers every arch the build emits, and `cmp` on the
+device symbol table (`cuobjdump --dump-elf-symbols`) covers every arch the build emits, and `cmp` on the
 extracted `.nv_fatbin` section shows a change was pure relocation. `tools/tu_cost.py` answers a
 different question — compile time and `.text` size — and the two are complementary.
 
@@ -213,16 +209,14 @@ in a shared header. Two properties make the low end safe to read:
   equality — jaccard 1.0 or 0.0, nothing between. A floor-2 hit is a verbatim twin. *Do not delete
   that fallback in `shingle_hashes` as dead code: it is unreachable only while the floor is at or
   above the window, and every sweep below 5 depends on it.*
-- `similarity-threshold` does almost nothing for RED-2 — measured across the tree, 39 of 41 findings
-  sit at exactly 1.00, and the operator set is unchanged anywhere from 0.70 to 1.00. It is retained
-  because **RED-1** genuinely needs it: RED-1 finds *near*-duplicate Tensor/VarShape kernels that
-  differ in their addressing, and its finding count moves 82 → 30 → 28 across 0.60 → 0.80 → 1.00.
+- `similarity-threshold` matters for **RED-1**, which finds *near*-duplicate Tensor/VarShape kernels
+  that differ in their addressing; RED-2 twins are near-exact and barely move with it.
 
 ### Shared-util reference set
 Canonical helpers a local definition must not shadow (RED-10). Header homes:
 `src/cvcuda/include/cvcuda/cuda_tools/{TensorWrap,TypeTraits,SaturateCast,StaticCast,ImageBatchVarShapeWrap,BorderWrap,InterpolationWrap}.hpp`;
 `src/nvcv/src/include/nvcv/TensorDataAccess.hpp` (`TensorDataAccessStridedImagePlanar`);
-`python/mod_cvcuda/operators/VarShapeUtils.hpp` (`CreateSameShapeImageBatch`).
+`python/mod_cvcuda/operators/NativeVarShapeUtils.hpp` (`CreateSameShapeImageBatch`).
 ```text
 SaturateCast
 StaticCast

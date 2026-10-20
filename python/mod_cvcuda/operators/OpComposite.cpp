@@ -15,79 +15,82 @@
  * limitations under the License.
 */
 
+#include "../nvcv/ImageBatch.hpp"
+#include "../nvcv/Tensor.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpComposite.hpp>
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 #include <stdexcept>
 
 namespace cvcudapy {
 
 namespace {
-Tensor CompositeInto(Tensor &output, Tensor &foreground, Tensor &background, Tensor &fgMask,
-                     std::optional<Stream> pstream)
+nvcvpy::priv::Tensor &CompositeInto(nvcvpy::priv::Tensor &output, nvcvpy::priv::Tensor &foreground,
+                                    nvcvpy::priv::Tensor &background, nvcvpy::priv::Tensor &fgMask,
+                                    std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    nvcvpy::priv::Stream &stream = pstream && *pstream ? **pstream : nvcvpy::priv::Stream::Current();
 
     auto composite = CreateOperator<cvcuda::Composite>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {foreground, background, fgMask});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*composite});
 
-    guard.run([&composite, &pstream, &foreground, &background, &fgMask, &output]()
-              { composite->submit(pstream->cudaHandle(), foreground, background, fgMask, output); });
+    guard.run(
+        [&composite, &stream, &foreground, &background, &fgMask, &output]()
+        { composite->submit(stream.handle(), foreground.impl(), background.impl(), fgMask.impl(), output.impl()); });
 
     return output;
 }
 
-Tensor Composite(Tensor &foreground, Tensor &background, Tensor &fgMask, int outChannels, std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::Tensor> Composite(nvcvpy::priv::Tensor &foreground, nvcvpy::priv::Tensor &background,
+                                                nvcvpy::priv::Tensor &fgMask, int outChannels,
+                                                std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    Shape out_shape  = CreateShape(foreground.shape());
-    int   channelIdx = foreground.layout().find('C');
+    auto outShape   = foreground.impl().shape().shape();
+    auto layout     = foreground.impl().layout();
+    int  channelIdx = layout.find('C');
     if (channelIdx < 0)
     {
-        throw std::invalid_argument(util::ConcatString("Cannot infer Composite output shape for layout=",
-                                                       std::string(foreground.layout().m_layout.data)));
+        throw std::invalid_argument(
+            util::ConcatString("Cannot infer Composite output shape for layout=", std::string(layout.m_layout.data)));
     }
-    out_shape[channelIdx] = outChannels;
+    outShape[channelIdx] = outChannels;
 
-    Tensor output = Tensor::Create(out_shape, foreground.dtype(), foreground.layout());
+    auto output = nvcvpy::priv::Tensor::CreateFromReqs(
+        nvcv::Tensor::CalcRequirements(nvcv::TensorShape{std::move(outShape), layout}, foreground.dtype()));
 
-    return CompositeInto(output, foreground, background, fgMask, pstream);
+    CompositeInto(*output, foreground, background, fgMask, pstream);
+    return output;
 }
 
-ImageBatchVarShape CompositeVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &foreground,
-                                         ImageBatchVarShape &background, ImageBatchVarShape &fgMask,
-                                         std::optional<Stream> pstream)
+nvcvpy::priv::ImageBatchVarShape &CompositeVarShapeInto(nvcvpy::priv::ImageBatchVarShape     &output,
+                                                        nvcvpy::priv::ImageBatchVarShape     &foreground,
+                                                        nvcvpy::priv::ImageBatchVarShape     &background,
+                                                        nvcvpy::priv::ImageBatchVarShape     &fgMask,
+                                                        std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    nvcvpy::priv::Stream &stream = pstream && *pstream ? **pstream : nvcvpy::priv::Stream::Current();
 
     auto composite = CreateOperator<cvcuda::Composite>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {foreground, background, fgMask});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*composite});
 
-    guard.run([&composite, &pstream, &foreground, &background, &fgMask, &output]()
-              { composite->submit(pstream->cudaHandle(), foreground, background, fgMask, output); });
+    guard.run(
+        [&composite, &stream, &foreground, &background, &fgMask, &output]()
+        { composite->submit(stream.handle(), foreground.impl(), background.impl(), fgMask.impl(), output.impl()); });
 
     return output;
 }
@@ -119,27 +122,24 @@ nvcv::ImageFormat CompositeVarShapeOutputFormat(nvcv::ImageFormat foregroundForm
         util::ConcatString("Cannot infer Composite output format for outchannels=", outChannels));
 }
 
-ImageBatchVarShape CompositeVarShape(ImageBatchVarShape &foreground, ImageBatchVarShape &background,
-                                     ImageBatchVarShape &fgMask, int outChannels, std::optional<Stream> pstream)
+std::shared_ptr<nvcvpy::priv::ImageBatchVarShape> CompositeVarShape(nvcvpy::priv::ImageBatchVarShape     &foreground,
+                                                                    nvcvpy::priv::ImageBatchVarShape     &background,
+                                                                    nvcvpy::priv::ImageBatchVarShape     &fgMask,
+                                                                    int                                   outChannels,
+                                                                    std::optional<nvcvpy::priv::Stream *> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(foreground.capacity());
+    nvcv::ImageFormat format = CompositeVarShapeOutputFormat(foreground.impl().uniqueFormat(), outChannels);
+    auto              output = CreateSameShapeImageBatch(foreground, format, foreground.capacity());
 
-    nvcv::ImageFormat format = CompositeVarShapeOutputFormat(foreground.uniqueFormat(), outChannels);
-
-    for (auto img = foreground.begin(); img != foreground.end(); ++img)
-    {
-        auto newimg = Image::Create(img->size(), format);
-        output.pushBackImage(newimg);
-    }
-
-    return CompositeVarShapeInto(output, foreground, background, fgMask, pstream);
+    CompositeVarShapeInto(*output, foreground, background, fgMask, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpComposite(py::module &m)
+void ExportOpComposite(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("composite", NvtxTrace("cvcuda.composite", &Composite), "foreground"_a, "background"_a, "fgmask"_a,
           "outchannels"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
@@ -159,7 +159,7 @@ void ExportOpComposite(py::module &m)
     )pbdoc");
 
     m.def("composite_into", NvtxTrace("cvcuda.composite_into", &CompositeInto), "dst"_a, "foreground"_a, "background"_a,
-          "fgmask"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "fgmask"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Composite operation on the given cuda stream.
 
 
@@ -192,7 +192,7 @@ void ExportOpComposite(py::module &m)
     )pbdoc");
 
     m.def("composite_into", NvtxTrace("cvcuda.composite_into", &CompositeVarShapeInto), "dst"_a, "foreground"_a,
-          "background"_a, "fgmask"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "background"_a, "fgmask"_a, py::kw_only(), "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the Composite operation on the given cuda stream.
 
 

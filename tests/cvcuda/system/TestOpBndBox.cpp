@@ -251,7 +251,8 @@ static void expectHostGold(const nvcv::TensorDataAccessStridedImagePlanar &input
 }
 
 static void compareOutOfPlaceToHostGold(cudaStream_t stream, const nvcv::ImageFormat &format, bool filled,
-                                        int width = 18, int height = 14, int inputAlpha = -1, bool expectDense = false)
+                                        int width = 18, int height = 14, int inputAlpha = -1, bool expectDense = false,
+                                        const cvcuda::BndBox *reusedOp = nullptr)
 {
     constexpr int numSamples = 4;
 
@@ -326,7 +327,8 @@ static void compareOutOfPlaceToHostGold(cudaStream_t stream, const nvcv::ImageFo
     ASSERT_EQ(cudaSuccess, cudaMemcpy(inputData->basePtr(), inputHost.data(), inputSize, cudaMemcpyHostToDevice));
     ASSERT_EQ(cudaSuccess, cudaMemset(outputData->basePtr(), 0, outputSize));
 
-    cvcuda::BndBox op;
+    cvcuda::BndBox fallbackOp;
+    const auto    &op = reusedOp ? *reusedOp : fallbackOp;
     EXPECT_NO_THROW(op(stream, input, output, (NVCVBndBoxesI)bndBoxes.get()));
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 
@@ -566,6 +568,77 @@ TEST(OpBndBox, planar_workspace_reallocation_preserves_draw)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpBndBox, planar_workspace_reuse_across_streams)
+{
+    constexpr int batch  = 2;
+    constexpr int width  = 18;
+    constexpr int height = 14;
+
+    cudaStream_t streamA{};
+    cudaStream_t streamB{};
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&streamA));
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&streamB));
+
+    nvcv::Tensor inputA  = nvcv::util::CreateTensor(batch, width, height, nvcv::FMT_RGB8p);
+    nvcv::Tensor outputA = nvcv::util::CreateTensor(batch, width, height, nvcv::FMT_RGB8p);
+    nvcv::Tensor inputB  = nvcv::util::CreateTensor(batch, width, height, nvcv::FMT_RGB8p);
+    nvcv::Tensor outputB = nvcv::util::CreateTensor(batch, width, height, nvcv::FMT_RGB8p);
+
+    auto inputAData  = inputA.exportData<nvcv::TensorDataStridedCuda>();
+    auto outputAData = outputA.exportData<nvcv::TensorDataStridedCuda>();
+    auto inputBData  = inputB.exportData<nvcv::TensorDataStridedCuda>();
+    auto outputBData = outputB.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inputAData && outputAData && inputBData && outputBData);
+
+    std::vector<uint8_t> input(width * height * nvcv::FMT_RGB8p.numChannels());
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+        input[i] = static_cast<uint8_t>((i * 13 + 7) & 0xFF);
+    }
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        nvcv::util::SetImageTensorFromVector<uint8_t>(*inputAData, input, sample);
+        nvcv::util::SetImageTensorFromVector<uint8_t>(*inputBData, input, sample);
+    }
+
+    std::vector<std::vector<NVCVBndBoxI>> boxes(batch);
+    for (auto &sampleBoxes : boxes)
+    {
+        sampleBoxes.push_back({
+            { 2,  2,   8,   8},
+            2,
+            {31, 97, 211, 255},
+            { 0,  0,   0, 255}
+        });
+    }
+    auto bndBoxes = std::make_shared<NVCVBndBoxesImpl>(boxes);
+
+    cvcuda::BndBox op;
+    EXPECT_NO_THROW(op(streamA, inputA, outputA, (NVCVBndBoxesI)bndBoxes.get()));
+    // Submit the same planar shape on another stream before the first submission is synchronized.
+    EXPECT_NO_THROW(op(streamB, inputB, outputB, (NVCVBndBoxesI)bndBoxes.get()));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(streamB));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(streamA));
+
+    auto compareSample = [&outputAData, &outputBData](int sample)
+    {
+        std::vector<uint8_t> actualA;
+        std::vector<uint8_t> actualB;
+        ASSERT_NO_THROW(nvcv::util::GetImageVectorFromTensor<uint8_t>(*outputAData, sample, actualA));
+        ASSERT_NO_THROW(nvcv::util::GetImageVectorFromTensor<uint8_t>(*outputBData, sample, actualB));
+        EXPECT_EQ(actualA, actualB);
+    };
+
+    for (int sample = 0; sample < batch; ++sample)
+    {
+        ASSERT_NO_FATAL_FAILURE(compareSample(sample));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(streamA));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(streamB));
+}
+
 TEST(OpBndBox, BndBox_out_of_place_matches_host_gold_rgb8)
 {
     cudaStream_t stream;
@@ -573,6 +646,22 @@ TEST(OpBndBox, BndBox_out_of_place_matches_host_gold_rgb8)
     compareOutOfPlaceToHostGold(stream, nvcv::FMT_RGB8, true);
     compareOutOfPlaceToHostGold(stream, nvcv::FMT_RGB8, false);
     compareOutOfPlaceToHostGold(stream, nvcv::FMT_RGB8, false, 256, 14, -1, true);
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpBndBox, ReusedCommandsMatchHostGoldAcrossShapesAndLayouts)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::BndBox op;
+    for (const auto &format : {nvcv::FMT_RGB8, nvcv::FMT_RGBA8, nvcv::FMT_RGB8p, nvcv::FMT_RGBA8p})
+    {
+        for (bool filled : {false, true, false})
+        {
+            compareOutOfPlaceToHostGold(stream, format, filled, 18, 14, -1, false, &op);
+            compareOutOfPlaceToHostGold(stream, format, filled, 17, 15, -1, false, &op);
+        }
+    }
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
@@ -637,6 +726,204 @@ TEST(OpBndBox, BndBox_in_place_matches_host_gold_rgb8)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
     compareInPlaceToHostGold(stream);
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpBndBox, BndBox_non_dense_sample_stride_uses_per_sample_copy)
+{
+    constexpr int     numSamples   = 2;
+    constexpr int     channels     = 3;
+    constexpr int     width        = 16;
+    constexpr int     height       = 6;
+    constexpr int64_t rowStride    = width * channels;
+    constexpr int64_t sampleBytes  = rowStride * height;
+    constexpr int64_t sampleStride = sampleBytes + 7;
+    constexpr size_t  bufferBytes  = static_cast<size_t>(sampleStride) * numSamples;
+
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), bufferBytes));
+    cudaError_t status = cudaMalloc(reinterpret_cast<void **>(&dstAllocation), bufferBytes);
+    if (status != cudaSuccess)
+    {
+        cudaFree(srcAllocation);
+    }
+    ASSERT_EQ(cudaSuccess, status);
+
+    nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+    srcBuffer.basePtr    = srcAllocation;
+    srcBuffer.strides[0] = sampleStride;
+    srcBuffer.strides[1] = rowStride;
+    srcBuffer.strides[2] = channels;
+    srcBuffer.strides[3] = 1;
+    auto dstBuffer       = srcBuffer;
+    dstBuffer.basePtr    = dstAllocation;
+
+    const nvcv::TensorShape shape{
+        {numSamples, height, width, channels},
+        "NHWC"
+    };
+    nvcv::Tensor src = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, srcBuffer},
+                                            nvcv::TensorDataCleanupCallback{[srcAllocation](const nvcv::TensorData &)
+                                                                            {
+                                                                                cudaFree(srcAllocation);
+                                                                            }});
+    nvcv::Tensor dst = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, dstBuffer},
+                                            nvcv::TensorDataCleanupCallback{[dstAllocation](const nvcv::TensorData &)
+                                                                            {
+                                                                                cudaFree(dstAllocation);
+                                                                            }});
+
+    auto srcData   = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData   = dst.exportData<nvcv::TensorDataStridedCuda>();
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(srcAccess && dstAccess);
+    ASSERT_EQ(sampleStride, srcAccess->sampleStride());
+    ASSERT_EQ(sampleStride, dstAccess->sampleStride());
+
+    std::vector<uint8_t> inputHost(bufferBytes, 0xA5);
+    std::vector<uint8_t> expectedHost(bufferBytes, 0x5A);
+    fillHostPattern(*srcAccess, *dstAccess, sampleStride, sampleStride, numSamples, height, width, inputHost,
+                    expectedHost);
+
+    std::vector<std::vector<NVCVBndBoxI>> boxes(numSamples);
+    boxes[0].push_back({
+        { 2,  1,   8,   4},
+        2,
+        {31, 97, 211, 255},
+        { 0,  0,   0,   0}
+    });
+    drawHostBoxes(*dstAccess, sampleStride, boxes, false, expectedHost);
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), inputHost.data(), bufferBytes, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemset(dstData->basePtr(), 0x5A, bufferBytes));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    auto           bndBoxes = std::make_shared<NVCVBndBoxesImpl>(boxes);
+    cvcuda::BndBox op;
+    EXPECT_NO_THROW(op(stream, src, dst, (NVCVBndBoxesI)bndBoxes.get()));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint8_t> outputHost(bufferBytes);
+    std::vector<uint8_t> inputAfterHost(bufferBytes);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(outputHost.data(), dstData->basePtr(), bufferBytes, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(inputAfterHost.data(), srcData->basePtr(), bufferBytes, cudaMemcpyDeviceToHost));
+
+    expectHostGold(*srcAccess, *dstAccess, sampleStride, sampleStride, numSamples, height, width, inputHost,
+                   inputAfterHost, expectedHost, outputHost);
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        const size_t paddingOffset = static_cast<size_t>(sample) * sampleStride + sampleBytes;
+        for (size_t offset = paddingOffset; offset < paddingOffset + sampleStride - sampleBytes; ++offset)
+        {
+            EXPECT_EQ(0x5A, outputHost[offset]) << "output padding modified at sample=" << sample;
+            EXPECT_EQ(0xA5, inputAfterHost[offset]) << "input padding modified at sample=" << sample;
+        }
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpBndBox, BndBox_mixed_sample_strides_use_per_sample_copy)
+{
+    constexpr int     numSamples         = 2;
+    constexpr int     channels           = 3;
+    constexpr int     width              = 16;
+    constexpr int     height             = 6;
+    constexpr int64_t rowStride          = width * channels;
+    constexpr int64_t sampleBytes        = rowStride * height;
+    constexpr int64_t inputSampleStride  = sampleBytes;
+    constexpr int64_t outputSampleStride = sampleBytes + 7;
+    constexpr size_t  inputBufferBytes   = static_cast<size_t>(inputSampleStride) * numSamples;
+    constexpr size_t  outputBufferBytes  = static_cast<size_t>(outputSampleStride) * numSamples;
+
+    NVCVByte *srcAllocation{};
+    NVCVByte *dstAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), inputBufferBytes));
+    cudaError_t status = cudaMalloc(reinterpret_cast<void **>(&dstAllocation), outputBufferBytes);
+    if (status != cudaSuccess)
+    {
+        cudaFree(srcAllocation);
+    }
+    ASSERT_EQ(cudaSuccess, status);
+
+    nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+    srcBuffer.basePtr    = srcAllocation;
+    srcBuffer.strides[0] = inputSampleStride;
+    srcBuffer.strides[1] = rowStride;
+    srcBuffer.strides[2] = channels;
+    srcBuffer.strides[3] = 1;
+    auto dstBuffer       = srcBuffer;
+    dstBuffer.basePtr    = dstAllocation;
+    dstBuffer.strides[0] = outputSampleStride;
+
+    const nvcv::TensorShape shape{
+        {numSamples, height, width, channels},
+        "NHWC"
+    };
+    nvcv::Tensor src = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, srcBuffer},
+                                            nvcv::TensorDataCleanupCallback{[srcAllocation](const nvcv::TensorData &)
+                                                                            {
+                                                                                cudaFree(srcAllocation);
+                                                                            }});
+    nvcv::Tensor dst = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, dstBuffer},
+                                            nvcv::TensorDataCleanupCallback{[dstAllocation](const nvcv::TensorData &)
+                                                                            {
+                                                                                cudaFree(dstAllocation);
+                                                                            }});
+
+    auto srcData   = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData   = dst.exportData<nvcv::TensorDataStridedCuda>();
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(srcData && dstData && srcAccess && dstAccess);
+    ASSERT_EQ(inputSampleStride, srcAccess->sampleStride());
+    ASSERT_EQ(outputSampleStride, dstAccess->sampleStride());
+
+    std::vector<uint8_t> inputHost(inputBufferBytes, 0xA5);
+    std::vector<uint8_t> expectedHost(outputBufferBytes, 0x5A);
+    fillHostPattern(*srcAccess, *dstAccess, inputSampleStride, outputSampleStride, numSamples, height, width, inputHost,
+                    expectedHost);
+
+    std::vector<std::vector<NVCVBndBoxI>> boxes(numSamples);
+    boxes[0].push_back({
+        { 2,  1,   8,   4},
+        2,
+        {31, 97, 211, 255},
+        { 0,  0,   0,   0}
+    });
+    drawHostBoxes(*dstAccess, outputSampleStride, boxes, false, expectedHost);
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), inputHost.data(), inputBufferBytes, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemset(dstData->basePtr(), 0x5A, outputBufferBytes));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    auto           bndBoxes = std::make_shared<NVCVBndBoxesImpl>(boxes);
+    cvcuda::BndBox op;
+    EXPECT_NO_THROW(op(stream, src, dst, (NVCVBndBoxesI)bndBoxes.get()));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    std::vector<uint8_t> outputHost(outputBufferBytes);
+    std::vector<uint8_t> inputAfterHost(inputBufferBytes);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(outputHost.data(), dstData->basePtr(), outputBufferBytes, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(inputAfterHost.data(), srcData->basePtr(), inputBufferBytes, cudaMemcpyDeviceToHost));
+
+    expectHostGold(*srcAccess, *dstAccess, inputSampleStride, outputSampleStride, numSamples, height, width, inputHost,
+                   inputAfterHost, expectedHost, outputHost);
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        const size_t paddingOffset = static_cast<size_t>(sample) * outputSampleStride + sampleBytes;
+        for (size_t offset = paddingOffset; offset < paddingOffset + outputSampleStride - sampleBytes; ++offset)
+        {
+            EXPECT_EQ(0x5A, outputHost[offset]) << "output padding modified at sample=" << sample;
+        }
+    }
+
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
@@ -748,4 +1035,22 @@ TEST_P(OpBndBox_Negative, invalid_parameters)
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Regression: pre-fix, RunBndBox cast null bboxes through reinterpret_cast<NVCVBndBoxesImpl *>
+// and immediately dereferenced the result, causing a segfault. The null guard added in
+// fix(osd) e080574d9 (RunBndBox, OpBndBox.cu) pins the observable outcome to
+// NVCV_ERROR_INVALID_ARGUMENT for any caller that passes a null handle.
+TEST(OpBndBox_Negative, rejects_null_bboxes)
+{
+    const nvcv::TensorShape shape{
+        {1, 12, 16, 3},
+        "NHWC"
+    };
+    nvcv::Tensor src(shape, nvcv::TYPE_U8);
+    nvcv::Tensor dst(shape, nvcv::TYPE_U8);
+
+    cvcuda::BndBox op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(nullptr, src, dst, static_cast<NVCVBndBoxesI>(nullptr)); }));
 }

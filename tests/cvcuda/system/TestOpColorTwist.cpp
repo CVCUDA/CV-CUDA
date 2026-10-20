@@ -32,6 +32,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <cstdint>
 #include <iostream>
 #include <random>
 #include <vector>
@@ -755,6 +756,106 @@ TYPED_TEST(OpColorTwist, varshape_correct_output)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(OpColorTwistCoverage, tensor_planar_u8_unaligned_base_scalar_fallback)
+{
+    constexpr int    kChannels        = 3;
+    constexpr int    kWidth           = 17;
+    constexpr int    kHeight          = 5;
+    constexpr size_t kBaseOffset      = 1;
+    constexpr size_t kRowStride       = kWidth + 2;
+    constexpr size_t kPlaneStride     = kRowStride * kHeight;
+    constexpr size_t kSampleStride    = kPlaneStride * kChannels;
+    constexpr size_t kGuardBytes      = 8;
+    constexpr size_t kAllocationBytes = kBaseOffset + kSampleStride + kGuardBytes;
+
+    NVCVByte *srcAllocation = nullptr;
+    NVCVByte *dstAllocation = nullptr;
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcAllocation), kAllocationBytes));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstAllocation), kAllocationBytes));
+
+    nvcv::TensorDataStridedCuda::Buffer srcBuffer{};
+    srcBuffer.basePtr    = srcAllocation + kBaseOffset;
+    srcBuffer.strides[0] = kSampleStride;
+    srcBuffer.strides[1] = kPlaneStride;
+    srcBuffer.strides[2] = kRowStride;
+    srcBuffer.strides[3] = 1;
+    auto dstBuffer       = srcBuffer;
+    dstBuffer.basePtr    = dstAllocation + kBaseOffset;
+
+    const nvcv::TensorShape shape{
+        {1, kChannels, kHeight, kWidth},
+        "NCHW"
+    };
+    std::vector<uint8_t>       srcBytes(kAllocationBytes, 0xA5);
+    const std::vector<uint8_t> dstSentinel(kAllocationBytes, 0xCD);
+    for (int plane = 0; plane < kChannels; ++plane)
+    {
+        for (int y = 0; y < kHeight; ++y)
+        {
+            for (int x = 0; x < kWidth; ++x)
+            {
+                const size_t offset = kBaseOffset + plane * kPlaneStride + y * kRowStride + x;
+                srcBytes[offset]    = static_cast<uint8_t>(1 + plane * 40 + y * 3 + x);
+            }
+        }
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcAllocation, srcBytes.data(), kAllocationBytes, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstAllocation, dstSentinel.data(), kAllocationBytes, cudaMemcpyHostToDevice));
+
+    nvcv::Tensor twistTensor{
+        {{3}, "H"},
+        nvcv::TYPE_4F32
+    };
+    auto twistData = twistTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(twistData);
+    const std::vector<float> twist{0.f, 1.f, 0.f, 10.f, 0.f, 0.f, 1.f, 20.f, 1.f, 0.f, 0.f, 30.f};
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(twistData->basePtr(), twist.data(), twist.size() * sizeof(float), cudaMemcpyHostToDevice));
+
+    {
+        nvcv::Tensor src = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, srcBuffer});
+        nvcv::Tensor dst = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, dstBuffer});
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+        cvcuda::ColorTwist op;
+        ASSERT_NO_THROW(op(stream, src, dst, twistTensor));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+
+    std::vector<uint8_t> dstBytes(kAllocationBytes);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstBytes.data(), dstAllocation, kAllocationBytes, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaFree(srcAllocation));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstAllocation));
+
+    EXPECT_EQ(0xCD, dstBytes[0]);
+    for (int plane = 0; plane < kChannels; ++plane)
+    {
+        const int sourcePlane = (plane + 1) % kChannels;
+        const int addend      = (plane + 1) * 10;
+        for (int y = 0; y < kHeight; ++y)
+        {
+            for (int x = 0; x < kWidth; ++x)
+            {
+                const size_t offset   = kBaseOffset + plane * kPlaneStride + y * kRowStride + x;
+                const auto   expected = static_cast<uint8_t>(1 + sourcePlane * 40 + y * 3 + x + addend);
+                EXPECT_EQ(expected, dstBytes[offset]) << "plane " << plane << " row " << y << " column " << x;
+            }
+            for (size_t x = kWidth; x < kRowStride; ++x)
+            {
+                const size_t offset = kBaseOffset + plane * kPlaneStride + y * kRowStride + x;
+                EXPECT_EQ(0xCD, dstBytes[offset]) << "plane " << plane << " row padding overwritten";
+            }
+        }
+    }
+    for (size_t i = kBaseOffset + kSampleStride; i < kAllocationBytes; ++i)
+    {
+        EXPECT_EQ(0xCD, dstBytes[i]) << "allocation guard overwritten at byte " << i;
+    }
+}
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpColorTwistVarshape_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, int, int>{
     // inFmt, outFmt, inputNumImages, outputNumImages
@@ -924,6 +1025,69 @@ TEST(OpColorTwistVarshape_Negative, varshape_hasDifferentFormat)
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpColorTwist_Negative, tensor_sample_stride_span_overflow_rejected)
+{
+    constexpr int64_t kSamples      = 2;
+    constexpr int64_t kSampleStride = static_cast<int64_t>(cuda::TypeTraits<int32_t>::max) / kSamples + 1;
+
+    NVCVByte *srcPtr = nullptr;
+    NVCVByte *dstPtr = nullptr;
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&srcPtr), 16));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&dstPtr), 16));
+
+    auto wrapTensor = [](NVCVByte *base, bool planar)
+    {
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = base;
+        buffer.strides[0] = kSampleStride;
+
+        if (planar)
+        {
+            buffer.strides[1] = 1;
+            buffer.strides[2] = 1;
+            buffer.strides[3] = 1;
+            return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{kSamples, 3, 1, 1}, "NCHW"},
+                nvcv::TYPE_U8, buffer
+            });
+        }
+
+        buffer.strides[1] = 3;
+        buffer.strides[2] = 3;
+        buffer.strides[3] = 1;
+        return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+            nvcv::TensorShape{{kSamples, 1, 1, 3}, "NHWC"},
+            nvcv::TYPE_U8, buffer
+        });
+    };
+
+    nvcv::Tensor twistTensor{
+        {{3}, "H"},
+        nvcv::TYPE_4F32
+    };
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::ColorTwist op;
+
+    {
+        nvcv::Tensor src = wrapTensor(srcPtr, false);
+        nvcv::Tensor dst = wrapTensor(dstPtr, false);
+        EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcv::ProtectCall([&] { op(stream, src, dst, twistTensor); }));
+    }
+
+    {
+        nvcv::Tensor src = wrapTensor(srcPtr, true);
+        nvcv::Tensor dst = wrapTensor(dstPtr, true);
+        EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcv::ProtectCall([&] { op(stream, src, dst, twistTensor); }));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    ASSERT_EQ(cudaSuccess, cudaFree(srcPtr));
+    ASSERT_EQ(cudaSuccess, cudaFree(dstPtr));
 }
 
 TEST(OpColorTwist_Negative, create_null_handle)

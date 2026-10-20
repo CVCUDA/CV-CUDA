@@ -44,8 +44,14 @@ public:
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double contrastFactor) const;
 
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double contrastFactor,
+                    NVCVRoundMode roundMode) const;
+
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
                     double contrastFactor) const;
+
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out, double contrastFactor,
+                    NVCVRoundMode roundMode) const;
 
     NVCVOperatorHandle handle() const noexcept override;
 
@@ -68,11 +74,25 @@ inline void AdjustContrast::operator()(cudaStream_t stream, const nvcv::Tensor &
         cvcudaAdjustContrastSubmit(m_handle.get(), stream, in.handle(), out.handle(), contrastFactor));
 }
 
+inline void AdjustContrast::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                       double contrastFactor, NVCVRoundMode roundMode) const
+{
+    nvcv::detail::CheckThrow(
+        cvcudaAdjustContrastRoundSubmit(m_handle.get(), stream, in.handle(), out.handle(), contrastFactor, roundMode));
+}
+
 inline void AdjustContrast::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
                                        double contrastFactor) const
 {
     nvcv::detail::CheckThrow(
         cvcudaAdjustContrastVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(), contrastFactor));
+}
+
+inline void AdjustContrast::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                                       double contrastFactor, NVCVRoundMode roundMode) const
+{
+    nvcv::detail::CheckThrow(cvcudaAdjustContrastVarShapeRoundSubmit(m_handle.get(), stream, in.handle(), out.handle(),
+                                                                     contrastFactor, roundMode));
 }
 
 inline NVCVOperatorHandle AdjustContrast::handle() const noexcept

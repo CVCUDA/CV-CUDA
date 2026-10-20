@@ -32,6 +32,7 @@
 
 #include <cuda_runtime.h>
 #include <nvcv/ImageBatch.h>
+#include <nvcv/RoundMode.h>
 #include <nvcv/Status.h>
 #include <nvcv/Tensor.h>
 
@@ -63,8 +64,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdjustContrastCreate(NVCVOperatorHandle *handle);
  * `mean` is the per-image mean of its grayscale conversion. Grayscale uses the BT.601 luma weights
  * `0.2989 R + 0.587 G + 0.114 B` (floored for integer 3-channel input, matching torchvision); a
  * single-channel image is its own grayscale. A factor of 0 produces a flat gray image, 1 leaves
- * the image unchanged, and values > 1 increase contrast. Integer results round-to-nearest, so they
- * may differ from torchvision (which truncates) by at most 1 LSB.
+ * the image unchanged, and values > 1 increase contrast. Integer results round-to-nearest, which
+ * differs from torchvision (which truncates) by at most 1 LSB; \ref cvcudaAdjustContrastRoundSubmit
+ * selects the conversion and matches torchvision's float-to-integer conversion with #NVCV_ROUND_TRUNCATE.
  * Three-channel tensors are interpreted in RGB component order. Three-channel image batches use
  * their RGB format semantics; formats without a color model are interpreted as RGB. The format
  * swizzle is honored, including BGR storage order.
@@ -126,7 +128,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdjustContrastCreate(NVCVOperatorHandle *handle);
  * @param [out] out Output tensor to set values to.
  *                  + Must not be NULL.
  *
- * @param [in] contrastFactor Non-negative scalar contrast multiplier.
+ * @param [in] contrastFactor Finite, non-negative scalar contrast multiplier representable as float32.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
@@ -147,6 +149,48 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdjustContrastSubmit(NVCVOperatorHandle handle, c
 CVCUDA_PUBLIC NVCVStatus cvcudaAdjustContrastVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
                                                             NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                                                             double contrastFactor);
+
+/** Executes AdjustContrast on a tensor, choosing how integer results are converted.
+ *
+ * The formula, layouts, and data-type support are identical to \ref cvcudaAdjustContrastSubmit;
+ * only the float-to-integer conversion is selectable. Calling this with #NVCV_ROUND_NEAREST is
+ * bit-exact with \ref cvcudaAdjustContrastSubmit.
+ *
+ * @param [in] handle Handle to the operator.
+ *                    + Must not be NULL.
+ * @param [in] stream Handle to a valid CUDA stream.
+ * @param [in] in Input tensor to get values from.
+ *                + Must not be NULL.
+ * @param [out] out Output tensor to set values to.
+ *                  + Must not be NULL.
+ * @param [in] contrastFactor Finite, non-negative scalar contrast multiplier representable as float32.
+ * @param [in] roundMode Rounding mode used for integer outputs, cf. \ref NVCVRoundMode.
+ *                       Use #NVCV_ROUND_NEAREST to preserve \ref cvcudaAdjustContrastSubmit's
+ *                       behavior or #NVCV_ROUND_TRUNCATE to drop the fractional part, which is
+ *                       what torchvision's ``adjust_contrast`` does. Floating-point outputs are
+ *                       unaffected. The wrap modes are rejected with #NVCV_ERROR_INVALID_ARGUMENT.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
+ * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+CVCUDA_PUBLIC NVCVStatus cvcudaAdjustContrastRoundSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                         NVCVTensorHandle in, NVCVTensorHandle out,
+                                                         double contrastFactor, NVCVRoundMode roundMode);
+
+/**
+ * Executes the round-mode AdjustContrast operation on a batch of images.
+ *
+ * Apart from input and output image batches, all parameters are the same as
+ * \ref cvcudaAdjustContrastRoundSubmit.
+ *
+ * @param[in] in Input image batch.
+ *
+ * @param[out] out Output image batch.
+ */
+CVCUDA_PUBLIC NVCVStatus cvcudaAdjustContrastVarShapeRoundSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                                 NVCVImageBatchHandle in, NVCVImageBatchHandle out,
+                                                                 double contrastFactor, NVCVRoundMode roundMode);
 
 #ifdef __cplusplus
 }

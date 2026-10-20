@@ -1,0 +1,56 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -e
+
+curdir=$(dirname "$(readlink -f "$0")")
+reference_file=$(mktemp "${TMPDIR:-/tmp}/cvcuda-hqresize-lanes-XXXXXX.bin")
+rm -f "$reference_file"
+invalid_lane_marker_file="${reference_file}.invalid"
+trap 'rm -f "$reference_file" "${reference_file}.8.ran" "${reference_file}.16.ran" \
+    "${reference_file}.32.ran" "$invalid_lane_marker_file"' EXIT
+
+for lanes in 8 16 32; do
+    lane_marker_file="${reference_file}.${lanes}.ran"
+    rm -f "$lane_marker_file"
+    env \
+        NVCV_LEAK_DETECTION=abort \
+        CVCUDA_HQ_RESIZE_BLOCK_LANES="$lanes" \
+        CVCUDA_TEST_EXPECTED_BLOCK_LANES="$lanes" \
+        CVCUDA_TEST_BLOCK_LANES_REFERENCE_FILE="$reference_file" \
+        CVCUDA_TEST_BLOCK_LANES_MARKER_FILE="$lane_marker_file" \
+        "$curdir/cvcuda_test_system" --gtest_filter='OpHQResize*'
+    if [[ "$lanes" == 8 && ! -f "$reference_file" ]]; then
+        echo "HQResize 8-lane parity run did not produce its reference" >&2
+        exit 1
+    fi
+    if [[ ! -f "$lane_marker_file" ]]; then
+        echo "HQResize $lanes-lane parity test did not produce its liveness marker" >&2
+        exit 1
+    fi
+done
+
+rm -f "$invalid_lane_marker_file"
+env \
+    NVCV_LEAK_DETECTION=abort \
+    CVCUDA_HQ_RESIZE_BLOCK_LANES=0 \
+    CVCUDA_TEST_INVALID_LANE_MARKER_FILE="$invalid_lane_marker_file" \
+    "$curdir/cvcuda_test_system" \
+    --gtest_filter=OpHQResizeNegative.invalid_block_lane_override_returns_invalid_argument
+if [[ ! -f "$invalid_lane_marker_file" ]]; then
+    echo "HQResize invalid-lane test did not produce its liveness marker" >&2
+    exit 1
+fi

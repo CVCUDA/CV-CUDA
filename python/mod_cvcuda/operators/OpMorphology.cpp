@@ -15,36 +15,34 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpMorphology.hpp>
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 namespace cvcudapy {
 
 namespace {
-Tensor MorphologyInto(Tensor &output, Tensor &input, NVCVMorphologyType morph_type,
-                      const std::tuple<int, int> &maskSize, const std::tuple<int, int> &anchor,
-                      std::optional<Tensor> workspace, int32_t iteration, NVCVBorderType border,
-                      std::optional<Stream> pstream)
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
+Tensor &MorphologyInto(Tensor &output, Tensor &input, NVCVMorphologyType morph_type,
+                       const std::tuple<int, int> &maskSize, const std::tuple<int, int> &anchor,
+                       std::optional<Tensor *> workspace, int32_t iteration, NVCVBorderType border,
+                       std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto morphology = CreateOperator<cvcuda::Morphology>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*morphology});
@@ -54,97 +52,99 @@ Tensor MorphologyInto(Tensor &output, Tensor &input, NVCVMorphologyType morph_ty
     anchorArg.x = std::get<0>(anchor);
     anchorArg.y = std::get<1>(anchor);
 
-    if (workspace)
+    if (workspace.has_value())
     {
-        guard.add(LockMode::LOCK_MODE_READ, {*workspace});
+        guard.add(LockMode::LOCK_MODE_READWRITE, {**workspace});
         guard.run(
-            [&morphology, &pstream, &input, &output, &workspace, &morph_type, &maskSizeArg, &anchorArg, &iteration,
+            [&morphology, &stream, &input, &output, &workspace, &morph_type, &maskSizeArg, &anchorArg, &iteration,
              &border]()
             {
-                morphology->submit(pstream->cudaHandle(), input, output, nvcv::OptionalTensorConstRef{*workspace},
-                                   morph_type, maskSizeArg, anchorArg, iteration, border);
+                morphology->submit(stream.handle(), input.impl(), output.impl(),
+                                   nvcv::OptionalTensorConstRef{(*workspace)->impl()}, morph_type, maskSizeArg,
+                                   anchorArg, iteration, border);
             });
     }
     else
     {
         guard.run(
-            [&morphology, &pstream, &input, &output, &morph_type, &maskSizeArg, &anchorArg, &iteration, &border]()
+            [&morphology, &stream, &input, &output, &morph_type, &maskSizeArg, &anchorArg, &iteration, &border]()
             {
-                morphology->submit(pstream->cudaHandle(), input, output, nvcv::OptionalTensorConstRef{nvcv::NullOpt},
-                                   morph_type, maskSizeArg, anchorArg, iteration, border);
+                morphology->submit(stream.handle(), input.impl(), output.impl(),
+                                   nvcv::OptionalTensorConstRef{nvcv::NullOpt}, morph_type, maskSizeArg, anchorArg,
+                                   iteration, border);
             });
     }
 
     return output;
 }
 
-Tensor Morphology(Tensor &input, NVCVMorphologyType morph_type, const std::tuple<int, int> &maskSize,
-                  const std::tuple<int, int> &anchor, const std::optional<Tensor> &workspace, int32_t iteration,
-                  NVCVBorderType border, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> Morphology(Tensor &input, NVCVMorphologyType morph_type, const std::tuple<int, int> &maskSize,
+                                   const std::tuple<int, int> &anchor, std::optional<Tensor *> workspace,
+                                   int32_t iteration, NVCVBorderType border, std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return MorphologyInto(output, input, morph_type, maskSize, anchor, workspace, iteration, border, pstream);
+    MorphologyInto(*output, input, morph_type, maskSize, anchor, workspace, iteration, border, pstream);
+    return output;
 }
 
-ImageBatchVarShape MorphologyVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                          NVCVMorphologyType morph_type, Tensor &masks, Tensor &anchors,
-                                          std::optional<ImageBatchVarShape> workspace, const int32_t iteration,
-                                          const NVCVBorderType borderMode, std::optional<Stream> pstream)
+ImageBatchVarShape &MorphologyVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                           NVCVMorphologyType morph_type, Tensor &masks, Tensor &anchors,
+                                           std::optional<ImageBatchVarShape *> workspace, const int32_t iteration,
+                                           const NVCVBorderType borderMode, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto morphology = CreateOperator<cvcuda::Morphology>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, masks, anchors});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*morphology});
 
-    if (workspace)
+    if (workspace.has_value())
     {
-        guard.add(LockMode::LOCK_MODE_READ, {*workspace});
+        guard.add(LockMode::LOCK_MODE_READWRITE, {**workspace});
         guard.run(
-            [&morphology, &pstream, &input, &output, &workspace, &morph_type, &masks, &anchors, &iteration,
+            [&morphology, &stream, &input, &output, &workspace, &morph_type, &masks, &anchors, &iteration,
              &borderMode]()
             {
-                morphology->submit(pstream->cudaHandle(), input, output,
-                                   nvcv::OptionalImageBatchVarShapeConstRef{*workspace}, morph_type, masks, anchors,
-                                   iteration, borderMode);
+                morphology->submit(stream.handle(), input.impl(), output.impl(),
+                                   nvcv::OptionalImageBatchVarShapeConstRef{(*workspace)->impl()}, morph_type,
+                                   masks.impl(), anchors.impl(), iteration, borderMode);
             });
     }
     else
     {
         guard.run(
-            [&morphology, &pstream, &input, &output, &morph_type, &masks, &anchors, &iteration, &borderMode]()
+            [&morphology, &stream, &input, &output, &morph_type, &masks, &anchors, &iteration, &borderMode]()
             {
-                morphology->submit(pstream->cudaHandle(), input, output,
-                                   nvcv::OptionalImageBatchVarShapeConstRef{nvcv::NullOpt}, morph_type, masks, anchors,
-                                   iteration, borderMode);
+                morphology->submit(stream.handle(), input.impl(), output.impl(),
+                                   nvcv::OptionalImageBatchVarShapeConstRef{nvcv::NullOpt}, morph_type, masks.impl(),
+                                   anchors.impl(), iteration, borderMode);
             });
     }
 
     return output;
 }
 
-ImageBatchVarShape MorphologyVarShape(ImageBatchVarShape &input, NVCVMorphologyType morph_type, Tensor &masks,
-                                      Tensor &anchors, const std::optional<ImageBatchVarShape> &workspace,
-                                      const int32_t iteration, const NVCVBorderType borderMode,
-                                      std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> MorphologyVarShape(ImageBatchVarShape &input, NVCVMorphologyType morph_type,
+                                                       Tensor &masks, Tensor &anchors,
+                                                       std::optional<ImageBatchVarShape *> workspace,
+                                                       const int32_t iteration, const NVCVBorderType borderMode,
+                                                       std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return MorphologyVarShapeInto(output, input, morph_type, masks, anchors, workspace, iteration, borderMode, pstream);
+    MorphologyVarShapeInto(*output, input, morph_type, masks, anchors, workspace, iteration, borderMode, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpMorphology(py::module &m)
+void ExportOpMorphology(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("morphology", NvtxTrace("cvcuda.morphology", &Morphology), "src"_a, "morphologyType"_a, "maskSize"_a,
           "anchor"_a, py::kw_only(), "workspace"_a = nullptr, "iteration"_a = 1,
@@ -170,7 +170,7 @@ void ExportOpMorphology(py::module &m)
 
     m.def("morphology_into", NvtxTrace("cvcuda.morphology_into", &MorphologyInto), "dst"_a, "src"_a, "morphologyType"_a,
           "maskSize"_a, "anchor"_a, py::kw_only(), "workspace"_a = nullptr, "iteration"_a = 1,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr,
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Executes the Morphology operation on the given cuda stream.
 
@@ -215,7 +215,7 @@ void ExportOpMorphology(py::module &m)
 
     m.def("morphology_into", NvtxTrace("cvcuda.morphology_into", &MorphologyVarShapeInto), "dst"_a, "src"_a,
           "morphologyType"_a, "masks"_a, "anchors"_a, py::kw_only(), "workspace"_a = nullptr, "iteration"_a = 1,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr,
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr, py::return_value_policy::reference,
           R"pbdoc(
         Executes the Morphology operation on the given cuda stream.
 

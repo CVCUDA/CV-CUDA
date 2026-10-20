@@ -53,6 +53,12 @@ namespace nvcv::cuda {
  * // Now wrap can be used in device code to access elements of the image batch via operator[] or ptr method.
  * @endcode
  *
+ * @note No accessor in this class bounds-checks the sample index \p s or the plane index \p p, and
+ * the two fail differently: an out-of-range \p s reads past the end of the image list, while an
+ * out-of-range \p p below the fixed plane capacity reads unpopulated plane metadata and yields a
+ * wild base pointer. Bound both in the caller first. In a kernel guard that means the sample check
+ * has to short-circuit ahead of any accessor.
+ *
  * @tparam T Type (it can be const) of each element inside the image batch var-shape wrapper.
  */
 template<typename T>
@@ -222,6 +228,9 @@ private:
  *
  * This class is specialized for non-constant value type.
  *
+ * @note As in the const specialization it derives from, no accessor bounds-checks the sample index
+ * \p s or the plane index \p p.
+ *
  * @tparam T Type (non-const) of each element inside the image batch var-shape wrapper.
  */
 template<typename T>
@@ -335,6 +344,13 @@ protected:
  *
  * @note The class \ref ImageBatchVarShapeWrap can be used with its template parameter \p T type as a compound
  * type, where its number of elements yield the number of channels.
+ *
+ * @note As in \ref ImageBatchVarShapeWrap, no accessor bounds-checks the sample index \p s; bound it
+ * in the caller first. The inherited plane accessors \p plane, \p width, \p height and \p rowStride
+ * do not bound \p p in any build, while the element accessors of this class always address plane 0.
+ * The constructor's single-plane assert validates only the wrapped images, never an accessor
+ * argument, and is compiled out when \p NDEBUG is defined, so a release build silently addresses a
+ * multi-plane image as its plane 0.
  *
  * @tparam T Type (it can be const) of each element inside this wrapper.
  */

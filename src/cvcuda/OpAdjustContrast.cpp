@@ -37,9 +37,7 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaAdjustContrastCreate, (NVCVOperatorHan
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            // Ownership of the operator is transferred to the C handle and released by
-            // cvcudaOperatorDestroy; this matches every other operator's Create entry point.
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::AdjustContrast()); // NOSONAR
+            *handle = priv::CreateOperatorHandle<priv::AdjustContrast>();
         });
 }
 
@@ -54,7 +52,22 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaAdjustContrastSubmit,
             nvcv::TensorWrapHandle input(in);
             nvcv::TensorWrapHandle output(out);
             priv::ToDynamicRef<priv::AdjustContrast>(handle)(stream, input.resource(), output.resource(),
-                                                             contrastFactor);
+                                                             contrastFactor, NVCV_ROUND_NEAREST);
+        });
+}
+
+CVCUDA_DEFINE_API(0, 19, NVCVStatus, cvcudaAdjustContrastRoundSubmit,
+                  (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
+                   double contrastFactor, NVCVRoundMode roundMode))
+{
+    CVCUDA_NVTX_RANGE("cvcudaAdjustContrastRoundSubmit");
+    return nvcv::ProtectCall(
+        [handle, stream, in, out, contrastFactor, roundMode]
+        {
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::AdjustContrast>(handle)(stream, input.resource(), output.resource(),
+                                                             contrastFactor, roundMode);
         });
 }
 
@@ -69,6 +82,21 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaAdjustContrastVarShapeSubmit,
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::ImageBatchVarShapeWrapHandle output(out);
             priv::ToDynamicRef<priv::AdjustContrast>(handle)(stream, input.resource(), output.resource(),
-                                                             contrastFactor);
+                                                             contrastFactor, NVCV_ROUND_NEAREST);
+        });
+}
+
+CVCUDA_DEFINE_API(0, 19, NVCVStatus, cvcudaAdjustContrastVarShapeRoundSubmit,
+                  (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
+                   double contrastFactor, NVCVRoundMode roundMode))
+{
+    CVCUDA_NVTX_RANGE("cvcudaAdjustContrastVarShapeRoundSubmit");
+    return nvcv::ProtectCall(
+        [handle, stream, in, out, contrastFactor, roundMode]
+        {
+            nvcv::ImageBatchVarShapeWrapHandle input(in);
+            nvcv::ImageBatchVarShapeWrapHandle output(out);
+            priv::ToDynamicRef<priv::AdjustContrast>(handle)(stream, input.resource(), output.resource(),
+                                                             contrastFactor, roundMode);
         });
 }

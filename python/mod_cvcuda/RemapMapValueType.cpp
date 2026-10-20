@@ -21,9 +21,10 @@
 
 namespace cvcudapy {
 
-void ExportRemapMapValueType(py::module &m)
+void ExportRemapMapValueType(py::module_ &m)
 {
-    py::enum_<NVCVRemapMapValueType>(m, "Remap", "Coordinate map value types for remap operations.", py::arithmetic())
+    py::enum_compat<NVCVRemapMapValueType>(m, "Remap", "Coordinate map value types for remap operations.",
+                                           py::is_arithmetic())
         .value("ABSOLUTE", NVCV_REMAP_ABSOLUTE, "Map values are absolute pixel coordinates.")
         .value("ABSOLUTE_NORMALIZED", NVCV_REMAP_ABSOLUTE_NORMALIZED,
                "Map values are absolute coordinates normalized to [-1, 1].")

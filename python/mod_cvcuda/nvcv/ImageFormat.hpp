@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,17 +18,17 @@
 #ifndef NVCV_PYTHON_PRIV_IMAGEFORMAT_HPP
 #define NVCV_PYTHON_PRIV_IMAGEFORMAT_HPP
 
+#include <common/Binding.hpp>
 #include <nvcv/ImageFormat.hpp>
-#include <pybind11/pybind11.h>
 
 namespace nvcv {
-size_t PYBIND11_EXPORT ComputeHash(const nvcv::ImageFormat &fmt);
+size_t NB_EXPORT ComputeHash(const nvcv::ImageFormat &fmt);
 }
 
 namespace nvcvpy::priv {
-namespace py = pybind11;
+namespace py = nanobind;
 
-void ExportImageFormat(py::module &m);
+void ExportImageFormat(py::module_ &m);
 
 } // namespace nvcvpy::priv
 

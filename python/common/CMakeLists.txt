@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,9 +23,14 @@ add_library(cvcuda_python_common STATIC
     String.cpp
 )
 
+if(NB_FREE_THREADED)
+    target_compile_definitions(cvcuda_python_common PUBLIC NB_FREE_THREADED)
+endif()
+
 target_include_directories(cvcuda_python_common
     PUBLIC
         ..
+        ${NB_DIR}/include
 )
 
 target_link_libraries(cvcuda_python_common
@@ -34,5 +39,5 @@ target_link_libraries(cvcuda_python_common
         nvcv_util
         cvcuda
         CUDA::cudart_static
-        pybind11::pybind11
+        Python::Module
 )

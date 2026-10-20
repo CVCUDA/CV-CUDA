@@ -17,6 +17,7 @@
 
 #include "priv/OpSIFT.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -52,6 +53,7 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaSIFTSubmit,
         [&in, &featCoords, &featMetadata, &featDescriptors, &numFeatures, &handle, &stream, &numOctaveLayers,
          &contrastThreshold, &edgeThreshold, &initSigma, &flags]
         {
+            priv::CheckEnumArg(flags, NVCV_SIFT_USE_EXPANDED_INPUT, "SIFT flags");
             nvcv::TensorWrapHandle _in(in);
             nvcv::TensorWrapHandle _featCoords(featCoords);
             nvcv::TensorWrapHandle _featMetadata(featMetadata);

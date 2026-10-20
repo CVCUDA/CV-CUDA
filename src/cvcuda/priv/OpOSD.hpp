@@ -25,10 +25,11 @@
 #define CVCUDA_PRIV__O_S_D_HPP
 
 #include "IOperator.hpp"
+#include "OsdContext.hpp"
 #include "PerDeviceResource.hpp"
-#include "legacy/CvCudaLegacy.h"
 
 #include <cuda_runtime.h>
+#include <cvcuda/Types.h>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorData.hpp>
 
@@ -89,7 +90,7 @@ public:
 private:
     static std::unique_ptr<OSDPlanarBridgeWorkspace> CreatePlanarBridgeWorkspace(int deviceId);
 
-    std::unique_ptr<nvcv::legacy::cuda_op::OSD>         m_legacyOp;
+    std::unique_ptr<osd::cuOSDContext>                  m_context;
     std::unique_ptr<Reformat>                           m_reformatOp;
     mutable PerDeviceResource<OSDPlanarBridgeWorkspace> m_planarWorkspace{CreatePlanarBridgeWorkspace};
 };

@@ -37,22 +37,22 @@ def main() -> None:
     # docs_tag: end_read_image
 
     # docs_tag: begin_advcvtcolor
-    # 1. Convert the RGB image to YUV using the BT.709 color specification.
-    #    BT.709 is the standard for HDTV content and is a common choice for
-    #    high-quality color-space transformations.
+    # 1. Convert the RGB image to YUV using the full-range BT.709 color specification.
+    #    BT.709 is the standard for HDTV content; the _ER name makes AdvCvtColor's
+    #    full-sample-range arithmetic explicit.
     yuv_image: cvcuda.Tensor = cvcuda.advcvtcolor(
         input_image,
         cvcuda.ColorConversion.RGB2YUV,
-        cvcuda.ColorSpec.BT709,
+        cvcuda.ColorSpec.BT709_ER,
     )
 
     # 2. Convert the YUV image back to RGB so the result is a viewable image.
-    #    Using the same color specification (BT.709) ensures a round-trip that
+    #    Using the same color specification (full-range BT.709) ensures a round-trip that
     #    closely reproduces the original colors.
     output_image: cvcuda.Tensor = cvcuda.advcvtcolor(
         yuv_image,
         cvcuda.ColorConversion.YUV2RGB,
-        cvcuda.ColorSpec.BT709,
+        cvcuda.ColorSpec.BT709_ER,
     )
 
     write_image(output_image, args.output)

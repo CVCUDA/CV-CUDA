@@ -5,12 +5,8 @@
 
 The single source of truth for adding a **new** operator to CV-CUDA end-to-end. It is
 **implemented by** `tools/make_op.py` (the deterministic checker) and **cited by** the thin
-skill wrappers (`.agents/skills/make-op*/SKILL.md`). The checklist substance lives here once;
-the wrappers delegate to it — no duplication.
-
-This document also **documents the skill** (purpose, modes, workflow, invocation), exactly as
-`OPTIMIZATION_GUIDELINES.md` documents `/optimize-op`. It does not restate house policy; it
-*cites* the authoritative docs and turns their requirements into machine-checkable items:
+skill dispatchers (`.agents/skills/op-tools/skills/make-op*/SKILL.md`). It also documents the
+skill's modes, workflow, and invocation, and turns these docs into machine-checkable items:
 `AGENTS.md`, `docs/sphinx/advanced/make_operator.rst` (the narrative tutorial),
 `REVIEW_OP_GUIDELINES.md`, and `OPTIMIZATION_GUIDELINES.md`.
 
@@ -143,7 +139,7 @@ the relnotes, and optimization-ready.
 | IMP-1 | No stub markers | `TODO`, `t.fail`, `noop`, the template's `std::generate(goldVec…)` / placeholder `ASSERT_EQ(goldVec, testVec)` | none remain in the op's src/test |
 | IMP-2 | Limitations table filled | header | no `TODO`/`[TODO]` rows (also SPEC-MATRIX) |
 | IMP-3 | Multi-GPU safety | if priv has `cudaMalloc`, it uses `PerDeviceResource<>` | satisfied / N-A if no device alloc |
-| NVTX-1 | NVTX marker present **and** registered | `CVCUDA_NVTX_RANGE("cvcuda<Name>…Submit")` in `Op<Name>.cpp` (the scaffold templates emit the submit / priv `operator()` / Python `NvtxTrace` markers — this guards they survived) **and** a `"<name>": ("cvcuda<Name>Submit", _<name>)` row in `tests/cvcuda/python/test_nvtx_markers.py` `OPERATORS` | both present → else GAP. Every public operator (`fn` + `_into`) must be in the registry or `test_all_operators_registered` fails once always-on NVTX is merged; the invocation helper must issue a minimal real call so the submit range actually fires |
+| NVTX-1 | NVTX marker present | `CVCUDA_NVTX_RANGE("cvcuda<Name>…Submit")` in `Op<Name>.cpp` (the scaffold templates emit the submit / priv `operator()` / Python `NvtxTrace` markers — this guards they survived) | present → else GAP. `tests/cvcuda/python/test_nvtx_markers.py` scans every C API submit entry and Python binding for its marker; no registry row is needed |
 
 ### Domain: coverage + test-rigor (the teeth — stricter than `review_op`)
 
@@ -230,7 +226,7 @@ GAPs for a brand-new operator).
   (BEN-11; run-dependent, so verified with `--run`/CI, not statically).
 - **Baseline regen (closes `BEN-7`/`RDY-1`):** once the configs are calibrated and run-green
   **locally**, seed baselines on the **reference SKUs** and import the resulting artifacts with
-  `python3 bench/_internal/update_baseline.py --from <artifact-dir> --operator <op>` (never fabricate
+  the guarded workflow in `bench/README.md` under "Import, Validate, and Recheck" (never fabricate
   baselines).
   Local absolute timings are SKU-specific, so the gating baselines cannot come from the dev box;
   after import, `make_op.py --phase done` shows `BEN-7`/`RDY-1` green.

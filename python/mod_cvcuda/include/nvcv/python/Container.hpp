@@ -23,11 +23,11 @@
 #include "Resource.hpp"
 
 #include <common/Assert.hpp>
-#include <pybind11/pybind11.h>
+#include <common/Binding.hpp>
 
 namespace nvcvpy {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 class Container
     : public Resource
@@ -41,7 +41,8 @@ public:
 
     explicit Container()
     {
-        PyObject *raw_obj = capi().Container_Create(this);
+        // reinterpret_steal below takes a non-const PyObject *.
+        PyObject *raw_obj = capi().Container_Create(this); // NOSONAR
         CheckCAPIError();
         NVCV_ASSERT(raw_obj != nullptr);
         py::object temp = py::reinterpret_steal<py::object>(raw_obj);

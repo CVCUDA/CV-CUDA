@@ -319,6 +319,17 @@ TEST_P(OpCenterCropExactOutput, matches_host_reference)
                        GetParamValue<4>(), GetParamValue<5>());
 }
 
+TEST(OpCenterCropExactOutput, f64_scalar_dispatch_with_tails_matches_host_reference)
+{
+    RunExactOutputCase(nvcv::FMT_F64, 41, 17, 33, 9, 2);
+}
+
+TEST(OpCenterCropExactOutput, two_channel_u8_dispatch_matches_host_reference)
+{
+    RunExactOutputCase(nvcv::ImageFormat{NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, UNSIGNED, XY00, ASSOCIATED, X8_Y8)}, 21, 17,
+                       13, 9, 2);
+}
+
 TEST(OpCenterCropExactOutput, padded_sample_stride_matches_host_reference)
 {
     constexpr int numImages  = 2;
@@ -484,6 +495,20 @@ TEST(OpCenterCrop_Negative, rejects_non_image_tensor)
 
     cvcuda::CenterCrop op;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, inTensor, outTensor, {1, 1}); }));
+}
+
+TEST(OpCenterCrop_Negative, rejects_unsigned_32bit_image_tensor)
+{
+    nvcv::Tensor input(
+        {
+            {1, 5, 5, 1},
+            "NHWC"
+    },
+        nvcv::TYPE_U32);
+    nvcv::Tensor output(input.shape(), input.dtype());
+
+    cvcuda::CenterCrop op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(nullptr, input, output, {3, 3}); }));
 }
 
 TEST(OpCenterCrop_Negative, planar_rejects_two_channels)

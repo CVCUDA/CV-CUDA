@@ -17,7 +17,8 @@
 
 #include "DeviceBorderWrap.hpp" // to test in the device
 
-#include <common/BorderUtils.hpp>           // for test::ReplicateBorderIndex, etc.
+#include <common/BorderUtils.hpp> // for test::ReplicateBorderIndex, etc.
+#include <common/DeviceBuffer.hpp>
 #include <common/Printers.hpp>              // for stream operator, etc.
 #include <common/TensorDataUtils.hpp>       // for nvcv::util::CreateTensor, etc.
 #include <common/TypedTests.hpp>            // for NVCV_TYPED_TEST_SUITE, etc.
@@ -31,6 +32,7 @@
 #include <array>
 #include <numeric>
 #include <random>
+#include <vector>
 
 namespace cuda  = nvcv::cuda;
 namespace test  = nvcv::test;
@@ -318,4 +320,259 @@ TEST(BorderWrapHalfValueTypeTest, it_can_be_read_with_replicate_border)
     EXPECT_EQ(borderWrap[int1{1}], input[1]);
     EXPECT_EQ(borderWrap[int1{-2}], input[0]);
     EXPECT_EQ(borderWrap[int1{5}], input[2]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// value(): the by-value constant-border read
+// ---------------------------------------------------------------------------------------------
+
+// The host cannot exercise the arch-selected form: ReadConstantBorder branches on
+// __CUDA_ARCH__, so a host build compiles one arm and never runs the one that ships. This runs
+// the comparison on the device, over several element types for the constant-border specialization
+// that exposes value().
+template<typename T, NVCVBorderType B>
+static void ExpectValueMatchesSubscriptOnDevice()
+{
+    using TensorWrap = cuda::TensorWrap<const T, -1>;
+    using BorderWrap = cuda::BorderWrap<TensorWrap, B, true>;
+
+    constexpr int kNumElems = 4;
+
+    std::array<int, 7> probes{0, 1, 3, -1, -5, 4, 9};
+
+    test::DeviceBuffer<T>   inputBuf{kNumElems};
+    test::DeviceBuffer<int> coordsBuf{probes.size()};
+    test::DeviceBuffer<int> resultBuf{1};
+
+    T   *devInput  = inputBuf.get();
+    int *devCoords = coordsBuf.get();
+    int *devResult = resultBuf.get();
+    ASSERT_NE(nullptr, devInput);
+    ASSERT_NE(nullptr, devCoords);
+    ASSERT_NE(nullptr, devResult);
+
+    std::array<T, kNumElems> host;
+    for (int i = 0; i < kNumElems; ++i)
+    {
+        host[i] = cuda::SetAll<T>(static_cast<cuda::BaseType<T>>(i + 1));
+    }
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(devInput, host.data(), sizeof(host), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(devCoords, probes.data(), probes.size() * sizeof(int), cudaMemcpyHostToDevice));
+
+    TensorWrap tensorWrap(devInput, (int)sizeof(T));
+    BorderWrap borderWrap(tensorWrap, cuda::SetAll<T>(static_cast<cuda::BaseType<T>>(42)), kNumElems);
+
+    ASSERT_EQ(cudaSuccess, test::SeedResult(resultBuf.get()));
+
+    test::StreamGuard streamGuard;
+    ASSERT_NE(nullptr, streamGuard.get());
+    cudaStream_t stream = streamGuard.get();
+    DeviceRunValueMatchesSubscript(borderWrap, devCoords, (int)probes.size(), devResult, stream);
+    ASSERT_EQ(cudaSuccess, cudaGetLastError());
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    int mismatch = 0;
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(&mismatch, devResult, sizeof(int), cudaMemcpyDeviceToHost));
+    ASSERT_NE(test::kResultUnwritten, mismatch) << "the parity kernel did not run";
+    EXPECT_EQ(0, mismatch) << "border " << (int)B << " at probe " << mismatch;
+}
+
+// Both constant-border forms, run on the device. ValueMatchesSubscriptOnDevice* above can only
+// ever execute the arm this GPU's __CUDA_ARCH__ selects, so on an sm_80 or sm_90 runner the
+// by-reference arm -- the one Blackwell ships -- is compiled and never run. Calling the two
+// helpers directly runs both on whatever GPU the suite lands on.
+template<typename T>
+static void ExpectConstantBorderFormsAgreeOnDevice()
+{
+    test::DeviceBuffer<T>   insideBuf{1};
+    test::DeviceBuffer<int> resultBuf{1};
+    ASSERT_NE(nullptr, insideBuf.get());
+    ASSERT_NE(nullptr, resultBuf.get());
+
+    const T inside = cuda::SetAll<T>(static_cast<cuda::BaseType<T>>(5));
+    const T border = cuda::SetAll<T>(static_cast<cuda::BaseType<T>>(42));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(insideBuf.get(), &inside, sizeof(T), cudaMemcpyHostToDevice));
+
+    ASSERT_EQ(cudaSuccess, test::SeedResult(resultBuf.get()));
+
+    test::StreamGuard streamGuard;
+    ASSERT_NE(nullptr, streamGuard.get());
+    cudaStream_t stream = streamGuard.get();
+    DeviceRunConstantBorderFormsAgree<T>(insideBuf.get(), nullptr, border, resultBuf.get(), stream);
+    ASSERT_EQ(cudaSuccess, cudaGetLastError());
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    int mismatch = 0;
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(&mismatch, resultBuf.get(), sizeof(int), cudaMemcpyDeviceToHost));
+    ASSERT_NE(test::kResultUnwritten, mismatch) << "the parity kernel did not run";
+    EXPECT_EQ(0, mismatch) << "the two constant-border forms disagreed on the "
+                           << (mismatch == 1 ? "in-bounds probe" : "out-of-bounds probe");
+}
+
+// Parity with a 4-D coordinate. doGetPtrForCoord resolves N == 4 through its own arm, and that is
+// the arm InterpolationWrap::doGetValue reaches whenever it wraps a 4-D tensor; the 1-D probes
+// never enter it.
+template<typename T, NVCVBorderType B>
+static void ExpectValueMatchesSubscriptOnDevice4D()
+{
+    using TensorWrap = cuda::Tensor4DWrap<const T>;
+    using BorderWrap = cuda::BorderWrap<TensorWrap, B, false, false, true, true>;
+
+    constexpr int kW = 4;
+    constexpr int kH = 3;
+    constexpr int kP = 2;
+    constexpr int kN = 2;
+
+    // Inside, both edges, and outside in x and y; the two inactive dimensions stay valid.
+    std::vector<int2> spatial;
+    for (int y : {0, 1, 2, -1, -3, 3, 6})
+    {
+        for (int x : {0, 3, -1, -4, 4, 8})
+        {
+            spatial.push_back(int2{x, y});
+        }
+    }
+
+    std::vector<int4> probes;
+    for (int n = 0; n < kN; ++n)
+    {
+        for (int p = 0; p < kP; ++p)
+        {
+            for (const int2 &xy : spatial)
+            {
+                probes.push_back(int4{xy.x, xy.y, p, n});
+            }
+        }
+    }
+
+    test::DeviceBuffer<T>    inputBuf{kW * kH * kP * kN};
+    test::DeviceBuffer<int4> probesBuf{probes.size()};
+    test::DeviceBuffer<int>  resultBuf{1};
+    ASSERT_NE(nullptr, inputBuf.get());
+    ASSERT_NE(nullptr, probesBuf.get());
+    ASSERT_NE(nullptr, resultBuf.get());
+
+    std::array<T, kW * kH * kP * kN> host;
+    std::size_t                      next = 0;
+    for (T &element : host)
+    {
+        ++next;
+        element = cuda::SetAll<T>(static_cast<cuda::BaseType<T>>(next));
+    }
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(inputBuf.get(), host.data(), sizeof(host), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(probesBuf.get(), probes.data(), probes.size() * sizeof(int4), cudaMemcpyHostToDevice));
+
+    TensorWrap tensorWrap(inputBuf.get(), (int)(kP * kH * kW * sizeof(T)), (int)(kH * kW * sizeof(T)),
+                          (int)(kW * sizeof(T)));
+    BorderWrap borderWrap(tensorWrap, cuda::SetAll<T>(static_cast<cuda::BaseType<T>>(42)), kH, kW);
+
+    ASSERT_EQ(cudaSuccess, test::SeedResult(resultBuf.get()));
+
+    test::StreamGuard streamGuard;
+    ASSERT_NE(nullptr, streamGuard.get());
+    cudaStream_t stream = streamGuard.get();
+    DeviceRunValueMatchesSubscript4D(borderWrap, probesBuf.get(), (int)probes.size(), resultBuf.get(), stream);
+    ASSERT_EQ(cudaSuccess, cudaGetLastError());
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    int mismatch = 0;
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(&mismatch, resultBuf.get(), sizeof(int), cudaMemcpyDeviceToHost));
+    ASSERT_NE(test::kResultUnwritten, mismatch) << "the parity kernel did not run";
+    EXPECT_EQ(0, mismatch) << "border " << (int)B << " at probe " << mismatch;
+}
+
+// The device parity kernels resolve both arms through the same doGetPtrForCoord, so they prove the
+// two read forms agree, not that the ladder is right. The FillBorder suites above check the ladder
+// against an independent host gold for every border mode, and this pins the same expectation
+// directly on value() for the 4-D arm those suites do not drive.
+TEST(BorderWrapTest, Value4DResolvesTheLadderAndBorder)
+{
+    using TensorWrap = cuda::Tensor4DWrap<const uchar3>;
+    using BorderWrap = cuda::BorderWrap<TensorWrap, NVCV_BORDER_CONSTANT, false, false, true, true>;
+
+    constexpr int kW = 4;
+    constexpr int kH = 3;
+    constexpr int kP = 2;
+    constexpr int kN = 2;
+
+    std::array<uchar3, kW * kH * kP * kN> input;
+    for (std::size_t i = 0; i < input.size(); ++i)
+    {
+        input[i] = cuda::SetAll<uchar3>(static_cast<unsigned char>(i + 1));
+    }
+    const uchar3 border{17, 18, 19};
+
+    TensorWrap tensorWrap(input.data(), (int)(kP * kH * kW * sizeof(uchar3)), (int)(kH * kW * sizeof(uchar3)),
+                          (int)(kW * sizeof(uchar3)));
+    BorderWrap borderWrap(tensorWrap, border, kH, kW);
+
+    // int4 is (x, y, plane, sample), and only the two innermost dimensions are active. Walked as
+    // one flat loop rather than four nested ones: the coverage is identical and four levels of
+    // nesting is past what the static analysis allows.
+    for (std::size_t flat = 0; flat < input.size(); ++flat)
+    {
+        const auto x = static_cast<int>(flat % kW);
+        const auto y = static_cast<int>((flat / kW) % kH);
+        const auto p = static_cast<int>((flat / (kW * kH)) % kP);
+        const auto n = static_cast<int>(flat / (kW * kH * kP));
+
+        EXPECT_EQ(borderWrap.value(int4{x, y, p, n}), input[flat]) << "at " << n << ',' << p << ',' << y << ',' << x;
+    }
+
+    // Outside either active dimension the constant border must yield exactly the border value.
+    EXPECT_EQ(borderWrap.value(int4{-1, 0, 0, 0}), border);
+    EXPECT_EQ(borderWrap.value(int4{kW, 0, 0, 0}), border);
+    EXPECT_EQ(borderWrap.value(int4{0, -1, 0, 0}), border);
+    EXPECT_EQ(borderWrap.value(int4{0, kH, 1, 1}), border);
+}
+
+TEST(BorderWrapTest, ValueMatchesSubscriptOnDeviceWith4DCoords)
+{
+    ExpectValueMatchesSubscriptOnDevice4D<uchar3, NVCV_BORDER_CONSTANT>();
+    ExpectValueMatchesSubscriptOnDevice4D<uchar1, NVCV_BORDER_CONSTANT>();
+    ExpectValueMatchesSubscriptOnDevice4D<uchar4, NVCV_BORDER_CONSTANT>();
+    ExpectValueMatchesSubscriptOnDevice4D<float4, NVCV_BORDER_CONSTANT>();
+}
+
+TEST(BorderWrapTest, ReadConstantBorderFormsAgreeOnDevice)
+{
+    ExpectConstantBorderFormsAgreeOnDevice<uchar1>();
+    ExpectConstantBorderFormsAgreeOnDevice<uchar3>();
+    ExpectConstantBorderFormsAgreeOnDevice<uchar4>();
+    ExpectConstantBorderFormsAgreeOnDevice<short2>();
+    ExpectConstantBorderFormsAgreeOnDevice<float3>();
+    ExpectConstantBorderFormsAgreeOnDevice<float4>();
+}
+
+// The spill this API exists to avoid is element-width dependent, so cover more than uchar3.
+TEST(BorderWrapTest, ValueMatchesSubscriptOnDeviceForEveryElementType)
+{
+    ExpectValueMatchesSubscriptOnDevice<uchar3, NVCV_BORDER_CONSTANT>();
+    ExpectValueMatchesSubscriptOnDevice<uchar1, NVCV_BORDER_CONSTANT>();
+    ExpectValueMatchesSubscriptOnDevice<uchar4, NVCV_BORDER_CONSTANT>();
+    ExpectValueMatchesSubscriptOnDevice<short2, NVCV_BORDER_CONSTANT>();
+    ExpectValueMatchesSubscriptOnDevice<float3, NVCV_BORDER_CONSTANT>();
+    ExpectValueMatchesSubscriptOnDevice<float4, NVCV_BORDER_CONSTANT>();
+}
+
+// Out of bounds, a constant border must yield exactly the configured border value.
+TEST(BorderWrapTest, ValueReturnsBorderValueOutsideConstantBorder)
+{
+    using TensorWrap = cuda::TensorWrap<const uchar3, -1>;
+    using BorderWrap = cuda::BorderWrap<TensorWrap, NVCV_BORDER_CONSTANT, true>;
+
+    std::array<uchar3, 2> input{
+        uchar3{1, 2, 3},
+        uchar3{4, 5, 6}
+    };
+    const uchar3 border{17, 18, 19};
+
+    TensorWrap tensorWrap(input.data(), (int)sizeof(uchar3));
+    BorderWrap borderWrap(tensorWrap, border, (int)input.size());
+
+    EXPECT_EQ(borderWrap.value(int1{0}), input[0]);
+    EXPECT_EQ(borderWrap.value(int1{1}), input[1]);
+    EXPECT_EQ(borderWrap.value(int1{-1}), border);
+    EXPECT_EQ(borderWrap.value(int1{2}), border);
 }

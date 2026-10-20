@@ -23,23 +23,25 @@
 #include "ImageFormat.hpp"
 #include "Size.hpp"
 
+#include <common/Binding.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/TensorLayout.hpp>
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <variant>
 
 namespace nvcvpy::priv {
-namespace py = pybind11;
+namespace py = nanobind;
+
+struct BufferAllocation;
 
 class Image final : public Container
 {
 public:
-    static void Export(py::module &m);
+    static void Export(py::module_ &m);
 
     static std::shared_ptr<Image> Zeros(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign);
     static std::shared_ptr<Image> Create(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign);
@@ -57,7 +59,9 @@ public:
     int32_t           height() const;
     nvcv::ImageFormat format() const;
 
-    int64_t GetSizeInBytes() const override;
+    int64_t        GetSizeInBytes() const override;
+    RetainedMemory retainedMemory() const override;
+    bool           allowsCacheReuse(bool pendingRelease) const override;
 
     friend std::ostream &operator<<(std::ostream &out, const Image &img);
 
@@ -79,17 +83,25 @@ public:
         {
         }
 
-        explicit Key(Size2D size, nvcv::ImageFormat fmt)
-            : m_size(size)
-            , m_format(fmt)
-            , m_isWrapper(false)
+        explicit Key(const nvcv::Image::Requirements &reqs);
+
+        bool matchesDescriptor(const Key &requested) const noexcept;
+        void setDescriptor(const nvcv::Image::Requirements &reqs) noexcept;
+
+        int32_t alignment() const noexcept
         {
+            return m_alignBytes;
         }
 
     private:
-        Size2D            m_size;
-        nvcv::ImageFormat m_format;
-        bool              m_isWrapper;
+        // Descriptor fields are filtered separately; hash/equality use only
+        // format so differently sized images share capacity.
+        std::array<int32_t, NVCV_MAX_PLANE_COUNT> m_rowStrides{};
+        nvcv::ImageFormat                         m_format;
+        Size2D                                    m_size{};
+        int32_t                                   m_alignBytes = 0;
+        int32_t                                   m_numPlanes  = 0;
+        bool                                      m_isWrapper;
 
         size_t doGetHash() const override;
         bool   doIsCompatible(const IKey &that) const override;
@@ -104,22 +116,25 @@ public:
     py::object cuda(std::optional<nvcv::TensorLayout> layout) const;
 
 private:
-    explicit Image(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign);
+    void bindSubmissionState();
+    explicit Image(const nvcv::Image::Requirements &reqs);
     explicit Image(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::ImageDataStridedCuda &imgData);
-    explicit Image(const std::vector<py::buffer> &buf, const nvcv::ImageDataStridedHost &imgData, int rowalign);
 
-    int64_t doComputeSizeInBytes(const NVCVImageRequirements &reqs) const;
+    static int64_t doComputeSizeInBytes(const NVCVImageRequirements &reqs);
 
     void setWrapData(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::ImageDataStridedCuda &imgData);
 
-    nvcv::Image m_impl; // must come before m_key
-    Key         m_key;
-    int64_t     m_size_inbytes = -1;
+    std::shared_ptr<BufferAllocation> m_buffer;
+    nvcv::Image                       m_impl; // must come before m_key
+    Key                               m_key;
+    int64_t                           m_size_inbytes = -1;
 
     struct WrapData
     {
-        DLDeviceType devType;
-        py::object   obj;
+        DLDeviceType    devType;
+        int             devId;
+        py::object      obj;
+        ExternalBuffer *singleBuffer = nullptr; // Borrowed from obj.
     };
 
     // If wrapping external data, it's not nullopt.

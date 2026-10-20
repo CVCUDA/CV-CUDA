@@ -15,14 +15,12 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpSIFT.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
 
 #include <cassert>
 #include <memory>
@@ -33,9 +31,13 @@ namespace cvcudapy {
 
 namespace {
 
-using TupleTensor4 = std::tuple<Tensor, Tensor, Tensor, Tensor>;
+using native::Stream;
+using native::Tensor;
+using TupleTensor4
+    = std::tuple<std::shared_ptr<Tensor>, std::shared_ptr<Tensor>, std::shared_ptr<Tensor>, std::shared_ptr<Tensor>>;
+using TupleTensor4Ref = std::tuple<Tensor *, Tensor *, Tensor *, Tensor *>;
 
-class PyOpSIFT : public nvcvpy::Container // NOSONAR: operator wrappers share the Python cache hierarchy.
+class PyOpSIFT : public OperatorResource
 {
 public:
     class Key : public nvcvpy::IKey
@@ -75,8 +77,7 @@ public:
     };
 
     PyOpSIFT(const int3 &maxShape, int maxOctaveLayers)
-        : m_key(maxShape, maxOctaveLayers)
-        , m_op(maxShape, maxOctaveLayers)
+        : m_op(maxShape, maxOctaveLayers)
     {
     }
 
@@ -86,53 +87,19 @@ public:
         m_op(std::forward<AA>(args)...);
     }
 
-    py::object container() const override
+    static long long int cacheItemRank(const Key &key)
     {
-        return py::reinterpret_borrow<py::object>(this->ptr());
-    }
-
-    const nvcvpy::IKey &key() const override
-    {
-        return m_key;
-    }
-
-    static std::shared_ptr<nvcvpy::ICacheItem> fetch(std::vector<std::shared_ptr<nvcvpy::ICacheItem>> &cache)
-    {
-        assert(!cache.empty());
-
-        // Find the operator with the largest workspace (can handle any smaller request)
-        std::shared_ptr<nvcvpy::ICacheItem> retItem        = cache[0];
-        long long int                       maxPayloadSize = 0;
-
-        for (const auto &item : cache)
-        {
-            const auto &key = static_cast<const Key &>(item.get()->key());
-
-            long long int keyPayloadSize = key.payloadSize();
-
-            if (keyPayloadSize > maxPayloadSize)
-            {
-                maxPayloadSize = keyPayloadSize;
-                retItem        = item;
-            }
-        }
-
-        // Note: Removed cache.clear() and removeAllNotInUseMatching() calls to reduce per-call overhead.
-        // The cache will naturally evict unused operators when memory pressure occurs.
-        // This fix matches the pattern used in OpInpaint.cpp.
-
-        return retItem;
+        return key.payloadSize();
     }
 
 private:
-    Key          m_key;
     cvcuda::SIFT m_op;
 };
 
 // Auxiliary function to get tensor access for input tensor in
 auto tensorAccess(Tensor &in)
 {
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
+    auto inData = in.impl().exportData<nvcv::TensorDataStridedCuda>();
     if (!inData)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must be a valid CUDA strided tensor");
@@ -145,14 +112,11 @@ auto tensorAccess(Tensor &in)
     return inAccess;
 }
 
-TupleTensor4 SIFTInto(Tensor &featCoords, Tensor &featMetadata, Tensor &featDescriptors, Tensor &numFeatures,
-                      Tensor &in, int numOctaveLayers, float contrastThreshold, float edgeThreshold, float initSigma,
-                      NVCVSIFTFlagType flags, std::optional<Stream> pstream)
+TupleTensor4Ref SIFTInto(Tensor &featCoords, Tensor &featMetadata, Tensor &featDescriptors, Tensor &numFeatures,
+                         Tensor &in, int numOctaveLayers, float contrastThreshold, float edgeThreshold, float initSigma,
+                         NVCVSIFTFlagType flags, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto inAccess = tensorAccess(in);
     int3 inShape{inAccess->numCols(), inAccess->numRows(), static_cast<int>(inAccess->numSamples())};
@@ -164,21 +128,20 @@ TupleTensor4 SIFTInto(Tensor &featCoords, Tensor &featMetadata, Tensor &featDesc
 
     auto op = CreateOperatorEx<PyOpSIFT>(inShape, numOctaveLayers);
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {in});
     guard.add(LockMode::LOCK_MODE_WRITE, {featCoords, featMetadata, featDescriptors, numFeatures});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
 
     guard.run(
-        [&op, &pstream, &in, &featCoords, &featMetadata, &featDescriptors, &numFeatures, &numOctaveLayers,
+        [&op, &stream, &in, &featCoords, &featMetadata, &featDescriptors, &numFeatures, &numOctaveLayers,
          &contrastThreshold, &edgeThreshold, &initSigma, &flags]()
         {
-            op->submit(pstream->cudaHandle(), in, featCoords, featMetadata, featDescriptors, numFeatures,
-                       numOctaveLayers, contrastThreshold, edgeThreshold, initSigma, flags);
+            op->submit(stream.handle(), in.impl(), featCoords.impl(), featMetadata.impl(), featDescriptors.impl(),
+                       numFeatures.impl(), numOctaveLayers, contrastThreshold, edgeThreshold, initSigma, flags);
         });
 
-    return TupleTensor4(std::move(featCoords), std::move(featMetadata), std::move(featDescriptors),
-                        std::move(numFeatures));
+    return {&featCoords, &featMetadata, &featDescriptors, &numFeatures};
 }
 
 // Get default number of maximum features given width and height (5% of total pixels at a minimum of 1)
@@ -188,7 +151,7 @@ inline int GetDefaultMaxFeatures(int width, int height)
 }
 
 TupleTensor4 SIFT(Tensor &in, int maxFeatures, int numOctaveLayers, float contrastThreshold, float edgeThreshold,
-                  float initSigma, NVCVSIFTFlagType flags, std::optional<Stream> pstream)
+                  float initSigma, NVCVSIFTFlagType flags, std::optional<Stream *> pstream)
 {
     auto inAccess   = tensorAccess(in);
     auto numSamples = static_cast<int>(inAccess->numSamples());
@@ -199,22 +162,23 @@ TupleTensor4 SIFT(Tensor &in, int maxFeatures, int numOctaveLayers, float contra
 
     // clang-format off
 
-    auto featCoords      = Tensor::Create({{numSamples, maxFeatures, 4}, "NMC"}, nvcv::TYPE_F32, 1);
-    auto featMetadata    = Tensor::Create({{numSamples, maxFeatures, 3}, "NMC"}, nvcv::TYPE_F32, 1);
-    auto featDescriptors = Tensor::Create({{numSamples, maxFeatures, 128}, "NMD"}, nvcv::TYPE_U8, 1);
-    auto numFeatures     = Tensor::Create({{numSamples, 1}, "NC"}, nvcv::TYPE_S32, 1);
+    auto featCoords      = native::CreateTensor({{numSamples, maxFeatures, 4}, "NMC"}, nvcv::TYPE_F32, 1);
+    auto featMetadata    = native::CreateTensor({{numSamples, maxFeatures, 3}, "NMC"}, nvcv::TYPE_F32, 1);
+    auto featDescriptors = native::CreateTensor({{numSamples, maxFeatures, 128}, "NMD"}, nvcv::TYPE_U8, 1);
+    auto numFeatures     = native::CreateTensor({{numSamples, 1}, "NC"}, nvcv::TYPE_S32, 1);
 
     // clang-format on
 
-    return SIFTInto(featCoords, featMetadata, featDescriptors, numFeatures, in, numOctaveLayers, contrastThreshold,
-                    edgeThreshold, initSigma, flags, pstream);
+    SIFTInto(*featCoords, *featMetadata, *featDescriptors, *numFeatures, in, numOctaveLayers, contrastThreshold,
+             edgeThreshold, initSigma, flags, pstream);
+    return {std::move(featCoords), std::move(featMetadata), std::move(featDescriptors), std::move(numFeatures)};
 }
 
 } // namespace
 
-void ExportOpSIFT(py::module &m)
+void ExportOpSIFT(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("sift", NvtxTrace("cvcuda.sift", &SIFT), "src"_a, "max_features"_a = 0, "num_octave_layers"_a = 3,
           "contrast_threshold"_a = 0.03f, "edge_threshold"_a = 10.f, "init_sigma"_a = 1.6f,
@@ -243,7 +207,7 @@ void ExportOpSIFT(py::module &m)
     m.def("sift_into", NvtxTrace("cvcuda.sift_into", &SIFTInto), "feat_coords"_a, "feat_metadata"_a,
           "feat_descriptors"_a, "num_features"_a, "src"_a, "num_octave_layers"_a = 3, "contrast_threshold"_a = 0.03f,
           "edge_threshold"_a = 10.f, "init_sigma"_a = 1.6f, "flags"_a = NVCV_SIFT_USE_EXPANDED_INPUT, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+          "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the SIFT operation on the given cuda stream.
 
 

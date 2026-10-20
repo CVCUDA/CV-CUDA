@@ -26,11 +26,23 @@ extern "C"
 /* @brief Selects how floating-point values are rounded when converting to an integer type.
  *
  * Only affects integer outputs; conversions whose output type is floating-point are unaffected.
+ *
+ * The two _WRAP variants are defined at the enum level for use by operators that implement
+ * modular reduction (e.g. ConvertTo).  In those operators the rounded value is reduced modulo
+ * the destination's representable range instead of saturating to it; for unsigned destinations
+ * negative intermediate results map to zero rather than wrapping (unsigned asymmetry).
+ * Operators that do not support wrap modes (e.g. GammaContrast) reject these values with
+ * NVCV_ERROR_INVALID_ARGUMENT.
  */
 typedef enum
+#ifdef __cplusplus
+    : unsigned int
+#endif
 {
-    NVCV_ROUND_NEAREST  = 0, ///< Round to nearest, ties to even (default).
-    NVCV_ROUND_TRUNCATE = 1, ///< Truncate toward zero (drop the fractional part).
+    NVCV_ROUND_NEAREST       = 0, ///< Round to nearest, ties to even (default).
+    NVCV_ROUND_TRUNCATE      = 1, ///< Truncate toward zero (drop the fractional part).
+    NVCV_ROUND_NEAREST_WRAP  = 2, ///< Round to nearest (ties to even), then wrap modulo destination range.
+    NVCV_ROUND_TRUNCATE_WRAP = 3, ///< Truncate toward zero, then wrap modulo destination range.
 } NVCVRoundMode;
 
 #ifdef __cplusplus

@@ -79,6 +79,10 @@ export PYTHONPATH="$PYTHONPATH:@PYTHON_MODULE_DIR@"
 # in its own pytest process with the probe injected, and run the rest of the suite without it.
 nvtx_marker_test="$tests_dir/test_nvtx_markers.py"
 nvtx_probe="@NVTX_PROBE_PATH@"
+export CVCUDA_FREE_THREADING_PROBE="@FREE_THREADING_PROBE_PATH@"
+if [[ ! -f "$CVCUDA_FREE_THREADING_PROBE" && -f "$tests_dir/libcvcuda_free_threading_probe.so" ]]; then
+    export CVCUDA_FREE_THREADING_PROBE="$tests_dir/libcvcuda_free_threading_probe.so"
+fi
 
 # Never let an inherited NVTX_INJECTION64_PATH leak into the main (uninjected) suite run.
 unset NVTX_INJECTION64_PATH
@@ -90,6 +94,10 @@ for ver in $python_versions; do
             echo "Skipping python-$ver, CV-CUDA python bindings not installed"
             continue
         fi
+    fi
+
+    if [[ "$ver" == *t ]]; then
+        python$ver -c 'import sys, sysconfig, cvcuda; assert sysconfig.get_config_var("Py_GIL_DISABLED"); assert not sys._is_gil_enabled(), "CV-CUDA tests require the GIL disabled"'
     fi
 
     # Check if python module is exposing only PyInit__cvcuda.

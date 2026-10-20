@@ -18,6 +18,9 @@ BENCH_DIR = Path(__file__).resolve().parent.parent
 def _load_python_bench_utils(monkeypatch):
     fake_cvcuda = types.ModuleType("cvcuda")
     fake_cvcuda.Tensor = object
+    fake_cvcuda.Stream = types.SimpleNamespace(
+        current=types.SimpleNamespace(sync=lambda: None)
+    )
     monkeypatch.setitem(sys.modules, "cvcuda", fake_cvcuda)
 
     fake_cupy = types.ModuleType("cupy")
@@ -31,6 +34,19 @@ def _load_python_bench_utils(monkeypatch):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_run_warmup_does_not_require_torch(monkeypatch):
+    bench_utils = _load_python_bench_utils(monkeypatch)
+    calls = []
+    syncs = []
+    monkeypatch.setitem(sys.modules, "torch", None)
+    bench_utils.cvcuda.Stream.current.sync = lambda: syncs.append(None)
+
+    bench_utils.run_warmup(lambda launch: calls.append(launch), 2)
+
+    assert calls == [None, None]
+    assert syncs == [None]
 
 
 def test_checkerboard_fill_writes_strided_view_without_ravel(monkeypatch):
@@ -84,14 +100,31 @@ def test_checkerboard_image_fill_uses_pixel_parity_for_packed_channels(monkeypat
     ]
 
 
-def test_create_tensor_preserves_float16_dtype(monkeypatch):
+@pytest.mark.parametrize(
+    "name, expected", [("F16", "float16"), ("S64", "int64"), ("U64", "uint64")]
+)
+def test_create_tensor_preserves_dtype(monkeypatch, name, expected):
     bench_utils = _load_python_bench_utils(monkeypatch)
-    type_names = ("U8", "U16", "U32", "S8", "S16", "S32", "F16", "F32", "F64")
+    type_names = (
+        "U8",
+        "U16",
+        "U32",
+        "S8",
+        "S16",
+        "S32",
+        "F16",
+        "F32",
+        "F64",
+        "S64",
+        "U64",
+    )
     fake_type = types.SimpleNamespace(**{name: object() for name in type_names})
     bench_utils.cvcuda.Type = fake_type
 
     fake_cupy = sys.modules["cupy"]
-    for name in (
+    for cupy_name in (
+        "int64",
+        "uint64",
         "uint8",
         "uint16",
         "uint32",
@@ -102,15 +135,15 @@ def test_create_tensor_preserves_float16_dtype(monkeypatch):
         "float32",
         "float64",
     ):
-        setattr(fake_cupy, name, name)
+        setattr(fake_cupy, cupy_name, cupy_name)
     fake_cupy.cuda.Device = lambda _device: nullcontext()
     allocated = []
     fake_cupy.full = lambda _shape, _value, dtype: allocated.append(dtype) or object()
     bench_utils.cvcuda.as_tensor = lambda array, _layout: array
 
-    bench_utils.create_tensor((1,), fake_type.F16, layout="N", fill_mode=0)
+    bench_utils.create_tensor((1,), getattr(fake_type, name), layout="N", fill_mode=0)
 
-    assert allocated == ["float16"]
+    assert allocated == [expected]
 
 
 @pytest.mark.parametrize(
@@ -119,12 +152,26 @@ def test_create_tensor_preserves_float16_dtype(monkeypatch):
 )
 def test_create_varshape_infers_float_dtype(monkeypatch, format_name, expected_dtype):
     bench_utils = _load_python_bench_utils(monkeypatch)
-    type_names = ("U8", "U16", "U32", "S8", "S16", "S32", "F16", "F32", "F64")
+    type_names = (
+        "U8",
+        "U16",
+        "U32",
+        "S8",
+        "S16",
+        "S32",
+        "F16",
+        "F32",
+        "F64",
+        "S64",
+        "U64",
+    )
     fake_type = types.SimpleNamespace(**{name: object() for name in type_names})
     bench_utils.cvcuda.Type = fake_type
 
     fake_cupy = sys.modules["cupy"]
     for name in (
+        "int64",
+        "uint64",
         "uint8",
         "uint16",
         "uint32",
@@ -180,7 +227,19 @@ def test_preallocated_varshape_batch_rejects_nonempty_without_mutation(monkeypat
                 raise RuntimeError("capacity exceeded")
             self.images.append(image)
 
-    type_names = ("U8", "U16", "U32", "S8", "S16", "S32", "F16", "F32", "F64")
+    type_names = (
+        "U8",
+        "U16",
+        "U32",
+        "S8",
+        "S16",
+        "S32",
+        "F16",
+        "F32",
+        "F64",
+        "S64",
+        "U64",
+    )
     fake_type = types.SimpleNamespace(**{name: object() for name in type_names})
     bench_utils.cvcuda.Type = fake_type
     bench_utils.cvcuda.Image = lambda _size, _format: types.SimpleNamespace(
@@ -188,6 +247,8 @@ def test_preallocated_varshape_batch_rejects_nonempty_without_mutation(monkeypat
     )
     fake_cupy = sys.modules["cupy"]
     for name in (
+        "int64",
+        "uint64",
         "uint8",
         "uint16",
         "uint32",

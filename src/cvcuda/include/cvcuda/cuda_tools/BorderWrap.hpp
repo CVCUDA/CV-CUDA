@@ -33,6 +33,7 @@
 #include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
 
 #include <cassert>
+#include <type_traits>
 
 namespace nvcv::cuda {
 
@@ -112,7 +113,7 @@ constexpr T __host__ __device__ Reflect101BorderIndex(T c, T s)
 /**
  * Function to get a border-aware index considering the range defined by given size.
  *
- * @note This function does not work for NVCV_BORDER_CONSTANT.
+ * @note This function does not work for constant border modes.
  *
  * @tparam B It is a \ref NVCVBorderType indicating the border to be used.
  * @tparam Active Flag to turn this function active.
@@ -124,7 +125,8 @@ constexpr T __host__ __device__ Reflect101BorderIndex(T c, T s)
 template<NVCVBorderType B, bool Active = true, typename T>
 constexpr T __host__ __device__ GetIndexWithBorder(T c, T s)
 {
-    static_assert(B != NVCV_BORDER_CONSTANT, "GetIndexWithBorder cannot be used with NVCV_BORDER_CONSTANT");
+    static_assert(B != NVCV_BORDER_CONSTANT && B != NVCV_BORDER_CONSTANT_COVERAGE,
+                  "GetIndexWithBorder cannot be used with constant border modes");
 
     if constexpr (Active)
     {
@@ -156,6 +158,75 @@ constexpr T __host__ __device__ GetIndexWithBorder(T c, T s)
 /**@}*/
 
 namespace detail {
+
+/*
+ * Shared rationale for the three helpers below.
+ *
+ * Each helper reads a constant-border element, given the pointer the wrap resolved for a
+ * coordinate and the wrap's border value. \p p is null exactly when the coordinate is outside the
+ * tensor.
+ *
+ * This is the one place the constant-border read decides its shape, and the reason it has a shape
+ * at all is codegen. A wrap's `operator[]` must return a reference, and out of bounds the only
+ * address it can hand back is that of the wrap's own border-value member -- which lives inside an
+ * object kernels take by value as a parameter. Up to sm_90, taking that address makes the compiler
+ * stage the whole wrapper on the thread's stack and demote every in-bounds tap from a global load
+ * (`LDG`) to a generic one (`LD`), because the loaded pointer may now alias local memory. On the
+ * B32 1920x1080 uchar3 LINEAR WarpAffine that was 72 bytes of stack per thread and turned a 199 MB
+ * output into 4.71 GB of DRAM writes. Reading the element out by value never takes that address.
+ *
+ * On sm_100, sm_120 and sm_121 the compiler keeps the wrapper in the constant bank on its own --
+ * each compiles the unfixed kernel to `STACK:0` with twelve `LDG` taps and no local stores -- so
+ * there is no spill left to avoid there, and for a 3-byte element the reference form is the
+ * cheaper of the two because it loads the element straight from the selected address instead of
+ * assembling it from per-byte selects. Measured on RTX PRO 6000 (sm_120), forcing the by-value
+ * form on that architecture costs 13% to 15% on the same WarpAffine case. Both forms return the
+ * same value; each architecture uses the one that is faster on it.
+ *
+ * All three are __forceinline__ rather than plain inline: an outlined call would take the address
+ * of the wrap's own border-value member at this boundary and reintroduce exactly the staging
+ * described above, so inlining is a requirement here rather than an inliner heuristic. That pin is
+ * also what lets the by-value form take its border value by `const` reference: inlining collapses
+ * the reference, so no address survives, whereas passing the element by value materializes a copy
+ * at every tap. On sm_80 that copy costs eight registers in the uchar3 LINEAR CONSTANT var-shape
+ * WarpPerspective kernel, which at the 32x8 block is one occupancy step.
+ */
+/** @internal @brief Select by value, never taking the address of \p borderValue. */
+template<typename T>
+__host__ __device__ __forceinline__ T ReadConstantBorderViaValueSelect(const T *p, const T &borderValue)
+{
+    if (p == nullptr)
+    {
+        return borderValue;
+    }
+    return *p;
+}
+
+/** @internal @brief Select an address, then load the value through it. */
+template<typename T>
+__host__ __device__ __forceinline__ T ReadConstantBorderViaAddressSelect(const T *p, const T &borderValue)
+{
+    const T &v = (p == nullptr) ? borderValue : *p;
+    return v;
+}
+
+/**
+ * @brief Read a constant-border element, in whichever of the two forms above is faster here.
+ *
+ * Both forms must return the same value; `TestBorderWrap` pins that.
+ */
+template<typename T>
+__host__ __device__ __forceinline__ T ReadConstantBorder(const T *p, const T &borderValue)
+{
+// An allowlist, not a `>= 1000` floor: sm_100 and sm_121 match the measured sm_120 compile
+// shape, while Thor (sm_110) lacks even that static evidence. A floor would also opt in every
+// future architecture on today's evidence.
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ == 1000 || __CUDA_ARCH__ == 1200 || __CUDA_ARCH__ == 1210)
+    return ReadConstantBorderViaAddressSelect(p, borderValue);
+#else
+    return ReadConstantBorderViaValueSelect(p, borderValue);
+#endif
+}
 
 template<class TW, NVCVBorderType B, bool... ActiveDimensions>
 class BorderWrapImpl
@@ -377,8 +448,9 @@ public:
         {
             return *doGetPtr(Is, c.z, c.y, c.x);
         }
-        else if constexpr (N == 4)
+        else
         {
+            static_assert(N == 4);
             return *doGetPtr(Is, c.w, c.z, c.y, c.x);
         }
     }
@@ -483,36 +555,7 @@ public:
     template<typename DimType, class = Require<std::is_same_v<int, BaseType<DimType>>>>
     inline const __host__ __device__ ValueType &operator[](DimType c) const
     {
-        constexpr int N = NumElements<DimType>;
-        static_assert(kNumDimensions >= N);
-
-        constexpr auto Is = std::make_index_sequence<N>{};
-
-        const ValueType *p = nullptr;
-
-        if constexpr (N == 1)
-        {
-            if constexpr (NumComponents<DimType> == 0)
-            {
-                p = doGetPtr(Is, c);
-            }
-            else
-            {
-                p = doGetPtr(Is, c.x);
-            }
-        }
-        else if constexpr (N == 2)
-        {
-            p = doGetPtr(Is, c.y, c.x);
-        }
-        else if constexpr (N == 3)
-        {
-            p = doGetPtr(Is, c.z, c.y, c.x);
-        }
-        else if constexpr (N == 4)
-        {
-            p = doGetPtr(Is, c.w, c.z, c.y, c.x);
-        }
+        const ValueType *p = doGetPtrForCoord(c);
 
         if (p == nullptr)
         {
@@ -520,6 +563,26 @@ public:
         }
 
         return *p;
+    }
+
+    /**
+     * Read-only access returning the accessed element by value.
+     *
+     * @note Prefer this over `operator[]` in device code: `operator[]` has to return a reference,
+     * and what that costs is described on \ref detail::ReadConstantBorder.
+     *
+     * @note This overload returns by value, while the non-constant border modes return a `const`
+     * reference. Consume the result through `auto` / `decltype(auto)`; do not bind a long-lived
+     * reference to it.
+     *
+     * @param[in] c N-D coordinate (from last to first dimension) to be accessed.
+     *
+     * @return Accessed value, or the border value when \p c is outside the wrapped tensor.
+     */
+    template<typename DimType, class = Require<std::is_same_v<int, BaseType<DimType>>>>
+    inline __host__ __device__ ValueType value(DimType c) const
+    {
+        return detail::ReadConstantBorder(doGetPtrForCoord(c), m_borderValue);
     }
 
     /**
@@ -538,6 +601,44 @@ public:
         return doGetPtr(std::index_sequence_for<Args...>{}, c...);
     }
 
+protected:
+    // Shared by this specialization's `operator[]` and `value()`, which differ only in what they do
+    // with the result, not in how they resolve it. The non-constant specialization still carries
+    // its own copy of this ladder. Null means outside the tensor.
+    template<typename DimType, class = Require<std::is_same_v<int, BaseType<DimType>>>>
+    inline __host__ __device__ ValueType *doGetPtrForCoord(DimType c) const
+    {
+        constexpr int N = NumElements<DimType>;
+        static_assert(kNumDimensions >= N);
+
+        constexpr auto Is = std::make_index_sequence<N>{};
+
+        if constexpr (N == 1)
+        {
+            if constexpr (NumComponents<DimType> == 0)
+            {
+                return doGetPtr(Is, c);
+            }
+            else
+            {
+                return doGetPtr(Is, c.x);
+            }
+        }
+        else if constexpr (N == 2)
+        {
+            return doGetPtr(Is, c.y, c.x);
+        }
+        else if constexpr (N == 3)
+        {
+            return doGetPtr(Is, c.z, c.y, c.x);
+        }
+        else
+        {
+            static_assert(N == 4);
+            return doGetPtr(Is, c.w, c.z, c.y, c.x);
+        }
+    }
+
 private:
     template<typename... Args, std::size_t... Is>
     inline __host__ __device__ ValueType *doGetPtr(std::index_sequence<Is...>, Args... c) const
@@ -549,10 +650,90 @@ private:
         return Base::tensorWrap().ptr(c...);
     }
 
-    const ValueType m_borderValue = SetAll<ValueType>(0);
+    const ValueType m_borderValue = {};
+};
+
+/**
+ * Border wrapper class specialized for \ref NVCV_BORDER_CONSTANT_COVERAGE.
+ *
+ * Reads as a zero border so an interpolation over it yields the zero-padded value, and keeps the
+ * caller's border value for the coverage blend that \ref InterpolationWrap applies. Sampling with
+ * this wrap on its own, without going through an interpolation wrap, is the same as sampling a
+ * zero constant border.
+ *
+ * @tparam TW It is a \ref TensorWrap class with any dimension and type.
+ * @tparam ActiveDimensions Flags to inform active (true) or inactive (false) dimensions.
+ */
+template<class TW, bool... ActiveDimensions>
+class BorderWrap<TW, NVCV_BORDER_CONSTANT_COVERAGE, ActiveDimensions...>
+    : public BorderWrap<TW, NVCV_BORDER_CONSTANT, ActiveDimensions...>
+{
+    using Base = BorderWrap<TW, NVCV_BORDER_CONSTANT, ActiveDimensions...>;
+
+public:
+    using typename Base::StrideType;
+    using typename Base::TensorWrapper;
+    using typename Base::ValueType;
+
+    // Preserve fractional fills until the interpolated result is converted to the pixel type.
+    using BlendType = ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>;
+
+    static constexpr auto kBorderType = NVCV_BORDER_CONSTANT_COVERAGE;
+    using Base::kActiveDimensions;
+    using Base::kMap;
+    using Base::kNumActiveDimensions;
+    using Base::kNumDimensions;
+
+    BorderWrap() = default;
+
+    template<typename... Args>
+    explicit __host__ __device__ BorderWrap(TensorWrapper tensorWrap, BlendType borderValue, Args... tensorShape)
+        : Base(tensorWrap, SetAll<std::remove_cv_t<ValueType>>(0), tensorShape...)
+        , m_borderValue(borderValue)
+    {
+    }
+
+    explicit __host__ BorderWrap(const TensorDataStridedCuda &tensor, BlendType borderValue = {})
+        : Base(tensor, SetAll<std::remove_cv_t<ValueType>>(0))
+        , m_borderValue(borderValue)
+    {
+    }
+
+    using Base::tensorShape;
+    using Base::tensorWrap;
+
+    /**
+     * Get the border value blended in by coverage.
+     *
+     * @return The border value.
+     */
+    inline const __host__ __device__ BlendType &borderValue() const
+    {
+        return m_borderValue;
+    }
+
+    template<typename DimType>
+    inline __host__ __device__ ValueType *ptr(DimType c) const
+    {
+        return Base::doGetPtrForCoord(c);
+    }
+
+private:
+    const BlendType m_borderValue = SetAll<BlendType>(0);
 };
 
 /**@}*/
+
+/**
+ * Type a border value is supplied in for a given pixel type and border mode.
+ *
+ * \ref NVCV_BORDER_CONSTANT_COVERAGE blends its border value in the float domain and rounds the
+ * blended result once, so it takes the value in float; every other mode feeds the border value
+ * through as an ordinary pixel and takes it in the pixel type.
+ */
+template<typename T, NVCVBorderType B>
+using BorderValueType
+    = std::conditional_t<B == NVCV_BORDER_CONSTANT_COVERAGE, ConvertBaseTypeTo<float, std::remove_cv_t<T>>, T>;
 
 /**
  * Factory function to create an NHW border wrap given a tensor data.
@@ -574,7 +755,7 @@ private:
  * @return Border wrap useful to access tensor data border aware in H and W in CUDA kernels.
  */
 template<typename T, NVCVBorderType B, typename StrideType = int64_t, class = Require<HasTypeTraits<T>>>
-__host__ auto CreateBorderWrapNHW(const TensorDataStridedCuda &tensor, T borderValue = {})
+__host__ auto CreateBorderWrapNHW(const TensorDataStridedCuda &tensor, BorderValueType<T, B> borderValue = {})
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
     assert(tensorAccess);
@@ -608,7 +789,7 @@ __host__ auto CreateBorderWrapNHW(const TensorDataStridedCuda &tensor, T borderV
  * @return Border wrap useful to access tensor data border aware in H and W in CUDA kernels.
  */
 template<typename T, NVCVBorderType B, typename StrideType = int64_t, class = Require<HasTypeTraits<T>>>
-__host__ auto CreateBorderWrapNHWC(const TensorDataStridedCuda &tensor, T borderValue = {})
+__host__ auto CreateBorderWrapNHWC(const TensorDataStridedCuda &tensor, BorderValueType<T, B> borderValue = {})
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
     assert(tensorAccess);

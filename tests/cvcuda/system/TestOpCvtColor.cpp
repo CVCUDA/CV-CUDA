@@ -29,14 +29,66 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <memory>
 
 namespace test = nvcv::test;
 namespace util = nvcv::util;
 namespace cuda = nvcv::cuda;
 
 using std::vector;
+
+TEST(OpCvtColor, unbatched_large_strides_preserve_pixels)
+{
+    constexpr size_t span = size_t{1} << 31;
+    size_t           freeBytes{};
+    size_t           totalBytes{};
+    ASSERT_EQ(cudaSuccess, cudaMemGetInfo(&freeBytes, &totalBytes));
+    if (freeBytes < span + (size_t{64} << 20))
+    {
+        GTEST_SKIP() << "Large-stride regression requires 2 GiB of device storage";
+    }
+    unsigned char *allocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&allocation, span + 16));
+    std::unique_ptr<unsigned char, decltype(&cudaFree)> storage(allocation, &cudaFree);
+
+    const auto checkLayout = [&](bool planar)
+    {
+        SCOPED_TRACE(planar ? "CHW plane span" : "HWC row stride");
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = reinterpret_cast<NVCVByte *>(allocation);
+        buffer.strides[0] = planar ? span / 2 : span;
+        buffer.strides[1] = buffer.strides[2] = 1;
+        const auto shape = planar ? nvcv::TensorShape{{3, 1, 1}, "CHW"}
+                                  : nvcv::TensorShape{{2, 1, 1}, "HWC"};
+        auto src = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{shape, nvcv::TYPE_U8, buffer});
+        nvcv::Tensor dst(planar ? nvcv::TensorShape{{3, 1, 1}, "CHW"}
+                               : nvcv::TensorShape{{2, 1, 3}, "HWC"}, nvcv::TYPE_U8);
+        const unsigned char input[] = {17, 39, 61};
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(allocation, input, 1, cudaMemcpyHostToDevice));
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(allocation + span, input + 2, 1, cudaMemcpyHostToDevice));
+        if (planar)
+        {
+            ASSERT_EQ(cudaSuccess, cudaMemcpy(allocation + span / 2, input + 1, 1, cudaMemcpyHostToDevice));
+        }
+        cvcuda::CvtColor op;
+        ASSERT_NO_THROW(op(nullptr, src, dst, planar ? NVCV_COLOR_BGR2RGB : NVCV_COLOR_GRAY2RGB));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(nullptr));
+        auto out = dst.exportData<nvcv::TensorDataStridedCuda>();
+        for (int i = 0; i < (planar ? 3 : 6); ++i)
+        {
+            const int64_t offset = planar ? i * out->stride(0) : (i / 3) * out->stride(0) + i % 3;
+            unsigned char actual{};
+            ASSERT_EQ(cudaSuccess, cudaMemcpy(&actual, out->basePtr() + offset, 1, cudaMemcpyDeviceToHost));
+            EXPECT_EQ(actual, planar ? input[2 - i] : input[i < 3 ? 0 : 2]);
+        }
+    };
+    ASSERT_NO_FATAL_FAILURE(checkLayout(false));
+    ASSERT_NO_FATAL_FAILURE(checkLayout(true));
+}
 
 static int ScaledSize(int size, double scale)
 {
@@ -188,8 +240,8 @@ static void PopulateSource(vector<T> &srcVec, int srcWdth, int srcHght, int imgs
     {
         if constexpr (std::is_floating_point_v<T>)
         {
-            std::uniform_real_distribution<double> lightness(0.0, 100.0);
-            std::uniform_real_distribution<double> chroma(-128.0, 127.0);
+            std::uniform_real_distribution lightness(0.0, 100.0);
+            std::uniform_real_distribution chroma(-128.0, 127.0);
             for (size_t i = 0; i < numPixels; ++i)
             {
                 srcVec[3 * i]     = static_cast<T>(lightness(randEng));
@@ -646,6 +698,15 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {  38,  52,  4,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_RGB2BGR,       0.0},
     {  52,  38,  7,  NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_RGB8,     NVCV_COLOR_BGR2RGB,       0.0},
 
+    // Widths pinned to the interleaved element stream's carrier: an exact multiple of its four-pixel
+    // group (no trailing partial carrier), and one pixel short of a multiple (the widest tail). The
+    // 2-byte rows below do the same against its two-pixel group.
+    {  64,   7,  2,  NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_RGB8,     NVCV_COLOR_BGR2RGB,       0.0},
+    {  67,   5,  3,  NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_RGBA8,    NVCV_COLOR_BGR2RGBA,      0.0},
+    {  64,   5,  2,  NVCV_IMAGE_FORMAT_RGBA8,    NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_RGBA2BGR,      0.0},
+    {  67,   3,  2,  NVCV_IMAGE_FORMAT_RGBA8,    NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_RGBA2BGRA,     0.0},
+    {  64,   3,  2,  NVCV_IMAGE_FORMAT_BGRS8,    NVCV_IMAGE_FORMAT_RGBAS8,   NVCV_COLOR_BGR2RGBA,      0.0},
+
     { 177, 113,  1,  NVCV_IMAGE_FORMAT_BGRS8,    NVCV_IMAGE_FORMAT_BGRAS8,   NVCV_COLOR_BGR2BGRA,      0.0},
     { 113, 176,  2,  NVCV_IMAGE_FORMAT_BGRAS8,   NVCV_IMAGE_FORMAT_BGRS8,    NVCV_COLOR_BGRA2BGR,      0.0},
     { 335, 432,  2,  NVCV_IMAGE_FORMAT_RGBS8,    NVCV_IMAGE_FORMAT_RGBAS8,   NVCV_COLOR_RGB2RGBA,      0.0},
@@ -680,6 +741,9 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     { 123, 321,  5,  NVCV_IMAGE_FORMAT_BGRAS16,  NVCV_IMAGE_FORMAT_RGBAS16,  NVCV_COLOR_BGRA2RGBA,     0.0},
     {  38,  52,  2,  NVCV_IMAGE_FORMAT_RGB16,    NVCV_IMAGE_FORMAT_BGR16,    NVCV_COLOR_RGB2BGR,       0.0},
     {  52,  38,  4,  NVCV_IMAGE_FORMAT_BGR16,    NVCV_IMAGE_FORMAT_RGB16,    NVCV_COLOR_BGR2RGB,       0.0},
+    {  64,   3,  2,  NVCV_IMAGE_FORMAT_BGR16,    NVCV_IMAGE_FORMAT_RGBA16,   NVCV_COLOR_BGR2RGBA,      0.0},
+    {  65,   3,  2,  NVCV_IMAGE_FORMAT_RGBA16,   NVCV_IMAGE_FORMAT_BGR16,    NVCV_COLOR_RGBA2BGR,      0.0},
+    {  65,   5,  2,  NVCV_IMAGE_FORMAT_BGRS16,   NVCV_IMAGE_FORMAT_RGBS16,   NVCV_COLOR_BGR2RGB,       0.0},
 
     { 177, 113,  1,  NVCV_IMAGE_FORMAT_BGRS32,   NVCV_IMAGE_FORMAT_BGRAS32,  NVCV_COLOR_BGR2BGRA,      0.0},
     { 113, 176,  2,  NVCV_IMAGE_FORMAT_BGRAS32,  NVCV_IMAGE_FORMAT_BGRS32,   NVCV_COLOR_BGRA2BGR,      0.0},
@@ -708,6 +772,8 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {  42, 111,  2,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_COLOR_BGR2RGBA,      0.0},
     {  21,  72,  2,  NVCV_IMAGE_FORMAT_RGBf16,   NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_RGB2BGRA,      0.0},
     {  54,  77,  3,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_RGBf16,   NVCV_COLOR_BGR2RGB,       0.0},
+    {  64,   5,  2,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_COLOR_BGR2RGBA,      0.0},
+    {  65,   5,  2,  NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_RGBA2BGR,      0.0},
 
     { 129,  61,  4,  NVCV_IMAGE_FORMAT_BGRf32,   NVCV_IMAGE_FORMAT_BGRAf32,  NVCV_COLOR_BGR2BGRA,      0.0},
     { 129,  61,  4,  NVCV_IMAGE_FORMAT_BGRAf32,  NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_BGRA2BGR,      0.0},
@@ -1144,14 +1210,15 @@ TEST_P(OpCvtColorVarShapeReference, benchmark_kernels_match_independent_referenc
 NVCV_TEST_SUITE_P(OpCvtColorVarShapeReferenceF32,
                   test::ValueList<NVCVImageFormat, NVCVImageFormat, NVCVColorConversionCode, double>{
   //  Input Format,              Output Format,             Conversion Code,       Max Diff
-                      {NVCV_IMAGE_FORMAT_BGRf32, NVCV_IMAGE_FORMAT_LABf32,  NVCV_COLOR_BGR2Lab, ERR2_3},
-                      {NVCV_IMAGE_FORMAT_RGBf32, NVCV_IMAGE_FORMAT_LABf32,  NVCV_COLOR_RGB2Lab, ERR2_3},
-                      {NVCV_IMAGE_FORMAT_LABf32, NVCV_IMAGE_FORMAT_BGRf32,  NVCV_COLOR_Lab2BGR, ERR2_3},
-                      {NVCV_IMAGE_FORMAT_LABf32, NVCV_IMAGE_FORMAT_RGBf32,  NVCV_COLOR_Lab2RGB, ERR2_3},
-                      {NVCV_IMAGE_FORMAT_BGRf32, NVCV_IMAGE_FORMAT_LABf32, NVCV_COLOR_LBGR2Lab, ERR2_3},
-                      {NVCV_IMAGE_FORMAT_RGBf32, NVCV_IMAGE_FORMAT_LABf32, NVCV_COLOR_LRGB2Lab, ERR2_3},
-                      {NVCV_IMAGE_FORMAT_LABf32, NVCV_IMAGE_FORMAT_BGRf32, NVCV_COLOR_Lab2LBGR, ERR2_3},
-                      {NVCV_IMAGE_FORMAT_LABf32, NVCV_IMAGE_FORMAT_RGBf32, NVCV_COLOR_Lab2LRGB, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_RGBf32, NVCV_IMAGE_FORMAT_RGBAf32, NVCV_COLOR_RGB2RGBA,    0.0},
+                      {NVCV_IMAGE_FORMAT_BGRf32,  NVCV_IMAGE_FORMAT_LABf32,  NVCV_COLOR_BGR2Lab, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_RGBf32,  NVCV_IMAGE_FORMAT_LABf32,  NVCV_COLOR_RGB2Lab, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_LABf32,  NVCV_IMAGE_FORMAT_BGRf32,  NVCV_COLOR_Lab2BGR, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_LABf32,  NVCV_IMAGE_FORMAT_RGBf32,  NVCV_COLOR_Lab2RGB, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_BGRf32,  NVCV_IMAGE_FORMAT_LABf32, NVCV_COLOR_LBGR2Lab, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_RGBf32,  NVCV_IMAGE_FORMAT_LABf32, NVCV_COLOR_LRGB2Lab, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_LABf32,  NVCV_IMAGE_FORMAT_BGRf32, NVCV_COLOR_Lab2LBGR, ERR2_3},
+                      {NVCV_IMAGE_FORMAT_LABf32,  NVCV_IMAGE_FORMAT_RGBf32, NVCV_COLOR_Lab2LRGB, ERR2_3},
 });
 
 TEST_P(OpCvtColorVarShapeReferenceF32, benchmark_kernels_match_independent_reference)
@@ -1323,12 +1390,24 @@ static void RunCvtColorTensorPlanarParity(int width, int height, int numImages, 
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    constexpr int elemSize     = sizeof(T);
-    const int     srcRowStride = width * srcChannels * elemSize;
-    const int     dstRowStride = width * dstChannels * elemSize;
-    const auto    dtype        = std::is_same_v<T, float>  ? nvcv::TYPE_F32
-                               : std::is_same_v<T, __half> ? nvcv::TYPE_F16
-                                                           : nvcv::TYPE_U8;
+    constexpr int        elemSize     = sizeof(T);
+    const int            srcRowStride = width * srcChannels * elemSize;
+    const int            dstRowStride = width * dstChannels * elemSize;
+    const nvcv::DataType dtype        = []
+    {
+        if constexpr (std::is_same_v<T, float>)
+        {
+            return nvcv::TYPE_F32;
+        }
+        else if constexpr (std::is_same_v<T, __half>)
+        {
+            return nvcv::TYPE_F16;
+        }
+        else
+        {
+            return nvcv::TYPE_U8;
+        }
+    }();
 
     nvcv::Tensor srcI(
         {
@@ -1546,6 +1625,7 @@ test::ValueList<int, int, int, int, int, NVCVColorConversionCode, bool, bool>
     { 39, 33, 1,    3,    3,  NVCV_COLOR_LRGB2Lab, false, false},
     { 41, 35, 2,    3,    3,  NVCV_COLOR_Lab2LBGR, false, false},
     { 43, 37, 1,    3,    3,  NVCV_COLOR_Lab2LRGB, false, false},
+    { 29, 17, 2,    3,    4,  NVCV_COLOR_RGB2RGBA,  false, false},
 });
 
 NVCV_TEST_SUITE_P(OpCvtColorPlanarTensorHalf,
@@ -1560,6 +1640,7 @@ test::ValueList<int, int, int, int, int, NVCVColorConversionCode, bool, bool>
     { 39, 33, 1,    3,    3,  NVCV_COLOR_LRGB2Lab, false, false},
     { 41, 35, 2,    3,    3,  NVCV_COLOR_Lab2LBGR, false, false},
     { 43, 37, 1,    3,    3,  NVCV_COLOR_Lab2LRGB, false, false},
+    { 31, 25, 2,    3,    4,  NVCV_COLOR_RGB2RGBA, false, false},
 });
 
 NVCV_TEST_SUITE_P(OpCvtColorPlanarVarShape,
@@ -1605,6 +1686,7 @@ test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::Image
     { 29, 23, 1, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, NVCV_COLOR_HSV2BGR_FULL, false, true },
     { 31, 25, 2, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_RGB2YUV,      false, false},
     { 33, 27, 1, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_YUV2RGB,      false, false},
+    { 35, 29, 2, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32, NVCV_COLOR_RGB2RGBA,    false, false},
 });
 
 // F16 mirror of the float planar parity rows, plus an alpha-adding pair (newly supported for F16).
@@ -1916,9 +1998,8 @@ TEST_P(OpCvtColor_circular, varshape_correct_output)
             ASSERT_NE(dstData, nvcv::NullOpt);
 
             const size_t dstRowBytes = imgDst[i].size().w * dstFormat.planePixelStrideBytes(0);
-            auto         checkAlpha  = [&](auto one)
+            auto         checkAlpha  = [&]<typename T>(T one)
             {
-                using T = decltype(one);
                 std::vector<T> pixels(imgDst[i].size().h * dstRowBytes / sizeof(T));
                 ASSERT_EQ(cudaSuccess, cudaMemcpy2D(pixels.data(), dstRowBytes, dstData->plane(0).basePtr,
                                                     dstData->plane(0).rowStride, dstRowBytes, imgDst[i].size().h,
@@ -1937,6 +2018,28 @@ TEST_P(OpCvtColor_circular, varshape_correct_output)
 TEST(OpCvtColor_negative, create_with_null_handle)
 {
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaCvtColorCreate(nullptr));
+}
+
+TEST(OpCvtColor_Negative, planar_tensor_batch_exceeds_grid_z_limit)
+{
+    constexpr int kBatchSize = 65536;
+
+    nvcv::Tensor srcTensor(
+        {
+            {kBatchSize, 3, 1, 1},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstTensor(
+        {
+            {kBatchSize, 4, 1, 1},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::CvtColor cvtColorOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_RGB2RGBA); }));
 }
 
 TEST(OpCvtColor_Negative, planar_tensor_layout_mismatch)
@@ -2008,10 +2111,10 @@ TEST(OpCvtColor_Negative, subsampled_yuv_varshape_requires_u8_output)
         NVCVColorConversionCode code;
     };
 
-    const TestCase testCases[]{
-        {{8, 12},   NVCV_IMAGE_FORMAT_Y8,  {8, 8}, NVCV_IMAGE_FORMAT_BGR16, NVCV_COLOR_YUV2BGR_NV12},
-        { {8, 8}, NVCV_IMAGE_FORMAT_UYVY,  {8, 8}, NVCV_IMAGE_FORMAT_BGR16, NVCV_COLOR_YUV2BGR_UYVY},
-        { {8, 8}, NVCV_IMAGE_FORMAT_BGR8, {8, 12},   NVCV_IMAGE_FORMAT_Y16, NVCV_COLOR_BGR2YUV_NV12},
+    const std::array testCases{
+        TestCase{{8, 12},   NVCV_IMAGE_FORMAT_Y8,  {8, 8}, NVCV_IMAGE_FORMAT_BGR16, NVCV_COLOR_YUV2BGR_NV12},
+        TestCase{ {8, 8}, NVCV_IMAGE_FORMAT_UYVY,  {8, 8}, NVCV_IMAGE_FORMAT_BGR16, NVCV_COLOR_YUV2BGR_UYVY},
+        TestCase{ {8, 8}, NVCV_IMAGE_FORMAT_BGR8, {8, 12},   NVCV_IMAGE_FORMAT_Y16, NVCV_COLOR_BGR2YUV_NV12},
     };
 
     cvcuda::CvtColor cvtColorOp;
@@ -2049,6 +2152,388 @@ TEST(OpCvtColor_regression, yuv420_to_gray_varshape_accepts_single_channel_outpu
     EXPECT_NO_THROW(cvtColorOp(stream, srcBatch, dstBatch, NVCV_COLOR_YUV2GRAY_420));
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpCvtColorVarShape, neutral_subsampled_yuv_paths)
+{
+    const std::vector<nvcv::Size2D> sizes{
+        {6, 4},
+        {8, 8}
+    };
+    const nvcv::ImageFormat bgr8{NVCV_IMAGE_FORMAT_BGR8};
+    const nvcv::ImageFormat bgra8{NVCV_IMAGE_FORMAT_BGRA8};
+    const nvcv::ImageFormat y8{NVCV_IMAGE_FORMAT_Y8};
+
+    auto luma = [](int x, int y, int image)
+    {
+        return ((x + y + image) & 1) == 0 ? uint8_t{0} : uint8_t{255};
+    };
+    auto storeBgra = [](std::vector<uint8_t> &dst, size_t offset, uint8_t value)
+    {
+        dst[offset]     = value;
+        dst[offset + 1] = value;
+        dst[offset + 2] = value;
+        dst[offset + 3] = 255;
+    };
+    auto upload = [](nvcv::Image &image, const std::vector<uint8_t> &src, size_t rowBytes, int rows)
+    {
+        auto data = image.exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_TRUE(data);
+        ASSERT_EQ(data->numPlanes(), 1);
+        ASSERT_EQ(src.size(), rowBytes * static_cast<size_t>(rows));
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(data->plane(0).basePtr, data->plane(0).rowStride, src.data(), rowBytes,
+                                            rowBytes, rows, cudaMemcpyHostToDevice));
+    };
+    auto expect = [](const nvcv::Image &image, const std::vector<uint8_t> &expected, size_t rowBytes, int rows)
+    {
+        auto data = image.exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_TRUE(data);
+        ASSERT_EQ(data->numPlanes(), 1);
+        ASSERT_EQ(expected.size(), rowBytes * static_cast<size_t>(rows));
+
+        std::vector<uint8_t> actual(expected.size());
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(actual.data(), rowBytes, data->plane(0).basePtr, data->plane(0).rowStride,
+                                            rowBytes, rows, cudaMemcpyDeviceToHost));
+        EXPECT_EQ(expected, actual);
+    };
+
+    std::vector<nvcv::Image> bgrImages;
+    std::vector<nvcv::Image> nv12Images;
+    std::vector<nvcv::Image> iyuvImages;
+    std::vector<nvcv::Image> nv12BgraImages;
+    std::vector<nvcv::Image> iyuvBgraImages;
+
+    std::vector<std::vector<uint8_t>> bgrSources;
+    std::vector<std::vector<uint8_t>> yuv420Expected;
+    std::vector<std::vector<uint8_t>> bgraExpected;
+
+    for (size_t image = 0; image < sizes.size(); ++image)
+    {
+        const int  width      = sizes[image].w;
+        const int  height     = sizes[image].h;
+        const int  yuvHeight  = height * 3 / 2;
+        const auto imageIndex = static_cast<int>(image);
+
+        bgrImages.emplace_back(sizes[image], bgr8);
+        nv12Images.emplace_back(nvcv::Size2D{width, yuvHeight}, y8);
+        iyuvImages.emplace_back(nvcv::Size2D{width, yuvHeight}, y8);
+        nv12BgraImages.emplace_back(sizes[image], bgra8);
+        iyuvBgraImages.emplace_back(sizes[image], bgra8);
+
+        bgrSources.emplace_back(static_cast<size_t>(width) * height * 3);
+        yuv420Expected.emplace_back(static_cast<size_t>(width) * yuvHeight, 128);
+        bgraExpected.emplace_back(static_cast<size_t>(width) * height * 4);
+
+        for (int y = 0; y < height; ++y)
+        {
+            for (int x = 0; x < width; ++x)
+            {
+                const uint8_t value      = luma(x, y, imageIndex);
+                const size_t  bgrOffset  = (static_cast<size_t>(y) * width + x) * 3;
+                const size_t  yuvOffset  = static_cast<size_t>(y) * width + x;
+                const size_t  bgraOffset = (static_cast<size_t>(y) * width + x) * 4;
+
+                bgrSources.back()[bgrOffset]     = value;
+                bgrSources.back()[bgrOffset + 1] = value;
+                bgrSources.back()[bgrOffset + 2] = value;
+                yuv420Expected.back()[yuvOffset] = value == 0 ? uint8_t{16} : uint8_t{235};
+                storeBgra(bgraExpected.back(), bgraOffset, value);
+            }
+        }
+
+        upload(bgrImages.back(), bgrSources.back(), static_cast<size_t>(width) * 3, height);
+        upload(nv12Images.back(), yuv420Expected.back(), static_cast<size_t>(width), yuvHeight);
+        upload(iyuvImages.back(), yuv420Expected.back(), static_cast<size_t>(width), yuvHeight);
+    }
+
+    nvcv::ImageBatchVarShape bgrBatch(2);
+    nvcv::ImageBatchVarShape nv12Batch(2);
+    nvcv::ImageBatchVarShape iyuvBatch(2);
+    nvcv::ImageBatchVarShape nv12BgraBatch(2);
+    nvcv::ImageBatchVarShape iyuvBgraBatch(2);
+    bgrBatch.pushBack(bgrImages.begin(), bgrImages.end());
+    nv12Batch.pushBack(nv12Images.begin(), nv12Images.end());
+    iyuvBatch.pushBack(iyuvImages.begin(), iyuvImages.end());
+    nv12BgraBatch.pushBack(nv12BgraImages.begin(), nv12BgraImages.end());
+    iyuvBgraBatch.pushBack(iyuvBgraImages.begin(), iyuvBgraImages.end());
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::CvtColor op;
+    EXPECT_NO_THROW(op(stream, bgrBatch, nv12Batch, NVCV_COLOR_BGR2YUV_NV12));
+    EXPECT_NO_THROW(op(stream, bgrBatch, iyuvBatch, NVCV_COLOR_BGR2YUV_IYUV));
+    EXPECT_NO_THROW(op(stream, nv12Batch, nv12BgraBatch, NVCV_COLOR_YUV2BGRA_NV12));
+    EXPECT_NO_THROW(op(stream, iyuvBatch, iyuvBgraBatch, NVCV_COLOR_YUV2BGRA_IYUV));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (size_t image = 0; image < sizes.size(); ++image)
+    {
+        SCOPED_TRACE(image);
+        const int width     = sizes[image].w;
+        const int height    = sizes[image].h;
+        const int yuvHeight = height * 3 / 2;
+        expect(nv12Images[image], yuv420Expected[image], static_cast<size_t>(width), yuvHeight);
+        expect(iyuvImages[image], yuv420Expected[image], static_cast<size_t>(width), yuvHeight);
+        expect(nv12BgraImages[image], bgraExpected[image], static_cast<size_t>(width) * 4, height);
+        expect(iyuvBgraImages[image], bgraExpected[image], static_cast<size_t>(width) * 4, height);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+template<typename T>
+static T TorchVisionGrayReference(float r, float g, float b)
+{
+    // TorchVision rounds each add_ to the input dtype; its CUDA add_ uses fused multiply-add.
+    // fma with a -0 addend is exactly the singly-rounded product and cannot be contracted.
+    float gray = std::fma(r, 0.2989f, -0.0f);
+    if constexpr (std::is_same_v<T, __half>)
+        gray = static_cast<float>(static_cast<__half>(gray));
+    gray = std::fma(g, 0.587f, gray);
+    if constexpr (std::is_same_v<T, __half>)
+        gray = static_cast<float>(static_cast<__half>(gray));
+    return static_cast<T>(std::fma(b, 0.114f, gray));
+}
+
+template<typename T>
+static nvcv::DataType TorchVisionGrayDataType()
+{
+    if constexpr (std::is_same_v<T, uint8_t>)
+        return nvcv::TYPE_U8;
+    else if constexpr (std::is_same_v<T, uint16_t>)
+        return nvcv::TYPE_U16;
+    else if constexpr (std::is_same_v<T, __half>)
+        return nvcv::TYPE_F16;
+    else
+        return nvcv::TYPE_F32;
+}
+
+template<typename T>
+static std::vector<T> TorchVisionGrayInput(size_t size, int seed)
+{
+    std::vector<T> input(size);
+    for (size_t i = 0; i < size; ++i)
+    {
+        auto value = static_cast<float>((i * 37 + seed * 71) % 257);
+        if constexpr (std::is_same_v<T, uint16_t>)
+            value *= 250;
+        if constexpr (std::is_same_v<T, float> || std::is_same_v<T, __half>)
+            value /= 251;
+        input[i] = static_cast<T>(value);
+    }
+    return input;
+}
+
+// src points at channel 0 of one pixel; consecutive channels are stride elements apart.
+template<typename T>
+static void ExpectTorchVisionGray(const T *src, size_t stride, bool bgr, T actual, size_t sample, size_t pixel)
+{
+    const auto r        = static_cast<float>(src[(bgr ? 2 : 0) * stride]);
+    const auto g        = static_cast<float>(src[stride]);
+    const auto b        = static_cast<float>(src[(bgr ? 0 : 2) * stride]);
+    const T    expected = TorchVisionGrayReference<T>(r, g, b);
+    if constexpr (std::is_same_v<T, __half>)
+        EXPECT_EQ(__half_as_ushort(expected), __half_as_ushort(actual)) << sample << ":" << pixel;
+    else
+        EXPECT_EQ(expected, actual) << sample << ":" << pixel;
+}
+
+static nvcv::TensorShape TorchVisionGrayShape(int count, int channels, int height, int width, bool planar, bool batched)
+{
+    if (batched && planar)
+        return nvcv::TensorShape{
+            {count, channels, height, width},
+            "NCHW"
+        };
+    if (batched)
+        return nvcv::TensorShape{
+            {count, height, width, channels},
+            "NHWC"
+        };
+    if (planar)
+        return nvcv::TensorShape{
+            {channels, height, width},
+            "CHW"
+        };
+    return nvcv::TensorShape{
+        {height, width, channels},
+        "HWC"
+    };
+}
+
+template<typename T>
+static std::vector<T> DownloadTorchVisionGraySample(const nvcv::TensorDataAccessStridedImagePlanar &access, int sample,
+                                                    int width, int height, int channels, bool planar)
+{
+    const auto bytes
+        = planar ? test::planar::DownloadPlanarSample(access, sample, width, height, channels, sizeof(T))
+                 : test::planar::DownloadInterleavedSample(access, sample, width, height, width * channels * sizeof(T));
+    std::vector<T> values(bytes.size() / sizeof(T));
+    std::memcpy(values.data(), bytes.data(), bytes.size());
+    return values;
+}
+
+template<typename T>
+static void CheckTorchVisionGray(NVCVColorConversionCode code, int channels, bool bgr, bool planar, bool batched)
+{
+    constexpr int width  = 19;
+    constexpr int height = 7;
+    const int     count  = batched ? 2 : 1;
+    nvcv::Tensor  src(TorchVisionGrayShape(count, channels, height, width, planar, batched),
+                      TorchVisionGrayDataType<T>());
+    nvcv::Tensor  dst(TorchVisionGrayShape(count, 1, height, width, planar, batched), TorchVisionGrayDataType<T>());
+    auto          srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto          dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    auto          srcAcc  = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    auto          dstAcc  = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(srcAcc && dstAcc);
+    for (int n = 0; n < count; ++n)
+    {
+        const auto           input = TorchVisionGrayInput<T>(width * height * channels, n);
+        std::vector<uint8_t> bytes(input.size() * sizeof(T));
+        std::memcpy(bytes.data(), input.data(), bytes.size());
+        if (planar)
+            test::planar::UploadPlanarSample(
+                *srcAcc, n, test::planar::DeinterleaveToPlanes(bytes, width, height, channels, sizeof(T)), width,
+                height, channels, sizeof(T));
+        else
+            test::planar::UploadInterleavedSample(*srcAcc, n, bytes, width, height, width * channels * sizeof(T));
+    }
+    cvcuda::CvtColor op;
+    op(nullptr, src, dst, code);
+    ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    const size_t pixels = width * height;
+    for (int n = 0; n < count; ++n)
+    {
+        const auto input  = DownloadTorchVisionGraySample<T>(*srcAcc, n, width, height, channels, planar);
+        const auto output = DownloadTorchVisionGraySample<T>(*dstAcc, n, width, height, 1, planar);
+        for (size_t i = 0; i < pixels; ++i)
+        {
+            const T *px = planar ? &input[i] : &input[i * channels];
+            ExpectTorchVisionGray(px, planar ? pixels : 1, bgr, output[i], n, i);
+        }
+    }
+}
+
+template<typename Dst, typename Src>
+static void CopyImagePlane(Dst *dst, size_t dstStride, const Src *src, size_t srcStride, size_t rowBytes, int rows,
+                           cudaMemcpyKind kind)
+{
+    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(dst, dstStride, src, srcStride, rowBytes, rows, kind));
+}
+
+template<typename T>
+static void CheckTorchVisionVarShapeGray(NVCVColorConversionCode code, nvcv::ImageFormat srcFormat,
+                                         nvcv::ImageFormat dstFormat, bool bgr)
+{
+    const std::array<nvcv::Size2D, 2> sizes{
+        {{19, 7}, {33, 11}}
+    };
+    const int                channels = srcFormat.numChannels();
+    std::vector<nvcv::Image> srcImages;
+    std::vector<nvcv::Image> dstImages;
+    for (auto size : sizes)
+    {
+        srcImages.emplace_back(size, srcFormat);
+        dstImages.emplace_back(size, dstFormat);
+        const auto   input    = TorchVisionGrayInput<T>(size.w * size.h * channels, size.w);
+        const size_t rowBytes = size.w * channels * sizeof(T);
+        auto         data     = srcImages.back().exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_TRUE(data);
+        CopyImagePlane(data->plane(0).basePtr, data->plane(0).rowStride, input.data(), rowBytes, rowBytes, size.h,
+                       cudaMemcpyHostToDevice);
+    }
+    nvcv::ImageBatchVarShape srcBatch(2);
+    nvcv::ImageBatchVarShape dstBatch(2);
+    srcBatch.pushBack(srcImages.begin(), srcImages.end());
+    dstBatch.pushBack(dstImages.begin(), dstImages.end());
+    cvcuda::CvtColor op;
+    op(nullptr, srcBatch, dstBatch, code);
+    ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    for (size_t n = 0; n < sizes.size(); ++n)
+    {
+        const auto     size     = sizes[n];
+        const size_t   rowBytes = size.w * channels * sizeof(T);
+        std::vector<T> input(size.w * size.h * channels);
+        std::vector<T> actual(size.w * size.h);
+        auto           srcData = srcImages[n].exportData<nvcv::ImageDataStridedCuda>();
+        auto           dstData = dstImages[n].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_TRUE(srcData && dstData);
+        CopyImagePlane(input.data(), rowBytes, srcData->plane(0).basePtr, srcData->plane(0).rowStride, rowBytes, size.h,
+                       cudaMemcpyDeviceToHost);
+        CopyImagePlane(actual.data(), size.w * sizeof(T), dstData->plane(0).basePtr, dstData->plane(0).rowStride,
+                       size.w * sizeof(T), size.h, cudaMemcpyDeviceToHost);
+        for (size_t i = 0; i < actual.size(); ++i) ExpectTorchVisionGray(&input[i * channels], 1, bgr, actual[i], n, i);
+    }
+}
+
+TEST(OpCvtColorVarShape, torchvision_gray_exact_all_types)
+{
+    const std::array<NVCVColorConversionCode, 4>          codes{NVCV_COLOR_RGB2GRAY_TV, NVCV_COLOR_BGR2GRAY_TV,
+                                                       NVCV_COLOR_RGBA2GRAY_TV, NVCV_COLOR_BGRA2GRAY_TV};
+    const std::array<std::array<nvcv::ImageFormat, 4>, 4> srcFormats{
+        {
+         {nvcv::FMT_RGB8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB16}, nvcv::FMT_RGBf16, nvcv::FMT_RGBf32},
+         {nvcv::FMT_BGR8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR16}, nvcv::FMT_BGRf16, nvcv::FMT_BGRf32},
+         {nvcv::FMT_RGBA8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBA16}, nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf32},
+         {nvcv::FMT_BGRA8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGRA16}, nvcv::FMT_BGRAf16, nvcv::FMT_BGRAf32},
+         }
+    };
+    const std::array<nvcv::ImageFormat, 4> dstFormats{nvcv::FMT_Y8, nvcv::FMT_Y16,
+                                                      nvcv::ImageFormat{NVCV_IMAGE_FORMAT_Yf16},
+                                                      nvcv::ImageFormat{NVCV_IMAGE_FORMAT_Yf32}};
+    for (size_t k = 0; k < codes.size(); ++k)
+    {
+        SCOPED_TRACE(k);
+        const bool bgr = k % 2;
+        CheckTorchVisionVarShapeGray<uint8_t>(codes[k], srcFormats[k][0], dstFormats[0], bgr);
+        CheckTorchVisionVarShapeGray<uint16_t>(codes[k], srcFormats[k][1], dstFormats[1], bgr);
+        CheckTorchVisionVarShapeGray<__half>(codes[k], srcFormats[k][2], dstFormats[2], bgr);
+        CheckTorchVisionVarShapeGray<float>(codes[k], srcFormats[k][3], dstFormats[3], bgr);
+    }
+}
+
+TEST(OpCvtColor, torchvision_gray_exact_all_types_layouts)
+{
+    const std::array<NVCVColorConversionCode, 4> codes{NVCV_COLOR_RGB2GRAY_TV, NVCV_COLOR_BGR2GRAY_TV,
+                                                       NVCV_COLOR_RGBA2GRAY_TV, NVCV_COLOR_BGRA2GRAY_TV};
+    for (size_t k = 0; k < codes.size(); ++k)
+        for (bool planar : {false, true})
+            for (bool batched : {false, true})
+            {
+                SCOPED_TRACE(k);
+                SCOPED_TRACE(planar);
+                SCOPED_TRACE(batched);
+                const int  channels = k >= 2 ? 4 : 3;
+                const bool bgr      = k % 2;
+                CheckTorchVisionGray<uint8_t>(codes[k], channels, bgr, planar, batched);
+                CheckTorchVisionGray<uint16_t>(codes[k], channels, bgr, planar, batched);
+                CheckTorchVisionGray<__half>(codes[k], channels, bgr, planar, batched);
+                CheckTorchVisionGray<float>(codes[k], channels, bgr, planar, batched);
+            }
+}
+
+TEST(OpCvtColorVarShape, tensor_planar_gray_and_varshape_float_alpha_paths)
+{
+    RunCvtColorTensorPlanarParity<uint8_t>(31, 23, 2, 3, 1, NVCV_COLOR_RGB2GRAY, false, false);
+    RunCvtColorTensorPlanarParity<float>(29, 21, 1, 3, 1, NVCV_COLOR_BGR2GRAY, false, true);
+    RunCvtColorVarShapePlanarParity<float>(25, 17, 2, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, nvcv::FMT_RGBAf32p,
+                                           nvcv::FMT_RGBAf32, NVCV_COLOR_RGB2RGBA, false, false);
+}
+
+TEST(OpCvtColorVarShape, planar_bgr_to_gray_dtype_paths)
+{
+    // VarShape requires input and output to use the same interleaved/planar layout; gray has one plane,
+    // so the public VarShape BGR-to-gray contract is exercised through the interleaved reference path.
+    RunCvtColorVarShapeReference<uint8_t>(nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8},
+                                          nvcv::ImageFormat{NVCV_IMAGE_FORMAT_Y8}, NVCV_COLOR_BGR2GRAY, 1.0);
+    RunCvtColorVarShapeReference<float>(nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGRf32},
+                                        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_Yf32}, NVCV_COLOR_BGR2GRAY, ERR1_4);
+
+    // Tensor planar images retain the corresponding multi-plane BGR coverage for both scalar types.
+    RunCvtColorTensorPlanarParity<uint8_t>(31, 23, 2, 3, 1, NVCV_COLOR_BGR2GRAY, false, true);
+    RunCvtColorTensorPlanarParity<float>(29, 21, 1, 3, 1, NVCV_COLOR_BGR2GRAY, false, true);
 }
 
 TEST(OpCvtColor_negative, mismatch_shape)
@@ -2202,6 +2687,7 @@ TEST(OpCvtColor_negative, invalid_shape_YUV422_to_BGR_invalid_out)
     }
 }
 
+#ifndef ENABLE_SANITIZER
 TEST(OpCvtColor_negative, invalid_conversion_code)
 {
     nvcv::Tensor srcTensor = util::CreateTensor(1, 8, 8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8});
@@ -2212,7 +2698,9 @@ TEST(OpCvtColor_negative, invalid_conversion_code)
               nvcv::ProtectCall(
                   [&] { cvtColorOp(nullptr, srcTensor, dstTensor, static_cast<NVCVColorConversionCode>(1000000)); }));
 }
+#endif
 
+#ifndef ENABLE_SANITIZER
 TEST(OpCvtColor_negative, varshape_invalid_conversion_code)
 {
     std::vector<nvcv::Image> imgSrc;
@@ -2232,6 +2720,7 @@ TEST(OpCvtColor_negative, varshape_invalid_conversion_code)
               nvcv::ProtectCall(
                   [&] { cvtColorOp(nullptr, batchSrc, batchDst, static_cast<NVCVColorConversionCode>(1000000)); }));
 }
+#endif
 
 // clang-format off
 

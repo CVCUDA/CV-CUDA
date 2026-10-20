@@ -15,100 +15,99 @@
  * limitations under the License.
  */
 
+#include "NativeBinding.hpp"
+#include "NativeVarShapeUtils.hpp"
 #include "Operators.hpp"
-#include "VarShapeUtils.hpp"
 
+#include <common/Binding.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpJointBilateralFilter.hpp>
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <pybind11/stl.h>
 
 namespace cvcudapy {
 
 namespace {
-Tensor JointBilateralFilterInto(Tensor &output, Tensor &input, Tensor &inputColor, int diameter, float sigmaColor,
-                                float sigmaSpace, NVCVBorderType borderMode, std::optional<Stream> pstream)
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+
+Tensor &JointBilateralFilterInto(Tensor &output, Tensor &input, Tensor &inputColor, int diameter, float sigmaColor,
+                                 float sigmaSpace, NVCVBorderType borderMode, std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto joint_bilateral_filter = CreateOperator<cvcuda::JointBilateralFilter>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, inputColor});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*joint_bilateral_filter});
 
     guard.run(
-        [&joint_bilateral_filter, &pstream, &input, &inputColor, &output, &diameter, &sigmaColor, &sigmaSpace,
+        [&joint_bilateral_filter, &stream, &input, &inputColor, &output, &diameter, &sigmaColor, &sigmaSpace,
          &borderMode]()
         {
-            joint_bilateral_filter->submit(pstream->cudaHandle(), input, inputColor, output, diameter, sigmaColor,
-                                           sigmaSpace, borderMode);
+            joint_bilateral_filter->submit(stream.handle(), input.impl(), inputColor.impl(), output.impl(), diameter,
+                                           sigmaColor, sigmaSpace, borderMode);
         });
 
     return output;
 }
 
-Tensor JointBilateralFilter(Tensor &input, Tensor &inputColor, int diameter, float sigmaColor, float sigmaSpace,
-                            NVCVBorderType borderMode, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> JointBilateralFilter(Tensor &input, Tensor &inputColor, int diameter, float sigmaColor,
+                                             float sigmaSpace, NVCVBorderType borderMode,
+                                             std::optional<Stream *> pstream)
 {
-    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    auto output = native::CreateTensor(input.impl().shape(), input.dtype());
 
-    return JointBilateralFilterInto(output, input, inputColor, diameter, sigmaColor, sigmaSpace, borderMode, pstream);
+    JointBilateralFilterInto(*output, input, inputColor, diameter, sigmaColor, sigmaSpace, borderMode, pstream);
+    return output;
 }
 
-ImageBatchVarShape VarShapeJointBilateralFilterInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
-                                                    ImageBatchVarShape &inputColor, Tensor &diameter,
-                                                    Tensor &sigmaColor, Tensor &sigmaSpace, NVCVBorderType borderMode,
-                                                    std::optional<Stream> pstream)
+ImageBatchVarShape &VarShapeJointBilateralFilterInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
+                                                     ImageBatchVarShape &inputColor, Tensor &diameter,
+                                                     Tensor &sigmaColor, Tensor &sigmaSpace, NVCVBorderType borderMode,
+                                                     std::optional<Stream *> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
+    Stream &stream = native::GetStream(pstream);
 
     auto joint_bilateral_filter = CreateOperator<cvcuda::JointBilateralFilter>();
 
-    ResourceGuard guard(*pstream);
+    ResourceGuard guard(stream);
     guard.add(LockMode::LOCK_MODE_READ, {input, inputColor, diameter, sigmaColor, sigmaSpace});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*joint_bilateral_filter});
 
     guard.run(
-        [&joint_bilateral_filter, &pstream, &input, &inputColor, &output, &diameter, &sigmaColor, &sigmaSpace,
+        [&joint_bilateral_filter, &stream, &input, &inputColor, &output, &diameter, &sigmaColor, &sigmaSpace,
          &borderMode]()
         {
-            joint_bilateral_filter->submit(pstream->cudaHandle(), input, inputColor, output, diameter, sigmaColor,
-                                           sigmaSpace, borderMode);
+            joint_bilateral_filter->submit(stream.handle(), input.impl(), inputColor.impl(), output.impl(),
+                                           diameter.impl(), sigmaColor.impl(), sigmaSpace.impl(), borderMode);
         });
 
     return output;
 }
 
-ImageBatchVarShape VarShapeJointBilateralFilter(ImageBatchVarShape &input, ImageBatchVarShape &inputColor,
-                                                Tensor &diameter, Tensor &sigmaColor, Tensor &sigmaSpace,
-                                                NVCVBorderType borderMode, std::optional<Stream> pstream)
+std::shared_ptr<ImageBatchVarShape> VarShapeJointBilateralFilter(ImageBatchVarShape &input,
+                                                                 ImageBatchVarShape &inputColor, Tensor &diameter,
+                                                                 Tensor &sigmaColor, Tensor &sigmaSpace,
+                                                                 NVCVBorderType          borderMode,
+                                                                 std::optional<Stream *> pstream)
 {
-    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
+    auto output = CreateSameShapeImageBatch(input);
 
-    return VarShapeJointBilateralFilterInto(output, input, inputColor, diameter, sigmaColor, sigmaSpace, borderMode,
-                                            pstream);
+    VarShapeJointBilateralFilterInto(*output, input, inputColor, diameter, sigmaColor, sigmaSpace, borderMode, pstream);
+    return output;
 }
 
 } // namespace
 
-void ExportOpJointBilateralFilter(py::module &m)
+void ExportOpJointBilateralFilter(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("joint_bilateral_filter", NvtxTrace("cvcuda.joint_bilateral_filter", &JointBilateralFilter), "src"_a,
           "srcColor"_a, "diameter"_a, "sigma_color"_a, "sigma_space"_a,
@@ -133,7 +132,8 @@ void ExportOpJointBilateralFilter(py::module &m)
 
     m.def("joint_bilateral_filter_into", NvtxTrace("cvcuda.joint_bilateral_filter_into", &JointBilateralFilterInto),
           "dst"_a, "src"_a, "srcColor"_a, "diameter"_a, "sigma_color"_a, "sigma_space"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the Joint Bilateral Filter operation on the given cuda stream.
 
 
@@ -175,7 +175,8 @@ void ExportOpJointBilateralFilter(py::module &m)
     m.def("joint_bilateral_filter_into",
           NvtxTrace("cvcuda.joint_bilateral_filter_into", &VarShapeJointBilateralFilterInto), "dst"_a, "src"_a,
           "srcColor"_a, "diameter"_a, "sigma_color"_a, "sigma_space"_a, py::kw_only(),
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr, R"pbdoc(
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr, py::return_value_policy::reference,
+          R"pbdoc(
         Executes the Joint Bilateral operation on the given cuda stream.
 
 

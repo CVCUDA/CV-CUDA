@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <type_traits>
 
 namespace cvcuda::priv {
 
@@ -225,23 +226,108 @@ __global__ void EraseRegionOutOfPlace(ImageTensorDesc image, ValueTensorDesc val
     }
 }
 
-template<typename DstT, typename ValueT>
-__global__ void EraseRegionInPlace(ImageTensorDesc image, ValueTensorDesc value, Region region, int64_t total)
+// Region fill. The sample and the region row come straight from the grid, so no region extent
+// is ever a divisor: the predecessor kernel recovered all four coordinates from a flat index
+// with three 64-bit divisions and three 64-bit modulos per element, and profiled at 0.52% of
+// DRAM peak against 85% SM throughput -- it was issue-bound on that addressing, not on memory.
+//
+// `Broadcast` is the shape torchvision reaches with a scalar or per-channel fill value (value
+// strides along the region's y and x are zero). It hoists the float-to-destination conversion
+// -- which for the integer types is torchvision's saturating 64-bit cast -- out of the element
+// loop entirely, so each thread converts at most four values instead of one per store.
+//
+// The `values[4]` array is only ever indexed by a fully unrolled loop counter, so every index
+// is a compile-time constant and the array stays in registers; a runtime index here would spill
+// the whole array to local memory.
+template<typename DstT, typename ValueT, int Depth, bool Broadcast>
+__global__ void EraseRegionFill(unsigned char *__restrict__ dst, int64_t dstS0, int64_t dstS1, int64_t dstS2,
+                                int64_t dstS3, ValueTensorDesc value, int top, int left, int height, int width,
+                                int channels, int samples)
 {
-    for (int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; index < total;
-         index += static_cast<int64_t>(gridDim.x) * blockDim.x)
-    {
-        int64_t       remaining = index;
-        const int64_t x         = remaining % region.width;
-        remaining /= region.width;
-        const int64_t y = remaining % region.height;
-        remaining /= region.height;
-        const int64_t c = remaining % image.shape[1];
-        const int64_t n = remaining / image.shape[1];
+    for (int n = blockIdx.z; n < samples; n += gridDim.z)
+        for (int y = blockIdx.y; y < height; y += gridDim.y)
+        {
+            const int64_t dRow = n * dstS0 + static_cast<int64_t>(top + y) * dstS2 + static_cast<int64_t>(left) * dstS3;
+            const int64_t vRow
+                = n * value.stride[0] + (Broadcast ? int64_t{0} : static_cast<int64_t>(y) * value.stride[2]);
 
-        const int64_t dstOffset   = ImageOffset(image.dstStride, n, c, y + region.top, x + region.left);
-        const int64_t valueOffset = ValueOffset(value, n, c, y, x);
-        StoreAt<DstT>(image.dst, dstOffset, ConvertValue<DstT>(LoadAt<ValueT>(value.base, valueOffset)));
+            DstT values[4];
+            if constexpr (Broadcast)
+            {
+                // Unrolled so every index into `values` is a compile-time constant; a runtime index
+                // would push the array to local memory.
+#pragma unroll
+                for (int c = 0; c < 4; ++c)
+                {
+                    if (c < channels)
+                    {
+                        values[c] = ConvertValue<DstT>(LoadAt<ValueT>(value.base, vRow + c * value.stride[1]));
+                    }
+                }
+            }
+
+            const int x0 = blockIdx.x * (blockDim.x * Depth) + threadIdx.x;
+#pragma unroll
+            for (int d = 0; d < Depth; ++d)
+            {
+                const int x = x0 + d * blockDim.x;
+                if (x >= width)
+                {
+                    continue;
+                }
+                const int64_t dOff = dRow + static_cast<int64_t>(x) * dstS3;
+                if constexpr (Broadcast)
+                {
+#pragma unroll
+                    for (int c = 0; c < 4; ++c)
+                    {
+                        if (c < channels)
+                        {
+                            StoreAt<DstT>(dst, dOff + c * dstS1, values[c]);
+                        }
+                    }
+                }
+                else
+                {
+                    // Unrolled over the maximum channel count rather than the runtime one: a
+                    // runtime trip count leaves the loop rolled and costs more than the predicated
+                    // stores it saves (measured on the single-channel rows, where it dominates).
+                    const int64_t vOff = vRow + static_cast<int64_t>(x) * value.stride[3];
+#pragma unroll
+                    for (int c = 0; c < 4; ++c)
+                    {
+                        if (c < channels)
+                        {
+                            StoreAt<DstT>(dst, dOff + c * dstS1,
+                                          ConvertValue<DstT>(LoadAt<ValueT>(value.base, vOff + c * value.stride[1])));
+                        }
+                    }
+                }
+            }
+        }
+}
+
+// Byte-described copy of the untouched image. The destination is described as `nY * nZ`
+// contiguous runs of `runBytes`, so the widest carrier that divides every base, stride and run
+// length moves the payload; no pixel, channel or region arithmetic survives into the kernel.
+template<typename Carrier, int Depth>
+__global__ void EraseCopyRuns(const unsigned char *__restrict__ src, unsigned char *__restrict__ dst, int64_t srcY,
+                              int64_t dstY, int64_t srcZ, int64_t dstZ, int64_t carriers)
+{
+    const int64_t  sBase = blockIdx.y * srcY + blockIdx.z * srcZ;
+    const int64_t  dBase = blockIdx.y * dstY + blockIdx.z * dstZ;
+    const Carrier *s     = reinterpret_cast<const Carrier *>(src + sBase);
+    Carrier       *d     = reinterpret_cast<Carrier *>(dst + dBase);
+
+    const int64_t start = static_cast<int64_t>(blockIdx.x) * blockDim.x * Depth + threadIdx.x;
+#pragma unroll
+    for (int k = 0; k < Depth; ++k)
+    {
+        const int64_t index = start + static_cast<int64_t>(k) * blockDim.x;
+        if (index < carriers)
+        {
+            d[index] = s[index];
+        }
     }
 }
 
@@ -411,27 +497,230 @@ static int64_t CheckedProduct(int64_t a, int64_t b, int64_t c, int64_t d)
     return result;
 }
 
+// Description of the source/destination byte layout as `nY * nZ` contiguous runs of `runBytes`.
+// Built by sorting the logical axes into physical (ascending-stride) order and merging every
+// adjacent pair that is packed in both tensors, so a densely allocated tensor of any layout
+// collapses to a single run and a row-padded one to a single outer level.
+struct CopyPlan
+{
+    int64_t runBytes;
+    int64_t srcY, dstY, srcZ, dstZ;
+    int32_t nY, nZ;
+    int     carrierBytes;
+};
+
+constexpr int kEraseCopyBlock = 256;
+constexpr int kEraseCopyDepth = 4;
+constexpr int kEraseFillBlock = 128;
+constexpr int kEraseFillDepth = 4;
+
+static bool BuildCopyPlan(const ImageTensorDesc &image, int64_t elemSize, CopyPlan &plan)
+{
+    struct Axis
+    {
+        int64_t extent, srcStride, dstStride;
+    };
+
+    Axis axes[4];
+    int  count = 0;
+    for (int k = 0; k < 4; ++k)
+    {
+        if (image.shape[k] > 1)
+        {
+            axes[count++] = Axis{image.shape[k], image.srcStride[k], image.dstStride[k]};
+        }
+    }
+    // Insertion sort rather than std::sort: there are at most four axes, and std::sort's
+    // __final_insertion_sort carries a `last - first > 16` branch that GCC cannot prove dead
+    // against an Axis[4], so it reports a -Warray-bounds subscript at offset 16 and
+    // -Werror all-warnings makes that fatal. A hand-rolled sort of four elements is also
+    // strictly less code than the generic one it replaces.
+    for (int i = 1; i < count; ++i)
+    {
+        const Axis key = axes[i];
+        int        j   = i - 1;
+        while (j >= 0 && key.srcStride < axes[j].srcStride)
+        {
+            axes[j + 1] = axes[j];
+            --j;
+        }
+        axes[j + 1] = key;
+    }
+
+    int64_t runBytes = elemSize;
+    int     axis     = 0;
+    for (; axis < count && axes[axis].srcStride == runBytes && axes[axis].dstStride == runBytes; ++axis)
+    {
+        runBytes *= axes[axis].extent;
+    }
+
+    Axis outer[4];
+    int  outerCount = 0;
+    for (; axis < count; ++axis)
+    {
+        if (outerCount > 0 && axes[axis].srcStride == outer[outerCount - 1].srcStride * outer[outerCount - 1].extent
+            && axes[axis].dstStride == outer[outerCount - 1].dstStride * outer[outerCount - 1].extent)
+        {
+            outer[outerCount - 1].extent *= axes[axis].extent;
+        }
+        else
+        {
+            outer[outerCount++] = axes[axis];
+        }
+    }
+    if (outerCount > 2)
+    {
+        return false;
+    }
+
+    // Tested on the int64_t extents, before they are narrowed into the plan. Narrowing first
+    // would let an extent past 2^31 wrap to a small positive value, pass this gate, and launch
+    // a grid that silently covers a fraction of the image instead of declining to the fallback.
+    for (int i = 0; i < outerCount; ++i)
+    {
+        if (outer[i].extent > 65535)
+        {
+            return false;
+        }
+    }
+
+    plan          = CopyPlan{runBytes, 0, 0, 0, 0, 1, 1, 1};
+    plan.runBytes = runBytes;
+    if (outerCount > 0)
+    {
+        plan.nY   = static_cast<int32_t>(outer[0].extent);
+        plan.srcY = outer[0].srcStride;
+        plan.dstY = outer[0].dstStride;
+    }
+    if (outerCount > 1)
+    {
+        plan.nZ   = static_cast<int32_t>(outer[1].extent);
+        plan.srcZ = outer[1].srcStride;
+        plan.dstZ = outer[1].dstStride;
+    }
+
+    // Widest power-of-two carrier that divides every base pointer, every run length and every
+    // outer stride. Everything is naturally aligned for tensors from the standard allocator, so
+    // the 16-byte arm is the common case; the narrower arms keep exotic strides correct.
+    const uintptr_t bits = reinterpret_cast<uintptr_t>(image.src) | reinterpret_cast<uintptr_t>(image.dst)
+                         | static_cast<uintptr_t>(plan.runBytes) | static_cast<uintptr_t>(plan.srcY)
+                         | static_cast<uintptr_t>(plan.dstY) | static_cast<uintptr_t>(plan.srcZ)
+                         | static_cast<uintptr_t>(plan.dstZ);
+    plan.carrierBytes = 16;
+    while (plan.carrierBytes > 1 && (bits & (static_cast<uintptr_t>(plan.carrierBytes) - 1)) != 0)
+    {
+        plan.carrierBytes /= 2;
+    }
+    return true;
+}
+
+template<typename Carrier>
+static void LaunchCopyRuns(cudaStream_t stream, const CopyPlan &plan, const ImageTensorDesc &image)
+{
+    const int64_t carriers = plan.runBytes / static_cast<int64_t>(sizeof(Carrier));
+    const dim3    block(kEraseCopyBlock);
+    const dim3    grid(
+           static_cast<unsigned>(std::max<int64_t>(
+            (carriers + int64_t(kEraseCopyBlock) * kEraseCopyDepth - 1) / (kEraseCopyBlock * kEraseCopyDepth), 1)),
+           static_cast<unsigned>(plan.nY), static_cast<unsigned>(plan.nZ));
+    EraseCopyRuns<Carrier, kEraseCopyDepth>
+        <<<grid, block, 0, stream>>>(image.src, image.dst, plan.srcY, plan.dstY, plan.srcZ, plan.dstZ, carriers);
+    NVCV_CHECK_THROW(cudaGetLastError());
+}
+
+static void LaunchCopy(cudaStream_t stream, const CopyPlan &plan, const ImageTensorDesc &image)
+{
+    switch (plan.carrierBytes)
+    {
+    case 16:
+        LaunchCopyRuns<uint4>(stream, plan, image);
+        break;
+    case 8:
+        LaunchCopyRuns<uint2>(stream, plan, image);
+        break;
+    case 4:
+        LaunchCopyRuns<uint32_t>(stream, plan, image);
+        break;
+    case 2:
+        LaunchCopyRuns<uint16_t>(stream, plan, image);
+        break;
+    default:
+        LaunchCopyRuns<uint8_t>(stream, plan, image);
+        break;
+    }
+}
+
 template<typename DstT, typename ValueT>
 void LaunchEraseRegion(cudaStream_t stream, const ImageTensorDesc &image, const ValueTensorDesc &value,
-                       const Region &region, bool inplace)
+                       const Region &region, bool inplace, int64_t elemSize)
 {
-    constexpr int kBlockSize = 256;
-    const int64_t total      = inplace ? CheckedProduct(image.shape[0], image.shape[1], region.height, region.width)
-                                       : CheckedProduct(image.shape[0], image.shape[1], image.shape[2], image.shape[3]);
-    if (total == 0)
+    const int64_t imageTotal = CheckedProduct(image.shape[0], image.shape[1], image.shape[2], image.shape[3]);
+    if (imageTotal == 0)
     {
         return;
     }
 
-    const int64_t neededBlocks = (total + kBlockSize - 1) / kBlockSize;
-    const int     blocks       = static_cast<int>(std::min<int64_t>(neededBlocks, 65535));
-    if (inplace)
+    // EraseRegionFill takes the region and the image's sample/channel counts as `int`, and forms
+    // `top + y` in `int` before widening. The public entry point accepts int64_t coordinates, so
+    // an extent past INT_MAX would truncate here rather than being rejected. The fallback kernel
+    // addresses entirely in int64_t, so hand those geometries to it instead of narrowing.
+    const auto fitsInInt = [](int64_t v)
     {
-        EraseRegionInPlace<DstT, ValueT><<<blocks, kBlockSize, 0, stream>>>(image, value, region, total);
+        return v >= 0 && v <= std::numeric_limits<int>::max();
+    };
+    const bool fillFitsInInt = fitsInInt(region.top) && fitsInInt(region.left) && fitsInInt(region.height)
+                            && fitsInInt(region.width) && fitsInInt(region.top + region.height)
+                            && fitsInInt(image.shape[0]) && fitsInInt(image.shape[1]);
+
+    CopyPlan plan{};
+    if (!fillFitsInInt || (!inplace && !BuildCopyPlan(image, elemSize, plan)))
+    {
+        // Geometry the run description cannot express (more than two outer levels after
+        // merging, or an outer extent past the grid limit), or a region the fill kernel's int
+        // parameters cannot carry. Fall back to the general whole-image predicated kernel,
+        // which is correct for any strides and addresses in int64_t throughout.
+        constexpr int kBlockSize   = 256;
+        const int64_t neededBlocks = (imageTotal + kBlockSize - 1) / kBlockSize;
+        const int     blocks       = static_cast<int>(std::min<int64_t>(neededBlocks, 65535));
+        EraseRegionOutOfPlace<DstT, ValueT><<<blocks, kBlockSize, 0, stream>>>(image, value, region, imageTotal);
+        NVCV_CHECK_THROW(cudaGetLastError());
+        return;
+    }
+
+    if (!inplace)
+    {
+        LaunchCopy(stream, plan, image);
+    }
+
+    if (region.height == 0 || region.width == 0)
+    {
+        return;
+    }
+
+    // A value tensor that does not vary across the region (a scalar or a per-channel fill, which
+    // is what torchvision's own erase passes) lets the conversion be hoisted per thread.
+    const bool broadcast = value.stride[2] == 0 && value.stride[3] == 0;
+
+    const dim3 block(kEraseFillBlock, 1, 1);
+    const dim3 grid(static_cast<unsigned>((region.width + int64_t{kEraseFillBlock} * kEraseFillDepth - 1)
+                                          / (int64_t{kEraseFillBlock} * kEraseFillDepth)),
+                    static_cast<unsigned>(std::min<int64_t>(region.height, 65535)),
+                    static_cast<unsigned>(std::min<int64_t>(image.shape[0], 65535)));
+
+    const auto launch = [&](auto broadcastTag)
+    {
+        EraseRegionFill<DstT, ValueT, kEraseFillDepth, decltype(broadcastTag)::value><<<grid, block, 0, stream>>>(
+            image.dst, image.dstStride[0], image.dstStride[1], image.dstStride[2], image.dstStride[3], value,
+            static_cast<int>(region.top), static_cast<int>(region.left), static_cast<int>(region.height),
+            static_cast<int>(region.width), static_cast<int>(image.shape[1]), static_cast<int>(image.shape[0]));
+    };
+    if (broadcast)
+    {
+        launch(std::true_type{});
     }
     else
     {
-        EraseRegionOutOfPlace<DstT, ValueT><<<blocks, kBlockSize, 0, stream>>>(image, value, region, total);
+        launch(std::false_type{});
     }
     NVCV_CHECK_THROW(cudaGetLastError());
 }
@@ -442,11 +731,11 @@ void DispatchValueType(cudaStream_t stream, const ImageTensorDesc &image, const 
 {
     if (floatValue)
     {
-        LaunchEraseRegion<DstT, float>(stream, image, value, region, inplace);
+        LaunchEraseRegion<DstT, float>(stream, image, value, region, inplace, sizeof(DstT));
     }
     else
     {
-        LaunchEraseRegion<DstT, DstT>(stream, image, value, region, inplace);
+        LaunchEraseRegion<DstT, DstT>(stream, image, value, region, inplace, sizeof(DstT));
     }
 }
 

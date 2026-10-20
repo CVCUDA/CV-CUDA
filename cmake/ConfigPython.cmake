@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -96,7 +96,7 @@ if(PYTHON_VERSIONS)
         find_program(PYTHON_EXECUTABLE python${VER} /usr/bin /usr/local/bin)
         if (PYTHON_EXECUTABLE)
             execute_process(
-                COMMAND ${PYTHON_EXECUTABLE} -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+                COMMAND ${PYTHON_EXECUTABLE} -c "import sys, sysconfig; print(f'{sys.version_info.major}.{sys.version_info.minor}' + ('t' if sysconfig.get_config_var('Py_GIL_DISABLED') else ''))"
                 OUTPUT_VARIABLE PYTHON_VERSION_OUTPUT
                 OUTPUT_STRIP_TRAILING_WHITESPACE
             )
@@ -121,5 +121,10 @@ if(PYTHON_VERSIONS)
 else()
     find_package(Python COMPONENTS Interpreter REQUIRED)
     set(PYTHON_VERSIONS ${Python_VERSION_MAJOR}.${Python_VERSION_MINOR})
+    execute_process(COMMAND ${Python_EXECUTABLE} -c "import sysconfig; print(bool(sysconfig.get_config_var('Py_GIL_DISABLED')))"
+                    OUTPUT_VARIABLE PYTHON_FREE_THREADED OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(PYTHON_FREE_THREADED STREQUAL "True")
+        string(APPEND PYTHON_VERSIONS "t")
+    endif()
     set(USE_DEFAULT_PYTHON true)
 endif()

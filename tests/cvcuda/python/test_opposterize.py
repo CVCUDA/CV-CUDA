@@ -112,7 +112,31 @@ def test_op_posterize_varshape(num_images, img_format, img_size, max_pixel, bits
 
 
 def test_op_posterize_negative_dtype():
-    # float32 is outside the supported dtype set (u8/u16) and must be rejected.
-    src = cvcuda.Tensor((1, 16, 16, 3), np.float32, "NHWC")
+    # int32 is outside the supported dtype set (u8/u16, f16/f32/f64) and must be rejected.
+    src = cvcuda.Tensor((1, 16, 16, 3), np.int32, "NHWC")
     with pytest.raises(RuntimeError):
         cvcuda.posterize(src, 4)
+
+
+@pytest.mark.parametrize("dtype", [np.float16, np.float32, np.float64])
+@pytest.mark.parametrize("bits", [0, 1, 4, 8])
+def test_op_posterize_float_quantizes(dtype, bits):
+    # A float image has no bit layout to keep, so it is quantized into 2**bits levels of [0, 1].
+    h_src = np.linspace(0.0, 1.0, 16 * 16 * 3, dtype=dtype).reshape(1, 16, 16, 3)
+    src = util.to_cvcuda_tensor(h_src, "NHWC")
+
+    got = util.to_cpu_numpy_buffer(cvcuda.posterize(src, bits).cuda())
+
+    levels = float(1 << bits)
+    expected = (
+        np.clip(np.floor(h_src.astype(np.float64) * levels), 0, levels - 1) / levels
+    ).astype(dtype)
+    np.testing.assert_array_equal(got, expected)
+
+
+@pytest.mark.parametrize("bits", [-1, 9])
+def test_op_posterize_float_rejects_bits_out_of_range(bits):
+    # The float range is the reference's [0, 8], whatever the type's width.
+    src = cvcuda.Tensor((1, 16, 16, 3), np.float32, "NHWC")
+    with pytest.raises(RuntimeError):
+        cvcuda.posterize(src, bits)

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,24 +25,20 @@
 #define CVCUDA_PRIV_CUSTOM_CROP_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <nvcv/Rect.h>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
 class CustomCrop final : public IOperator
 {
 public:
-    explicit CustomCrop();
+    CustomCrop() = default;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVRectI &cropRect) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::CustomCrop> m_legacyOp;
 };
 
 } // namespace cvcuda::priv

@@ -132,6 +132,79 @@ def test_op_stack_into_rejects_mismatched_output_metadata(input_kind, dst_args):
         cvcuda.stack_into(dst, input_tensors)
 
 
+@pytest.mark.parametrize(
+    "input_kind, mismatched_args",
+    [
+        ("list", ((1, 4, 6, 3), cvcuda.Type.U8, "NHWC")),
+        ("list", ((1, 4, 5, 3), cvcuda.Type.U8, "NCHW")),
+        ("list", ((1, 4, 5, 3), cvcuda.Type.F32, "NHWC")),
+        ("tensor_batch", ((1, 4, 6, 3), cvcuda.Type.U8, "NHWC")),
+    ],
+    ids=["list-shape", "list-layout-family", "list-dtype", "tensor-batch-shape"],
+)
+@pytest.mark.parametrize("into", [False, True], ids=["allocating", "into"])
+def test_op_stack_rejects_mixed_input_metadata(input_kind, mismatched_args, into):
+    tensors = [
+        cvcuda.Tensor((1, 4, 5, 3), cvcuda.Type.U8, "NHWC"),
+        cvcuda.Tensor(*mismatched_args),
+    ]
+    if input_kind == "tensor_batch":
+        inputs = cvcuda.TensorBatch(len(tensors))
+        inputs.pushback(tensors)
+    else:
+        inputs = tensors
+
+    with pytest.raises(RuntimeError, match="same sample shape, layout family"):
+        if into:
+            dst = cvcuda.Tensor((2, 4, 5, 3), cvcuda.Type.U8, "NHWC")
+            cvcuda.stack_into(dst, inputs)
+        else:
+            cvcuda.stack(inputs)
+
+
+def test_op_stack_into_rejects_mismatched_rank3_tensor_batch_shape():
+    inputs = cvcuda.TensorBatch(2)
+    inputs.pushback(
+        [
+            cvcuda.Tensor((4, 5, 3), cvcuda.Type.U8, "HWC"),
+            cvcuda.Tensor((4, 6, 3), cvcuda.Type.U8, "HWC"),
+        ]
+    )
+    dst = cvcuda.Tensor((2, 4, 5, 3), cvcuda.Type.U8, "NHWC")
+
+    with pytest.raises(
+        RuntimeError, match="Input tensors must have the same H, W, and C"
+    ):
+        cvcuda.stack_into(dst, inputs)
+
+
+@pytest.mark.parametrize("input_kind", ["list", "tensor_batch"])
+@pytest.mark.parametrize(
+    "dst_shape",
+    [(1, 5, 5, 3), (1, 4, 6, 3), (1, 4, 5, 4)],
+    ids=["dim-1", "dim-2", "dim-3"],
+)
+def test_op_stack_into_rejects_mismatched_output_shape(input_kind, dst_shape):
+    src = cvcuda.Tensor((1, 4, 5, 3), cvcuda.Type.U8, "NHWC")
+    if input_kind == "tensor_batch":
+        inputs = cvcuda.TensorBatch(1)
+        inputs.pushback(src)
+    else:
+        inputs = [src]
+
+    dst = cvcuda.Tensor(dst_shape, cvcuda.Type.U8, "NHWC")
+    with pytest.raises(RuntimeError, match="Invalid output tensor shape"):
+        cvcuda.stack_into(dst, inputs)
+
+
+def test_op_stack_into_rejects_empty_tensor_batch():
+    inputs = cvcuda.TensorBatch(1)
+    dst = cvcuda.Tensor((1, 4, 5, 3), cvcuda.Type.U8, "NHWC")
+
+    with pytest.raises(RuntimeError, match="Invalid input tensor batch: empty batch"):
+        cvcuda.stack_into(dst, inputs)
+
+
 globals().update(
     cv_tools.make_op_tests(
         name="stack",

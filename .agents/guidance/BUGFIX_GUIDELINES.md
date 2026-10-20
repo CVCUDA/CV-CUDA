@@ -4,7 +4,7 @@
 # CV-CUDA Bug Fix Guidelines
 
 How to reproduce and patch a bug in CV-CUDA. These guidelines apply to both
-humans and AI agents and are derived from the project's recent bug-fix PRs.
+humans and AI agents.
 
 The single most important rule:
 
@@ -42,8 +42,7 @@ The test that fails is often *not* the test with the bug. A producer
 test corrupts shared GPU state — context, a cached buffer, a stream
 that swallows its own error in a `noexcept` destructor — and the next
 test in pytest order is the one that reports `cudaErrorIllegalAddress`,
-an OOB, or a wrong result. Investigating the reporter directly burns
-days. Before forming a hypothesis:
+an OOB, or a wrong result. Before forming a hypothesis:
 
 - **Identify the test that ran immediately before the failure.** Pull
   the prior test name and parametrization from the CI log. When the
@@ -94,9 +93,7 @@ make it deterministic on that hardware.
 
 ## 3. Get failure evidence from CI on the test-only commit
 
-**Reproduce the bug locally before pushing.** Each CI run on this repo
-costs roughly 50–70 minutes of GPU/cluster time; treating CI as an
-interactive debugger is expensive and antisocial. Produce the failure
+**Reproduce the bug locally before pushing.** Produce the failure
 on a developer machine first, or document the exact hardware constraint
 that prevents this (multi-GPU topology, specific SKU, sanitizer-only)
 and capture local evidence in the commit body.
@@ -109,10 +106,8 @@ failure that:
 - becomes the green CI run that proves the fix works once the fix commit
   is added on top.
 
-Do not loop CI to chase a bug. Pushing instrumentation tweaks, sanitizer
-configuration experiments, or speculative fixes hoping the matrix will
-catch the bug for you wastes cluster time and obscures the test/fix
-pair the PR is meant to demonstrate. If a CI run surfaces evidence local
+Do not loop CI with instrumentation, sanitizer experiments, or
+speculative fixes. If a CI run surfaces evidence local
 runs missed, extract that evidence and reproduce locally before the
 next push.
 
@@ -120,8 +115,7 @@ next push.
 instrumentation commits made while reproducing a bug belong on a
 separate `fix/<topic>` branch off the parent, not on the user's
 existing MR or optimization branch — even when the failure fired on
-that branch. The user's branch is the artifact under review;
-debugging detritus on it muddies the diff and the history.
+that branch.
 
 Conventions used in recent PRs:
 
@@ -141,8 +135,6 @@ say so in the commit body and capture local evidence (sanitizer output,
 ## 4. Patch the bug
 
 The fix commit goes on top of the test commit on the same branch / same PR.
-
-Guidance gathered from recent fixes:
 
 - **Validate user input at the C API boundary**, not inside a CUDA kernel.
   The codebase has two distinct validation idioms; use whichever matches
@@ -176,14 +168,10 @@ Guidance gathered from recent fixes:
   `doIsCompatible`, and `payloadSize` consistently — they jointly define
   cache identity. Strict equality is the safe default unless an op
   explicitly tolerates oversized reuse.
-- **Don't add comments that paraphrase the diff.** The fix's *why* belongs
-  in the commit message; the code itself should be self-explanatory after
-  the change.
 
 ### Sibling search
 
-Almost every fix in the recent history had at least one sibling site that
-needed the same patch. Before declaring a fix complete, grep for:
+Before declaring a fix complete, grep for sibling sites that need the same patch:
 
 - The same operator's tensor and `_var_shape` paths.
 - The same operator's `legacy/` and non-legacy implementations.
@@ -213,14 +201,14 @@ Required for any non-trivial fix:
 - **Multi-GPU bugs:** validate on multi-GPU hardware (or document that you
   could not, with a CI link that does).
 
-For bug fixes that touch operators with benchmarks, sanity-check that the
-fix doesn't regress benchmark numbers materially (per-operator regression
-gating is wired into CI; respect its verdict).
+For bug fixes that touch operators with benchmarks, run the full `basic,advanced`
+surface for every affected operator against the committed baselines, per
+`bench/README.md`. Per-operator regression gating is wired into CI; respect its
+verdict.
 
 ### Tooling caveats that produce false signals
 
-Local validation is only useful if the tooling is honest. The following
-caveats have masked real fixes or faked regressions on this repo:
+Known false-signal sources:
 
 - **Reinstall the Python wheel after every C++ rebuild.** Python tests
   and benchmarks resolve `libcvcuda.so` via the installed wheel's
@@ -310,8 +298,7 @@ for behavior-changing patches and `test:` for the matching repro.
 
 ## 8. Debugging tooling
 
-Tools that have repeatedly pinned amorphous failures to specific bugs on
-this codebase. Pick by symptom.
+Pick by symptom.
 
 - **`compute-sanitizer --tool memcheck <cmd>`** — Catches GPU OOB,
   uninitialized memory, and misaligned access. For context-poisoning

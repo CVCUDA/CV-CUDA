@@ -16,18 +16,13 @@
  */
 
 #include "../WorkspaceCache.hpp"
+#include "NativeBinding.hpp"
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpHQResize.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/python/ImageBatchVarShape.hpp>
-#include <nvcv/python/ImageFormat.hpp>
-#include <nvcv/python/ResourceGuard.hpp>
-#include <nvcv/python/Stream.hpp>
-#include <nvcv/python/Tensor.hpp>
-#include <nvcv/python/TensorBatch.hpp>
 
 #include <array>
 #include <mutex>
@@ -40,7 +35,13 @@ namespace cvcudapy {
 
 namespace {
 
-using Roi  = pybind11::tuple;
+using native::Image;
+using native::ImageBatchVarShape;
+using native::Stream;
+using native::Tensor;
+using native::TensorBatch;
+
+using Roi  = nanobind::tuple;
 using Rois = std::vector<Roi>;
 
 class HQResizeError : public std::runtime_error
@@ -99,11 +100,11 @@ inline void ParseRoi(HQResizeRoiF &parsedRoi, const Roi &roi, int ndim)
     }
     for (int d = 0; d < ndim; d++)
     {
-        parsedRoi.lo[d] = roi[d].cast<float>();
+        parsedRoi.lo[d] = py::cast<float>(roi[d]);
     }
     for (int d = 0; d < ndim; d++)
     {
-        parsedRoi.hi[d] = roi[ndim + d].cast<float>();
+        parsedRoi.hi[d] = py::cast<float>(roi[ndim + d]);
     }
 }
 
@@ -178,7 +179,7 @@ inline bool IsPlanarTensorBatchLayout(const nvcv::TensorLayout &layout)
 }
 
 template<typename Visitor>
-bool VisitExpandedTensorBatchShapes(const TensorBatch &batch, int resizeNDim, const nvcv::TensorLayout &layout,
+bool VisitExpandedTensorBatchShapes(const nvcv::TensorBatch &batch, int resizeNDim, const nvcv::TensorLayout &layout,
                                     Visitor &&visitor)
 {
     const bool planar = IsPlanarTensorBatchLayout(layout);
@@ -234,7 +235,7 @@ public:
         }
     }
 
-    explicit BatchShapesHelper(const TensorBatch &batch)
+    explicit BatchShapesHelper(const nvcv::TensorBatch &batch)
         : m_ndim(batch.layout().find('D') >= 0 ? 3 : 2)
         , m_numChannels(-1)
         , m_layout(batch.layout())
@@ -274,7 +275,7 @@ public:
         return {size ? m_shapes.data() : nullptr, size, m_ndim, m_numChannels};
     }
 
-    bool Matches(const TensorBatch &batch) const
+    bool Matches(const nvcv::TensorBatch &batch) const
     {
         if (batch.numTensors() != m_numTensors || batch.layout() != m_layout || batch.dtype() != m_dtype)
         {
@@ -339,7 +340,7 @@ public:
         }
     }
 
-    bool Matches(const TensorBatch &in, const TensorBatch &out, NVCVInterpolationType minInterpolation,
+    bool Matches(const nvcv::TensorBatch &in, const nvcv::TensorBatch &out, NVCVInterpolationType minInterpolation,
                  NVCVInterpolationType magInterpolation, bool antialias, HQResizeRoisF rois) const
     {
         if (minInterpolation != m_minInterpolation || magInterpolation != m_magInterpolation || antialias != m_antialias
@@ -378,8 +379,8 @@ private:
     cvcuda::WorkspaceRequirements m_requirements;
 };
 
-inline Shape ResizedTensorShape(const nvcv::TensorLayout &srcLayout, const nvcv::TensorShape &srcShape,
-                                const Shape &outShape)
+inline nvcv::TensorShape ResizedTensorShape(const nvcv::TensorLayout &srcLayout, const nvcv::TensorShape &srcShape,
+                                            const Shape &outShape)
 {
     auto resizeNDim = static_cast<int>(outShape.size());
     if (resizeNDim != 2 && resizeNDim != 3)
@@ -408,10 +409,10 @@ inline Shape ResizedTensorShape(const nvcv::TensorLayout &srcLayout, const nvcv:
     std::array<int, 3>            shapeArg       = {};
     for (int d = 0; d < resizeNDim; d++)
     {
-        shapeArg[d] = outShape[d].cast<int>();
+        shapeArg[d] = py::cast<int>(outShape[d]);
     }
 
-    Shape resizedShape(srcShape.rank());
+    std::vector<int64_t> resizedShape(srcShape.rank());
     for (int i = 0; i < srcShape.rank(); i++)
     {
         resizedShape[i] = srcShape[i];
@@ -429,10 +430,10 @@ inline Shape ResizedTensorShape(const nvcv::TensorLayout &srcLayout, const nvcv:
         }
         resizedShape[axis] = shapeArg[d];
     }
-    return resizedShape;
+    return {resizedShape.data(), static_cast<int32_t>(resizedShape.size()), srcLayout};
 }
 
-class PyOpHQResize : public nvcvpy::Container // NOSONAR: operator wrappers share the Python cache hierarchy.
+class PyOpHQResize : public OperatorResource
 {
 public:
     // Define a Key class to be used by the cache to fetch similar items for potential reuse.
@@ -460,13 +461,11 @@ public:
         int m_deviceId;
     };
 
-    explicit PyOpHQResize(int deviceId)
-        : m_key(deviceId)
-    {
-    }
+    explicit PyOpHQResize(int /*deviceId*/) {}
 
-    void submit(cudaStream_t stream, const Tensor &in, const Tensor &out, const NVCVInterpolationType minInterpolation,
-                const NVCVInterpolationType magInterpolation, bool antialias, const HQResizeRoiF *roi) const
+    void submit(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation,
+                bool antialias, const HQResizeRoiF *roi) const
     {
         if (in.layout() != out.layout())
         {
@@ -512,7 +511,7 @@ public:
         m_op(stream, ws.get(), in, out, minInterpolation, magInterpolation, antialias, rois);
     }
 
-    void submit(cudaStream_t stream, const TensorBatch &in, const TensorBatch &out,
+    void submit(cudaStream_t stream, const nvcv::TensorBatch &in, const nvcv::TensorBatch &out,
                 const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation,
                 bool antialias, const HQResizeRoisF rois) const
     {
@@ -557,26 +556,7 @@ public:
         m_op(stream, ws.get(), in, out, minInterpolation, magInterpolation, antialias, rois);
     }
 
-    // Required override to get the py object container.
-    py::object container() const override
-    {
-        return py::reinterpret_borrow<py::object>(this->ptr());
-    }
-
-    // Required override to get the key as the base interface class.
-    const nvcvpy::IKey &key() const override
-    {
-        return m_key;
-    }
-
-    static std::shared_ptr<nvcvpy::ICacheItem> fetch(std::vector<std::shared_ptr<nvcvpy::ICacheItem>> &cache)
-    {
-        assert(!cache.empty());
-        return cache[0];
-    }
-
 private:
-    Key                                                 m_key;
     cvcuda::HQResize                                    m_op;
     mutable std::mutex                                  m_tensorBatchRequirementsMutex;
     mutable std::optional<TensorBatchRequirementsCache> m_tensorBatchRequirements;
@@ -600,15 +580,15 @@ auto CreatePyOpHQResize()
     return CreateOperatorEx<PyOpHQResize>(deviceId);
 }
 
-Tensor TensorHQResizeInto(Tensor &dst, Tensor &src, std::optional<bool> antialias, std::optional<Roi> maybeRoi,
-                          std::optional<NVCVInterpolationType> interpolation,
-                          std::optional<NVCVInterpolationType> minInterpolation,
-                          std::optional<NVCVInterpolationType> magInterpolation, std::optional<Stream> pstream)
+Tensor &TensorHQResizeInto(Tensor &dst, Tensor &src, std::optional<bool> antialias, std::optional<Roi> maybeRoi,
+                           std::optional<NVCVInterpolationType> interpolation,
+                           std::optional<NVCVInterpolationType> minInterpolation,
+                           std::optional<NVCVInterpolationType> magInterpolation, std::optional<Stream *> pstream)
 {
-    Stream stream = pstream ? *pstream : Stream::Current();
-    auto   op     = CreatePyOpHQResize();
+    Stream &stream = native::GetStream(pstream);
+    auto    op     = CreatePyOpHQResize();
 
-    bool                hasDepth   = src.layout().find('D') >= 0;
+    bool                hasDepth   = src.impl().layout().find('D') >= 0;
     int                 resizeNDim = hasDepth ? 3 : 2;
     RoiHelper           parsedRoi(maybeRoi, resizeNDim);
     const HQResizeRoiF *roi = parsedRoi.NonOwningHandle().roi;
@@ -620,31 +600,33 @@ Tensor TensorHQResizeInto(Tensor &dst, Tensor &src, std::optional<bool> antialia
     RunGuard(op, src, dst, stream,
              [&op, &stream, &src, &dst, &minInterpolationArg, &magInterpolationArg, &antialias, &roi]()
              {
-                 op->submit(stream.cudaHandle(), src, dst, minInterpolationArg, magInterpolationArg,
+                 op->submit(stream.handle(), src.impl(), dst.impl(), minInterpolationArg, magInterpolationArg,
                             antialias.value_or(false), roi);
              });
     return dst;
 }
 
-Tensor TensorHQResize(Tensor &src, const Shape &outShape, std::optional<bool> antialias, std::optional<Roi> roi,
-                      std::optional<NVCVInterpolationType> interpolation,
-                      std::optional<NVCVInterpolationType> minInterpolation,
-                      std::optional<NVCVInterpolationType> magInterpolation, std::optional<Stream> pstream)
+std::shared_ptr<Tensor> TensorHQResize(Tensor &src, const Shape &outShape, std::optional<bool> antialias,
+                                       std::optional<Roi> roi, std::optional<NVCVInterpolationType> interpolation,
+                                       std::optional<NVCVInterpolationType> minInterpolation,
+                                       std::optional<NVCVInterpolationType> magInterpolation,
+                                       std::optional<Stream *>              pstream)
 {
-    auto   resizedShape = ResizedTensorShape(src.layout(), src.shape(), outShape);
-    Tensor dst          = Tensor::Create(resizedShape, src.dtype(), src.layout());
-    return TensorHQResizeInto(dst, src, antialias, roi, interpolation, minInterpolation, magInterpolation, pstream);
+    auto resizedShape = ResizedTensorShape(src.impl().layout(), src.impl().shape(), outShape);
+    auto dst          = native::CreateTensor(resizedShape, src.impl().dtype());
+    TensorHQResizeInto(*dst, src, antialias, roi, interpolation, minInterpolation, magInterpolation, pstream);
+    return dst;
 }
 
-ImageBatchVarShape VarShapeHQResizeInto(ImageBatchVarShape &dst, const ImageBatchVarShape &src,
-                                        std::optional<bool> antialias, const std::optional<Rois> &roi,
-                                        std::optional<NVCVInterpolationType> interpolation,
-                                        std::optional<NVCVInterpolationType> minInterpolation,
-                                        std::optional<NVCVInterpolationType> magInterpolation,
-                                        std::optional<Stream>                pstream)
+ImageBatchVarShape &VarShapeHQResizeInto(ImageBatchVarShape &dst, ImageBatchVarShape &src,
+                                         std::optional<bool> antialias, const std::optional<Rois> &roi,
+                                         std::optional<NVCVInterpolationType> interpolation,
+                                         std::optional<NVCVInterpolationType> minInterpolation,
+                                         std::optional<NVCVInterpolationType> magInterpolation,
+                                         std::optional<Stream *>              pstream)
 {
-    Stream stream = pstream ? *pstream : Stream::Current();
-    auto   op     = CreatePyOpHQResize();
+    Stream &stream = native::GetStream(pstream);
+    auto    op     = CreatePyOpHQResize();
 
     RoiHelper             parsedRoi(roi, 2);
     NVCVInterpolationType minInterpolationArg;
@@ -654,18 +636,19 @@ ImageBatchVarShape VarShapeHQResizeInto(ImageBatchVarShape &dst, const ImageBatc
     RunGuard(op, src, dst, stream,
              [&op, &stream, &src, &dst, &minInterpolationArg, &magInterpolationArg, &antialias, &parsedRoi]()
              {
-                 op->submit(stream.cudaHandle(), src, dst, minInterpolationArg, magInterpolationArg,
+                 op->submit(stream.handle(), src.impl(), dst.impl(), minInterpolationArg, magInterpolationArg,
                             antialias.value_or(false), parsedRoi.NonOwningHandle());
              });
     return dst;
 }
 
-ImageBatchVarShape VarShapeHQResize(ImageBatchVarShape &src, const std::vector<std::tuple<int, int>> &outShape,
-                                    std::optional<bool> antialias, const std::optional<Rois> &roi,
-                                    std::optional<NVCVInterpolationType> interpolation,
-                                    std::optional<NVCVInterpolationType> minInterpolation,
-                                    std::optional<NVCVInterpolationType> magInterpolation,
-                                    std::optional<Stream>                pstream)
+std::shared_ptr<ImageBatchVarShape> VarShapeHQResize(ImageBatchVarShape                      &src,
+                                                     const std::vector<std::tuple<int, int>> &outShape,
+                                                     std::optional<bool> antialias, const std::optional<Rois> &roi,
+                                                     std::optional<NVCVInterpolationType> interpolation,
+                                                     std::optional<NVCVInterpolationType> minInterpolation,
+                                                     std::optional<NVCVInterpolationType> magInterpolation,
+                                                     std::optional<Stream *>              pstream)
 {
     auto out = ImageBatchVarShape::Create(src.capacity());
 
@@ -677,26 +660,28 @@ ImageBatchVarShape VarShapeHQResize(ImageBatchVarShape &src, const std::vector<s
             "or its length must match the number of input samples.");
     }
 
-    for (int i = 0; i < src.numImages(); ++i)
+    auto inputImage = src.begin();
+    for (int i = 0; i < src.numImages(); ++i, ++inputImage)
     {
         auto [size0, size1] = outShape[numOutSizes == 1 ? 0 : i];
-        auto image          = Image::Create({size1, size0}, src[i].format());
-        out.pushBackImage(image);
+        auto image          = Image::Create({size1, size0}, (*inputImage)->format(), 0);
+        out->pushBack(*image);
     }
 
-    return VarShapeHQResizeInto(out, src, antialias, roi, interpolation, minInterpolation, magInterpolation, pstream);
+    VarShapeHQResizeInto(*out, src, antialias, roi, interpolation, minInterpolation, magInterpolation, pstream);
+    return out;
 }
 
-TensorBatch TensorBatchHQResizeInto(TensorBatch &dst, const TensorBatch &src, std::optional<bool> antialias,
-                                    const std::optional<Rois> &roi, std::optional<NVCVInterpolationType> interpolation,
-                                    std::optional<NVCVInterpolationType> minInterpolation,
-                                    std::optional<NVCVInterpolationType> magInterpolation,
-                                    std::optional<Stream>                pstream)
+TensorBatch &TensorBatchHQResizeInto(TensorBatch &dst, TensorBatch &src, std::optional<bool> antialias,
+                                     const std::optional<Rois> &roi, std::optional<NVCVInterpolationType> interpolation,
+                                     std::optional<NVCVInterpolationType> minInterpolation,
+                                     std::optional<NVCVInterpolationType> magInterpolation,
+                                     std::optional<Stream *>              pstream)
 {
-    Stream stream = pstream ? *pstream : Stream::Current();
-    auto   op     = CreatePyOpHQResize();
+    Stream &stream = native::GetStream(pstream);
+    auto    op     = CreatePyOpHQResize();
 
-    bool      hasDepth   = src.layout().find('D') >= 0;
+    bool      hasDepth   = src.impl().layout().find('D') >= 0;
     int       resizeNDim = hasDepth ? 3 : 2;
     RoiHelper parsedRoi(roi, resizeNDim);
 
@@ -707,16 +692,18 @@ TensorBatch TensorBatchHQResizeInto(TensorBatch &dst, const TensorBatch &src, st
     RunGuard(op, src, dst, stream,
              [&op, &stream, &src, &dst, &minInterpolationArg, &magInterpolationArg, &antialias, &parsedRoi]()
              {
-                 op->submit(stream.cudaHandle(), src, dst, minInterpolationArg, magInterpolationArg,
+                 op->submit(stream.handle(), src.impl(), dst.impl(), minInterpolationArg, magInterpolationArg,
                             antialias.value_or(false), parsedRoi.NonOwningHandle());
              });
     return dst;
 }
 
-TensorBatch TensorBatchHQResize(TensorBatch &src, const std::vector<Shape> &outShape, std::optional<bool> antialias,
-                                const std::optional<Rois> &roi, std::optional<NVCVInterpolationType> interpolation,
-                                std::optional<NVCVInterpolationType> minInterpolation,
-                                std::optional<NVCVInterpolationType> magInterpolation, std::optional<Stream> pstream)
+std::shared_ptr<TensorBatch> TensorBatchHQResize(TensorBatch &src, const std::vector<Shape> &outShape,
+                                                 std::optional<bool> antialias, const std::optional<Rois> &roi,
+                                                 std::optional<NVCVInterpolationType> interpolation,
+                                                 std::optional<NVCVInterpolationType> minInterpolation,
+                                                 std::optional<NVCVInterpolationType> magInterpolation,
+                                                 std::optional<Stream *>              pstream)
 {
     auto out = TensorBatch::Create(src.numTensors());
 
@@ -731,21 +718,21 @@ TensorBatch TensorBatchHQResize(TensorBatch &src, const std::vector<Shape> &outS
     for (int i = 0; i < src.numTensors(); ++i)
     {
         auto        sampleShape  = outShape[numOutSizes == 1 ? 0 : i];
-        const auto &inSample     = src[i];
+        const auto &inSample     = src.at(i)->impl();
         auto        resizedShape = ResizedTensorShape(inSample.layout(), inSample.shape(), sampleShape);
-        Tensor      dst          = Tensor::Create(resizedShape, src.dtype(), src.layout());
-        out.pushBackTensor(dst);
+        auto        dst          = native::CreateTensor(resizedShape, src.impl().dtype());
+        out->pushBack(*dst);
     }
 
-    return TensorBatchHQResizeInto(out, src, antialias, roi, interpolation, minInterpolation, magInterpolation,
-                                   pstream);
+    TensorBatchHQResizeInto(*out, src, antialias, roi, interpolation, minInterpolation, magInterpolation, pstream);
+    return out;
 }
 
 } // namespace
 
-void ExportOpHQResize(py::module &m)
+void ExportOpHQResize(py::module_ &m)
 {
-    using namespace pybind11::literals;
+    using namespace nanobind::literals;
 
     m.def("hq_resize", NvtxTrace("cvcuda.hq_resize", &TensorHQResize), "src"_a, "out_size"_a, py::kw_only(),
           "antialias"_a = false, "roi"_a = nullptr, "interpolation"_a = nullptr, "min_interpolation"_a = nullptr,
@@ -831,7 +818,7 @@ void ExportOpHQResize(py::module &m)
     )pbdoc");
     m.def("hq_resize_into", NvtxTrace("cvcuda.hq_resize_into", &TensorHQResizeInto), "dst"_a, "src"_a, py::kw_only(),
           "antialias"_a = false, "roi"_a = nullptr, "interpolation"_a = nullptr, "min_interpolation"_a = nullptr,
-          "mag_interpolation"_a = nullptr, "stream"_a = nullptr, R"pbdoc(
+          "mag_interpolation"_a = nullptr, "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the HQ Resize operation on the given cuda stream. The operator
         supports resampling for 2D (images) and 3D volumetric samples.
 
@@ -860,7 +847,7 @@ void ExportOpHQResize(py::module &m)
     )pbdoc");
     m.def("hq_resize_into", NvtxTrace("cvcuda.hq_resize_into", &VarShapeHQResizeInto), "dst"_a, "src"_a, py::kw_only(),
           "antialias"_a = false, "roi"_a = nullptr, "interpolation"_a = nullptr, "min_interpolation"_a = nullptr,
-          "mag_interpolation"_a = nullptr, "stream"_a = nullptr, R"pbdoc(
+          "mag_interpolation"_a = nullptr, "stream"_a = nullptr, py::return_value_policy::reference, R"pbdoc(
         Executes the HQ Resize operation on the given cuda stream.
 
 
@@ -888,7 +875,8 @@ void ExportOpHQResize(py::module &m)
     )pbdoc");
     m.def("hq_resize_into", NvtxTrace("cvcuda.hq_resize_into", &TensorBatchHQResizeInto), "dst"_a, "src"_a,
           py::kw_only(), "antialias"_a = false, "roi"_a = nullptr, "interpolation"_a = nullptr,
-          "min_interpolation"_a = nullptr, "mag_interpolation"_a = nullptr, "stream"_a = nullptr, R"pbdoc(
+          "min_interpolation"_a = nullptr, "mag_interpolation"_a = nullptr, "stream"_a = nullptr,
+          py::return_value_policy::reference, R"pbdoc(
         Executes the HQ Resize operation on the given cuda stream. The operator
         supports resampling for 2D (images) and 3D volumetric samples.
 

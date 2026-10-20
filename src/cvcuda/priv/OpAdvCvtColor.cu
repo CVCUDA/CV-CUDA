@@ -18,6 +18,7 @@
 #include "CudaDeviceUtils.hpp"
 #include "Nvtx.hpp"
 #include "OpAdvCvtColor.hpp"
+#include "TensorAccessValidation.hpp"
 
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
 #include <cvcuda/cuda_tools/TensorWrap.hpp>
@@ -68,6 +69,8 @@ struct YUV2RGBConstants
     const int V2R;
 };
 
+static constexpr int yuv_shift = 14;
+
 /*
  * YUV conversion formula
  * Y  = R2YF * r * + G2YF * g + B2YF * b
@@ -84,10 +87,11 @@ struct YUV2RGBConstants
 // static constexpr float R2VF_601 = 0.713266762;  // 1.0f/1.402f Cr/V
 
 static constexpr int R2Y_601 = 4899;  // = R2YF*16384
-static constexpr int G2Y_601 = 9671;  // = G2YF*16384
+static constexpr int G2Y_601 = 9617;  // = G2YF*16384
 static constexpr int B2Y_601 = 1868;  // = B2YF*16384
 static constexpr int B2U_601 = 9246;  // = B2UF*16384 Cb
 static constexpr int R2V_601 = 11686; // = R2VF*16384 Cr
+static_assert(R2Y_601 + G2Y_601 + B2Y_601 == (1 << yuv_shift), "BT.601 luma row must be normalized");
 
 // YUV > RGB conversion (inverse of the forward matrix)
 // static constexpr float V2RF_601 = 1.402f;
@@ -101,17 +105,18 @@ static constexpr int V2G_601 = -11698; // = V2GF*16384
 static constexpr int U2B_601 = 29032;  // = U2BF*16384
 
 // Values per: https://www.itu.int/rec/R-REC-BT.709
-// static constexpr float R2YF_709 = 0.2126f;      //Kr 601
-// static constexpr float G2YF_709 = 0.7152f;      //Kg 601
-// static constexpr float B2YF_709 = 0.0772f;      //Kb 601
+// static constexpr float R2YF_709 = 0.2126f;      //Kr 709
+// static constexpr float G2YF_709 = 0.7152f;      //Kg 709
+// static constexpr float B2YF_709 = 0.0722f;      //Kb 709
 // static constexpr float B2UF_709 = 0.538909248f; //1.0f/1.8556f Cb/U
 // static constexpr float R2VF_709 = 0.63500127f;  // 1.0f/1.5748f Cr/V
 
 static constexpr int R2Y_709 = 3483;  // = R2YF*16384
 static constexpr int G2Y_709 = 11718; // = G2YF*16384
-static constexpr int B2Y_709 = 1265;  // = B2YF*16384
+static constexpr int B2Y_709 = 1183;  // = B2YF*16384
 static constexpr int B2U_709 = 8829;  // = B2UF*16384 Cb
 static constexpr int R2V_709 = 10404; // = R2VF*16384 Cr
+static_assert(R2Y_709 + G2Y_709 + B2Y_709 == (1 << yuv_shift), "BT.709 luma row must be normalized");
 
 // YUV > RGB conversion (inverse of the forward matrix)
 // static constexpr float V2RF_709 = 1.5748f;
@@ -125,9 +130,9 @@ static constexpr int V2G_709 = -7670; // = V2GF*16384
 static constexpr int U2B_709 = 30402; // = U2BF*16384
 
 // Values per: https://www.itu.int/rec/R-REC-BT.2020
-// static constexpr float R2YF_2020 = 0.2627f;      //Kr 601
-// static constexpr float G2YF_2020 = 0.6780f;      //Kg 601
-// static constexpr float B2YF_2020 = 0.0593f;      //Kb 601
+// static constexpr float R2YF_2020 = 0.2627f;      //Kr 2020
+// static constexpr float G2YF_2020 = 0.6780f;      //Kg 2020
+// static constexpr float B2YF_2020 = 0.0593f;      //Kb 2020
 // static constexpr float B2UF_2020 = 0.531519082f; //1.0f/1.8814f Cb/U
 // static constexpr float R2VF_2020 = 0.678150007f; //1.0f/1.4746f // Cr/V
 
@@ -136,6 +141,7 @@ static constexpr int G2Y_2020 = 11108; // = G2YF*16384
 static constexpr int B2Y_2020 = 972;   // = B2YF*16384
 static constexpr int B2U_2020 = 8708;  // = B2UF*16384 Cb
 static constexpr int R2V_2020 = 11111; // = R2VF*16384 Cr
+static_assert(R2Y_2020 + G2Y_2020 + B2Y_2020 == (1 << yuv_shift), "BT.2020 luma row must be normalized");
 
 // YUV > RGB conversion (inverse of the forward matrix)
 // static constexpr float V2RF_2020 = 1.4746f;
@@ -158,7 +164,6 @@ YUV2RGBConstants yuv2rgb_709 = {U2B_709, U2G_709, V2G_709, V2R_709};
 RGB2YUVConstants rgb2yuv_2020 = {R2Y_2020, G2Y_2020, B2Y_2020, B2U_2020, R2V_2020};
 YUV2RGBConstants yuv2rgb_2020 = {U2B_2020, U2G_2020, V2G_2020, V2R_2020};
 
-static constexpr int yuv_shift = 14;
 #define CV_DESCALE(x, n) (((x) + (1 << ((n)-1))) >> (n))
 
 template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
@@ -600,10 +605,19 @@ static bool isSupportedConversionCode(NVCVColorConversionCode code)
     }
 }
 
+// AdvCvtColor has always used full-sample-range U8 arithmetic, so _ER names the range explicitly
+// while selecting the same coefficient family as the corresponding compatibility base spec.
+// Canonicalizing only the range bit keeps exact-spec validation below: specs with the same encoding but
+// different transfer functions or chroma locations remain unsupported.
+static NVCVColorSpec canonicalizeRangeSpec(nvcv::ColorSpec spec)
+{
+    return static_cast<NVCVColorSpec>(spec.colorRange(nvcv::ColorRange::LIMITED));
+}
+
 static bool isSupportedColorSpec(nvcv::ColorSpec spec)
 {
     //may need to be extended to check for conversion type
-    switch (static_cast<NVCVColorSpec>(spec))
+    switch (canonicalizeRangeSpec(spec))
     {
     case NVCV_COLOR_SPEC_BT601:
     case NVCV_COLOR_SPEC_BT709:
@@ -675,7 +689,7 @@ static bool checkInputOutputTensors(NVCVColorConversionCode code, const nvcv::Te
 
 static const RGB2YUVConstants &getRGB2YUVCooef(nvcv::ColorSpec spec)
 {
-    switch (static_cast<NVCVColorSpec>(spec))
+    switch (canonicalizeRangeSpec(spec))
     {
     case NVCV_COLOR_SPEC_BT601:
         return rgb2yuv_601;
@@ -690,7 +704,7 @@ static const RGB2YUVConstants &getRGB2YUVCooef(nvcv::ColorSpec spec)
 
 static const YUV2RGBConstants &getYUV2RGBCooef(nvcv::ColorSpec spec)
 {
-    switch (static_cast<NVCVColorSpec>(spec))
+    switch (canonicalizeRangeSpec(spec))
     {
     case NVCV_COLOR_SPEC_BT601:
         return yuv2rgb_601;
@@ -725,19 +739,8 @@ void AdvCvtColor::operator()(cudaStream_t stream, const nvcv::Tensor &in, const 
                              NVCVColorConversionCode code, nvcv::ColorSpec spec) const
 {
     CVCUDA_NVTX_RANGE("cvcuda::AdvCvtColor::operator()[Tensor]");
-    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
-    if (inData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must be cuda-accessible, pitch-linear tensor");
-    }
-
-    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
-    if (outData == nullptr)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Output must be cuda-accessible, pitch-linear tensor");
-    }
+    auto inData  = RequireCudaTensor(in, "Input");
+    auto outData = RequireCudaTensor(out, "Output");
 
     if (inData->dtype() != nvcv::TYPE_U8)
     {

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,26 +25,22 @@
 #define CVCUDA_PRIV_CONV2D_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <nvcv/BorderType.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
 class Conv2D final : public IOperator
 {
 public:
-    explicit Conv2D();
+    explicit Conv2D() = default;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                     const nvcv::ImageBatchVarShape &kernel, const nvcv::Tensor &kernelAnchor,
                     NVCVBorderType borderMode) const;
-
-private:
-    std::unique_ptr<nvcv::legacy::cuda_op::Conv2DVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

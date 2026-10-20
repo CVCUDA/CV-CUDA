@@ -69,23 +69,75 @@ NVCV_TEST_SUITE_P(OpFlip, test::ValueList<int, int, int, NVCVImageFormat, int>
     {    255,     40,       2,    NVCV_IMAGE_FORMAT_F16,  0}, // scalar tail (width % 4 != 0)
     {     67,     45,       2, NVCV_IMAGE_FORMAT_RGBf16,  1},
     {     70,     43,       3, NVCV_IMAGE_FORMAT_RGBf16,  0},
-    {     62,    111,       4, NVCV_IMAGE_FORMAT_RGBAf16, -1}
+    {     62,    111,       4, NVCV_IMAGE_FORMAT_RGBAf16, -1},
+    // F32 and S32 single channel had no independent-reference coverage at all, even though both
+    // route through the wide vectorized single-channel kernel. Cover the vector body for every
+    // flip direction plus the scalar tail.
+    {     64,     33,       2,   NVCV_IMAGE_FORMAT_F32,  1},
+    {     64,     32,       2,   NVCV_IMAGE_FORMAT_F32,  0},
+    {     68,     31,       3,   NVCV_IMAGE_FORMAT_F32, -1},
+    {     63,     30,       2,   NVCV_IMAGE_FORMAT_F32, -1},
+    {     64,     29,       2,   NVCV_IMAGE_FORMAT_S32,  1},
+    {     67,     28,       2,   NVCV_IMAGE_FORMAT_S32,  0},
+    // RGBAf32 (the 128-bit interleaved kernel) likewise had no independent-reference coverage.
+    {     37,     27,       2, NVCV_IMAGE_FORMAT_RGBAf32,  1},
+    {     36,     26,       3, NVCV_IMAGE_FORMAT_RGBAf32,  0},
+    {     35,     25,       2, NVCV_IMAGE_FORMAT_RGBAf32, -1},
+    // A 128-bit access covers 16 elements of an 8-bit type and 8 of a 16-bit type, so widths that
+    // are multiples of 4 but not of 8, and of 8 but not of 16, are the boundaries where a widened
+    // vector body can silently drop or duplicate its tail. The pre-existing single-channel widths
+    // were all multiples of 16, which cannot separate those cases.
+    {     40,     24,       2,    NVCV_IMAGE_FORMAT_U8,  1},
+    {     68,     23,       3,    NVCV_IMAGE_FORMAT_U8, -1},
+    {     72,     22,       2,    NVCV_IMAGE_FORMAT_U8,  0},
+    {     68,     21,       2,   NVCV_IMAGE_FORMAT_U16,  1},
+    {     72,     20,       2,   NVCV_IMAGE_FORMAT_U16, -1},
+    {     68,     19,       2,   NVCV_IMAGE_FORMAT_F16, -1},
+    // Interleaved C3/C4 at widths that are exact multiples of the pixel group a 128-bit access
+    // spans (16 pixels for 8-bit, 8 for 16-bit, 4 for 32-bit) and at widths that are not, so both
+    // a vectorized body and its scalar tail are checked in every direction.
+    {     64,     18,       2,  NVCV_IMAGE_FORMAT_RGB8,  1},
+    {     48,     17,       3,  NVCV_IMAGE_FORMAT_RGB8,  0},
+    {     33,     16,       2,  NVCV_IMAGE_FORMAT_RGB8, -1},
+    {     64,     15,       2, NVCV_IMAGE_FORMAT_RGBA8,  0},
+    {     36,     14,       3, NVCV_IMAGE_FORMAT_RGBA8, -1},
+    {     48,     13,       2, NVCV_IMAGE_FORMAT_RGBf32,  1},
+    {     36,     12,       2, NVCV_IMAGE_FORMAT_RGBf32,  0},
+    {     48,     11,       2, NVCV_IMAGE_FORMAT_RGBf16, -1},
+    {     35,     10,       2, NVCV_IMAGE_FORMAT_RGBAf16,  1}
+});
+
+// Degenerate extents are tensor-only: the var-shape suite jitters each image to 0.8-1.1x the
+// listed size, which cannot represent a 1-pixel extent. A single row makes vertical flip the
+// identity and a single column does the same for horizontal flip, and both collapse a
+// vectorized launch to one partial group.
+NVCV_TEST_SUITE_P(OpFlipDegenerate, test::ValueList<int, int, int, NVCVImageFormat, int>
+{
+    // width, height, batches,                  format, flipCode
+    {      1,     37,       2,    NVCV_IMAGE_FORMAT_U8,  1},
+    {      1,     37,       2,    NVCV_IMAGE_FORMAT_U8,  0},
+    {      1,     37,       2,    NVCV_IMAGE_FORMAT_U8, -1},
+    {     37,      1,       2,    NVCV_IMAGE_FORMAT_U8,  1},
+    {     37,      1,       2,    NVCV_IMAGE_FORMAT_U8,  0},
+    {     37,      1,       2,    NVCV_IMAGE_FORMAT_U8, -1},
+    {      1,      1,       1,    NVCV_IMAGE_FORMAT_U8, -1},
+    {      1,     16,       2,  NVCV_IMAGE_FORMAT_RGB8, -1},
+    {     16,      1,       2,  NVCV_IMAGE_FORMAT_RGB8,  1},
+    {      1,     16,       2, NVCV_IMAGE_FORMAT_RGBA8,  1},
+    {      1,     16,       2, NVCV_IMAGE_FORMAT_RGBf32, -1},
+    {     16,      1,       2,   NVCV_IMAGE_FORMAT_F32,  1},
+    {      1,     16,       2,   NVCV_IMAGE_FORMAT_F32, -1},
+    {      1,     16,       2,   NVCV_IMAGE_FORMAT_F16,  0}
 });
 
 // clang-format on
 
-TEST_P(OpFlip, correct_output)
+// Bit-exact comparison of one tensor submission against the independent host reference. Shared by
+// the main and the degenerate-extent suites so both check values the same way.
+static void ExpectTensorFlipMatchesReference(int width, int height, int batches, nvcv::ImageFormat format, int flipCode)
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
-
-    int width   = GetParamValue<0>();
-    int height  = GetParamValue<1>();
-    int batches = GetParamValue<2>();
-
-    nvcv::ImageFormat format{GetParamValue<3>()};
-
-    int flipCode = GetParamValue<4>();
 
     int3 shape{width, height, batches};
 
@@ -137,6 +189,106 @@ TEST_P(OpFlip, correct_output)
     ASSERT_EQ(cudaSuccess, cudaMemcpy(testVec.data(), output->basePtr(), outBufSize, cudaMemcpyDeviceToHost));
 
     EXPECT_EQ(testVec, goldVec);
+}
+
+TEST_P(OpFlip, correct_output)
+{
+    ExpectTensorFlipMatchesReference(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(),
+                                     nvcv::ImageFormat{GetParamValue<3>()}, GetParamValue<4>());
+}
+
+TEST_P(OpFlipDegenerate, correct_output)
+{
+    ExpectTensorFlipMatchesReference(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(),
+                                     nvcv::ImageFormat{GetParamValue<3>()}, GetParamValue<4>());
+}
+
+NVCV_TEST_SUITE_P(OpFlipRGB8Carrier, test::ValueList<int, int, int, bool>{
+                                         {689, 0, 0,  true},
+                                         {689, 5, 0,  true},
+                                         {689, 0, 1,  true},
+                                         { 17, 0, 0,  true},
+                                         {  5, 0, 0,  true},
+                                         {  1, 5, 0,  true},
+                                         {689, 0, 0, false},
+                                         {  1, 5, 0, false}
+});
+
+TEST_P(OpFlipRGB8Carrier, tensor_matches_reference_and_preserves_padding)
+{
+    const int     width              = GetParamValue<0>();
+    const int     baseOffset         = GetParamValue<1>();
+    const int     strideOffset       = GetParamValue<2>();
+    const bool    batched            = GetParamValue<3>();
+    const int     samples            = batched ? 3 : 1;
+    constexpr int height             = 7;
+    const int     rowBytes           = width * 3;
+    const int     inputRowStride     = rowBytes + 7;
+    const int     outputRowStride    = ((rowBytes + 15) / 16 + 1) * 16 + strideOffset;
+    const int     inputSampleStride  = inputRowStride * height + 13;
+    const int     outputSampleStride = outputRowStride * height + 32;
+    const int     inputBytes         = baseOffset + inputSampleStride * samples;
+    const int     outputBytes        = baseOffset + outputSampleStride * samples;
+
+    auto makeTensor = [=](NVCVByte *allocation, int rowStride, int sampleStride)
+    {
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr                  = allocation + baseOffset;
+        buffer.strides[0]               = sampleStride;
+        buffer.strides[batched ? 1 : 0] = rowStride;
+        buffer.strides[batched ? 2 : 1] = 3;
+        buffer.strides[batched ? 3 : 2] = 1;
+        const auto tensorShape = batched ? nvcv::TensorShape{{samples, height, width, 3}, "NHWC"}
+                                         : nvcv::TensorShape{{height, width, 3}, "HWC"};
+        return nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{tensorShape, nvcv::TYPE_U8, buffer},
+                                    nvcv::TensorDataCleanupCallback{[allocation](const nvcv::TensorData &)
+                                                                    {
+                                                                        EXPECT_EQ(cudaSuccess, cudaFree(allocation));
+                                                                    }});
+    };
+
+    NVCVByte *inputAllocation{};
+    NVCVByte *outputAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&inputAllocation), inputBytes));
+    nvcv::Tensor input = makeTensor(inputAllocation, inputRowStride, inputSampleStride);
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&outputAllocation), outputBytes));
+    nvcv::Tensor output = makeTensor(outputAllocation, outputRowStride, outputSampleStride);
+
+    std::vector<uint8_t> inputHost(inputBytes);
+    for (size_t index = 0; index < inputHost.size(); ++index)
+    {
+        inputHost[index] = static_cast<uint8_t>((index * 37 + index / 251) % 256);
+    }
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(inputAllocation, inputHost.data(), inputBytes, cudaMemcpyHostToDevice));
+
+    std::vector<uint8_t> inputPixels(inputHost.begin() + baseOffset, inputHost.end());
+    const long3          inputStrides{inputSampleStride, inputRowStride, 3};
+    const long3          outputStrides{outputSampleStride, outputRowStride, 3};
+    const int3           shape{width, height, samples};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::Flip flipOp;
+    for (int flipCode : {1, -1, 0})
+    {
+        SCOPED_TRACE(flipCode);
+        std::vector<uint8_t> expectedPixels(outputBytes - baseOffset, 0xA5);
+        test::FlipCPU(expectedPixels, outputStrides, inputPixels, inputStrides, shape, nvcv::FMT_RGB8, flipCode);
+        std::vector<uint8_t> expected(baseOffset, 0xA5);
+        expected.insert(expected.end(), expectedPixels.begin(), expectedPixels.end());
+
+        ASSERT_EQ(cudaSuccess, cudaMemsetAsync(outputAllocation, 0xA5, outputBytes, stream));
+        flipOp(stream, input, output, flipCode);
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        std::vector<uint8_t> actual(outputBytes);
+        ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), outputAllocation, outputBytes, cudaMemcpyDeviceToHost));
+        EXPECT_EQ(actual, expected);
+    }
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::vector<uint8_t> inputAfter(inputBytes);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(inputAfter.data(), inputAllocation, inputBytes, cudaMemcpyDeviceToHost));
+    EXPECT_EQ(inputAfter, inputHost);
 }
 
 TEST_P(OpFlip, varshape_correct_output)
@@ -298,6 +450,27 @@ void RunPlanarParityVarShapeCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat 
 
 } // namespace
 
+TEST(OpFlip, varshape_s16_planar_interleaved_parity)
+{
+    const nvcv::ImageFormat interleavedFmt{nvcv::ColorModel::RGB,  nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                           nvcv::DataKind::SIGNED, nvcv::Swizzle::S_XYZ1, nvcv::Packing::X16_Y16_Z16};
+    const nvcv::ImageFormat planarFmt{nvcv::ColorModel::RGB,  nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                      nvcv::DataKind::SIGNED, nvcv::Swizzle::S_XYZ0, nvcv::Packing::X16,
+                                      nvcv::Packing::X16,     nvcv::Packing::X16};
+
+    constexpr int numImages = 2;
+    constexpr int flipCode  = -1;
+    nvcv::Tensor  flip_code = test::planar::MakePerImageTensor<int>(numImages, nvcv::TYPE_S32, flipCode);
+
+    test::planar::RunVarShapeParity(planarFmt, interleavedFmt, 37, 29, 37, 29, numImages,
+                                    [&flip_code](cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                                 const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+                                    {
+                                        cvcuda::Flip op(numImages);
+                                        EXPECT_NO_THROW(op(stream, src, dst, flip_code));
+                                    });
+}
+
 // Parameters: width, height, flipCode, numImages, planarFmt, interleavedFmt
 // clang-format off
 NVCV_TEST_SUITE_P(OpFlipPlanar,
@@ -328,6 +501,90 @@ TEST_P(OpFlipPlanar, varshape_matches_interleaved)
 {
     RunPlanarParityVarShapeCase(GetParamValue<4>(), GetParamValue<5>(), GetParamValue<0>(), GetParamValue<1>(),
                                 GetParamValue<2>(), GetParamValue<3>());
+}
+
+TEST(OpFlip, tensor_s32_padded_row_scalar_fallback)
+{
+    constexpr int samples         = 2;
+    constexpr int width           = 8;
+    constexpr int height          = 3;
+    constexpr int rowElements     = width + 1;
+    constexpr int sampleElements  = rowElements * height + 1;
+    constexpr int allocationBytes = sampleElements * samples * sizeof(int);
+    constexpr int flipCode        = -1;
+
+    auto makeTensor = [=](NVCVByte *allocation)
+    {
+        nvcv::TensorDataStridedCuda::Buffer buffer{};
+        buffer.basePtr    = allocation;
+        buffer.strides[0] = (sampleElements * sizeof(int));
+        buffer.strides[1] = (rowElements * sizeof(int));
+        buffer.strides[2] = sizeof(int);
+        buffer.strides[3] = sizeof(int);
+        return nvcv::TensorWrapData(
+            nvcv::TensorDataStridedCuda{
+                nvcv::TensorShape{{samples, height, width, 1}, "NHWC"},
+                nvcv::TYPE_S32, buffer
+        },
+            nvcv::TensorDataCleanupCallback{[allocation](const nvcv::TensorData &)
+                                            {
+                                                EXPECT_EQ(cudaSuccess, cudaFree(allocation));
+                                            }});
+    };
+
+    NVCVByte *inputAllocation{};
+    NVCVByte *outputAllocation{};
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&inputAllocation), allocationBytes));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void **>(&outputAllocation), allocationBytes));
+
+    nvcv::Tensor input  = makeTensor(inputAllocation);
+    nvcv::Tensor output = makeTensor(outputAllocation);
+
+    std::vector<int> inputHost(sampleElements * samples);
+    for (int b = 0; b < samples; ++b)
+    {
+        for (int y = 0; y < height; ++y)
+        {
+            for (int x = 0; x < width; ++x)
+            {
+                inputHost[b * sampleElements + y * rowElements + x] = 1000 * b + 100 * y + x;
+            }
+        }
+    }
+    std::vector<int> outputHost(inputHost.size(), -1);
+
+    auto inputData  = input.exportData<nvcv::TensorDataStridedCuda>();
+    auto outputData = output.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(inputData && outputData);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(inputData->basePtr(), inputHost.data(), allocationBytes, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(outputData->basePtr(), outputHost.data(), allocationBytes, cudaMemcpyHostToDevice));
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Flip flipOp;
+    EXPECT_NO_THROW(flipOp(stream, input, output, flipCode));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(outputHost.data(), outputData->basePtr(), allocationBytes, cudaMemcpyDeviceToHost));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::vector<int> expected(outputHost.size(), -1);
+    for (int b = 0; b < samples; ++b)
+    {
+        for (int y = 0; y < height; ++y)
+        {
+            for (int x = 0; x < width; ++x)
+            {
+                expected[b * sampleElements + y * rowElements + x]
+                    = inputHost[b * sampleElements + (height - 1 - y) * rowElements + (width - 1 - x)];
+            }
+        }
+    }
+
+    EXPECT_EQ(outputHost, expected);
 }
 
 // clang-format off
@@ -564,6 +821,28 @@ TEST(OpFlip_Negative, create_null_handle)
     EXPECT_EQ(cvcudaFlipCreate(nullptr, 2), NVCV_ERROR_INVALID_ARGUMENT);
 }
 
+TEST(OpFlip_Negative, tensor_rejects_unsupported_layout)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor input(
+        {
+            {2, 24, 24, 3},
+            "ABCD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor output(input.shape(), input.dtype());
+    int          flipCode = 0;
+
+    cvcuda::Flip flipOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&flipOp, &stream, &input, &output, &flipCode]
+                                                             { flipOp(stream, input, output, flipCode); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 // The interleaved tensor kernel puts numSamples in grid.z. A batch above the CUDA limit must
 // fail with INVALID_ARGUMENT rather than a device-side CUDA configuration error.
 TEST(OpFlip_Negative, tensor_numSamples_exceeds_grid_z_limit)
@@ -594,7 +873,8 @@ TEST(OpFlip_Negative, varshape_flipcode_dtype_must_be_s32)
 
     constexpr int batches = 2;
 
-    std::vector<nvcv::Image> imgSrc, imgDst;
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
     for (int i = 0; i < batches; ++i)
     {
         imgSrc.emplace_back(nvcv::Size2D{8, 8}, nvcv::FMT_U8);
@@ -626,7 +906,8 @@ TEST(OpFlip_Negative, varshape_flipcode_too_short)
     constexpr int batches  = 3;
     constexpr int flipCode = 0;
 
-    std::vector<nvcv::Image> imgSrc, imgDst;
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
     for (int i = 0; i < batches; ++i)
     {
         imgSrc.emplace_back(nvcv::Size2D{8, 8}, nvcv::FMT_U8);

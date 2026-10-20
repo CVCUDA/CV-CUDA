@@ -17,6 +17,7 @@
 
 #include "priv/OpGaussian.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -53,6 +54,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaGaussianSubmit,
     return nvcv::ProtectCall(
         [&out, &in, &handle, &stream, &kernelWidth, &kernelHeight, &sigmaX, &sigmaY, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::TensorWrapHandle output(out);
             nvcv::TensorWrapHandle input(in);
             priv::ToDynamicRef<priv::Gaussian>(handle)(stream, input.resource(), output.resource(),
@@ -69,6 +71,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaGaussianVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &kernelSize, &sigma, &handle, &stream, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
             nvcv::ImageBatchVarShapeWrapHandle outWrap(out);
             nvcv::TensorWrapHandle             kernelSizeWrap(kernelSize);

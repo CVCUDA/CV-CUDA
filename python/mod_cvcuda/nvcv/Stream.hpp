@@ -21,14 +21,13 @@
 #include "Cache.hpp"
 #include "Object.hpp"
 
+#include <common/Binding.hpp>
 #include <cuda_runtime.h>
-#include <nvcv/python/LockMode.hpp>
 
-#include <atomic>
-#include <initializer_list>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -36,21 +35,93 @@ namespace nvcvpy::priv {
 
 class Resource;
 
+// Owns the validity of a CUDA stream handle independently of the Python Stream
+// wrapper it came from, so a resource or an exported CAI/DLPack view can keep
+// the handle alive after that wrapper is gone.
+class StreamHandleOwner final
+{
+public:
+    StreamHandleOwner(cudaStream_t handle, int device, bool owns, py::object owner = {},
+                      bool externalOwnerRetainsLifetime = false);
+    ~StreamHandleOwner();
+
+    // Sole ownership of the handle: it is always held through a shared_ptr, and
+    // copying one would destroy the stream more than once.
+    StreamHandleOwner(const StreamHandleOwner &)            = delete;
+    StreamHandleOwner(StreamHandleOwner &&)                 = delete;
+    StreamHandleOwner &operator=(const StreamHandleOwner &) = delete;
+    StreamHandleOwner &operator=(StreamHandleOwner &&)      = delete;
+
+    cudaStream_t handle() const
+    {
+        return m_handle;
+    }
+
+    bool retainsHandleLifetime() const
+    {
+        return m_owns || m_externalOwnerRetainsLifetime;
+    }
+
+    bool hasPythonOwner() const noexcept
+    {
+        return m_owner.is_valid();
+    }
+
+    bool sharesQueueWith(const StreamHandleOwner &other) const noexcept;
+    bool isCurrentThreadQueue() const noexcept;
+#ifdef NB_FREE_THREADED
+    cudaEvent_t perThreadCompletion() const
+    {
+        return m_perThreadCompletion;
+    }
+
+    cudaError_t capturePerThreadCompletion() const
+    {
+        return m_perThreadCompletion ? cudaEventRecord(m_perThreadCompletion, m_handle) : cudaSuccess;
+    }
+#endif
+
+private:
+    cudaStream_t m_handle;
+    int          m_device;
+    bool         m_owns;
+    py::object   m_owner;
+    bool         m_externalOwnerRetainsLifetime;
+    uint64_t     m_creatorThreadIdentity;
+#ifdef NB_FREE_THREADED
+    cudaEvent_t m_perThreadCompletion = nullptr;
+#endif
+};
+
 class IExternalStream
 {
 public:
     virtual ~IExternalStream() = default;
 
-    virtual cudaStream_t handle() const        = 0;
-    virtual py::object   wrappedObject() const = 0;
+    virtual cudaStream_t handle() const                = 0;
+    virtual py::object   wrappedObject() const         = 0;
+    virtual bool         retainsHandleLifetime() const = 0;
 };
 
-using LockResources = std::unordered_multimap<LockMode, std::shared_ptr<const Resource>>;
+using ResourceBag    = std::vector<std::shared_ptr<Resource>>;
+using StreamOwnerBag = std::vector<std::shared_ptr<const StreamHandleOwner>>;
+using PythonOwnerBag = std::vector<py::object>;
 
-class PYBIND11_EXPORT Stream : public CacheItem
+// Mutable owner segments transferred by the native operator guard. Sources
+// are moved from only after release bookkeeping can no longer fail, so the
+// guard retains every owner if holdResources throws.
+struct ResourceOwnerTransfer
+{
+    std::shared_ptr<Resource> *inlineData   = nullptr;
+    size_t                     inlineSize   = 0;
+    std::shared_ptr<Resource> *overflowData = nullptr;
+    size_t                     overflowSize = 0;
+};
+
+class NB_EXPORT Stream : public Object
 {
 public:
-    static void Export(py::module &m);
+    static void Export(py::module_ &m);
 
     static Stream &Current();
 
@@ -62,18 +133,46 @@ public:
     std::shared_ptr<const Stream> sharedStream() const;
 
     void activate();
-    void deactivate(py::object exc_type, py::object exc_value, py::object exc_tb) const;
+    void deactivate(py::handle exc_type, py::handle exc_value, py::handle exc_tb) const;
 
-    void holdResources(LockResources usedResources);
+    void holdResources(ResourceBag usedResources, int submissionDevice);
+    void holdResources(ResourceBag usedResources, PythonOwnerBag pythonOwners, int submissionDevice);
+    void holdResources(const ResourceOwnerTransfer &usedResources, std::shared_ptr<Stream> &streamOwner,
+                       int submissionDevice);
+#ifdef NB_FREE_THREADED
+    void holdResources(const ResourceOwnerTransfer &usedResources, std::shared_ptr<Stream> &streamOwner,
+                       PythonOwnerBag &pythonOwners, int submissionDevice);
+#endif
 
-    static void SynchronizeAndClearGCBag();
+    void ensureNotCapturing(int submissionDevice) const;
 
-    int64_t GetSizeInBytes() const override;
+    // Blocks until every resource batch queued by any stream has been
+    // released. Used by cache clear and teardown, which must not free a
+    // buffer a queued kernel can still read.
+    static void DrainAllPendingReleases();
 
-    void         sync();
-    void         wait_stream(std::shared_ptr<Stream> other);
-    cudaStream_t handle() const;
-    int          deviceId() const;
+    // Returns true when every live owner other than `resource` itself and its
+    // cache entry belongs to the pending-release queue. Cache lookup uses this
+    // to reuse a Tensor without a host wait. ResourceGuard preserves ordering
+    // on the next submission; below the limit, lookup additionally checks the
+    // resource's synchronization history to avoid new cross-stream waits.
+    static bool IsPendingOnly(const std::shared_ptr<Object> &resourceOwner);
+
+    int64_t GetSizeInBytes() const;
+
+    void                                      sync();
+    void                                      wait_stream(std::shared_ptr<Stream> other);
+    cudaStream_t                              handle() const;
+    int                                       deviceId() const;
+    int                                       submissionDeviceId() const;
+    bool                                      sharesQueueWith(const Stream &other) const;
+    const std::shared_ptr<StreamHandleOwner> &handleOwner() const;
+    uint64_t                                  id() const;
+
+    const IKey &key() const
+    {
+        return m_key;
+    }
 
     // Returns the cuda handle in python
     intptr_t pyhandle() const;
@@ -88,8 +187,6 @@ private:
 
     int64_t doComputeSizeInBytes() const;
 
-    // Singleton access to the auxiliary CUDA stream
-
     class Key final : public IKey
     {
     private:
@@ -97,55 +194,23 @@ private:
         bool   doIsCompatible(const IKey &that) const override;
     };
 
-    const Key &key() const override
-    {
-        return m_key;
-    }
-
-    void        destroy();
-    cudaEvent_t getEvent();
+    friend class Resource;
+    void destroy();
+    void waitFor(cudaStream_t producer);
+    void validateCurrentThread() const;
 
     Key                                  m_key;
+    uint64_t                             m_id     = 0;
     bool                                 m_owns   = false;
     cudaStream_t                         m_handle = nullptr;
+    std::shared_ptr<StreamHandleOwner>   m_handleOwner;
     std::unordered_map<int, cudaEvent_t> m_events;
-    std::shared_mutex                    m_eventMutex;
-    py::object                           m_wrappedObj;
+    std::mutex                           m_eventMutex;
     int64_t                              m_size_inbytes = -1;
 
-    // REVISIT: these don't have to be static members, but simply defined
-    // as local entities in Stream.cpp, thereby minimizing code coupling and
-    // unnecessary rebuilds.
+    static std::weak_ptr<Stream> m_defaultStream;
 
-    //per-device aux streams and protection. this is a bit overkill
-    //for now as python is single threaded, but it is a good practice
-    static std::shared_mutex                     m_auxStreamMutex;
-    static std::atomic<int>                      m_instanceCount;
-    static std::unordered_map<int, cudaStream_t> m_auxStreams;
-    static std::weak_ptr<Stream>                 m_defaultStream;
-
-    static void         incrementInstanceCount();
-    static int          decrementInstanceCount();
-    static cudaStream_t GetAuxStream();
-    static void         SyncAuxStream();
-    static void         CleanupAtExit(const std::shared_ptr<Stream> &globalStream);
-
-    // Adds the object to the garbage-collector's bag to delay its destruction
-    // until it's safe to destroy it.
-    // Safe here means: not from a thread that is processing tasks in a cuda stream,
-    // i.e., not inside the callback given to cudaStreamAddCallback. If this happens,
-    // cuda calls will be made from within the callback, and CUDA docs prohibit it.
-    struct HostFunctionClosure;
-    static void AddToGCBag(std::unique_ptr<HostFunctionClosure> obj);
-
-    // Clear the garbage-collector's bag. It's supposed to be called by
-    // functions that
-    static void ClearGCBag();
-
-    using GCBag = std::vector<std::unique_ptr<HostFunctionClosure>>;
-    static std::mutex m_gcMutex;
-
-    static GCBag &GetGCBag();
+    static void CleanupAtExit(const std::shared_ptr<Stream> &globalStream);
 };
 
 } // namespace nvcvpy::priv

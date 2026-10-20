@@ -1,0 +1,2795 @@
+{
+    "benchmark": "merge",
+    "configs": {
+        "merge_uchar3_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "uchar3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_uchar3_basic[InOutDataType=uchar3][shape=32x1080x1920][layout=NCHW][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 299.08858229564,
+                        "gpu_time_us_python": 305.36920434913,
+                        "gpu_noise_us_cpp": 1.6670000000000003,
+                        "gpu_noise_us_python": 2.0450000000000004,
+                        "gpu_bwutil_cpp": 0.8559382442103539,
+                        "gpu_bwutil_python": 0.8383614646766508,
+                        "gpu_gap_stddev_us": 1.5349193328341884
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 229.47307461762003,
+                        "gpu_time_us_python": 234.31859841917003,
+                        "gpu_noise_us_cpp": 1.283,
+                        "gpu_noise_us_python": 1.704,
+                        "gpu_bwutil_cpp": 0.8508831347873189,
+                        "gpu_bwutil_python": 0.8332937408351679,
+                        "gpu_gap_stddev_us": 0.5174343649679956
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 2079.874592182,
+                        "gpu_time_us_python": 2103.8895303572494,
+                        "gpu_noise_us_cpp": 5.583,
+                        "gpu_noise_us_python": 10.742,
+                        "gpu_bwutil_cpp": 2.3007314345161896,
+                        "gpu_bwutil_python": 2.2744701782164163,
+                        "gpu_gap_stddev_us": 2.5656725329492263
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 299.12032704406,
+                        "gpu_time_us_python": 305.30594856378997,
+                        "gpu_noise_us_cpp": 1.092,
+                        "gpu_noise_us_python": 2.2030000000000003,
+                        "gpu_bwutil_cpp": 0.8558474229766105,
+                        "gpu_bwutil_python": 0.8385368161337003,
+                        "gpu_gap_stddev_us": 1.4727102219735912
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 230.43614718757,
+                        "gpu_time_us_python": 236.91025414797,
+                        "gpu_noise_us_cpp": 0.932,
+                        "gpu_noise_us_python": 1.7750000000000004,
+                        "gpu_bwutil_cpp": 0.8473248749846786,
+                        "gpu_bwutil_python": 0.8241712818756234,
+                        "gpu_gap_stddev_us": 0.4068633666778814
+                    }
+                },
+                "merge_uchar3_basic[InOutDataType=uchar3][shape=32x1080x1920][layout=NHWC][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 310.09376332477007,
+                        "gpu_time_us_python": 316.48958652347994,
+                        "gpu_noise_us_cpp": 2.5010000000000003,
+                        "gpu_noise_us_python": 2.8619999999999997,
+                        "gpu_bwutil_cpp": 0.8255665040239769,
+                        "gpu_bwutil_python": 0.8088964764439938,
+                        "gpu_gap_stddev_us": 1.3063885732278033
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 242.72983051215004,
+                        "gpu_time_us_python": 247.23070758933005,
+                        "gpu_noise_us_cpp": 2.9379999999999997,
+                        "gpu_noise_us_python": 3.1999999999999997,
+                        "gpu_bwutil_cpp": 0.8044442180171508,
+                        "gpu_bwutil_python": 0.7897994880887161,
+                        "gpu_gap_stddev_us": 0.6295266174572373
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 2112.16841525386,
+                        "gpu_time_us_python": 2136.45149051468,
+                        "gpu_noise_us_cpp": 5.365,
+                        "gpu_noise_us_python": 14.561000000000002,
+                        "gpu_bwutil_cpp": 2.2655546191879496,
+                        "gpu_bwutil_python": 2.239804416320986,
+                        "gpu_gap_stddev_us": 2.1874250058404447
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 310.11455183751997,
+                        "gpu_time_us_python": 315.8900406163999,
+                        "gpu_noise_us_cpp": 2.1149999999999998,
+                        "gpu_noise_us_python": 2.3749999999999996,
+                        "gpu_bwutil_cpp": 0.825506620979113,
+                        "gpu_bwutil_python": 0.8104367987974366,
+                        "gpu_gap_stddev_us": 1.3255637401315732
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 245.78623586422,
+                        "gpu_time_us_python": 252.41356151811001,
+                        "gpu_noise_us_cpp": 3.9650000000000007,
+                        "gpu_noise_us_python": 4.736,
+                        "gpu_bwutil_cpp": 0.7944403448260371,
+                        "gpu_bwutil_python": 0.7735828370228273,
+                        "gpu_gap_stddev_us": 0.5231701795015867
+                    }
+                }
+            }
+        },
+        "merge_float3_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "float3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "16x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_float3_basic[InOutDataType=float3][shape=16x1080x1920][layout=NCHW][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 583.85693246576,
+                        "gpu_time_us_python": 590.1896720779199,
+                        "gpu_noise_us_cpp": 1.5479999999999998,
+                        "gpu_noise_us_python": 2.636,
+                        "gpu_bwutil_cpp": 0.8769286121111589,
+                        "gpu_bwutil_python": 0.867528200210183,
+                        "gpu_gap_stddev_us": 1.5479183887980013
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 449.91635186574,
+                        "gpu_time_us_python": 454.87924657344,
+                        "gpu_noise_us_cpp": 1.2660000000000002,
+                        "gpu_noise_us_python": 1.4280000000000002,
+                        "gpu_bwutil_cpp": 0.8679581714813775,
+                        "gpu_bwutil_python": 0.8584904932395316,
+                        "gpu_gap_stddev_us": 0.629260311957324
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 4172.09028959269,
+                        "gpu_time_us_python": 4194.20779161045,
+                        "gpu_noise_us_cpp": 14.761000000000001,
+                        "gpu_noise_us_python": 17.526,
+                        "gpu_bwutil_cpp": 2.293926278449814,
+                        "gpu_bwutil_python": 2.281829145772672,
+                        "gpu_gap_stddev_us": 3.2853568623186606
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 583.86061554275,
+                        "gpu_time_us_python": 590.0131952406,
+                        "gpu_noise_us_cpp": 1.5779999999999998,
+                        "gpu_noise_us_python": 2.3009999999999997,
+                        "gpu_bwutil_cpp": 0.8769229525478087,
+                        "gpu_bwutil_python": 0.8677852646360653,
+                        "gpu_gap_stddev_us": 1.4100657629794762
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 450.61694600707006,
+                        "gpu_time_us_python": 457.37342046633,
+                        "gpu_noise_us_cpp": 1.228,
+                        "gpu_noise_us_python": 2.1580000000000004,
+                        "gpu_bwutil_cpp": 0.8666087461190795,
+                        "gpu_bwutil_python": 0.8538074159029684,
+                        "gpu_gap_stddev_us": 0.43292709739331603
+                    }
+                },
+                "merge_float3_basic[InOutDataType=float3][shape=16x1080x1920][layout=NHWC][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 877.5824664469101,
+                        "gpu_time_us_python": 883.97048515482,
+                        "gpu_noise_us_cpp": 1.311,
+                        "gpu_noise_us_python": 2.203,
+                        "gpu_bwutil_cpp": 0.5834301494307584,
+                        "gpu_bwutil_python": 0.5792159442273267,
+                        "gpu_gap_stddev_us": 1.8678420101015993
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 735.54722293788,
+                        "gpu_time_us_python": 741.49983802069,
+                        "gpu_noise_us_cpp": 2.092,
+                        "gpu_noise_us_python": 2.847,
+                        "gpu_bwutil_cpp": 0.5309176295689699,
+                        "gpu_bwutil_python": 0.5266557578410938,
+                        "gpu_gap_stddev_us": 1.0538712808529576
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 6098.35507914022,
+                        "gpu_time_us_python": 6120.267238849491,
+                        "gpu_noise_us_cpp": 3.6459999999999995,
+                        "gpu_noise_us_python": 4.306,
+                        "gpu_bwutil_cpp": 1.5693534466683754,
+                        "gpu_bwutil_python": 1.5637348762308192,
+                        "gpu_gap_stddev_us": 1.475752717958376
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 879.0544225248901,
+                        "gpu_time_us_python": 885.50486861267,
+                        "gpu_noise_us_cpp": 1.2100000000000002,
+                        "gpu_noise_us_python": 2.2520000000000002,
+                        "gpu_bwutil_cpp": 0.5824444997126443,
+                        "gpu_bwutil_python": 0.5782043436810145,
+                        "gpu_gap_stddev_us": 1.4777262049186735
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 733.32212160111,
+                        "gpu_time_us_python": 741.05850623973,
+                        "gpu_noise_us_cpp": 1.813,
+                        "gpu_noise_us_python": 2.819,
+                        "gpu_bwutil_cpp": 0.5325204293275347,
+                        "gpu_bwutil_python": 0.5269623027683522,
+                        "gpu_gap_stddev_us": 1.3438022853868907
+                    }
+                }
+            }
+        },
+        "merge_fake_planar_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uchar4"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920"
+                ],
+                "layout": [
+                    "NCHW",
+                    "NCHW_FAKE"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    4
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_fake_planar_advanced[InOutDataType=uchar4][shape=32x1080x1920][layout=NCHW][inputKind=Tensor][channels=4]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 395.62613727691996,
+                        "gpu_time_us_python": 402.57155773914997,
+                        "gpu_noise_us_cpp": 1.7520000000000002,
+                        "gpu_noise_us_python": 2.198,
+                        "gpu_bwutil_cpp": 0.8627706431552291,
+                        "gpu_bwutil_python": 0.8479015139074055,
+                        "gpu_gap_stddev_us": 1.296910188671236
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 300.98837268621,
+                        "gpu_time_us_python": 307.00280131781994,
+                        "gpu_noise_us_cpp": 1.179,
+                        "gpu_noise_us_python": 2.105,
+                        "gpu_bwutil_cpp": 0.8649484859069279,
+                        "gpu_bwutil_python": 0.848014704704514,
+                        "gpu_gap_stddev_us": 0.9078607096136826
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 395.55035470192007,
+                        "gpu_time_us_python": 402.24347493997004,
+                        "gpu_noise_us_cpp": 1.1280000000000001,
+                        "gpu_noise_us_python": 1.8820000000000001,
+                        "gpu_bwutil_cpp": 0.8629359620186741,
+                        "gpu_bwutil_python": 0.8485932844967614,
+                        "gpu_gap_stddev_us": 1.3380548222950752
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 302.14754293447993,
+                        "gpu_time_us_python": 309.69835603018004,
+                        "gpu_noise_us_cpp": 1.197,
+                        "gpu_noise_us_python": 2.1130000000000004,
+                        "gpu_bwutil_cpp": 0.8616289386362425,
+                        "gpu_bwutil_python": 0.8406219443913893,
+                        "gpu_gap_stddev_us": 0.3017004991550023
+                    }
+                },
+                "merge_fake_planar_advanced[InOutDataType=uchar4][shape=32x1080x1920][layout=NCHW_FAKE][inputKind=Tensor][channels=4]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 2168.04463575621,
+                        "gpu_time_us_python": 2174.72753316202,
+                        "gpu_noise_us_cpp": 1.8289999999999995,
+                        "gpu_noise_us_python": 2.701,
+                        "gpu_bwutil_cpp": 0.47231563426170214,
+                        "gpu_bwutil_python": 0.47086516484401575,
+                        "gpu_gap_stddev_us": 2.767088696693497
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1840.51896447639,
+                        "gpu_time_us_python": 1845.4124221029797,
+                        "gpu_noise_us_cpp": 2.502,
+                        "gpu_noise_us_python": 3.653999999999999,
+                        "gpu_bwutil_cpp": 0.42434634416246564,
+                        "gpu_bwutil_python": 0.4232210227507113,
+                        "gpu_gap_stddev_us": 1.5522218122681393
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 2171.99066137619,
+                        "gpu_time_us_python": 2176.4123064538403,
+                        "gpu_noise_us_cpp": 1.795,
+                        "gpu_noise_us_python": 2.392,
+                        "gpu_bwutil_cpp": 0.4714570319079291,
+                        "gpu_bwutil_python": 0.4704996750439375,
+                        "gpu_gap_stddev_us": 2.6841790239938588
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1842.1376012703302,
+                        "gpu_time_us_python": 1845.37602391308,
+                        "gpu_noise_us_cpp": 1.331,
+                        "gpu_noise_us_python": 3.029,
+                        "gpu_bwutil_cpp": 0.42397320399753957,
+                        "gpu_bwutil_python": 0.4232293372694981,
+                        "gpu_gap_stddev_us": 1.3702306867649583
+                    }
+                }
+            }
+        },
+        "merge_u8_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "45x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    1,
+                    2,
+                    4
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_u8_advanced[InOutDataType=uint8][shape=45x1080x1920][layout=NCHW][inputKind=Tensor][channels=1]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 146.1892835008556,
+                        "gpu_time_us_python": 150.71209059586667,
+                        "gpu_noise_us_cpp": 1.1266666666666665,
+                        "gpu_noise_us_python": 1.5411111111111113,
+                        "gpu_bwutil_cpp": 0.8208673556521959,
+                        "gpu_bwutil_python": 0.7962766507565264,
+                        "gpu_gap_stddev_us": 1.5617575059486404
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 112.85586879987778,
+                        "gpu_time_us_python": 116.55572970051111,
+                        "gpu_noise_us_cpp": 1.4322222222222223,
+                        "gpu_noise_us_python": 1.462222222222222,
+                        "gpu_bwutil_cpp": 0.8109982636107141,
+                        "gpu_bwutil_python": 0.785276854974097,
+                        "gpu_gap_stddev_us": 0.5006722597780537
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 7,
+                        "gpu_time_us_cpp": 146.1140763442143,
+                        "gpu_time_us_python": 151.36137868378572,
+                        "gpu_noise_us_cpp": 1.0314285714285714,
+                        "gpu_noise_us_python": 1.9414285714285715,
+                        "gpu_bwutil_cpp": 0.8212776983877514,
+                        "gpu_bwutil_python": 0.7928404332225212,
+                        "gpu_gap_stddev_us": 0.899444624085442
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 113.58962378697,
+                        "gpu_time_us_python": 118.47956756888,
+                        "gpu_noise_us_cpp": 0.7310000000000001,
+                        "gpu_noise_us_python": 1.4150000000000003,
+                        "gpu_bwutil_cpp": 0.8057561220801046,
+                        "gpu_bwutil_python": 0.7725025195547682,
+                        "gpu_gap_stddev_us": 0.18212125088306041
+                    }
+                },
+                "merge_u8_advanced[InOutDataType=uint8][shape=45x1080x1920][layout=NCHW][inputKind=Tensor][channels=2]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 280.69579189543003,
+                        "gpu_time_us_python": 286.04245522498996,
+                        "gpu_noise_us_cpp": 1.2440000000000002,
+                        "gpu_noise_us_python": 2.125,
+                        "gpu_bwutil_cpp": 0.8550239994310436,
+                        "gpu_bwutil_python": 0.8390583560020669,
+                        "gpu_gap_stddev_us": 1.3893174885111497
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 215.27437404355,
+                        "gpu_time_us_python": 219.86184963944,
+                        "gpu_noise_us_cpp": 0.961,
+                        "gpu_noise_us_python": 1.6139999999999997,
+                        "gpu_bwutil_cpp": 0.8503155663316726,
+                        "gpu_bwutil_python": 0.832579303860881,
+                        "gpu_gap_stddev_us": 0.5265337506726162
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 280.6631186571,
+                        "gpu_time_us_python": 285.72056291103,
+                        "gpu_noise_us_cpp": 1.386,
+                        "gpu_noise_us_python": 1.751,
+                        "gpu_bwutil_cpp": 0.855122401496541,
+                        "gpu_bwutil_python": 0.8400024669808281,
+                        "gpu_gap_stddev_us": 1.3092909260872927
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 216.11164966136,
+                        "gpu_time_us_python": 222.10789121189,
+                        "gpu_noise_us_cpp": 1.075,
+                        "gpu_noise_us_python": 2.352,
+                        "gpu_bwutil_cpp": 0.8470203289560594,
+                        "gpu_bwutil_python": 0.8241536262994853,
+                        "gpu_gap_stddev_us": 0.2880626141015878
+                    }
+                },
+                "merge_u8_advanced[InOutDataType=uint8][shape=45x1080x1920][layout=NCHW][inputKind=Tensor][channels=4]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 550.77121412089,
+                        "gpu_time_us_python": 557.7058219012,
+                        "gpu_noise_us_cpp": 1.2150000000000003,
+                        "gpu_noise_us_python": 1.813,
+                        "gpu_bwutil_cpp": 0.8715072988701363,
+                        "gpu_bwutil_python": 0.86067707847086,
+                        "gpu_gap_stddev_us": 1.2281074251690385
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 418.0910567833199,
+                        "gpu_time_us_python": 424.13645028449,
+                        "gpu_noise_us_cpp": 0.7710000000000001,
+                        "gpu_noise_us_python": 1.436,
+                        "gpu_bwutil_cpp": 0.8756508974995887,
+                        "gpu_bwutil_python": 0.8631720770156013,
+                        "gpu_gap_stddev_us": 0.5602501776276736
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 550.66089842059,
+                        "gpu_time_us_python": 557.85968251518,
+                        "gpu_noise_us_cpp": 1.06,
+                        "gpu_noise_us_python": 2.265,
+                        "gpu_bwutil_cpp": 0.871681689381456,
+                        "gpu_bwutil_python": 0.8604406971211604,
+                        "gpu_gap_stddev_us": 1.3268570979838148
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 418.69155149761,
+                        "gpu_time_us_python": 426.71136466651996,
+                        "gpu_noise_us_cpp": 0.9120000000000001,
+                        "gpu_noise_us_python": 2.155,
+                        "gpu_bwutil_cpp": 0.8743948151002343,
+                        "gpu_bwutil_python": 0.8579615347611236,
+                        "gpu_gap_stddev_us": 0.3351290627807228
+                    }
+                },
+                "merge_u8_advanced[InOutDataType=uint8][shape=45x1080x1920][layout=NHWC][inputKind=Tensor][channels=1]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 146.26509566933998,
+                        "gpu_time_us_python": 150.52719498353,
+                        "gpu_noise_us_cpp": 1.3519999999999999,
+                        "gpu_noise_us_python": 1.9769999999999999,
+                        "gpu_bwutil_cpp": 0.8204425960742732,
+                        "gpu_bwutil_python": 0.7972526669190176,
+                        "gpu_gap_stddev_us": 1.2804728098296676
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 112.54803249655556,
+                        "gpu_time_us_python": 116.13545192714446,
+                        "gpu_noise_us_cpp": 1.4344444444444444,
+                        "gpu_noise_us_python": 1.4555555555555557,
+                        "gpu_bwutil_cpp": 0.8132128278455504,
+                        "gpu_bwutil_python": 0.7880965235218178,
+                        "gpu_gap_stddev_us": 0.2544355243884548
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 8,
+                        "gpu_time_us_cpp": 146.30013439644998,
+                        "gpu_time_us_python": 150.1933514563375,
+                        "gpu_noise_us_cpp": 0.9724999999999999,
+                        "gpu_noise_us_python": 1.65125,
+                        "gpu_bwutil_cpp": 0.8202505141560233,
+                        "gpu_bwutil_python": 0.7990270633015344,
+                        "gpu_gap_stddev_us": 1.2684801768684257
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 113.66547944803001,
+                        "gpu_time_us_python": 118.74796233488,
+                        "gpu_noise_us_cpp": 0.93,
+                        "gpu_noise_us_python": 2.1540000000000004,
+                        "gpu_bwutil_cpp": 0.8052183300447473,
+                        "gpu_bwutil_python": 0.7707577634208189,
+                        "gpu_gap_stddev_us": 0.3350318328474288
+                    }
+                },
+                "merge_u8_advanced[InOutDataType=uint8][shape=45x1080x1920][layout=NHWC][inputKind=Tensor][channels=2]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1131.2429411895903,
+                        "gpu_time_us_python": 1136.61158262551,
+                        "gpu_noise_us_cpp": 1.1830000000000003,
+                        "gpu_noise_us_python": 1.8829999999999998,
+                        "gpu_bwutil_cpp": 0.21215609440637873,
+                        "gpu_bwutil_python": 0.21115430255412387,
+                        "gpu_gap_stddev_us": 1.2420747377370307
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1065.55258593658,
+                        "gpu_time_us_python": 1070.62239971859,
+                        "gpu_noise_us_cpp": 0.748,
+                        "gpu_noise_us_python": 1.452,
+                        "gpu_bwutil_cpp": 0.17178965122500164,
+                        "gpu_bwutil_python": 0.17097625632494914,
+                        "gpu_gap_stddev_us": 0.587533294387593
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1127.38525491571,
+                        "gpu_time_us_python": 1132.65961436237,
+                        "gpu_noise_us_cpp": 1.534,
+                        "gpu_noise_us_python": 2.3520000000000003,
+                        "gpu_bwutil_cpp": 0.21288205939523253,
+                        "gpu_bwutil_python": 0.2118910786356069,
+                        "gpu_gap_stddev_us": 1.3594541905534272
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1067.92227043561,
+                        "gpu_time_us_python": 1074.4530121143798,
+                        "gpu_noise_us_cpp": 0.9299999999999999,
+                        "gpu_noise_us_python": 2.543,
+                        "gpu_bwutil_cpp": 0.17140840962762177,
+                        "gpu_bwutil_python": 0.17036658033489946,
+                        "gpu_gap_stddev_us": 0.5294259828603662
+                    }
+                },
+                "merge_u8_advanced[InOutDataType=uint8][shape=45x1080x1920][layout=NHWC][inputKind=Tensor][channels=4]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1772.4881898324998,
+                        "gpu_time_us_python": 1781.07005374646,
+                        "gpu_noise_us_cpp": 1.8720000000000003,
+                        "gpu_noise_us_python": 2.7809999999999997,
+                        "gpu_bwutil_cpp": 0.27080684140832006,
+                        "gpu_bwutil_python": 0.26950166841170126,
+                        "gpu_gap_stddev_us": 2.8114366203061145
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1519.1956744049098,
+                        "gpu_time_us_python": 1526.85063437713,
+                        "gpu_noise_us_cpp": 1.1460000000000001,
+                        "gpu_noise_us_python": 1.907,
+                        "gpu_bwutil_cpp": 0.24098395114236798,
+                        "gpu_bwutil_python": 0.2397758714124767,
+                        "gpu_gap_stddev_us": 0.8811082247853514
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1776.8411849406998,
+                        "gpu_time_us_python": 1786.23355091035,
+                        "gpu_noise_us_cpp": 1.259,
+                        "gpu_noise_us_python": 2.653,
+                        "gpu_bwutil_cpp": 0.27014238057273243,
+                        "gpu_bwutil_python": 0.26872261527839925,
+                        "gpu_gap_stddev_us": 3.386467195061492
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1524.1714128241301,
+                        "gpu_time_us_python": 1534.3410033483,
+                        "gpu_noise_us_cpp": 1.0959999999999996,
+                        "gpu_noise_us_python": 4.273000000000001,
+                        "gpu_bwutil_cpp": 0.24019724699714287,
+                        "gpu_bwutil_python": 0.23860537338784926,
+                        "gpu_gap_stddev_us": 1.2614933059142377
+                    }
+                }
+            }
+        },
+        "merge_s8_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "int8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_s8_advanced[InOutDataType=int8][shape=32x1080x1920][layout=NCHW][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 299.10595911899003,
+                        "gpu_time_us_python": 305.31064596539,
+                        "gpu_noise_us_cpp": 1.2499999999999998,
+                        "gpu_noise_us_python": 1.7870000000000001,
+                        "gpu_bwutil_cpp": 0.8558882533979089,
+                        "gpu_bwutil_python": 0.838517710770472,
+                        "gpu_gap_stddev_us": 1.3702076118784474
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 229.48821179400002,
+                        "gpu_time_us_python": 234.45638853135998,
+                        "gpu_noise_us_cpp": 1.2659999999999998,
+                        "gpu_noise_us_python": 1.739,
+                        "gpu_bwutil_cpp": 0.8508277911575561,
+                        "gpu_bwutil_python": 0.8328068134089015,
+                        "gpu_gap_stddev_us": 0.598330044856663
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 299.02028179133,
+                        "gpu_time_us_python": 305.33609255112003,
+                        "gpu_noise_us_cpp": 1.1969999999999998,
+                        "gpu_noise_us_python": 2.505,
+                        "gpu_bwutil_cpp": 0.856134354895557,
+                        "gpu_bwutil_python": 0.8384465213022642,
+                        "gpu_gap_stddev_us": 1.2275162728855709
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 230.48094254367,
+                        "gpu_time_us_python": 236.81821255786,
+                        "gpu_noise_us_cpp": 0.998,
+                        "gpu_noise_us_python": 1.6649999999999998,
+                        "gpu_bwutil_cpp": 0.8471604182204115,
+                        "gpu_bwutil_python": 0.8244911760970537,
+                        "gpu_gap_stddev_us": 0.3773137534609658
+                    }
+                },
+                "merge_s8_advanced[InOutDataType=int8][shape=32x1080x1920][layout=NHWC][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1025.62761104434,
+                        "gpu_time_us_python": 1032.78203236056,
+                        "gpu_noise_us_cpp": 1.8970000000000002,
+                        "gpu_noise_us_python": 3.084,
+                        "gpu_bwutil_cpp": 0.24960368098763003,
+                        "gpu_bwutil_python": 0.24787530615875678,
+                        "gpu_gap_stddev_us": 1.4626917462176268
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 932.40740481015,
+                        "gpu_time_us_python": 938.1625018140501,
+                        "gpu_noise_us_cpp": 0.8630000000000001,
+                        "gpu_noise_us_python": 1.611,
+                        "gpu_bwutil_cpp": 0.20940880431975367,
+                        "gpu_bwutil_python": 0.20812435296521659,
+                        "gpu_gap_stddev_us": 0.6048940787237241
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1027.0153122358201,
+                        "gpu_time_us_python": 1033.90475029893,
+                        "gpu_noise_us_cpp": 1.175,
+                        "gpu_noise_us_python": 2.6350000000000002,
+                        "gpu_bwutil_cpp": 0.2492661896205152,
+                        "gpu_bwutil_python": 0.24760598252675198,
+                        "gpu_gap_stddev_us": 1.3179863281602584
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 935.25627437807,
+                        "gpu_time_us_python": 942.4823810506999,
+                        "gpu_noise_us_cpp": 1.0230000000000001,
+                        "gpu_noise_us_python": 2.376,
+                        "gpu_bwutil_cpp": 0.20877084502268994,
+                        "gpu_bwutil_python": 0.2071702060802715,
+                        "gpu_gap_stddev_us": 0.4115565304062253
+                    }
+                }
+            }
+        },
+        "merge_16bit_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint16",
+                "int16",
+                "float16"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_16bit_advanced[InOutDataType=float16][shape=32x1080x1920][layout=NCHW][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 586.8892126572,
+                        "gpu_time_us_python": 593.6406757684301,
+                        "gpu_noise_us_cpp": 1.241,
+                        "gpu_noise_us_python": 2.496,
+                        "gpu_bwutil_cpp": 0.872397771124675,
+                        "gpu_bwutil_python": 0.862482426118968,
+                        "gpu_gap_stddev_us": 1.5175182930482902
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 448.29961620024005,
+                        "gpu_time_us_python": 453.29831560283003,
+                        "gpu_noise_us_cpp": 1.2189999999999999,
+                        "gpu_noise_us_python": 1.6600000000000001,
+                        "gpu_bwutil_cpp": 0.8710897902132724,
+                        "gpu_bwutil_python": 0.8614834604967555,
+                        "gpu_gap_stddev_us": 0.3300153294213585
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 586.9211437587799,
+                        "gpu_time_us_python": 593.43764391997,
+                        "gpu_noise_us_cpp": 1.3290000000000002,
+                        "gpu_noise_us_python": 2.012,
+                        "gpu_bwutil_cpp": 0.8723502762837141,
+                        "gpu_bwutil_python": 0.8627773382637465,
+                        "gpu_gap_stddev_us": 1.3869526255749212
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 448.59381784064,
+                        "gpu_time_us_python": 454.97825150427997,
+                        "gpu_noise_us_cpp": 1.2159999999999997,
+                        "gpu_noise_us_python": 1.682,
+                        "gpu_bwutil_cpp": 0.8705175300248318,
+                        "gpu_bwutil_python": 0.8583021732184145,
+                        "gpu_gap_stddev_us": 0.5011556133261438
+                    }
+                },
+                "merge_16bit_advanced[InOutDataType=float16][shape=32x1080x1920][layout=NHWC][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1200.8346187649602,
+                        "gpu_time_us_python": 1210.97476386755,
+                        "gpu_noise_us_cpp": 1.842,
+                        "gpu_noise_us_python": 2.9240000000000004,
+                        "gpu_bwutil_cpp": 0.42637635820102526,
+                        "gpu_bwutil_python": 0.4228018721251649,
+                        "gpu_gap_stddev_us": 3.7527243512172332
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 974.0185025048999,
+                        "gpu_time_us_python": 977.76548746007,
+                        "gpu_noise_us_cpp": 0.7369999999999999,
+                        "gpu_noise_us_python": 1.748,
+                        "gpu_bwutil_cpp": 0.4009266578138401,
+                        "gpu_bwutil_python": 0.39939219190888525,
+                        "gpu_gap_stddev_us": 3.1443851496178885
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1201.57017661396,
+                        "gpu_time_us_python": 1206.5977124202602,
+                        "gpu_noise_us_cpp": 1.3039999999999998,
+                        "gpu_noise_us_python": 2.257,
+                        "gpu_bwutil_cpp": 0.4261107582500185,
+                        "gpu_bwutil_python": 0.424336500855168,
+                        "gpu_gap_stddev_us": 4.960660207544111
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 973.2874788090597,
+                        "gpu_time_us_python": 978.57879655621,
+                        "gpu_noise_us_cpp": 1.134,
+                        "gpu_noise_us_python": 2.6149999999999998,
+                        "gpu_bwutil_cpp": 0.4012265164459,
+                        "gpu_bwutil_python": 0.3990582092986148,
+                        "gpu_gap_stddev_us": 1.7847457677679506
+                    }
+                },
+                "merge_16bit_advanced[InOutDataType=int16][shape=32x1080x1920][layout=NCHW][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 587.0900360433001,
+                        "gpu_time_us_python": 593.6735648550599,
+                        "gpu_noise_us_cpp": 1.445,
+                        "gpu_noise_us_python": 2.4229999999999996,
+                        "gpu_bwutil_cpp": 0.8720993328313271,
+                        "gpu_bwutil_python": 0.8624319286264701,
+                        "gpu_gap_stddev_us": 1.0086115253882684
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 448.17960763581993,
+                        "gpu_time_us_python": 453.26212290626,
+                        "gpu_noise_us_cpp": 1.6109999999999995,
+                        "gpu_noise_us_python": 1.6280000000000001,
+                        "gpu_bwutil_cpp": 0.8713219261080655,
+                        "gpu_bwutil_python": 0.8615520772204854,
+                        "gpu_gap_stddev_us": 0.4978251204897453
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 586.92753161942,
+                        "gpu_time_us_python": 593.4240911391801,
+                        "gpu_noise_us_cpp": 1.7779999999999998,
+                        "gpu_noise_us_python": 2.349,
+                        "gpu_bwutil_cpp": 0.872340463226387,
+                        "gpu_bwutil_python": 0.8627970193061671,
+                        "gpu_gap_stddev_us": 1.4950129442295261
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 448.47108291560005,
+                        "gpu_time_us_python": 455.23485488186,
+                        "gpu_noise_us_cpp": 1.253,
+                        "gpu_noise_us_python": 2.2870000000000004,
+                        "gpu_bwutil_cpp": 0.8707552985779106,
+                        "gpu_bwutil_python": 0.8578238763790228,
+                        "gpu_gap_stddev_us": 1.331507604685504
+                    }
+                },
+                "merge_16bit_advanced[InOutDataType=int16][shape=32x1080x1920][layout=NHWC][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1206.01745172005,
+                        "gpu_time_us_python": 1209.1563418559601,
+                        "gpu_noise_us_cpp": 1.542,
+                        "gpu_noise_us_python": 2.7350000000000003,
+                        "gpu_bwutil_cpp": 0.42454361143004726,
+                        "gpu_bwutil_python": 0.4234379002698221,
+                        "gpu_gap_stddev_us": 3.7943936551512523
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 972.5662947265,
+                        "gpu_time_us_python": 977.6141669915602,
+                        "gpu_noise_us_cpp": 0.64,
+                        "gpu_noise_us_python": 1.738,
+                        "gpu_bwutil_cpp": 0.4015239250325114,
+                        "gpu_bwutil_python": 0.39945378733505965,
+                        "gpu_gap_stddev_us": 2.5779736035417296
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1206.4817334715303,
+                        "gpu_time_us_python": 1209.63102826966,
+                        "gpu_noise_us_cpp": 1.3930000000000002,
+                        "gpu_noise_us_python": 2.077,
+                        "gpu_bwutil_cpp": 0.4243806029837785,
+                        "gpu_bwutil_python": 0.42327051944830413,
+                        "gpu_gap_stddev_us": 3.702421567118127
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 973.28198780868,
+                        "gpu_time_us_python": 978.11635480266,
+                        "gpu_noise_us_cpp": 1.0050000000000001,
+                        "gpu_noise_us_python": 2.089,
+                        "gpu_bwutil_cpp": 0.4012286736534598,
+                        "gpu_bwutil_python": 0.3992457561021512,
+                        "gpu_gap_stddev_us": 1.1357320147065841
+                    }
+                },
+                "merge_16bit_advanced[InOutDataType=uint16][shape=32x1080x1920][layout=NCHW][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 587.0280060019002,
+                        "gpu_time_us_python": 593.90175106685,
+                        "gpu_noise_us_cpp": 1.516,
+                        "gpu_noise_us_python": 2.6239999999999997,
+                        "gpu_bwutil_cpp": 0.8721914754404029,
+                        "gpu_bwutil_python": 0.8621033876297417,
+                        "gpu_gap_stddev_us": 1.3513266246856073
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 447.96631802129997,
+                        "gpu_time_us_python": 453.2293767599701,
+                        "gpu_noise_us_cpp": 1.0670000000000002,
+                        "gpu_noise_us_python": 1.6960000000000002,
+                        "gpu_bwutil_cpp": 0.871737031407927,
+                        "gpu_bwutil_python": 0.8616142125072098,
+                        "gpu_gap_stddev_us": 0.438129173341818
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 587.01777495656,
+                        "gpu_time_us_python": 593.59261952344,
+                        "gpu_noise_us_cpp": 1.336,
+                        "gpu_noise_us_python": 2.3069999999999995,
+                        "gpu_bwutil_cpp": 0.8722073341917254,
+                        "gpu_bwutil_python": 0.8625534024639239,
+                        "gpu_gap_stddev_us": 1.2949299623613066
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 448.51847840193994,
+                        "gpu_time_us_python": 455.28503829505996,
+                        "gpu_noise_us_cpp": 1.1829999999999998,
+                        "gpu_noise_us_python": 2.239,
+                        "gpu_bwutil_cpp": 0.8706634116562079,
+                        "gpu_bwutil_python": 0.8577257648237264,
+                        "gpu_gap_stddev_us": 0.9474789643166719
+                    }
+                },
+                "merge_16bit_advanced[InOutDataType=uint16][shape=32x1080x1920][layout=NHWC][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1204.46245809946,
+                        "gpu_time_us_python": 1211.1351812736302,
+                        "gpu_noise_us_cpp": 1.515,
+                        "gpu_noise_us_python": 2.368,
+                        "gpu_bwutil_cpp": 0.4250876889578995,
+                        "gpu_bwutil_python": 0.4227460530352157,
+                        "gpu_gap_stddev_us": 1.0896208763911714
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 970.51355150222,
+                        "gpu_time_us_python": 977.5263069356799,
+                        "gpu_noise_us_cpp": 0.5810000000000001,
+                        "gpu_noise_us_python": 2.101,
+                        "gpu_bwutil_cpp": 0.4023744886168544,
+                        "gpu_bwutil_python": 0.39949001635312226,
+                        "gpu_gap_stddev_us": 3.3493762687470383
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1205.39421393316,
+                        "gpu_time_us_python": 1211.88430791244,
+                        "gpu_noise_us_cpp": 2.2279999999999998,
+                        "gpu_noise_us_python": 2.4789999999999996,
+                        "gpu_bwutil_cpp": 0.42475756699079315,
+                        "gpu_bwutil_python": 0.42248345670951126,
+                        "gpu_gap_stddev_us": 1.151403813124302
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 970.54163279917,
+                        "gpu_time_us_python": 978.33331178403,
+                        "gpu_noise_us_cpp": 0.769,
+                        "gpu_noise_us_python": 2.3080000000000003,
+                        "gpu_bwutil_cpp": 0.4023614354984132,
+                        "gpu_bwutil_python": 0.3991571213454952,
+                        "gpu_gap_stddev_us": 0.8221191835956237
+                    }
+                }
+            }
+        },
+        "merge_32bit_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint32",
+                "int32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "16x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_32bit_advanced[InOutDataType=int32][shape=16x1080x1920][layout=NCHW][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 583.91608162744,
+                        "gpu_time_us_python": 590.0149769624401,
+                        "gpu_noise_us_cpp": 1.562,
+                        "gpu_noise_us_python": 2.3619999999999997,
+                        "gpu_bwutil_cpp": 0.8768398713736059,
+                        "gpu_bwutil_python": 0.8677809418754329,
+                        "gpu_gap_stddev_us": 1.2169503747050396
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 450.1001708207001,
+                        "gpu_time_us_python": 455.3369371053601,
+                        "gpu_noise_us_cpp": 1.748,
+                        "gpu_noise_us_python": 1.9449999999999998,
+                        "gpu_bwutil_cpp": 0.8676037439787736,
+                        "gpu_bwutil_python": 0.8576269321307327,
+                        "gpu_gap_stddev_us": 0.6320118389532401
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 583.8320051759199,
+                        "gpu_time_us_python": 589.86722035006,
+                        "gpu_noise_us_cpp": 1.549,
+                        "gpu_noise_us_python": 1.9609999999999999,
+                        "gpu_bwutil_cpp": 0.8769659253921551,
+                        "gpu_bwutil_python": 0.867997683912954,
+                        "gpu_gap_stddev_us": 1.115244157412484
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 450.5709226752,
+                        "gpu_time_us_python": 457.35013181934,
+                        "gpu_noise_us_cpp": 1.4,
+                        "gpu_noise_us_python": 1.8310000000000002,
+                        "gpu_bwutil_cpp": 0.8666971345831487,
+                        "gpu_bwutil_python": 0.8538509405011769,
+                        "gpu_gap_stddev_us": 0.5212567797629724
+                    }
+                },
+                "merge_32bit_advanced[InOutDataType=int32][shape=16x1080x1920][layout=NHWC][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 877.93062723743,
+                        "gpu_time_us_python": 882.5113370258401,
+                        "gpu_noise_us_cpp": 1.6450000000000002,
+                        "gpu_noise_us_python": 1.941,
+                        "gpu_bwutil_cpp": 0.5831985231294392,
+                        "gpu_bwutil_python": 0.580170875589215,
+                        "gpu_gap_stddev_us": 1.3100831309937013
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 735.7773527731399,
+                        "gpu_time_us_python": 741.08954598353,
+                        "gpu_noise_us_cpp": 1.54,
+                        "gpu_noise_us_python": 2.3669999999999995,
+                        "gpu_bwutil_cpp": 0.5307508928281128,
+                        "gpu_bwutil_python": 0.5269473497561673,
+                        "gpu_gap_stddev_us": 1.7941153188872803
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 879.53436440937,
+                        "gpu_time_us_python": 884.0054987269801,
+                        "gpu_noise_us_cpp": 1.249,
+                        "gpu_noise_us_python": 2.78,
+                        "gpu_bwutil_cpp": 0.5821266916134367,
+                        "gpu_bwutil_python": 0.5791837859487399,
+                        "gpu_gap_stddev_us": 1.0334683748237892
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 731.71179679224,
+                        "gpu_time_us_python": 740.67933409208,
+                        "gpu_noise_us_cpp": 2.362,
+                        "gpu_noise_us_python": 2.642,
+                        "gpu_bwutil_cpp": 0.5336926636149155,
+                        "gpu_bwutil_python": 0.5272313320729505,
+                        "gpu_gap_stddev_us": 1.145570526073087
+                    }
+                },
+                "merge_32bit_advanced[InOutDataType=uint32][shape=16x1080x1920][layout=NCHW][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 583.87328176698,
+                        "gpu_time_us_python": 590.4991542314499,
+                        "gpu_noise_us_cpp": 1.5259999999999998,
+                        "gpu_noise_us_python": 3.1120000000000005,
+                        "gpu_bwutil_cpp": 0.8769042764237799,
+                        "gpu_bwutil_python": 0.867072774066864,
+                        "gpu_gap_stddev_us": 1.480987276889213
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 449.82751082492007,
+                        "gpu_time_us_python": 455.18052875369995,
+                        "gpu_noise_us_cpp": 1.2149999999999999,
+                        "gpu_noise_us_python": 1.6829999999999998,
+                        "gpu_bwutil_cpp": 0.8681297567996449,
+                        "gpu_bwutil_python": 0.8579215087819346,
+                        "gpu_gap_stddev_us": 0.44408767975654106
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 583.79346847696,
+                        "gpu_time_us_python": 590.2455807664201,
+                        "gpu_noise_us_cpp": 2.4189999999999996,
+                        "gpu_noise_us_python": 2.357,
+                        "gpu_bwutil_cpp": 0.8770237146013224,
+                        "gpu_bwutil_python": 0.867441916946661,
+                        "gpu_gap_stddev_us": 1.1646260196436036
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 450.5329374475,
+                        "gpu_time_us_python": 457.6592232002499,
+                        "gpu_noise_us_cpp": 1.206,
+                        "gpu_noise_us_python": 2.2570000000000006,
+                        "gpu_bwutil_cpp": 0.8667705082508048,
+                        "gpu_bwutil_python": 0.8532747147637775,
+                        "gpu_gap_stddev_us": 0.37548538186654995
+                    }
+                },
+                "merge_32bit_advanced[InOutDataType=uint32][shape=16x1080x1920][layout=NHWC][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 877.7550704887599,
+                        "gpu_time_us_python": 884.1022040314201,
+                        "gpu_noise_us_cpp": 1.5949999999999998,
+                        "gpu_noise_us_python": 2.389,
+                        "gpu_bwutil_cpp": 0.5833157620215113,
+                        "gpu_bwutil_python": 0.5791256681149953,
+                        "gpu_gap_stddev_us": 1.6189491434620296
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 735.5317810608701,
+                        "gpu_time_us_python": 741.34509686006,
+                        "gpu_noise_us_cpp": 2.134,
+                        "gpu_noise_us_python": 2.5220000000000002,
+                        "gpu_bwutil_cpp": 0.5309289849360933,
+                        "gpu_bwutil_python": 0.5267646724384966,
+                        "gpu_gap_stddev_us": 1.1115561616892007
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 879.0968199570501,
+                        "gpu_time_us_python": 885.71497504284,
+                        "gpu_noise_us_cpp": 1.479,
+                        "gpu_noise_us_python": 2.878,
+                        "gpu_bwutil_cpp": 0.5824165222515991,
+                        "gpu_bwutil_python": 0.5780662457184469,
+                        "gpu_gap_stddev_us": 1.1642422780083428
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 733.1948374744,
+                        "gpu_time_us_python": 740.82086847326,
+                        "gpu_noise_us_cpp": 1.815,
+                        "gpu_noise_us_python": 3.3760000000000003,
+                        "gpu_bwutil_cpp": 0.532612416747577,
+                        "gpu_bwutil_python": 0.527130302961571,
+                        "gpu_gap_stddev_us": 0.6406879473141386
+                    }
+                }
+            }
+        },
+        "merge_f64_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float64"
+            ],
+            "string_axes": {
+                "shape": [
+                    "8x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_f64_advanced[InOutDataType=float64][shape=8x1080x1920][layout=NCHW][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 587.31017722736,
+                        "gpu_time_us_python": 593.6081056809401,
+                        "gpu_noise_us_cpp": 2.101,
+                        "gpu_noise_us_python": 2.714,
+                        "gpu_bwutil_cpp": 0.8717736857325171,
+                        "gpu_bwutil_python": 0.8625319249657842,
+                        "gpu_gap_stddev_us": 1.4811904324816274
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 453.83220195749,
+                        "gpu_time_us_python": 459.05501304206,
+                        "gpu_noise_us_cpp": 1.6460000000000001,
+                        "gpu_noise_us_python": 1.8719999999999999,
+                        "gpu_bwutil_cpp": 0.8604691849251273,
+                        "gpu_bwutil_python": 0.8506817283006521,
+                        "gpu_gap_stddev_us": 0.6675570499762509
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 587.18910504183,
+                        "gpu_time_us_python": 593.31828247303,
+                        "gpu_noise_us_cpp": 2.171,
+                        "gpu_noise_us_python": 2.532,
+                        "gpu_bwutil_cpp": 0.8719522620094191,
+                        "gpu_bwutil_python": 0.8629510367903205,
+                        "gpu_gap_stddev_us": 1.3422529615954215
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 454.54386142765,
+                        "gpu_time_us_python": 461.54459088540005,
+                        "gpu_noise_us_cpp": 1.3980000000000001,
+                        "gpu_noise_us_python": 2.1439999999999992,
+                        "gpu_bwutil_cpp": 0.8591217422208233,
+                        "gpu_bwutil_python": 0.8460926548992213,
+                        "gpu_gap_stddev_us": 0.7952411251089995
+                    }
+                },
+                "merge_f64_advanced[InOutDataType=float64][shape=8x1080x1920][layout=NHWC][inputKind=Tensor][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 837.53708377719,
+                        "gpu_time_us_python": 844.1864397185,
+                        "gpu_noise_us_cpp": 1.8439999999999999,
+                        "gpu_noise_us_python": 2.6559999999999997,
+                        "gpu_bwutil_cpp": 0.6113283005892141,
+                        "gpu_bwutil_python": 0.6065139631594205,
+                        "gpu_gap_stddev_us": 1.2743031230462503
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 683.13075686005,
+                        "gpu_time_us_python": 688.44729339004,
+                        "gpu_noise_us_cpp": 1.56,
+                        "gpu_noise_us_python": 2.021,
+                        "gpu_bwutil_cpp": 0.5716551017184194,
+                        "gpu_bwutil_python": 0.5672390681926197,
+                        "gpu_gap_stddev_us": 1.0354423315901142
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 838.9069692557802,
+                        "gpu_time_us_python": 845.2022784020501,
+                        "gpu_noise_us_cpp": 1.5109999999999997,
+                        "gpu_noise_us_python": 2.442,
+                        "gpu_bwutil_cpp": 0.6103185431085613,
+                        "gpu_bwutil_python": 0.6057749072431597,
+                        "gpu_gap_stddev_us": 1.3048739451902864
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 678.49302308011,
+                        "gpu_time_us_python": 685.7330141985601,
+                        "gpu_noise_us_cpp": 1.9550000000000005,
+                        "gpu_noise_us_python": 2.9140000000000006,
+                        "gpu_bwutil_cpp": 0.5755553896319341,
+                        "gpu_bwutil_python": 0.5694792827816497,
+                        "gpu_gap_stddev_us": 0.9353288761878843
+                    }
+                }
+            }
+        },
+        "merge_varshape_uchar3_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "uchar3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920",
+                    "32x1080x1920@17"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_varshape_uchar3_basic[InOutDataType=uchar3][shape=32x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 817.4132041701444,
+                        "gpu_time_us_python": 824.1960627221777,
+                        "gpu_noise_us_cpp": 4.012222222222222,
+                        "gpu_noise_us_python": 5.312222222222221,
+                        "gpu_bwutil_cpp": 0.3165791718789763,
+                        "gpu_bwutil_python": 0.31397546543291177,
+                        "gpu_gap_stddev_us": 1.8089117119975926
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 743.8553135723445,
+                        "gpu_time_us_python": 748.0452278950555,
+                        "gpu_noise_us_cpp": 3.6600000000000006,
+                        "gpu_noise_us_python": 3.92,
+                        "gpu_bwutil_cpp": 0.26532533599028096,
+                        "gpu_bwutil_python": 0.26383916666283624,
+                        "gpu_gap_stddev_us": 1.3431880652121218
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 4899.051808724669,
+                        "gpu_time_us_python": 4911.0996151668205,
+                        "gpu_noise_us_cpp": 86.059,
+                        "gpu_noise_us_python": 82.886,
+                        "gpu_bwutil_cpp": 0.9873207582988176,
+                        "gpu_bwutil_python": 0.9849019648604778,
+                        "gpu_gap_stddev_us": 12.594563161902371
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 813.6993149988778,
+                        "gpu_time_us_python": 818.4795729705667,
+                        "gpu_noise_us_cpp": 4.52,
+                        "gpu_noise_us_python": 3.7077777777777774,
+                        "gpu_bwutil_cpp": 0.31802578332258075,
+                        "gpu_bwutil_python": 0.3161713580365277,
+                        "gpu_gap_stddev_us": 1.6779237521582124
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 754.35010060124,
+                        "gpu_time_us_python": 760.36455343498,
+                        "gpu_noise_us_cpp": 3.6049999999999995,
+                        "gpu_noise_us_python": 4.7780000000000005,
+                        "gpu_bwutil_cpp": 0.2616335606966226,
+                        "gpu_bwutil_python": 0.25956434646145676,
+                        "gpu_gap_stddev_us": 0.6995244759167535
+                    }
+                },
+                "merge_varshape_uchar3_basic[InOutDataType=uchar3][shape=32x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1080.70256195834,
+                        "gpu_time_us_python": 1087.35386758434,
+                        "gpu_noise_us_cpp": 7.194,
+                        "gpu_noise_us_python": 8.157,
+                        "gpu_bwutil_cpp": 0.23944703860753958,
+                        "gpu_bwutil_python": 0.2379820714528959,
+                        "gpu_gap_stddev_us": 2.1306172803026575
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 932.5244457410112,
+                        "gpu_time_us_python": 938.1285599955445,
+                        "gpu_noise_us_cpp": 3.3088888888888888,
+                        "gpu_noise_us_python": 3.9911111111111115,
+                        "gpu_bwutil_cpp": 0.2116460048775073,
+                        "gpu_bwutil_python": 0.21038033335603437,
+                        "gpu_gap_stddev_us": 3.6243364647104266
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 7329.92840303609,
+                        "gpu_time_us_python": 7353.009305556629,
+                        "gpu_noise_us_cpp": 142.406,
+                        "gpu_noise_us_python": 149.237,
+                        "gpu_bwutil_cpp": 0.6598875236126418,
+                        "gpu_bwutil_python": 0.6578161313808544,
+                        "gpu_gap_stddev_us": 11.057608958673041
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1071.5378273719602,
+                        "gpu_time_us_python": 1077.3130262906202,
+                        "gpu_noise_us_cpp": 7.693,
+                        "gpu_noise_us_python": 7.287000000000001,
+                        "gpu_bwutil_cpp": 0.24149767875968764,
+                        "gpu_bwutil_python": 0.24020409926172698,
+                        "gpu_gap_stddev_us": 1.5304186718206947
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 942.1042703681,
+                        "gpu_time_us_python": 949.0934678724701,
+                        "gpu_noise_us_cpp": 5.067000000000001,
+                        "gpu_noise_us_python": 5.49,
+                        "gpu_bwutil_cpp": 0.20949267129240495,
+                        "gpu_bwutil_python": 0.20795121960168256,
+                        "gpu_gap_stddev_us": 3.852073826768716
+                    }
+                },
+                "merge_varshape_uchar3_basic[InOutDataType=uchar3][shape=32x1080x1920][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 8,
+                        "gpu_time_us_cpp": 713.56238960955,
+                        "gpu_time_us_python": 718.192437349675,
+                        "gpu_noise_us_cpp": 4.22625,
+                        "gpu_noise_us_python": 3.9662499999999996,
+                        "gpu_bwutil_cpp": 0.35878342248761935,
+                        "gpu_bwutil_python": 0.3564736654823372,
+                        "gpu_gap_stddev_us": 1.625268767048839
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 681.55257457768,
+                        "gpu_time_us_python": 686.6380945396701,
+                        "gpu_noise_us_cpp": 2.683,
+                        "gpu_noise_us_python": 3.185,
+                        "gpu_bwutil_cpp": 0.28649343540854827,
+                        "gpu_bwutil_python": 0.28437041670985425,
+                        "gpu_gap_stddev_us": 0.5161002756069213
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 4318.64325238837,
+                        "gpu_time_us_python": 4343.717350934339,
+                        "gpu_noise_us_cpp": 47.809,
+                        "gpu_noise_us_python": 49.544,
+                        "gpu_bwutil_cpp": 1.108044636692745,
+                        "gpu_bwutil_python": 1.1016455554461997,
+                        "gpu_gap_stddev_us": 10.784464573497452
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 707.9220304097001,
+                        "gpu_time_us_python": 712.1057721126666,
+                        "gpu_noise_us_cpp": 4.357777777777778,
+                        "gpu_noise_us_python": 3.9266666666666663,
+                        "gpu_bwutil_cpp": 0.3616460512330822,
+                        "gpu_bwutil_python": 0.35952366990619106,
+                        "gpu_gap_stddev_us": 1.3827864553777778
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 691.85140293912,
+                        "gpu_time_us_python": 698.2856145569999,
+                        "gpu_noise_us_cpp": 4.349,
+                        "gpu_noise_us_python": 5.615,
+                        "gpu_bwutil_cpp": 0.2822215529839167,
+                        "gpu_bwutil_python": 0.27962152159434217,
+                        "gpu_gap_stddev_us": 1.1201295697368294
+                    }
+                },
+                "merge_varshape_uchar3_basic[InOutDataType=uchar3][shape=32x1080x1920][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 6,
+                        "gpu_time_us_cpp": 578.3220703069834,
+                        "gpu_time_us_python": 583.14875759325,
+                        "gpu_noise_us_cpp": 5.401666666666666,
+                        "gpu_noise_us_python": 4.708333333333334,
+                        "gpu_bwutil_cpp": 0.4426712128929346,
+                        "gpu_bwutil_python": 0.4389979200513414,
+                        "gpu_gap_stddev_us": 2.361566483920931
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 513.1377044118889,
+                        "gpu_time_us_python": 518.6415751378333,
+                        "gpu_noise_us_cpp": 1.8066666666666664,
+                        "gpu_noise_us_python": 3.458888888888889,
+                        "gpu_bwutil_cpp": 0.38051075091123504,
+                        "gpu_bwutil_python": 0.37647370223585386,
+                        "gpu_gap_stddev_us": 1.1156737979669558
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 3160.8684890971394,
+                        "gpu_time_us_python": 3178.23862637142,
+                        "gpu_noise_us_cpp": 7.336999999999999,
+                        "gpu_noise_us_python": 4.985,
+                        "gpu_bwutil_cpp": 1.513904501040629,
+                        "gpu_bwutil_python": 1.505626912297305,
+                        "gpu_gap_stddev_us": 5.897683115307955
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 6,
+                        "gpu_time_us_cpp": 566.1771795536666,
+                        "gpu_time_us_python": 572.4559396345334,
+                        "gpu_noise_us_cpp": 5.038333333333333,
+                        "gpu_noise_us_python": 6.1933333333333325,
+                        "gpu_bwutil_cpp": 0.4521674785764482,
+                        "gpu_bwutil_python": 0.4472125946396896,
+                        "gpu_gap_stddev_us": 2.6749270389553477
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 518.61230686772,
+                        "gpu_time_us_python": 525.6020732150901,
+                        "gpu_noise_us_cpp": 5.1049999999999995,
+                        "gpu_noise_us_python": 6.021,
+                        "gpu_bwutil_cpp": 0.3764963025469357,
+                        "gpu_bwutil_python": 0.37148921586455996,
+                        "gpu_gap_stddev_us": 1.603582104623568
+                    }
+                }
+            }
+        },
+        "merge_varshape_float3_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "float3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "16x1080x1920",
+                    "16x1080x1920@17"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_varshape_float3_basic[InOutDataType=float3][shape=16x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 836.8873225042898,
+                        "gpu_time_us_python": 842.9154779943999,
+                        "gpu_noise_us_cpp": 2.588,
+                        "gpu_noise_us_python": 3.656,
+                        "gpu_bwutil_cpp": 0.6132887742364802,
+                        "gpu_bwutil_python": 0.6089178562647722,
+                        "gpu_gap_stddev_us": 3.1346841238324816
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 736.14278213189,
+                        "gpu_time_us_python": 740.17652262301,
+                        "gpu_noise_us_cpp": 1.403,
+                        "gpu_noise_us_python": 2.2569999999999997,
+                        "gpu_bwutil_cpp": 0.5317765357403803,
+                        "gpu_bwutil_python": 0.5288824613006433,
+                        "gpu_gap_stddev_us": 1.0228075931309148
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 5130.96593545402,
+                        "gpu_time_us_python": 5157.43308845828,
+                        "gpu_noise_us_cpp": 11.228,
+                        "gpu_noise_us_python": 10.299,
+                        "gpu_bwutil_cpp": 1.8697858250005148,
+                        "gpu_bwutil_python": 1.8601899418514762,
+                        "gpu_gap_stddev_us": 3.9728537621765248
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 834.06731927447,
+                        "gpu_time_us_python": 839.61896037479,
+                        "gpu_noise_us_cpp": 1.972,
+                        "gpu_noise_us_python": 3.5100000000000002,
+                        "gpu_bwutil_cpp": 0.6153660576773696,
+                        "gpu_bwutil_python": 0.611301053687529,
+                        "gpu_gap_stddev_us": 1.3602733978485764
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 742.8020968883,
+                        "gpu_time_us_python": 747.73762660017,
+                        "gpu_noise_us_cpp": 3.1430000000000002,
+                        "gpu_noise_us_python": 4.05,
+                        "gpu_bwutil_cpp": 0.5270064483644441,
+                        "gpu_bwutil_python": 0.523527621483761,
+                        "gpu_gap_stddev_us": 0.9435397395871921
+                    }
+                },
+                "merge_varshape_float3_basic[InOutDataType=float3][shape=16x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 980.55627058083,
+                        "gpu_time_us_python": 987.9391723689399,
+                        "gpu_noise_us_cpp": 2.762,
+                        "gpu_noise_us_python": 3.3280000000000003,
+                        "gpu_bwutil_cpp": 0.5234316152645572,
+                        "gpu_bwutil_python": 0.5195238542453948,
+                        "gpu_gap_stddev_us": 1.9151852774213756
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 810.0406176634999,
+                        "gpu_time_us_python": 814.58215876173,
+                        "gpu_noise_us_cpp": 2.021,
+                        "gpu_noise_us_python": 2.7980000000000005,
+                        "gpu_bwutil_cpp": 0.4832632279107938,
+                        "gpu_bwutil_python": 0.48057234400097126,
+                        "gpu_gap_stddev_us": 1.4496713988802556
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 5911.6974187451215,
+                        "gpu_time_us_python": 5928.50441156426,
+                        "gpu_noise_us_cpp": 10.265,
+                        "gpu_noise_us_python": 11.217,
+                        "gpu_bwutil_cpp": 1.6228525203786326,
+                        "gpu_bwutil_python": 1.618251661129479,
+                        "gpu_gap_stddev_us": 7.246039493596175
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 976.98184582624,
+                        "gpu_time_us_python": 984.4159896943999,
+                        "gpu_noise_us_cpp": 2.055,
+                        "gpu_noise_us_python": 4.312,
+                        "gpu_bwutil_cpp": 0.5253463562528703,
+                        "gpu_bwutil_python": 0.5213851616963862,
+                        "gpu_gap_stddev_us": 1.9023503803863848
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 815.70460512221,
+                        "gpu_time_us_python": 820.7517712764,
+                        "gpu_noise_us_cpp": 3.0680000000000005,
+                        "gpu_noise_us_python": 2.915,
+                        "gpu_bwutil_cpp": 0.47990616815358644,
+                        "gpu_bwutil_python": 0.47695520283514037,
+                        "gpu_gap_stddev_us": 1.5114368770592088
+                    }
+                },
+                "merge_varshape_float3_basic[InOutDataType=float3][shape=16x1080x1920][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 774.4293507204201,
+                        "gpu_time_us_python": 780.83322682327,
+                        "gpu_noise_us_cpp": 2.167,
+                        "gpu_noise_us_python": 3.854,
+                        "gpu_bwutil_cpp": 0.661146774664471,
+                        "gpu_bwutil_python": 0.6557328048268414,
+                        "gpu_gap_stddev_us": 2.66531777568791
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 692.5132435763901,
+                        "gpu_time_us_python": 696.82205363328,
+                        "gpu_noise_us_cpp": 1.9970000000000003,
+                        "gpu_noise_us_python": 3.0379999999999994,
+                        "gpu_bwutil_cpp": 0.5639043215690898,
+                        "gpu_bwutil_python": 0.5604217660299525,
+                        "gpu_gap_stddev_us": 1.0672810725317348
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 5586.2785508896895,
+                        "gpu_time_us_python": 5605.99808798891,
+                        "gpu_noise_us_cpp": 7.750000000000002,
+                        "gpu_noise_us_python": 7.6899999999999995,
+                        "gpu_bwutil_cpp": 1.7132095932320013,
+                        "gpu_bwutil_python": 1.707182987961125,
+                        "gpu_gap_stddev_us": 2.8313017508255864
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 771.9658136245332,
+                        "gpu_time_us_python": 777.3381450736223,
+                        "gpu_noise_us_cpp": 2.2622222222222224,
+                        "gpu_noise_us_python": 3.9466666666666663,
+                        "gpu_bwutil_cpp": 0.6632574162475814,
+                        "gpu_bwutil_python": 0.6586764912570725,
+                        "gpu_gap_stddev_us": 0.805087764577761
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 698.866266819,
+                        "gpu_time_us_python": 704.1619970584201,
+                        "gpu_noise_us_cpp": 2.971,
+                        "gpu_noise_us_python": 4.272,
+                        "gpu_bwutil_cpp": 0.5587748748993463,
+                        "gpu_bwutil_python": 0.5545725327008724,
+                        "gpu_gap_stddev_us": 0.9340987775800143
+                    }
+                },
+                "merge_varshape_float3_basic[InOutDataType=float3][shape=16x1080x1920][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 957.0150875246777,
+                        "gpu_time_us_python": 963.1779421698777,
+                        "gpu_noise_us_cpp": 1.9288888888888889,
+                        "gpu_noise_us_python": 3.6800000000000006,
+                        "gpu_bwutil_cpp": 0.5350034400280567,
+                        "gpu_bwutil_python": 0.5315834667453951,
+                        "gpu_gap_stddev_us": 1.2776859001975371
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 811.4833916873998,
+                        "gpu_time_us_python": 816.01802667086,
+                        "gpu_noise_us_cpp": 1.5790000000000002,
+                        "gpu_noise_us_python": 3.437,
+                        "gpu_bwutil_cpp": 0.48123137410215333,
+                        "gpu_bwutil_python": 0.4785623108154559,
+                        "gpu_gap_stddev_us": 1.832254974587599
+                    },
+                    "Jetson_Orin_R36_2_MAXN_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 5818.938936113509,
+                        "gpu_time_us_python": 5838.77908573589,
+                        "gpu_noise_us_cpp": 11.392999999999999,
+                        "gpu_noise_us_python": 7.6930000000000005,
+                        "gpu_bwutil_cpp": 1.6447102681256986,
+                        "gpu_bwutil_python": 1.639121384329561,
+                        "gpu_gap_stddev_us": 6.4371459258343515
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 955.0236755743701,
+                        "gpu_time_us_python": 960.2703163391001,
+                        "gpu_noise_us_cpp": 3.5160000000000005,
+                        "gpu_noise_us_python": 4.15,
+                        "gpu_bwutil_cpp": 0.5361224861221296,
+                        "gpu_bwutil_python": 0.5331983547073215,
+                        "gpu_gap_stddev_us": 1.7608933092283476
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 818.2813800992301,
+                        "gpu_time_us_python": 823.8994002886699,
+                        "gpu_noise_us_cpp": 3.622,
+                        "gpu_noise_us_python": 4.156,
+                        "gpu_bwutil_cpp": 0.47723106677047794,
+                        "gpu_bwutil_python": 0.4739772577236536,
+                        "gpu_gap_stddev_us": 1.91119834240213
+                    }
+                }
+            }
+        },
+        "merge_varshape_u8_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "45x1080x1920@17"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    1,
+                    2,
+                    4
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_varshape_u8_advanced[InOutDataType=uint8][shape=45x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=1]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 478.66814141092215,
+                        "gpu_time_us_python": 483.6012192850333,
+                        "gpu_noise_us_cpp": 1.872222222222222,
+                        "gpu_noise_us_python": 2.5833333333333335,
+                        "gpu_bwutil_cpp": 0.2532114865484286,
+                        "gpu_bwutil_python": 0.2506331079169627,
+                        "gpu_gap_stddev_us": 1.2945909702352365
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 454.72896546097775,
+                        "gpu_time_us_python": 458.38428805640007,
+                        "gpu_noise_us_cpp": 1.8277777777777777,
+                        "gpu_noise_us_python": 2.0611111111111113,
+                        "gpu_bwutil_cpp": 0.2032843677167168,
+                        "gpu_bwutil_python": 0.2016633780506059,
+                        "gpu_gap_stddev_us": 0.5281861120831385
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 7,
+                        "gpu_time_us_cpp": 476.2426716148715,
+                        "gpu_time_us_python": 480.7552959938429,
+                        "gpu_noise_us_cpp": 2.518571428571429,
+                        "gpu_noise_us_python": 3.16,
+                        "gpu_bwutil_cpp": 0.25450377533053625,
+                        "gpu_bwutil_python": 0.2521189272219458,
+                        "gpu_gap_stddev_us": 0.7003814987886696
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 461.45251707050994,
+                        "gpu_time_us_python": 466.58683094246,
+                        "gpu_noise_us_cpp": 2.854,
+                        "gpu_noise_us_python": 2.703,
+                        "gpu_bwutil_cpp": 0.20032277859558345,
+                        "gpu_bwutil_python": 0.1981182916151465,
+                        "gpu_gap_stddev_us": 0.8475222284144602
+                    }
+                },
+                "merge_varshape_u8_advanced[InOutDataType=uint8][shape=45x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=2]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 805.1972618406401,
+                        "gpu_time_us_python": 811.3954649155801,
+                        "gpu_noise_us_cpp": 3.752,
+                        "gpu_noise_us_python": 4.242,
+                        "gpu_bwutil_cpp": 0.301053288913752,
+                        "gpu_bwutil_python": 0.2987567489697941,
+                        "gpu_gap_stddev_us": 1.1500564184989226
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 730.3437816772499,
+                        "gpu_time_us_python": 735.83342801466,
+                        "gpu_noise_us_cpp": 3.0380000000000003,
+                        "gpu_noise_us_python": 3.2329999999999997,
+                        "gpu_bwutil_cpp": 0.253145649062374,
+                        "gpu_bwutil_python": 0.25125634671858993,
+                        "gpu_gap_stddev_us": 1.2413294600612144
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 800.590500159,
+                        "gpu_time_us_python": 806.7066167007001,
+                        "gpu_noise_us_cpp": 2.642222222222222,
+                        "gpu_noise_us_python": 4.57,
+                        "gpu_bwutil_cpp": 0.30278753405473496,
+                        "gpu_bwutil_python": 0.3004962385041105,
+                        "gpu_gap_stddev_us": 1.3171198275015865
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 738.9922098168499,
+                        "gpu_time_us_python": 745.90970031462,
+                        "gpu_noise_us_cpp": 3.135,
+                        "gpu_noise_us_python": 3.7419999999999995,
+                        "gpu_bwutil_cpp": 0.2501767798260742,
+                        "gpu_bwutil_python": 0.2478571101020366,
+                        "gpu_gap_stddev_us": 1.4995668048925854
+                    }
+                },
+                "merge_varshape_u8_advanced[InOutDataType=uint8][shape=45x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=4]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1466.1651267896898,
+                        "gpu_time_us_python": 1474.6489739825497,
+                        "gpu_noise_us_cpp": 6.119,
+                        "gpu_noise_us_python": 6.935,
+                        "gpu_bwutil_cpp": 0.3306676996049982,
+                        "gpu_bwutil_python": 0.3287655773596434,
+                        "gpu_gap_stddev_us": 2.2051280604430867
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1318.9803594276698,
+                        "gpu_time_us_python": 1326.5838342777001,
+                        "gpu_noise_us_cpp": 5.435999999999999,
+                        "gpu_noise_us_python": 4.968,
+                        "gpu_bwutil_cpp": 0.280339669142582,
+                        "gpu_bwutil_python": 0.278734953361205,
+                        "gpu_gap_stddev_us": 1.8957888031455095
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1457.44355892926,
+                        "gpu_time_us_python": 1466.86284005837,
+                        "gpu_noise_us_cpp": 5.6530000000000005,
+                        "gpu_noise_us_python": 8.017999999999999,
+                        "gpu_bwutil_cpp": 0.33264805824174737,
+                        "gpu_bwutil_python": 0.33051286814713576,
+                        "gpu_gap_stddev_us": 2.305245824191006
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1333.93177897367,
+                        "gpu_time_us_python": 1343.42671431131,
+                        "gpu_noise_us_cpp": 4.836,
+                        "gpu_noise_us_python": 4.657,
+                        "gpu_bwutil_cpp": 0.2771934996787129,
+                        "gpu_bwutil_python": 0.27523447407529844,
+                        "gpu_gap_stddev_us": 1.8389469287046174
+                    }
+                },
+                "merge_varshape_u8_advanced[InOutDataType=uint8][shape=45x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=2]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1918.28029937755,
+                        "gpu_time_us_python": 1922.9459186790198,
+                        "gpu_noise_us_cpp": 4.828999999999999,
+                        "gpu_noise_us_python": 5.175,
+                        "gpu_bwutil_cpp": 0.1263633795816829,
+                        "gpu_bwutil_python": 0.1260565192650906,
+                        "gpu_gap_stddev_us": 9.439249221747389
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1566.97914688377,
+                        "gpu_time_us_python": 1575.9232655118099,
+                        "gpu_noise_us_cpp": 3.62,
+                        "gpu_noise_us_python": 2.7209999999999996,
+                        "gpu_bwutil_cpp": 0.11798537081721967,
+                        "gpu_bwutil_python": 0.11731572898223075,
+                        "gpu_gap_stddev_us": 4.494903630118016
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1914.9255617019003,
+                        "gpu_time_us_python": 1916.85533265999,
+                        "gpu_noise_us_cpp": 4.979,
+                        "gpu_noise_us_python": 4.721000000000001,
+                        "gpu_bwutil_cpp": 0.12658461748582583,
+                        "gpu_bwutil_python": 0.12645631806382734,
+                        "gpu_gap_stddev_us": 3.7312464674537456
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1571.58673673161,
+                        "gpu_time_us_python": 1584.44438533513,
+                        "gpu_noise_us_cpp": 4.148000000000001,
+                        "gpu_noise_us_python": 4.123,
+                        "gpu_bwutil_cpp": 0.11763824485314642,
+                        "gpu_bwutil_python": 0.11668370211127566,
+                        "gpu_gap_stddev_us": 1.6086648505296077
+                    }
+                },
+                "merge_varshape_u8_advanced[InOutDataType=uint8][shape=45x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=4]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 2505.89289298855,
+                        "gpu_time_us_python": 2511.6730847550807,
+                        "gpu_noise_us_cpp": 4.843999999999999,
+                        "gpu_noise_us_python": 4.308,
+                        "gpu_bwutil_cpp": 0.19346247190755517,
+                        "gpu_bwutil_python": 0.19301837785811463,
+                        "gpu_gap_stddev_us": 3.0925317850568623
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1928.58949098685,
+                        "gpu_time_us_python": 1936.5011055824402,
+                        "gpu_noise_us_cpp": 3.2119999999999997,
+                        "gpu_noise_us_python": 5.592,
+                        "gpu_bwutil_cpp": 0.19172561646479983,
+                        "gpu_bwutil_python": 0.1909437555176765,
+                        "gpu_gap_stddev_us": 2.9082460003280306
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 2468.73643789397,
+                        "gpu_time_us_python": 2475.79419078504,
+                        "gpu_noise_us_cpp": 4.645000000000001,
+                        "gpu_noise_us_python": 8.328,
+                        "gpu_bwutil_cpp": 0.19637483482120388,
+                        "gpu_bwutil_python": 0.19581571061957698,
+                        "gpu_gap_stddev_us": 3.095671088391396
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1926.2775394549099,
+                        "gpu_time_us_python": 1934.4562717157398,
+                        "gpu_noise_us_cpp": 5.700000000000001,
+                        "gpu_noise_us_python": 5.645,
+                        "gpu_bwutil_cpp": 0.1919545795141708,
+                        "gpu_bwutil_python": 0.19114269146432028,
+                        "gpu_gap_stddev_us": 2.3046008061620284
+                    }
+                },
+                "merge_varshape_u8_advanced[InOutDataType=uint8][shape=45x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=1]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 8,
+                        "gpu_time_us_cpp": 478.7108337843125,
+                        "gpu_time_us_python": 483.55201458055,
+                        "gpu_noise_us_cpp": 2.5024999999999995,
+                        "gpu_noise_us_python": 3.2199999999999998,
+                        "gpu_bwutil_cpp": 0.25319083366910794,
+                        "gpu_bwutil_python": 0.25066057704570577,
+                        "gpu_gap_stddev_us": 1.4100390436546275
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 454.44217641131104,
+                        "gpu_time_us_python": 458.6306584563667,
+                        "gpu_noise_us_cpp": 1.428888888888889,
+                        "gpu_noise_us_python": 2.5144444444444445,
+                        "gpu_bwutil_cpp": 0.20341265045348353,
+                        "gpu_bwutil_python": 0.20155544075187096,
+                        "gpu_gap_stddev_us": 0.6380480499439107
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 8,
+                        "gpu_time_us_cpp": 478.08838775802496,
+                        "gpu_time_us_python": 483.873138629575,
+                        "gpu_noise_us_cpp": 2.9899999999999993,
+                        "gpu_noise_us_python": 4.3175,
+                        "gpu_bwutil_cpp": 0.2535199762929652,
+                        "gpu_bwutil_python": 0.2504888268614241,
+                        "gpu_gap_stddev_us": 1.2094169888834723
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 461.28656684699,
+                        "gpu_time_us_python": 466.9296844119999,
+                        "gpu_noise_us_cpp": 2.4549999999999996,
+                        "gpu_noise_us_python": 3.251,
+                        "gpu_bwutil_cpp": 0.20039477437384234,
+                        "gpu_bwutil_python": 0.19797350933460509,
+                        "gpu_gap_stddev_us": 0.9198915426363808
+                    }
+                }
+            }
+        },
+        "merge_varshape_s8_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "int8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920@17"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_varshape_s8_advanced[InOutDataType=int8][shape=32x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 816.82035166473,
+                        "gpu_time_us_python": 824.9547351349299,
+                        "gpu_noise_us_cpp": 4.233,
+                        "gpu_noise_us_python": 5.462999999999999,
+                        "gpu_bwutil_cpp": 0.31680904159233314,
+                        "gpu_bwutil_python": 0.31368795593430715,
+                        "gpu_gap_stddev_us": 1.4762542226189894
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 744.2388640746,
+                        "gpu_time_us_python": 748.8523195576666,
+                        "gpu_noise_us_cpp": 3.8577777777777778,
+                        "gpu_noise_us_python": 3.3677777777777775,
+                        "gpu_bwutil_cpp": 0.2651974138579731,
+                        "gpu_bwutil_python": 0.2635617876226581,
+                        "gpu_gap_stddev_us": 0.9176925627286249
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 812.3558812726112,
+                        "gpu_time_us_python": 818.9873539084667,
+                        "gpu_noise_us_cpp": 4.921111111111111,
+                        "gpu_noise_us_python": 4.29,
+                        "gpu_bwutil_cpp": 0.3185541926839494,
+                        "gpu_bwutil_python": 0.3159752179207995,
+                        "gpu_gap_stddev_us": 1.7935550725893845
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 754.28976478152,
+                        "gpu_time_us_python": 760.5319183550399,
+                        "gpu_noise_us_cpp": 5.3229999999999995,
+                        "gpu_noise_us_python": 5.705,
+                        "gpu_bwutil_cpp": 0.26165505339349504,
+                        "gpu_bwutil_python": 0.2595078897976093,
+                        "gpu_gap_stddev_us": 1.268173602881413
+                    }
+                },
+                "merge_varshape_s8_advanced[InOutDataType=int8][shape=32x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 1085.0175555392666,
+                        "gpu_time_us_python": 1087.6518792815998,
+                        "gpu_noise_us_cpp": 6.437777777777779,
+                        "gpu_noise_us_python": 7.794444444444443,
+                        "gpu_bwutil_cpp": 0.23849495885331928,
+                        "gpu_bwutil_python": 0.23791813517609167,
+                        "gpu_gap_stddev_us": 4.71264096582336
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 933.7425886073888,
+                        "gpu_time_us_python": 939.0610601443888,
+                        "gpu_noise_us_cpp": 4.582222222222223,
+                        "gpu_noise_us_python": 4.822222222222222,
+                        "gpu_bwutil_cpp": 0.2113728535037019,
+                        "gpu_bwutil_python": 0.21017495377995438,
+                        "gpu_gap_stddev_us": 1.2831462404125058
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 9,
+                        "gpu_time_us_cpp": 1074.9269517167666,
+                        "gpu_time_us_python": 1076.5273259655555,
+                        "gpu_noise_us_cpp": 7.966666666666667,
+                        "gpu_noise_us_python": 7.801111111111112,
+                        "gpu_bwutil_cpp": 0.2407367387763825,
+                        "gpu_bwutil_python": 0.24037899911254593,
+                        "gpu_gap_stddev_us": 2.434062417840776
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 940.0670662414999,
+                        "gpu_time_us_python": 948.2276929062998,
+                        "gpu_noise_us_cpp": 4.811,
+                        "gpu_noise_us_python": 7.640000000000001,
+                        "gpu_bwutil_cpp": 0.20994611777039177,
+                        "gpu_bwutil_python": 0.20813936236809621,
+                        "gpu_gap_stddev_us": 1.7066033496878432
+                    }
+                }
+            }
+        },
+        "merge_varshape_16bit_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint16",
+                "int16",
+                "float16"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920@17"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_varshape_16bit_advanced[InOutDataType=float16][shape=32x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1191.08329948382,
+                        "gpu_time_us_python": 1197.1725253522097,
+                        "gpu_noise_us_cpp": 3.3590000000000004,
+                        "gpu_noise_us_python": 3.8890000000000002,
+                        "gpu_bwutil_cpp": 0.4345149496554915,
+                        "gpu_bwutil_python": 0.4323066137805641,
+                        "gpu_gap_stddev_us": 2.035414607840446
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1070.3355525592099,
+                        "gpu_time_us_python": 1075.83736068164,
+                        "gpu_noise_us_cpp": 2.1359999999999997,
+                        "gpu_noise_us_python": 2.831,
+                        "gpu_bwutil_cpp": 0.36879116883361984,
+                        "gpu_bwutil_python": 0.36690558980745314,
+                        "gpu_gap_stddev_us": 0.8322204180105345
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1180.370492597,
+                        "gpu_time_us_python": 1186.4008777202903,
+                        "gpu_noise_us_cpp": 3.4309999999999996,
+                        "gpu_noise_us_python": 3.5940000000000003,
+                        "gpu_bwutil_cpp": 0.43845856402876215,
+                        "gpu_bwutil_python": 0.4362314968473943,
+                        "gpu_gap_stddev_us": 1.6244500139617999
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1079.74405370104,
+                        "gpu_time_us_python": 1086.1634562999502,
+                        "gpu_noise_us_cpp": 3.9949999999999997,
+                        "gpu_noise_us_python": 4.572000000000001,
+                        "gpu_bwutil_cpp": 0.3655748912697089,
+                        "gpu_bwutil_python": 0.3634142422800574,
+                        "gpu_gap_stddev_us": 1.6616254620985842
+                    }
+                },
+                "merge_varshape_16bit_advanced[InOutDataType=float16][shape=32x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1840.1801777114501,
+                        "gpu_time_us_python": 1847.64194420672,
+                        "gpu_noise_us_cpp": 3.7529999999999992,
+                        "gpu_noise_us_python": 3.3400000000000007,
+                        "gpu_bwutil_cpp": 0.2812433200524826,
+                        "gpu_bwutil_python": 0.28010536440438016,
+                        "gpu_gap_stddev_us": 2.453202488775569
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1489.2112070190801,
+                        "gpu_time_us_python": 1496.69001168926,
+                        "gpu_noise_us_cpp": 2.07,
+                        "gpu_noise_us_python": 4.470000000000001,
+                        "gpu_bwutil_cpp": 0.2650588046413171,
+                        "gpu_bwutil_python": 0.26373574813836115,
+                        "gpu_gap_stddev_us": 2.9388793125413404
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1819.3215775537003,
+                        "gpu_time_us_python": 1828.94571237203,
+                        "gpu_noise_us_cpp": 3.5739999999999994,
+                        "gpu_noise_us_python": 6.729000000000001,
+                        "gpu_bwutil_cpp": 0.2844670615302614,
+                        "gpu_bwutil_python": 0.2829705232484602,
+                        "gpu_gap_stddev_us": 3.5444661174820093
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1491.2204384803401,
+                        "gpu_time_us_python": 1498.00203884632,
+                        "gpu_noise_us_cpp": 3.5149999999999997,
+                        "gpu_noise_us_python": 3.636,
+                        "gpu_bwutil_cpp": 0.26470057727340024,
+                        "gpu_bwutil_python": 0.2635022806188355,
+                        "gpu_gap_stddev_us": 0.7709483920189012
+                    }
+                },
+                "merge_varshape_16bit_advanced[InOutDataType=int16][shape=32x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1191.67996594528,
+                        "gpu_time_us_python": 1197.1274414745499,
+                        "gpu_noise_us_cpp": 4.0840000000000005,
+                        "gpu_noise_us_python": 4.203,
+                        "gpu_bwutil_cpp": 0.43429553288301037,
+                        "gpu_bwutil_python": 0.43231996776797316,
+                        "gpu_gap_stddev_us": 1.9395421420463745
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1070.41825625556,
+                        "gpu_time_us_python": 1076.62193913604,
+                        "gpu_noise_us_cpp": 2.0620000000000003,
+                        "gpu_noise_us_python": 4.128,
+                        "gpu_bwutil_cpp": 0.36876326881474375,
+                        "gpu_bwutil_python": 0.3666412981277912,
+                        "gpu_gap_stddev_us": 1.7156594068138964
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1181.06117533411,
+                        "gpu_time_us_python": 1187.20812849786,
+                        "gpu_noise_us_cpp": 5.448,
+                        "gpu_noise_us_python": 5.816,
+                        "gpu_bwutil_cpp": 0.43820125727207665,
+                        "gpu_bwutil_python": 0.4359347656435161,
+                        "gpu_gap_stddev_us": 1.415443175226333
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1080.2920904008502,
+                        "gpu_time_us_python": 1087.25668783858,
+                        "gpu_noise_us_cpp": 5.264,
+                        "gpu_noise_us_python": 5.7459999999999996,
+                        "gpu_bwutil_cpp": 0.36538969382642916,
+                        "gpu_bwutil_python": 0.36304953806384765,
+                        "gpu_gap_stddev_us": 2.1252486048934345
+                    }
+                },
+                "merge_varshape_16bit_advanced[InOutDataType=int16][shape=32x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1838.9990658143402,
+                        "gpu_time_us_python": 1847.8737833153998,
+                        "gpu_noise_us_cpp": 3.6480000000000006,
+                        "gpu_noise_us_python": 4.390999999999999,
+                        "gpu_bwutil_cpp": 0.28142126920579397,
+                        "gpu_bwutil_python": 0.2800707410139147,
+                        "gpu_gap_stddev_us": 3.3290754988845412
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1488.88157962814,
+                        "gpu_time_us_python": 1495.1789230868299,
+                        "gpu_noise_us_cpp": 1.8980000000000001,
+                        "gpu_noise_us_python": 2.99,
+                        "gpu_bwutil_cpp": 0.2651176429602983,
+                        "gpu_bwutil_python": 0.26400139181503385,
+                        "gpu_gap_stddev_us": 3.038569380853168
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1818.8246864774198,
+                        "gpu_time_us_python": 1827.87698971856,
+                        "gpu_noise_us_cpp": 4.829000000000001,
+                        "gpu_noise_us_python": 5.215,
+                        "gpu_bwutil_cpp": 0.28454499364341135,
+                        "gpu_bwutil_python": 0.28313601025268886,
+                        "gpu_gap_stddev_us": 5.463515096105835
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1491.0636746457099,
+                        "gpu_time_us_python": 1498.0235156728202,
+                        "gpu_noise_us_cpp": 4.352,
+                        "gpu_noise_us_python": 4.332,
+                        "gpu_bwutil_cpp": 0.26472822992803186,
+                        "gpu_bwutil_python": 0.26349840542143577,
+                        "gpu_gap_stddev_us": 1.754603676945561
+                    }
+                },
+                "merge_varshape_16bit_advanced[InOutDataType=uint16][shape=32x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1192.3965432672398,
+                        "gpu_time_us_python": 1197.15460579567,
+                        "gpu_noise_us_cpp": 4.718,
+                        "gpu_noise_us_python": 4.043,
+                        "gpu_bwutil_cpp": 0.43403750330498203,
+                        "gpu_bwutil_python": 0.43231101569300706,
+                        "gpu_gap_stddev_us": 1.4030373419209143
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1070.45423808921,
+                        "gpu_time_us_python": 1076.3834933167298,
+                        "gpu_noise_us_cpp": 2.899,
+                        "gpu_noise_us_python": 3.4659999999999997,
+                        "gpu_bwutil_cpp": 0.36875070865984466,
+                        "gpu_bwutil_python": 0.3667226827652065,
+                        "gpu_gap_stddev_us": 1.8336678812643363
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1181.0559463438099,
+                        "gpu_time_us_python": 1187.4895533772599,
+                        "gpu_noise_us_cpp": 4.68,
+                        "gpu_noise_us_python": 5.352,
+                        "gpu_bwutil_cpp": 0.4382060472496209,
+                        "gpu_bwutil_python": 0.43583552584127405,
+                        "gpu_gap_stddev_us": 3.0480858783227567
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1080.1646990172599,
+                        "gpu_time_us_python": 1086.80192589441,
+                        "gpu_noise_us_cpp": 4.819,
+                        "gpu_noise_us_python": 5.346,
+                        "gpu_bwutil_cpp": 0.3654321765860612,
+                        "gpu_bwutil_python": 0.3632015326641269,
+                        "gpu_gap_stddev_us": 2.6586639590017036
+                    }
+                },
+                "merge_varshape_16bit_advanced[InOutDataType=uint16][shape=32x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1842.4861764162401,
+                        "gpu_time_us_python": 1849.97974006369,
+                        "gpu_noise_us_cpp": 3.7300000000000004,
+                        "gpu_noise_us_python": 9.772000000000002,
+                        "gpu_bwutil_cpp": 0.2808907588471202,
+                        "gpu_bwutil_python": 0.27975145236699595,
+                        "gpu_gap_stddev_us": 3.3221238793982995
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1488.8341189074802,
+                        "gpu_time_us_python": 1495.19029333354,
+                        "gpu_noise_us_cpp": 2.755,
+                        "gpu_noise_us_python": 2.8049999999999997,
+                        "gpu_bwutil_cpp": 0.26512614652122457,
+                        "gpu_bwutil_python": 0.26399890464623266,
+                        "gpu_gap_stddev_us": 2.7123757219908327
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1822.7354380014099,
+                        "gpu_time_us_python": 1827.77404752611,
+                        "gpu_noise_us_cpp": 4.627000000000001,
+                        "gpu_noise_us_python": 4.343999999999999,
+                        "gpu_bwutil_cpp": 0.2839352709952513,
+                        "gpu_bwutil_python": 0.2831519315395217,
+                        "gpu_gap_stddev_us": 2.234590358289239
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 1490.15544730987,
+                        "gpu_time_us_python": 1499.8416161850103,
+                        "gpu_noise_us_cpp": 3.435999999999999,
+                        "gpu_noise_us_python": 7.475,
+                        "gpu_bwutil_cpp": 0.26488972223789087,
+                        "gpu_bwutil_python": 0.26317907768096394,
+                        "gpu_gap_stddev_us": 2.314933973861966
+                    }
+                }
+            }
+        },
+        "merge_varshape_32bit_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint32",
+                "int32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "16x1080x1920@17"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_varshape_32bit_advanced[InOutDataType=int32][shape=16x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 837.0650208609298,
+                        "gpu_time_us_python": 842.2987670340599,
+                        "gpu_noise_us_cpp": 3.1219999999999994,
+                        "gpu_noise_us_python": 3.973,
+                        "gpu_bwutil_cpp": 0.6131639077269572,
+                        "gpu_bwutil_python": 0.6093572085812335,
+                        "gpu_gap_stddev_us": 1.5874232790942995
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 736.28105179693,
+                        "gpu_time_us_python": 740.88764091419,
+                        "gpu_noise_us_cpp": 1.895,
+                        "gpu_noise_us_python": 2.5599999999999996,
+                        "gpu_bwutil_cpp": 0.5316787242912303,
+                        "gpu_bwutil_python": 0.528373276513469,
+                        "gpu_gap_stddev_us": 0.6154709727639571
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 833.6875037685,
+                        "gpu_time_us_python": 839.38429564008,
+                        "gpu_noise_us_cpp": 3.0149999999999997,
+                        "gpu_noise_us_python": 3.5519999999999996,
+                        "gpu_bwutil_cpp": 0.6156495706205424,
+                        "gpu_bwutil_python": 0.6114746655001434,
+                        "gpu_gap_stddev_us": 1.318883126288297
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 742.7147580885701,
+                        "gpu_time_us_python": 747.75505717414,
+                        "gpu_noise_us_cpp": 2.6960000000000006,
+                        "gpu_noise_us_python": 2.596,
+                        "gpu_bwutil_cpp": 0.5270690800067739,
+                        "gpu_bwutil_python": 0.5235157891565847,
+                        "gpu_gap_stddev_us": 1.4904792996969785
+                    }
+                },
+                "merge_varshape_32bit_advanced[InOutDataType=int32][shape=16x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 981.1701905634297,
+                        "gpu_time_us_python": 987.3731701479098,
+                        "gpu_noise_us_cpp": 2.321,
+                        "gpu_noise_us_python": 3.7629999999999995,
+                        "gpu_bwutil_cpp": 0.5231041008183486,
+                        "gpu_bwutil_python": 0.5198185671689753,
+                        "gpu_gap_stddev_us": 1.0885591560978458
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 811.40905224283,
+                        "gpu_time_us_python": 815.0975513237499,
+                        "gpu_noise_us_cpp": 2.207,
+                        "gpu_noise_us_python": 2.515,
+                        "gpu_bwutil_cpp": 0.48244981400543463,
+                        "gpu_bwutil_python": 0.48026639436556023,
+                        "gpu_gap_stddev_us": 0.8177919249489402
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 977.3511416282099,
+                        "gpu_time_us_python": 983.9273909997698,
+                        "gpu_noise_us_cpp": 2.189,
+                        "gpu_noise_us_python": 3.097,
+                        "gpu_bwutil_cpp": 0.5251492531264133,
+                        "gpu_bwutil_python": 0.5216405428486023,
+                        "gpu_gap_stddev_us": 1.472406577745585
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 816.62852124723,
+                        "gpu_time_us_python": 822.1642767679799,
+                        "gpu_noise_us_cpp": 2.3950000000000005,
+                        "gpu_noise_us_python": 3.31,
+                        "gpu_bwutil_cpp": 0.4793639123008904,
+                        "gpu_bwutil_python": 0.47613553369041817,
+                        "gpu_gap_stddev_us": 1.349205884939089
+                    }
+                },
+                "merge_varshape_32bit_advanced[InOutDataType=uint32][shape=16x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 836.95786371299,
+                        "gpu_time_us_python": 842.49251930721,
+                        "gpu_noise_us_cpp": 3.3880000000000003,
+                        "gpu_noise_us_python": 4.225,
+                        "gpu_bwutil_cpp": 0.6132466671668018,
+                        "gpu_bwutil_python": 0.6092154540243288,
+                        "gpu_gap_stddev_us": 1.2886949942403887
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 736.3693552132,
+                        "gpu_time_us_python": 741.20795597416,
+                        "gpu_noise_us_cpp": 2.5149999999999997,
+                        "gpu_noise_us_python": 3.4809999999999994,
+                        "gpu_bwutil_cpp": 0.5316183705369317,
+                        "gpu_bwutil_python": 0.5281451516724279,
+                        "gpu_gap_stddev_us": 1.031112552407405
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 834.08843598317,
+                        "gpu_time_us_python": 839.74068356096,
+                        "gpu_noise_us_cpp": 2.772,
+                        "gpu_noise_us_python": 3.6089999999999995,
+                        "gpu_bwutil_cpp": 0.6153552357847074,
+                        "gpu_bwutil_python": 0.611212665654942,
+                        "gpu_gap_stddev_us": 1.3676412729417657
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 742.27030685883,
+                        "gpu_time_us_python": 747.9868797954999,
+                        "gpu_noise_us_cpp": 2.2100000000000004,
+                        "gpu_noise_us_python": 3.332,
+                        "gpu_bwutil_cpp": 0.527383996795924,
+                        "gpu_bwutil_python": 0.5233530322361488,
+                        "gpu_gap_stddev_us": 0.7302238821574832
+                    }
+                },
+                "merge_varshape_32bit_advanced[InOutDataType=uint32][shape=16x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 982.06428019613,
+                        "gpu_time_us_python": 987.7370672876299,
+                        "gpu_noise_us_cpp": 2.4179999999999997,
+                        "gpu_noise_us_python": 3.7540000000000004,
+                        "gpu_bwutil_cpp": 0.522629263786526,
+                        "gpu_bwutil_python": 0.51962995292657,
+                        "gpu_gap_stddev_us": 1.9609391443761357
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 811.01375155765,
+                        "gpu_time_us_python": 815.38349925149,
+                        "gpu_noise_us_cpp": 2.028,
+                        "gpu_noise_us_python": 2.7009999999999996,
+                        "gpu_bwutil_cpp": 0.48268416005803694,
+                        "gpu_bwutil_python": 0.48009985154817214,
+                        "gpu_gap_stddev_us": 1.0938706895303245
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 977.99773319376,
+                        "gpu_time_us_python": 984.4273204724399,
+                        "gpu_noise_us_cpp": 2.07,
+                        "gpu_noise_us_python": 4.223999999999999,
+                        "gpu_bwutil_cpp": 0.5248021418315986,
+                        "gpu_bwutil_python": 0.521377563349388,
+                        "gpu_gap_stddev_us": 1.7785078724551662
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 816.5752660033302,
+                        "gpu_time_us_python": 822.48815079413,
+                        "gpu_noise_us_cpp": 2.697,
+                        "gpu_noise_us_python": 3.65,
+                        "gpu_bwutil_cpp": 0.47939435395517205,
+                        "gpu_bwutil_python": 0.47594835818798087,
+                        "gpu_gap_stddev_us": 1.7533363007522642
+                    }
+                }
+            }
+        },
+        "merge_varshape_f64_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float64"
+            ],
+            "string_axes": {
+                "shape": [
+                    "8x1080x1920@17"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "int64_axes": {
+                "channels": [
+                    3
+                ]
+            },
+            "warmup_iterations": 200,
+            "baselines": {
+                "merge_varshape_f64_advanced[InOutDataType=float64][shape=8x1080x1920@17][layout=NCHW][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 787.6899613450599,
+                        "gpu_time_us_python": 793.15671289716,
+                        "gpu_noise_us_cpp": 2.061,
+                        "gpu_noise_us_python": 4.125,
+                        "gpu_bwutil_cpp": 0.6503267098505867,
+                        "gpu_bwutil_python": 0.6458498118490967,
+                        "gpu_gap_stddev_us": 2.143284581187365
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 697.8979602333,
+                        "gpu_time_us_python": 702.0143656574498,
+                        "gpu_noise_us_cpp": 1.5639999999999998,
+                        "gpu_noise_us_python": 2.786,
+                        "gpu_bwutil_cpp": 0.5598254633595341,
+                        "gpu_bwutil_python": 0.5565430806584867,
+                        "gpu_gap_stddev_us": 0.7715706474654916
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 785.3433218964399,
+                        "gpu_time_us_python": 789.48434989496,
+                        "gpu_noise_us_cpp": 3.0530000000000004,
+                        "gpu_noise_us_python": 2.9320000000000004,
+                        "gpu_bwutil_cpp": 0.6522681093044259,
+                        "gpu_bwutil_python": 0.6488488512183666,
+                        "gpu_gap_stddev_us": 1.0808695939658004
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 701.41383962234,
+                        "gpu_time_us_python": 706.9913578479101,
+                        "gpu_noise_us_cpp": 1.9170000000000003,
+                        "gpu_noise_us_python": 3.1950000000000003,
+                        "gpu_bwutil_cpp": 0.5570167361860221,
+                        "gpu_bwutil_python": 0.5526225587531615,
+                        "gpu_gap_stddev_us": 1.040572377580694
+                    }
+                },
+                "merge_varshape_f64_advanced[InOutDataType=float64][shape=8x1080x1920@17][layout=NHWC][inputKind=VarShape][channels=3]": {
+                    "A100_PCIE_40GB_250W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 689.51878685307,
+                        "gpu_time_us_python": 694.04307833256,
+                        "gpu_noise_us_cpp": 1.796,
+                        "gpu_noise_us_python": 2.6680000000000006,
+                        "gpu_bwutil_cpp": 0.7429159233687403,
+                        "gpu_bwutil_python": 0.7380774223114139,
+                        "gpu_gap_stddev_us": 0.7924137488514442
+                    },
+                    "H100_PCIe_350W_1005MHz_CUDA12": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 577.8131279486499,
+                        "gpu_time_us_python": 581.98966424533,
+                        "gpu_noise_us_cpp": 2.2680000000000002,
+                        "gpu_noise_us_python": 2.0140000000000002,
+                        "gpu_bwutil_cpp": 0.6761708715873098,
+                        "gpu_bwutil_python": 0.6713218579092417,
+                        "gpu_gap_stddev_us": 1.2463444417321152
+                    },
+                    "A100_PCIE_40GB_250W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 684.81441894713,
+                        "gpu_time_us_python": 688.70787771346,
+                        "gpu_noise_us_cpp": 2.3640000000000003,
+                        "gpu_noise_us_python": 3.018,
+                        "gpu_bwutil_cpp": 0.748021028698312,
+                        "gpu_bwutil_python": 0.7437980374287795,
+                        "gpu_gap_stddev_us": 0.8890860847352897
+                    },
+                    "H100_PCIe_350W_1005MHz": {
+                        "n_runs": 10,
+                        "gpu_time_us_cpp": 580.64519096926,
+                        "gpu_time_us_python": 586.5216456871501,
+                        "gpu_noise_us_cpp": 1.7730000000000001,
+                        "gpu_noise_us_python": 2.962,
+                        "gpu_bwutil_cpp": 0.6728709407250536,
+                        "gpu_bwutil_python": 0.6661291764954365,
+                        "gpu_gap_stddev_us": 0.5631434555937882
+                    }
+                }
+            }
+        }
+    }
+}

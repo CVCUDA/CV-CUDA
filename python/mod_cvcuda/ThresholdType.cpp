@@ -21,10 +21,10 @@
 
 namespace cvcudapy {
 
-void ExportThresholdType(py::module &m)
+void ExportThresholdType(py::module_ &m)
 {
-    py::enum_<NVCVThresholdType>(m, "ThresholdType", "Thresholding types for binary image segmentation.",
-                                 py::arithmetic())
+    py::enum_compat<NVCVThresholdType>(m, "ThresholdType", "Thresholding types for binary image segmentation.",
+                                       py::is_arithmetic())
         .value("BINARY", NVCV_THRESH_BINARY, "Value above threshold is set to maxval, otherwise set to 0")
         .value("BINARY_INV", NVCV_THRESH_BINARY_INV, "Value above threshold is set to 0, otherwise set to maxval")
         .value("TRUNC", NVCV_THRESH_TRUNC, "Value above threshold is set to threshold, otherwise unchanged")

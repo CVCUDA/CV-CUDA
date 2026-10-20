@@ -17,6 +17,7 @@
 
 #include "priv/OpConv2D.hpp"
 
+#include "priv/EnumArg.hpp"
 #include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
@@ -51,6 +52,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaConv2DVarShapeSubmit,
     return nvcv::ProtectCall(
         [&in, &out, &kernel, &kernelAnchor, &handle, &stream, &borderMode]
         {
+            priv::CheckEnumArg(borderMode, NVCV_BORDER_REFLECT101, "border type");
             nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
             nvcv::ImageBatchVarShapeWrapHandle outWrap(out);
             nvcv::ImageBatchVarShapeWrapHandle kernelWrap(kernel);

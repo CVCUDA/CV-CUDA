@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,24 +25,50 @@
 #define CVCUDA_PRIV__BOX_BLUR_HPP
 
 #include "IOperator.hpp"
-#include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
+#include <cvcuda/Types.h>
 #include <nvcv/Tensor.hpp>
 
-#include <memory>
+#include <cstddef>
+#include <vector>
 
 namespace cvcuda::priv {
+
+// One blur region as the kernels see it: the clamped, inclusive bounding box in image
+// coordinates plus the sample it belongs to.
+struct BoxBlurCommand
+{
+    int boundingLeft;
+    int boundingTop;
+    int boundingRight;
+    int boundingBottom;
+    int batchIndex;
+    int kernelSize;
+};
 
 class BoxBlur final : public IOperator
 {
 public:
     explicit BoxBlur();
 
+    ~BoxBlur() override;
+
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVBlurBoxesI &bboxes) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::BoxBlur> m_legacyOp;
+    void ReserveCommandBuffer(size_t count) const;
+    void FreeCommandBuffer() const noexcept;
+    void UploadCommands(cudaStream_t stream) const;
+
+    // Pinned staging buffer and its device mirror, owned by the operator for its whole lifetime.
+    // Preallocated by the constructor and only ever grown, exactly as the legacy operator's cuOSD
+    // context was; they are deliberately not per-call or workspace allocations.
+    mutable std::vector<BoxBlurCommand> m_commands;
+    mutable BoxBlurCommand             *m_hostCommands    = nullptr;
+    mutable BoxBlurCommand             *m_deviceCommands  = nullptr;
+    mutable size_t                      m_commandCapacity = 0;
 };
 
 } // namespace cvcuda::priv
