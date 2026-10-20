@@ -1,0 +1,7 @@
+:orphan:
+
+TvResize
+========
+
+.. doxygengroup:: NVCV_C_ALGORITHM_TV_RESIZE
+   :project: cvcuda

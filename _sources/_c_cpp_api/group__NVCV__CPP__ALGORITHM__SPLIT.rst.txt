@@ -1,0 +1,7 @@
+:orphan:
+
+Split
+=====
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_SPLIT
+   :project: cvcuda

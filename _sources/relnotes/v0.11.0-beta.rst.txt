@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,11 +31,11 @@ CV-CUDA v0.11.0 includes critical bug fixes alongside the following changes:​
 
 * **Bug Fixes**:​
 
-  * Update pybind11 2.10.0 to 2.13.1. Fixes rare race conditions with Python garbage collector, adds compatibility with numpy2​
+  * Update pybind11 2.10.0 to 2.13.1 [1]_. Fixes rare race conditions with Python garbage collector, adds compatibility with numpy2​
 
 Compatibility and Known Limitations
 -----------------------------------
-  
+
 * **Pre-existing limitations**:
 
   * We note a bug in the YUV(420) color conversion API (NVCV_COLOR_RGB2YUV_I420) which incorrectly computes the U and V plane index​

@@ -1,0 +1,191 @@
+..
+  # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-License-Identifier: Apache-2.0
+  #
+  # Licensed under the Apache License, Version 2.0 (the "License");
+  # you may not use this file except in compliance with the License.
+  # You may obtain a copy of the License at
+  #
+  # http://www.apache.org/licenses/LICENSE-2.0
+  #
+  # Unless required by applicable law or agreed to in writing, software
+  # distributed under the License is distributed on an "AS IS" BASIS,
+  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  # See the License for the specific language governing permissions and
+  # limitations under the License.
+
+.. _v0.19.0-beta:
+
+v0.19.0-beta
+============
+
+
+Release Highlights
+------------------
+
+CV-CUDA v0.19.0-beta includes the following changes.
+
+* **New Features and Enhancements**:
+
+  * Added ``cvcuda.tv``, a torchvision-compatible functional API for geometry,
+    color, photometric and tensor transforms, without runtime dependencies on
+    PyTorch or torchvision. Functions accept ``torch.Tensor`` and
+    ``cvcuda.Tensor`` inputs, including ``erase``'s fill value and ``elastic``'s
+    displacement. As in torchvision, displacement is relative to the identity
+    sampling grid.
+    ``cvcuda.tv.Compose`` (which requires PyTorch and TorchVision) runs
+    TorchVision v2 transform pipelines, including random and AutoAugment-family
+    transforms, as one CV-CUDA chain with a single import and export;
+    see :ref:`the supported-transform table <cvcuda_tv_pipelines>`.
+
+  * Added ``TvResize`` with nearest-exact, nearest-floor, linear and cubic
+    sampling, optional antialiasing, and torchvision-style Python size/max-size
+    handling. Supports U8/U16/S16/F16/F32 HWC/NHWC and CHW/NCHW tensors, and
+    uniform single-plane C1/3/4 variable-shape batches. Input and output scalar
+    types must match; integer results round ties-to-even and saturate. The C/C++
+    API requires caller-owned workspace.
+
+  * Added ``Split`` and ``Merge`` for tensors and variable-shape image batches.
+
+  * Added free-threaded CPython 3.14 support, including concurrent operator
+    submission, shared-buffer dependency tracking and safe batch mutation.
+    See :ref:`python_free_threading` for build instructions and concurrency semantics.
+
+  * Expanded data-type support:
+
+    * ``CopyMakeBorder``: S8/S32/S64/F64 on tensor, var-shape and planar paths.
+    * ``CustomCrop``: all uniformly packed 8-, 16-, 32- and 64-bit signed,
+      unsigned and floating-point channel types.
+    * ``Invert``: S16/S32/S64/F64; ``Solarize``: F64; ``AutoContrast``: S16;
+      ``BrightnessContrast``: S64/F64.
+    * ``Normalize``: F64 on tensor, var-shape, scalar and planar paths, using
+      double-precision arithmetic for images. Parameters remain F32.
+    * ``Posterize``: F16/F32/F64 images, quantizing normalized ``[0, 1]`` values
+      into ``2 ** bits`` levels with ``bits`` in ``[0, 8]``.
+
+  * Extended ``HistogramEq`` with F16/F32/F64 images and a Pillow-compatible
+    lookup-table method. Floating-point images are binned to 8 bits, equalized
+    and scaled back. Select the method with ``NVCVHistogramEqMethod`` or
+    Python's ``method=`` keyword: ``NVCV_HISTOGRAM_EQ_PILLOW`` matches Pillow's
+    table bit-exactly; the default ``NVCV_HISTOGRAM_EQ_OPENCV`` and existing
+    entry points are unchanged.
+
+  * Added ``CvtColor`` grayscale codes ``RGB2GRAY_TV`` and ``BGR2GRAY_TV``,
+    bit-exact with ``torchvision.transforms.v2.functional.rgb_to_grayscale``.
+    They use BT.601 weights ``0.2989 / 0.587 / 0.114`` (as in MATLAB
+    ``rgb2gray`` and TensorFlow), evaluated in float32 and truncated for integer
+    outputs. Unlike ``RGB2GRAY`` (``0.299``, rounded to nearest), the weights
+    sum to ``0.9999``, so white maps to 254 for U8. ``RGBA2GRAY_TV`` and
+    ``BGRA2GRAY_TV`` ignore alpha.
+
+  * Added ``AdvCvtColor`` support for the existing full-range BT.601, BT.709
+    and BT.2020 ``NVCV_COLOR_SPEC_*_ER`` specifications, also exposed through
+    Python's ``cvcuda.ColorSpec``. Each uses the same full-range U8 arithmetic
+    as its base variant
+    (`issue #289 <https://github.com/CVCUDA/CV-CUDA/issues/289>`_).
+
+  * Expanded interpolation and border options:
+
+    * ``Resize`` accepts ``NVCV_INTERP_NEAREST_FLOOR`` (Python
+      ``cvcuda.Interp.NEAREST_FLOOR``) for PyTorch/torchvision ``nearest``
+      alignment. The existing ``NVCV_INTERP_NEAREST`` center-based convention
+      is unchanged.
+    * ``WarpAffine``, ``WarpPerspective`` and ``Remap`` tensor paths accept
+      ``NVCV_BORDER_CONSTANT_COVERAGE``. It blends the border value according
+      to the interpolation footprint's out-of-bounds coverage, at full
+      precision before rounding. Var-shape paths do not support this mode.
+    * ``Remap`` accepts non-uniform per-channel constant border values for
+      planar tensors and planar var-shape batches with up to four channels,
+      including constant-coverage mode for tensors. Wider planar tensors still
+      require a uniform value. Interleaved F16/F32 inputs now support three
+      and four channels.
+
+  * Added rounding options:
+
+    * ``AdjustContrast`` and by-value ``BrightnessContrast`` accept
+      ``NVCV_ROUND_TRUNCATE`` through new C/C++ submit entry points and
+      Python's ``round=`` keyword. It truncates integer outputs to match
+      torchvision; floating-point outputs are unchanged. Nearest rounding
+      remains the default and the behavior of existing entry points.
+    * ``ConvertTo`` accepts ``NVCV_ROUND_NEAREST_WRAP`` and
+      ``NVCV_ROUND_TRUNCATE_WRAP`` (Python ``cvcuda.Round.NEAREST_WRAP`` and
+      ``TRUNCATE_WRAP``) for 8- and 16-bit integer destinations. These modes
+      wrap instead of saturating; negative intermediates still map to zero
+      for unsigned outputs. 32-bit integer destinations and other operators
+      do not support them.
+
+* **Performance Improvements**:
+
+  * Optimized ``AverageBlur``, ``ConvertTo``, ``CopyMakeBorder``,
+    ``CropFlipNormalizeReformat``, ``HQResize``, ``Invert``, ``PadAndStack``,
+    ``Posterize``, ``RandomResizedCrop``, ``Resize``, ``Rotate``, ``WarpAffine``
+    and ``WarpPerspective`` for selected workloads.
+
+  * Reduced Python operator-call and tensor/image export overhead without
+    changing the API. Improved cache reuse lets larger idle allocations serve
+    different shapes while preserving requested strides and alignment. Live
+    views and exported buffers prevent reuse of their storage.
+
+  * Accelerated aligned, pitched single-channel U8 ``Reformat`` from NCHW to NHWC.
+
+* **Bug Fixes**:
+
+  * Fixed Python default-stream synchronization for cross-stream operator
+    submissions and DLPack exports. CUDA stream handles now remain valid while
+    dependent resources are alive, and avoidable pending-cache growth is prevented.
+
+  * Hardened input validation:
+
+    * ``TensorShapeInfo`` and ``TensorDataAccessStrided`` reject dimensions
+      outside the signed 32-bit range with ``NVCV_ERROR_OVERFLOW`` instead of
+      silently truncating them.
+    * ``Invert``, ``Posterize``, ``Solarize``, ``AdjustSharpness`` and
+      ``BrightnessContrast`` report errors for unsupported image heights,
+      tensors exceeding 32-bit addressing, padded column strides and multichannel
+      tensor data types, rather than CUDA failures or incorrect results. Image
+      channels must use the tensor's ``C`` dimension. ``BrightnessContrast``
+      also rejects batches larger than 65535 images.
+    * ``GammaContrast`` rejects non-F32 gamma tensors; ``MinAreaRect`` rejects
+      mismatched ``totalContours`` counts.
+
+  * Fixed shared-memory races in ``HistogramEq`` OpenCV CDF normalization.
+
+  * Fixed ``Morphology`` dilation of all-negative floating-point images.
+
+  * Fixed misaligned memory accesses in ``WarpPerspective`` and in ``Invert``,
+    ``Posterize`` and ``Solarize`` planar var-shape images wrapping caller-owned memory.
+
+  * Fixed integer size calculations, including ``CopyMakeBorder`` launch
+    failures for four-channel 64-bit pixels and ceiling-division precision
+    loss for large values.
+
+  * Fixed allocation-failure reporting in ``AdaptiveThreshold``, ``WarpAffine``,
+    ``WarpPerspective`` and ``RandomResizedCrop``, including a device-memory
+    leak when ``RandomResizedCrop`` host allocation fails.
+
+  * Fixed the installed CMake package so ``find_package(cvcuda)`` discovers its
+    CUDA Toolkit and ``nvcv_types`` dependencies
+    (`issue #295 <https://github.com/CVCUDA/CV-CUDA/issues/295>`_).
+
+* **Compatibility Changes**:
+
+  * **Breaking ABI change:** ``cvcudaAdjustSharpnessSubmit`` and
+    ``cvcudaAdjustSharpnessVarShapeSubmit`` now take a ``double`` factor
+    (<= ``FLT_MAX``). Rebuild applications using these entry points. The
+    calculation of ``1 - factor`` now rounds to float once, matching torchvision;
+    outputs may differ by one level.
+
+  * Versioned requests for the pre-1.0 ``cvcuda`` and ``nvcv_types`` CMake
+    packages must match the installed major and minor. Major-only requests and
+    requests for a different minor are rejected. Specify the installed minor,
+    for example ``find_package(cvcuda 0.19 CONFIG REQUIRED)``.
+
+  * Corrected ``AdvCvtColor`` BT.601/BT.709 RGB-to-YUV luma coefficients to
+    preserve neutral grayscale values. Output can differ from earlier releases
+    by up to one code value for BT.601 and two for BT.709; regenerate affected
+    golden buffers.
+
+  * ``AdjustContrast`` rejects non-finite contrast factors and factors that
+    cannot be represented as float32 instead of accepting them for asynchronous
+    execution. ``ConvertTo`` rejects unknown ``NVCVRoundMode`` values instead
+    of silently using nearest rounding.

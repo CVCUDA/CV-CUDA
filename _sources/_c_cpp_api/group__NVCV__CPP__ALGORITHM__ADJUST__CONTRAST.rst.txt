@@ -1,0 +1,7 @@
+:orphan:
+
+Adjust Contrast
+===============
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_ADJUST_CONTRAST
+   :project: cvcuda

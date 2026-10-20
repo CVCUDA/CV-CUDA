@@ -1,0 +1,7 @@
+:orphan:
+
+JpegCompressionDistortion
+=========================
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM__JPEG_COMPRESSION_DISTORTION
+   :project: cvcuda

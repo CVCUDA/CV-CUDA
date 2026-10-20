@@ -1,0 +1,7 @@
+:orphan:
+
+CLAHE
+=====
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM__CLAHE
+   :project: cvcuda

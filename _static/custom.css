@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -537,7 +537,7 @@ span[id*=MathJax-Span]
 a .rst-content code,
 a .rst-content tt
 {
-    color: #e74c3c;
+    color: var(--link-color);
     font-weight: inherit;
 }
 
@@ -1317,4 +1317,13 @@ details.sd-dropdown .sd-summary-down svg {
     fill: var(--nv-green);
     opacity: 1.0;
     stroke-width: 1.0px;
+}
+
+/* Increase font size for deeply nested items in sidebar navigation (level 3 and deeper) */
+.wy-menu-vertical li.toctree-l3 > a,
+.wy-menu-vertical li.toctree-l4 > a,
+.wy-menu-vertical li.toctree-l5 > a,
+.wy-menu-vertical li.toctree-l6 > a {
+    font-size: 15px !important;
+    line-height: 1.4;
 }

@@ -1,0 +1,7 @@
+:orphan:
+
+Merge
+=====
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_MERGE
+   :project: cvcuda

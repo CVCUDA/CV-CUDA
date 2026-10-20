@@ -22,6 +22,11 @@ v0.14.0-beta
 Release Highlights
 ------------------
 
+Python x86_64 wheels are now available on PyPi, `cvcuda-cu11 <https://pypi.org/project/cvcuda-cu11/>`_ and `cvcuda-cu12 <https://pypi.org/project/cvcuda-cu12/>`_ for CUDA 11 and CUDA 12, respectively ::
+
+   pip install cvcuda-cu<CUDA_VERSION>
+
+
 CV-CUDA v0.14.0 includes the following changes:​
 
 * **New Features**:​
@@ -51,6 +56,8 @@ Compatibility and Known Limitations
 * Starting with v0.14, aarch64_cu12 packages (deb, tar.xz or wheels) distributed on Github (release "assets") and Pypi are the SBSA-compatible ones. Jetson builds (deb, tar.xz, whl) can be found in explicitly named "Jetson" archives in Github release assets.
 
 * We do not provide SBSA-compatible aarch64_cu11 packages yet, this will be addressed in an upcoming release.
+
+* Only x86_64 wheels are available on PyPi as of 02/28/25. SBSA/Grace CUDA 12 wheels will be added shortly.
 
 For the full list, see main README on `CV-CUDA GitHub <https://github.com/CVCUDA/CV-CUDA>`_.
 
