@@ -106,6 +106,9 @@
             "category": "A",
             "rgb_unsupported": true
         },
+        "imagearea": {
+            "category": "C"
+        },
         "inpaint": {
             "category": "A"
         },

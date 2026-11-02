@@ -82,6 +82,8 @@
      - Allows effective spreading out the intensity range of the image typically used to improve contrast
    * - HqResize (:py:func:`cvcuda.hq_resize`)
      - Performs advanced resizing supporting 2D and 3D data, tensors, tensor batches, and varshape image batches (2D only). Supports nearest neighbor, linear, cubic, Gaussian and Lanczos interpolation, with optional antialiasing when down-sampling.
+   * - ImageArea (:py:func:`cvcuda.image_area`)
+     - Writes the spatial pixel count (width \* height, channels excluded) of every image in a batch into a rank-1 output tensor
    * - Inpainting (:py:func:`cvcuda.inpaint`)
      - Performs inpainting by replacing a pixel by normalized weighted sum of all the known pixels in the neighborhood
    * - Invert (:py:func:`cvcuda.invert`)

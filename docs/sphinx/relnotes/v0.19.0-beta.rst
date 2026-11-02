@@ -27,6 +27,8 @@ CV-CUDA v0.19.0-beta includes the following changes.
 
 * **New Features and Enhancements**:
 
+  * Added the ``ImageArea`` operator
+
   * Added ``cvcuda.tv``, a torchvision-compatible functional API for geometry,
     color, photometric and tensor transforms, without runtime dependencies on
     PyTorch or torchvision. Functions accept ``torch.Tensor`` and

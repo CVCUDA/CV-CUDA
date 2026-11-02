@@ -21,6 +21,7 @@ add_subdirectory(priv)
 set(CV_CUDA_LIB_FILES Operator.cpp Types.cpp)
 
 set(CV_CUDA_OP_FILES
+    OpImageArea.cpp
     OpMerge.cpp
     OpSplit.cpp
     OpTvResize.cpp

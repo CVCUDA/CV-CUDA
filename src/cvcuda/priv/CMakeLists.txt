@@ -17,6 +17,7 @@
 set(CV_CUDA_PRIV_FILES IOperator.cpp)
 
 set(CV_CUDA_PRIV_OP_FILES
+    OpImageArea.cu
     ChannelCopy.cu
     OpMerge.cpp
     OpSplit.cpp

@@ -606,6 +606,7 @@ NB_MODULE(_cvcuda, m)
 
         // doctag: Operators
         // CV-CUDA Operators
+        ExportOpImageArea(m);
         ExportOpMerge(m);
         ExportOpSplit(m);
         ExportOpTvResize(m);

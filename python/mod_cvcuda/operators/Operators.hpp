@@ -133,6 +133,7 @@ void ExportOpAdjustSharpness(py::module_ &m);
 void ExportOpAdjustContrast(py::module_ &m);
 void ExportOpJpegCompressionDistortion(py::module_ &m);
 void ExportOpTvResize(py::module_ &m);
+void ExportOpImageArea(py::module_ &m);
 
 class OperatorResource : public nvcvpy::priv::Resource
 {

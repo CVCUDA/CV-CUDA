@@ -22,6 +22,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/python_bench_utils.py
 
 # List of all Python benchmark scripts
 set(python_bench_scripts
+    ops/bench_imagearea.py
     channel_copy_bench.py
     ops/bench_merge.py
     ops/bench_split.py

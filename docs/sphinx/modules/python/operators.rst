@@ -153,6 +153,10 @@ Operators
 
 .. cvcuda-autofunction:: cvcuda.hq_resize_into
 
+.. cvcuda-autofunction:: cvcuda.image_area
+
+.. cvcuda-autofunction:: cvcuda.image_area_into
+
 .. cvcuda-autofunction:: cvcuda.inpaint
 
 .. cvcuda-autofunction:: cvcuda.inpaint_into

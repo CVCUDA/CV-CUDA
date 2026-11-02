@@ -26,6 +26,7 @@ if(NOT TARGET cvcuda)
 endif()
 
 set(bench_sources
+    ops/BenchImageArea.cpp
     ops/BenchMerge.cpp
     ops/BenchSplit.cpp
     ops/BenchTvResize.cpp

@@ -141,6 +141,9 @@ endif()
 if(BUILD_LIB)
     add_subdirectory(src)
 
+    # ImageArea demo executable (installed by the operator package).
+    add_subdirectory(demo/imagearea)
+
     if(BUILD_PYTHON)
         include(BuildPython)
     endif()

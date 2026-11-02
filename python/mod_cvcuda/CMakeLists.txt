@@ -41,6 +41,7 @@ cvcuda_python_add_module(
     PACKAGE_DIR cvcuda
     SOURCES
         # NVCV core types
+        operators/OpImageArea.cpp
         operators/OpMerge.cpp
         operators/OpSplit.cpp
         operators/OpTvResize.cpp

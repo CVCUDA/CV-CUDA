@@ -16,6 +16,7 @@
 # system core -------------------------------------------------
 
 set(CVCUDA_TEST_SOURCES
+    TestOpImageArea.cpp
     TestOpMerge.cpp
     TestOpSplit.cpp
     TestOpTvResize.cpp
@@ -139,6 +140,20 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_L
 endif()
 
 nvcv_add_test(cvcuda_test_system cvcuda cpp)
+
+# Dedicated ImageArea target: compiles only this operator's unit test.
+# Use with -DCV_CUDA_SRC_PATERN=opimagearea to keep libcvcuda minimal.
+add_executable(cvcuda_test_imagearea TestOpImageArea.cpp)
+
+target_link_libraries(cvcuda_test_imagearea
+    PUBLIC
+        cvcuda
+        nvcv_test_common_system
+    PRIVATE
+        CUDA::cuda_driver
+)
+
+nvcv_add_test(cvcuda_test_imagearea cvcuda cpp)
 
 set(HQRESIZE_LANE_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/hqresize-lane-reference.bin")
 if(UNIX)

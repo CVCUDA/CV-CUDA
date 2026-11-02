@@ -160,6 +160,11 @@
             "cpp": "bench_hqresize",
             "python": "bench_hqresize.py"
         },
+        "imagearea": {
+            "config": "operators/imagearea.json",
+            "cpp": "bench_imagearea",
+            "python": "bench_imagearea.py"
+        },
         "inpaint": {
             "config": "operators/inpaint.json",
             "cpp": "bench_inpaint",
